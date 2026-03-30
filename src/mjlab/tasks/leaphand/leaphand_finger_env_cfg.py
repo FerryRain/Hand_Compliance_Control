@@ -22,7 +22,7 @@ from mjlab.sim import MujocoCfg, SimulationCfg
 from mjlab.terrains import TerrainEntityCfg
 from mjlab.viewer import ViewerConfig
 
-_LEAPHAND_XML = Path("/home/rimlab/Code/MojocoLab/mjlab/src/mjlab/asset_zoo/robots/xarm6_leap_hand/xarm6_leap_hand.xml")
+_LEAPHAND_XML = Path("/home/rimlab/Code/Hand_Compliance_Control/src/mjlab/asset_zoo/robots/xarm6_leap_hand/xarm6_leap_hand.xml")
 _ENABLE_HAND_OBJECT_ONLY_COLLISION = False
 _HAND_CONTYPE = 2
 _HAND_CONAFFINITY = 4
