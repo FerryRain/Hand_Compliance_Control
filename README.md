@@ -1,140 +1,95 @@
-![Project banner](https://raw.githubusercontent.com/mujocolab/mjlab/main/docs/source/_static/mjlab-banner.jpg)
+# Hand-only compliance data collection
 
-# mjlab
+This checkout is being used for a **hand-only** MuJoCoLab-based compliance data-collection task.
+The arm is no longer part of the active scope. The current demo uses only the Leap Hand kinematic tree while reusing the existing meshes/assets already stored in this repository.
 
-[![GitHub Actions](https://img.shields.io/github/actions/workflow/status/mujocolab/mjlab/ci.yml?branch=main)](https://github.com/mujocolab/mjlab/actions/workflows/ci.yml?query=branch%3Amain)
-[![Documentation](https://github.com/mujocolab/mjlab/actions/workflows/docs.yml/badge.svg)](https://mujocolab.github.io/mjlab/)
-[![License](https://img.shields.io/github/license/mujocolab/mjlab)](https://github.com/mujocolab/mjlab/blob/main/LICENSE)
-[![Nightly Benchmarks](https://img.shields.io/badge/Nightly-Benchmarks-blue)](https://mujocolab.github.io/mjlab/nightly/)
-[![PyPI](https://img.shields.io/pypi/v/mjlab)](https://pypi.org/project/mjlab/)
+## Conda environment used
 
-mjlab combines [Isaac Lab](https://github.com/isaac-sim/IsaacLab)'s manager-based API with [MuJoCo Warp](https://github.com/google-deepmind/mujoco_warp), a GPU-accelerated version of [MuJoCo](https://github.com/google-deepmind/mujoco).
-The framework provides composable building blocks for environment design,
-with minimal dependencies and direct access to native MuJoCo data structures.
+Tested and executed with the existing conda environment:
 
-## Getting Started
+- **env name:** `isaaclab`
+- **python path:** `/home/ferry/anaconda3/envs/isaaclab/bin/python`
 
-mjlab requires an NVIDIA GPU for training. macOS is supported for evaluation only.
+Recommended runtime setting on this Linux machine:
 
-**Try it now:**
+- `MUJOCO_GL=egl`
 
-Run the demo (no installation needed):
+## What the current demo does
 
-```bash
-uvx --from mjlab --refresh demo
-```
+`src/mjlab/scripts/hand_only_compliance_demo.py` builds and runs a hand-only simulation with the following properties:
 
-Or try in [Google Colab](https://colab.research.google.com/github/mujocolab/mjlab/blob/main/notebooks/demo.ipynb) (no local setup required).
+- palm frame is oriented upward
+- gravity is disabled
+- a relatively large object is placed in the palm
+- the object rotates randomly in-hand via a ball joint and injected torque
+- the finger compliance controller stays active during the rollout
+- trajectories are recorded with:
+  - hand joint position / velocity
+  - tactile/contact force traces
+  - control targets
+  - applied object torque
+  - `T_WH`, `T_WO`, `T_HO`, `T_OH`
+- trajectory inversion is exported to a second file
+- screenshots and a demo video are saved automatically
 
-**Install from source:**
+## Important files
 
-```bash
-git clone https://github.com/mujocolab/mjlab.git && cd mjlab
-uv run demo
-```
+- `src/mjlab/asset_zoo/robots/leaphand_only.xml`
+  - hand-only MuJoCo model that reuses the existing Leap Hand asset meshes already present in this repo
+- `src/mjlab/scripts/hand_only_compliance_demo.py`
+  - simulation loop, compliance control, rendering, logging, and trajectory inversion export
 
-For alternative installation methods (PyPI, Docker), see the [Installation Guide](https://mujocolab.github.io/mjlab/main/source/installation.html).
+## How to run
 
-## Training Examples
-
-### 1. Velocity Tracking
-
-Train a Unitree G1 humanoid to follow velocity commands on flat terrain:
-
-```bash
-uv run train Mjlab-Velocity-Flat-Unitree-G1 --env.scene.num-envs 4096
-```
-
-**Multi-GPU Training:** Scale to multiple GPUs using `--gpu-ids`:
+From the repo root:
 
 ```bash
-uv run train Mjlab-Velocity-Flat-Unitree-G1 \
-  --gpu-ids "[0, 1]" \
-  --env.scene.num-envs 4096
+cd ~/data/Code2/Research/hand_comliance_control
+MUJOCO_GL=egl /home/ferry/anaconda3/envs/isaaclab/bin/python src/mjlab/scripts/hand_only_compliance_demo.py
 ```
 
-See the [Distributed Training guide](https://mujocolab.github.io/mjlab/main/source/training/distributed_training.html) for details.
-
-Evaluate a policy while training (fetches latest checkpoint from Weights & Biases):
+Common options:
 
 ```bash
-uv run play Mjlab-Velocity-Flat-Unitree-G1 --wandb-run-path your-org/mjlab/run-id
+cd ~/data/Code2/Research/hand_comliance_control
+MUJOCO_GL=egl /home/ferry/anaconda3/envs/isaaclab/bin/python src/mjlab/scripts/hand_only_compliance_demo.py \
+  --duration-s 10 \
+  --video-fps 30 \
+  --width 1280 \
+  --height 720 \
+  --seed 7
 ```
 
-### 2. Motion Imitation
+Useful flags:
 
-Train a humanoid to mimic reference motions. See the [motion imitation guide](https://mujocolab.github.io/mjlab/main/source/training/motion_imitation.html) for preprocessing setup.
+- `--output-root data/hand_only_compliance`
+- `--duration-s 8`
+- `--control-decimation 10`
+- `--sim-dt 0.002`
+- `--no-h5`
+- `--no-npz`
 
-```bash
-uv run train Mjlab-Tracking-Flat-Unitree-G1 --registry-name your-org/motions/motion-name --env.scene.num-envs 4096
-uv run play Mjlab-Tracking-Flat-Unitree-G1 --wandb-run-path your-org/mjlab/run-id
+## Output layout
+
+Each run writes a timestamped folder under:
+
+```text
+data/hand_only_compliance/YYYYMMDD_HHMMSS/
 ```
 
-### 3. Sanity-check with Dummy Agents
+Expected artifacts:
 
-Use built-in agents to sanity check your MDP before training:
+- `demo.mp4`
+- `screenshot_start.png`
+- `screenshot_mid.png`
+- `screenshot_end.png`
+- `trajectory_forward.npz`
+- `trajectory_inverted.npz`
+- `trajectory_forward.h5`
+- `metadata.json`
 
-```bash
-uv run play Mjlab-Your-Task-Id --agent zero  # Sends zero actions
-uv run play Mjlab-Your-Task-Id --agent random  # Sends uniform random actions
-```
+## Notes
 
-When running motion-tracking tasks, add `--registry-name your-org/motions/motion-name` to the command.
-
-
-## Documentation
-
-Full documentation is available at **[mujocolab.github.io/mjlab](https://mujocolab.github.io/mjlab/)**.
-
-## Development
-
-```bash
-make test          # Run all tests
-make test-fast     # Skip slow tests
-make format        # Format and lint
-make docs          # Build docs locally
-```
-
-For development setup: `uvx pre-commit install`
-
-## Citation
-
-mjlab is used in published research and open-source robotics projects. See the [Research](https://mujocolab.github.io/mjlab/main/source/research.html) page for publications and projects, or share your own in [Show and Tell](https://github.com/mujocolab/mjlab/discussions/categories/show-and-tell).
-
-If you use mjlab in your research, please consider citing:
-
-```bibtex
-@misc{zakka2026mjlablightweightframeworkgpuaccelerated,
-  title={mjlab: A Lightweight Framework for GPU-Accelerated Robot Learning},
-  author={Kevin Zakka and Qiayuan Liao and Brent Yi and Louis Le Lay and Koushil Sreenath and Pieter Abbeel},
-  year={2026},
-  eprint={2601.22074},
-  archivePrefix={arXiv},
-  primaryClass={cs.RO},
-  url={https://arxiv.org/abs/2601.22074},
-}
-```
-
-## License
-
-mjlab is licensed under the [Apache License, Version 2.0](LICENSE).
-
-### Third-Party Code
-
-Some portions of mjlab are forked from external projects:
-
-- **`src/mjlab/utils/lab_api/`** — Utilities forked from [NVIDIA Isaac
-  Lab](https://github.com/isaac-sim/IsaacLab) (BSD-3-Clause license, see file
-  headers)
-
-Forked components retain their original licenses. See file headers for details.
-
-## Acknowledgments
-
-mjlab wouldn't exist without the excellent work of the Isaac Lab team, whose API
-design and abstractions mjlab builds upon.
-
-Thanks to the MuJoCo Warp team — especially Erik Frey and Taylor Howell — for
-answering our questions, giving helpful feedback, and implementing features
-based on our requests countless times.
-# Hand_Compliance_Control
+- The task scope is intentionally **hand-only**.
+- No new MuJoCoLab clone is required.
+- The hand-only XML reuses the existing `xarm6_leap_hand/assets/*` files already inside this repository.
