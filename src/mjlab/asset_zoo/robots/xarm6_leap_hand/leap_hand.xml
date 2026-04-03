@@ -1,0 +1,205 @@
+<?xml version="1.0" ?>
+<mujoco model="xarm6_leap_hand">
+  <compiler angle="radian" autolimits="true" balanceinertia="true" eulerseq="xyz"/>
+  
+  <asset>
+    
+    <!-- Leap Hand meshes -->
+    <mesh name="palm_lower_mesh" file="assets/palm_lower.stl" />
+    <mesh name="mcp_joint_mesh" file="assets/mcp_joint.stl" />
+    <mesh name="pip_mesh" file="assets/pip.stl" />
+    <mesh name="dip_mesh" file="assets/dip.stl" />
+    <mesh name="fingertip_mesh" file="assets/fingertip.stl" />
+    <mesh name="thumb_pip_mesh" file="assets/thumb_pip.stl" />
+    <mesh name="thumb_dip_mesh" file="assets/thumb_dip.stl" />
+    <mesh name="thumb_fingertip_mesh" file="assets/thumb_fingertip.stl" />
+    
+    <!-- Leap Hand FSR meshes -->
+    <mesh name="dip_1_fsr_mesh" file="assets/dip_1_fsr_Cube.obj" scale="0.8 0.7 0.5" />
+    <mesh name="dip_2_fsr_mesh" file="assets/dip_2_fsr_Cube.obj" scale="0.8 0.7 0.5" />
+    <mesh name="dip_3_fsr_mesh" file="assets/dip_3_fsr_Cube.obj" scale="0.8 0.7 0.5" />
+    <mesh name="palm_1_fsr_mesh" file="assets/palm_1_fsr_Cube.obj" scale="1 1 1" />
+    <mesh name="palm_2_fsr_mesh" file="assets/palm_2_fsr_Cube.obj" scale="0.5 1 1" />
+    <mesh name="palm_3_fsr_mesh" file="assets/palm_3_fsr_Cube.obj" scale="0.5 1 1" />
+    <mesh name="palm_4_fsr_mesh" file="assets/palm_4_fsr_Cube.obj" scale="0.5 1 1" />
+    <mesh name="pip_1_fsr_mesh" file="assets/pip_1_fsr_Cube.obj" scale="0.7 0.7 0.5" />
+    <mesh name="pip_2_fsr_mesh" file="assets/pip_2_fsr_Cube.obj" scale="0.7 0.7 0.5" />
+    <mesh name="pip_3_fsr_mesh" file="assets/pip_3_fsr_Cube.obj" scale="0.7 0.7 0.5" />
+    <mesh name="thumb_dip_fsr_mesh" file="assets/thumb_dip_fsr_Cube.obj" scale="0.5 0.7 0.7" />
+    <mesh name="thumb_pip_fsr_mesh" file="assets/thumb_pip_fsr_Cube.obj" scale="0.5 0.7 0.7" />
+    <mesh name="thumb_tip_fsr_mesh" file="assets/thumb_tip_fsr_Cube.obj" scale="1 0.8 1" />
+    <mesh name="tip_1_fsr_mesh" file="assets/tip_1_fsr_Cube.obj" scale="0.8 1 0.8" />
+    <mesh name="tip_2_fsr_mesh" file="assets/tip_2_fsr_Cube.obj" scale="0.8 1 0.8" />
+    <mesh name="tip_3_fsr_mesh" file="assets/tip_3_fsr_Cube.obj" scale="0.8 1 0.8" />
+  </asset>
+
+  <default>
+    <joint type="hinge" damping="1.0" frictionloss="1.0" />
+    <geom friction="1.2 0.005 0.0001" solimp="0.8 0.9 0.01" solref="0.005 2.0" />
+  </default>
+
+  <contact>
+    <exclude body1="thumb_pip" body2="palm_lower"/>
+    <exclude body1="thumb_pip" body2="palm_1_fsr"/>
+    <exclude body1="thumb_pip" body2="palm_2_fsr"/>
+    <exclude body1="thumb_pip" body2="palm_3_fsr"/>
+    <exclude body1="thumb_pip" body2="palm_4_fsr"/>
+    <exclude body1="thumb_pip" body2="pip4"/>
+    <exclude body1="thumb_pip" body2="thumb_dip"/>
+    <exclude body1="thumb_dip" body2="palm_lower"/>
+    
+  </contact>
+
+  <worldbody>
+    <body name="palm_lower" pos="0.03 0.06 0.012" euler="0 -3.1415 1.5708">
+      <joint name="palm_base" type="free" damping="0.1" />
+      <geom name="palm_lower_collision" type="mesh" mesh="palm_lower_mesh" pos="-0.0200952 0.0257578 -0.0347224" />
+
+      <!-- Palm FSRs (Existing) -->
+      <body name="palm_1_fsr" pos="-0.0831541 -0.0602582 -0.0340008">
+        <geom name="palm_1_fsr_geom" type="mesh" mesh="palm_1_fsr_mesh" pos="0.0046004 0 0" density="0" />
+      </body>
+      <body name="palm_2_fsr" pos="-0.0468608 0.008549 -0.0340008">
+        <geom name="palm_2_fsr_geom" type="mesh" mesh="palm_2_fsr_mesh" density="0" />
+      </body>
+      <body name="palm_3_fsr" pos="-0.0468608 -0.0369062 -0.0340008">
+        <geom name="palm_3_fsr_geom" type="mesh" mesh="palm_3_fsr_mesh" density="0" />
+      </body>
+      <body name="palm_4_fsr" pos="-0.0470055 -0.0770667 -0.0340008">
+        <geom name="palm_4_fsr_geom" type="mesh" mesh="palm_4_fsr_mesh" density="0" />
+      </body>
+
+      <!-- Finger 1: Index -->
+      <body name="mcp_joint" pos="-0.00709525 0.0230578 -0.0187224" quat="0.5 0.5 0.5 -0.5">
+        <joint name="1" pos="0 0 0" axis="0 0 -1" range="-0.314 2.23" />
+        <geom name="mcp_joint_geom" pos="0.0084069 0.00776624 0.0146574" type="mesh" mesh="mcp_joint_mesh"/>
+        
+        <body name="pip" pos="-0.0122 0.0381 0.0145" quat="0.5 -0.5 -0.5 0.5">
+          <joint name="0" pos="0 0 0" axis="0 0 -1" range="-1.047 1.047" />
+          <geom name="pip_geom" pos="0.00964336 0.0003 0.000784034" quat="0.5 -0.5 -0.5 -0.5" type="mesh" mesh="pip_mesh"/>
+          <!-- pip_1_fsr -->
+          <body name="pip_1_fsr" pos="-0.0019601 -0.0000087 -0.0230151" quat="0 0 1 0">
+            <geom name="pip_1_fsr_geom" type="mesh" mesh="pip_1_fsr_mesh" density="0" />
+          </body>
+
+          <body name="dip" pos="0.015 0.0143 -0.013" quat="0.5 0.5 -0.5 0.5">
+            <joint name="2" pos="0 0 0" axis="0 0 -1" range="-0.506 1.885" />
+            <geom name="dip_geom" pos="0.0211334 -0.00843212 0.00978509" quat="0 -1 0 0" type="mesh" mesh="dip_mesh"/>
+            <!-- dip_1_fsr -->
+            <body name="dip_1_fsr" pos="-0.0095151 -0.0227202 0.0143087" quat="1 -1 -1 1">
+              <geom name="dip_1_fsr_geom" type="mesh" mesh="dip_1_fsr_mesh" density="0" />
+            </body>
+
+            <body name="fingertip" pos="-4.08806e-09 -0.0361 0.0002">
+              <joint name="3" pos="0 0 0" axis="0 0 -1" range="-0.366 2.042" />
+              <geom name="fingertip_geom" pos="0.0132864 -0.00611424 0.0145" quat="0 1 0 0" type="mesh" mesh="fingertip_mesh"/>
+              <!-- tip_1_fsr -->
+              <body name="tip_1_fsr" pos="-0.0106151 -0.0326103 0.0141088" quat="1 -1 -1 1">
+                <geom name="tip_1_fsr_geom" type="mesh" mesh="tip_1_fsr_mesh" density="0" />
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+
+      <!-- Finger 2: Middle -->
+      <body name="mcp_joint_2" pos="-0.00709525 -0.0223922 -0.0187224" quat="0.5 0.5 0.5 -0.5">
+        <joint name="5" pos="0 0 0" axis="0 0 -1" range="-0.314 2.23" />
+        <geom name="mcp_joint_2_geom" pos="0.0084069 0.00776624 0.0146574" type="mesh" mesh="mcp_joint_mesh"/>
+        
+        <body name="pip_2" pos="-0.0122 0.0381 0.0145" quat="0.5 -0.5 -0.5 0.5">
+          <joint name="4" pos="0 0 0" axis="0 0 -1" range="-1.047 1.047" />
+          <geom name="pip_2_geom" pos="0.00964336 0.0003 0.000784034" quat="0.5 -0.5 -0.5 -0.5" type="mesh" mesh="pip_mesh"/>
+          <!-- pip_2_fsr -->
+          <body name="pip_2_fsr" pos="-0.0019601 -0.0002805 -0.0230151" quat="0 0 1 0">
+            <geom name="pip_2_fsr_geom" type="mesh" mesh="pip_2_fsr_mesh" density="0" />
+          </body>
+
+          <body name="dip_2" pos="0.015 0.0143 -0.013" quat="0.5 0.5 -0.5 0.5">
+            <joint name="6" pos="0 0 0" axis="0 0 -1" range="-0.506 1.885" />
+            <geom name="dip_2_geom" pos="0.0211334 -0.00843212 0.00978509" quat="0 -1 0 0" type="mesh" mesh="dip_mesh"/>
+            <!-- dip_2_fsr -->
+            <body name="dip_2_fsr" pos="-0.0095151 -0.0227202 0.0147031" quat="1 -1 -1 1">
+              <geom name="dip_2_fsr_geom" type="mesh" mesh="dip_2_fsr_mesh" density="0" />
+            </body>
+
+            <body name="fingertip_2" pos="0 -0.0361 0.0002">
+              <joint name="7" pos="0 0 0" axis="0 0 -1" range="-0.366 2.042" />
+              <geom name="fingertip_2_geom" pos="0.0132864 -0.00611424 0.0145" quat="0 1 0 0" type="mesh" mesh="fingertip_mesh"/>
+              <!-- tip_2_fsr -->
+              <body name="tip_2_fsr" pos="-0.0106151 -0.0326103 0.0144487" quat="1 -1 -1 1">
+                <geom name="tip_2_fsr_geom" type="mesh" mesh="tip_2_fsr_mesh" density="0" />
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+
+      <!-- Finger 3: Ring -->
+      <body name="mcp_joint_3" pos="-0.00709525 -0.0678422 -0.0187224" quat="0.5 0.5 0.5 -0.5">
+        <joint name="9" pos="0 0 0" axis="0 0 -1" range="-0.314 2.23" />
+        <geom name="mcp_joint_3_geom" pos="0.0084069 0.00776624 0.0146574" type="mesh" mesh="mcp_joint_mesh"/>
+        
+        <body name="pip_3" pos="-0.0122 0.0381 0.0145" quat="0.5 -0.5 -0.5 0.5">
+          <joint name="8" pos="0 0 0" axis="0 0 -1" range="-1.047 1.047" />
+          <geom name="pip_3_geom" pos="0.00964336 0.0003 0.000784034" quat="0.5 -0.5 -0.5 -0.5" type="mesh" mesh="pip_mesh"/>
+          <!-- pip_3_fsr -->
+          <body name="pip_3_fsr" pos="-0.0019601 0.0007753 -0.0230151" quat="0 0 1 0">
+            <geom name="pip_3_fsr_geom" pos="0 -0.00063 0" type="mesh" mesh="pip_3_fsr_mesh" density="0" />
+          </body>
+
+          <body name="dip_3" pos="0.015 0.0143 -0.013" quat="0.5 0.5 -0.5 0.5">
+            <joint name="10" pos="0 0 0" axis="0 0 -1" range="-0.506 1.885" />
+            <geom name="dip_3_geom" pos="0.0211334 -0.00843212 0.00978509" quat="0 -1 0 0" type="mesh" mesh="dip_mesh"/>
+            <!-- dip_3_fsr -->
+            <body name="dip_3_fsr" pos="-0.0095151 -0.0227202 0.0145862" quat="1 -1 -1 1">
+              <geom name="dip_3_fsr_geom" type="mesh" mesh="dip_3_fsr_mesh" density="0" />
+            </body>
+
+            <body name="fingertip_3" pos="0 -0.0361 0.0002">
+              <joint name="11" pos="0 0 0" axis="0 0 -1" range="-0.366 2.042" />
+              <geom name="fingertip_3_geom" pos="0.0132864 -0.00611424 0.0145" quat="0 1 0 0" type="mesh" mesh="fingertip_mesh"/>
+              <!-- tip_3_fsr -->
+              <body name="tip_3_fsr" pos="-0.0106151 -0.0326103 0.0140386" quat="1 -1 -1 1">
+                <geom name="tip_3_fsr_geom" type="mesh" mesh="tip_3_fsr_mesh" density="0" />
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+
+      <!-- Finger 4: Thumb -->
+      <body name="pip_4" pos="-0.0693952 -0.00124224 -0.0216224" quat="0.707107 0 0.707107 0">
+        <joint name="12" pos="0 0 0" axis="0 0 -1 " range="-0.349 2.094"/>
+        <geom name="pip_4_geom" pos="-0.00535664 0.0003 0.000784034" quat="0.5 -0.5 -0.5 -0.5" type="mesh" mesh="pip_mesh"/>
+        
+        <body name="thumb_pip" pos="0 0.0143 -0.013" quat="0.5 0.5 -0.5 0.5">
+          <joint name="13" pos="0 0 0" axis="0 0 -1" range="-0.47 2.443" />
+          <geom name="thumb_pip_geom" pos="0.0119619 0 -0.0158526" quat="0.707107 0.707107 0 0" type="mesh" mesh="thumb_pip_mesh"/>
+          
+          <body name="thumb_dip" pos="0 0.0145 -0.017" quat="0.707107 -0.707107 0 0">
+            <joint name="14" pos="0 0 0" axis="0 0 -1" range="-1.2 1.9" />
+            <geom name="thumb_dip_geom" pos="0.0439687 0.057953 -0.00862868" type="mesh" mesh="thumb_dip_mesh"/>
+            <!-- thumb_pip_fsr (Parent: thumb_dip) -->
+            <body name="thumb_pip_fsr" pos="0.0106383 0.0205035 -0.0142321" quat="0 0 1 0">
+              <geom name="thumb_pip_fsr_geom" type="mesh" mesh="thumb_pip_fsr_mesh" density="0" />
+            </body>
+
+            <body name="thumb_fingertip" pos="0 0.0466 0.0002" quat="0 0 0 1">
+              <joint name="15" pos="0 0 0" axis="0 0 -1" range="-1.34 1.88" />
+              <geom name="thumb_fingertip_geom" pos="0.0625595 0.0784597 0.0489929" type="mesh" mesh="thumb_fingertip_mesh"/>
+              <!-- thumb_dip_fsr -->
+              <body name="thumb_dip_fsr" pos="-0.0106383 -0.017675 -0.0144321" quat="0 1 0 0">
+                <geom name="thumb_dip_fsr_geom" type="mesh" mesh="thumb_dip_fsr_mesh" density="0" />
+              </body>
+              <!-- thumb_tip_fsr -->
+              <body name="thumb_tip_fsr" pos="-0.0106383 -0.0453895 -0.0144321" quat="0 1 0 0">
+                <geom name="thumb_tip_fsr_geom" type="mesh" mesh="thumb_tip_fsr_mesh" density="0" />
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body> <!-- palm_lower -->
+  </worldbody>
+</mujoco>

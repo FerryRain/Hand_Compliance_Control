@@ -7,10 +7,12 @@ import os
 import sys
 from typing import Any, Literal
 
+import glfw
 import h5py
 import torch
 import tyro
 import numpy as np
+import mujoco
 
 import mjlab
 from mjlab.envs import ManagerBasedRlEnv, types as env_types
@@ -23,6 +25,7 @@ from mjlab.viewer import NativeMujocoViewer, ViserPlayViewer
 @dataclass(frozen=True)
 class CollectConfig:
     output_dir: str = "./finger_copliance_control/data"
+    num_envs: int = 16
     filename: str | None = None
     device: str | None = None
     viewer: Literal["native", "viser"] = "native"
@@ -30,61 +33,145 @@ class CollectConfig:
     record_forces: bool = True
     fsr_dims: int = 16 # 修改为16，对应手部传感器数量
 
+class MocapObjectRotator:
+    def __init__(self, num_envs: int, device: str, dt: float, mocap_idx: int):
+        self.num_envs = num_envs
+        self.device = device
+        self.dt = dt
+        self.mocap_idx = mocap_idx
+        # 随机旋转轴
+        axes = torch.randn((self.num_envs, 3), device=device)
+        self.axes = axes / torch.norm(axes, dim=-1, keepdim=True)
+        # speeds: [num_envs]
+        self.speeds = torch.rand(self.num_envs, device=device) * 0.3 + 0.2
+
+    def step(self, env: ManagerBasedRlEnv):
+        # 获取当前四元数 [num_envs, 4] -> (w, x, y, z)
+        current_quat = env.sim.data.mocap_quat[:, self.mocap_idx, :].clone()
+        
+        # 计算旋转增量
+        theta = self.speeds * self.dt
+        cos_t = torch.cos(theta / 2).unsqueeze(-1) # [num_envs, 1]
+        sin_t = torch.sin(theta / 2).unsqueeze_(-1) # [num_envs, 1]
+        delta_quat = torch.cat([cos_t, self.axes * sin_t], dim=-1)
+        
+        # 四元数乘法 (w1,x1,y1,z1) * (w2,x2,y2,z2)
+        w1, x1, y1, z1 = current_quat.unbind(-1)
+        w2, x2, y2, z2 = delta_quat.unbind(-1)
+        new_quat = torch.stack([
+            w1*w2 - x1*x2 - y1*y2 - z1*z2,
+            w1*x2 + x1*w2 + y1*z2 - z1*y2,
+            w1*y2 - x1*z2 + y1*w2 + z1*x2,
+            w1*z2 + x1*y2 - y1*x2 + z1*w2
+        ], dim=-1)
+        # 写回数据
+        env.sim.data.mocap_quat[:, self.mocap_idx, :] = (
+            new_quat / torch.norm(new_quat, dim=-1, keepdim=True)
+        )
 
 class CSVDataLogger:
-    """新增的 CSV 记录器，用于记录详细的每帧信息"""
     def __init__(self, filepath: str):
         self.filepath = filepath
         self.file = open(filepath, 'w', newline='')
         self.writer = csv.writer(self.file)
         
-        # 构建表头
-        header = ["step"]
-        header += [f"fsr_{i}" for i in range(16)]          # 16个FSR
-        header += [f"action_{i}" for i in range(16)]       # 16个手部Action
-        header += [f"pos_{i}" for i in range(22)]          # 22个关节Position
-        header += ["is_unlocked"]                          # 解锁状态
+        header = ["step", "time"]
+        # FSR (16)
+        header += [f"fsr_{i}" for i in range(16)]
+        # Joint Positions (22: 6 arm + 16 hand)
+        header += [f"q_{i}" for i in range(22)]
+        # Object Pose (7)
+        header += ["obj_px", "obj_py", "obj_pz", "obj_qw", "obj_qx", "obj_qy", "obj_qz"]
+        # Palm Base Pose (7) - 关键：记录手掌基座在世界系下的位置
+        header += ["palm_px", "palm_py", "palm_pz", "palm_qw", "palm_qx", "palm_qy", "palm_qz"]
+        
         self.writer.writerow(header)
         self.step_idx = 0
 
-    def log(self, fsr, action, pos, is_unlocked):
-        # 假设 num_envs = 1，取第0个环境的数据
-        row = [self.step_idx]
+    def log(self, time, fsr, q, obj_pose, palm_pose):
+        row = [self.step_idx, time]
         row += fsr[0].detach().cpu().numpy().tolist()
-        row += action[0].detach().cpu().numpy().tolist()
-        row += pos[0].detach().cpu().numpy().tolist()
-        row += [int(is_unlocked[0].item())]
+        row += q[0].detach().cpu().numpy().tolist()
+        row += obj_pose[0].detach().cpu().numpy().tolist()
+        row += palm_pose[0].detach().cpu().numpy().tolist()
         self.writer.writerow(row)
         self.step_idx += 1
 
     def close(self):
         self.file.close()
 
-
 class H5DataLogger:
-    def __init__(self, filepath: str):
+    def __init__(self, filepath: str, num_envs: int, fsr_dim: int = 16, q_dim: int = 22, action_dim: int = 16):
         self.file = h5py.File(filepath, "w")
-        self.group = self.file.create_group("data")
+        self.num_envs = num_envs
         self.step_idx = 0
+        
+        chunk_size = 100 
+        # 增加 dtype="f4" 修复警告
+        self.dsets = {
+            "fsr": self.file.create_dataset("fsr", (0, num_envs, fsr_dim), 
+                                            maxshape=(None, num_envs, fsr_dim), chunks=(chunk_size, num_envs, fsr_dim), dtype="f4"),
+            "q": self.file.create_dataset("q", (0, num_envs, q_dim), 
+                                          maxshape=(None, num_envs, q_dim), chunks=(chunk_size, num_envs, q_dim), dtype="f4"),
+            "action": self.file.create_dataset("action", (0, num_envs, action_dim), 
+                                               maxshape=(None, num_envs, action_dim), chunks=(chunk_size, num_envs, action_dim), dtype="f4"),
+            "obj_pose": self.file.create_dataset("obj_pose", (0, num_envs, 7), 
+                                                 maxshape=(None, num_envs, 7), chunks=(chunk_size, num_envs, 7), dtype="f4"),
+            "palm_pose": self.file.create_dataset("palm_pose", (0, num_envs, 7), 
+                                                  maxshape=(None, num_envs, 7), chunks=(chunk_size, num_envs, 7), dtype="f4"),
+            "time": self.file.create_dataset(
+                "time",
+                (0, num_envs),
+                maxshape=(None, num_envs),
+                chunks=(chunk_size, num_envs),
+                dtype="f4",
+            )
+        }
 
-    def log(
-        self,
-        obs: env_types.VecEnvObs,
-        action: torch.Tensor,
-        reward: torch.Tensor,
-        forces: torch.Tensor | None = None,
-    ) -> None:
-        step_grp = self.group.create_group(f"step_{self.step_idx}")
-        policy_obs = _policy_obs_tensor(obs)
-        step_grp.create_dataset("obs", data=policy_obs.detach().cpu().numpy())
-        step_grp.create_dataset("action", data=action.detach().cpu().numpy())
-        step_grp.create_dataset("reward", data=reward.detach().cpu().numpy())
-        if forces is not None:
-            step_grp.create_dataset("fsr_forces", data=forces.detach().cpu().numpy())
+    @staticmethod
+    def _to_host(data):
+        """Convert tensors/proxies to CPU scalar or numpy array for h5py."""
+        # mjlab TorchArray proxy exposes the backing tensor as _tensor.
+        if hasattr(data, "_tensor"):
+            data = data._tensor
+
+        if torch.is_tensor(data):
+            data = data.detach().cpu()
+            return data.item() if data.ndim == 0 else data.numpy()
+
+        # Handle Python numeric values and numpy arrays uniformly.
+        arr = np.asarray(data)
+        return arr.item() if arr.ndim == 0 else arr
+
+    def log(self, time, fsr, q, action, obj_pose, palm_pose):
+
+        # 扩展数据集长度
+        new_size = self.step_idx + 1
+        for name, dset in self.dsets.items():
+            if name == "time":
+                dset.resize((new_size, self.num_envs))
+            else:
+                dset.resize((new_size, self.num_envs, dset.shape[2]))
+
+        # 写入数据
+        self.dsets["time"][self.step_idx] = self._to_host(time)
+        self.dsets["fsr"][self.step_idx] = self._to_host(fsr)
+        self.dsets["q"][self.step_idx] = self._to_host(q)
+        self.dsets["action"][self.step_idx] = self._to_host(action)
+        self.dsets["obj_pose"][self.step_idx] = self._to_host(obj_pose)
+        self.dsets["palm_pose"][self.step_idx] = self._to_host(palm_pose)
+        
         self.step_idx += 1
-
-    def close(self) -> None:
+        
+    def close(self):
+        # 存储一些元数据方便后续分析
+        self.file.attrs["num_envs"] = self.num_envs
+        self.file.attrs["total_steps"] = self.step_idx
         self.file.close()
+
+def get_random_quats(num_envs: int, device: str = "cuda:0") -> torch.Tensor:
+    q = torch.randn((num_envs, 4), device=device)
+    return q / torch.norm(q, dim=-1, keepdim=True)
 
 
 def _policy_obs_tensor(obs: env_types.VecEnvObs) -> torch.Tensor:
@@ -141,14 +228,63 @@ def _log_observation_action_dims(env: ManagerBasedRlEnv, obs: env_types.VecEnvOb
     return action_dim
 
 
+def _resolve_target_mocap_idx(env: ManagerBasedRlEnv) -> int:
+    target = env.scene["target"]
+    mocap_id = target.data.indexing.mocap_id
+    if isinstance(mocap_id, torch.Tensor):
+        return int(mocap_id.item())
+    return int(mocap_id)
+
+
+def _resolve_palm_body_local_idx(env: ManagerBasedRlEnv) -> int:
+    # Resolve against robot-local body names, which is robust to global name scoping.
+    body_name_candidates = ("palm_lower", "base_link", "link6", "link_base")
+    robot = env.scene["robot"]
+    local_names = [body.name or "" for body in robot.data.indexing.bodies]
+
+    for name in body_name_candidates:
+        if name in local_names:
+            local_idx = local_names.index(name)
+            print(f"[INFO] Logging palm pose from body '{name}' (local_idx={local_idx})")
+            return int(local_idx)
+
+    # Fallback: support scoped names such as 'robot/palm_lower'.
+    for name in body_name_candidates:
+        for local_idx, local_name in enumerate(local_names):
+            if local_name.endswith(f"/{name}") or local_name.endswith(name):
+                print(
+                    "[INFO] Logging palm pose from scoped body "
+                    f"'{local_name}' (local_idx={local_idx})"
+                )
+                return int(local_idx)
+
+    tried = ", ".join(body_name_candidates)
+    sample = ", ".join(local_names[:12])
+    raise ValueError(
+        f"Could not find palm body. Tried: {tried}. "
+        f"Robot body names sample: {sample}"
+    )
+
+
 def run_collect(task_id: str, cfg: CollectConfig) -> None:
     configure_torch_backends()
 
     device = cfg.device or ("cuda:0" if torch.cuda.is_available() else "cpu")
     env_cfg = load_env_cfg(task_id, play=True)
+    env_cfg.scene.num_envs = cfg.num_envs
     agent_cfg = load_rl_cfg(task_id)
     env = ManagerBasedRlEnv(cfg=env_cfg, device=device)
     _log_joint_action_mapping(env)
+
+    dt = env.sim.model.opt.timestep * env.cfg.decimation
+    target_mocap_idx = _resolve_target_mocap_idx(env)
+    palm_body_local_idx = _resolve_palm_body_local_idx(env)
+    rotator = MocapObjectRotator(
+        num_envs=env.num_envs,
+        device=device,
+        dt=dt,
+        mocap_idx=target_mocap_idx,
+    )
 
     logger: H5DataLogger | None = None
     csv_logger: CSVDataLogger | None = None  # 新增
@@ -158,44 +294,69 @@ def run_collect(task_id: str, cfg: CollectConfig) -> None:
         base_name = cfg.filename or f"collect_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         
         # H5 保持原有逻辑
-        logger = H5DataLogger(os.path.join(cfg.output_dir, f"{base_name}.h5"))
+        h5_path = os.path.join(cfg.output_dir, f"{base_name}.h5")
+        logger = H5DataLogger(
+            h5_path, 
+            num_envs=env.num_envs, 
+            fsr_dim=16, 
+            q_dim=22, 
+            action_dim=16
+        )
         # 新增 CSV 记录
         csv_path = os.path.join(cfg.output_dir, f"{base_name}.csv")
-        csv_logger = CSVDataLogger(csv_path)
+        # csv_logger = CSVDataLogger(csv_path)
 
     raw_policy = _build_registered_policy(task_id, cfg, env.num_envs)
 
     original_step = env.step
-    current_obs, _ = env.reset()
-    action_dim = _log_observation_action_dims(env, current_obs)
+    original_reset = env.reset
 
-    # 预定义镜像的解锁逻辑参数（需与控制器一致）
-    PALM_FSR_IDX = [0, 1, 2, 3]
-    PALM_THRESHOLD = 0.2
+    def reset_with_random_orientation(*args, **kwargs):
+        obs, info = original_reset(*args, **kwargs)
+        initial_quats = get_random_quats(env.num_envs, device=device)
+        env.sim.data.mocap_quat[:, target_mocap_idx, :] = initial_quats
+        env.sim.forward()  # 确保状态更新
+        return obs, info
+
+    env.reset = reset_with_random_orientation
+    current_obs, _ = env.reset()
+
+    action_dim = _log_observation_action_dims(env, current_obs)
 
     def step_with_logging(action: torch.Tensor):
         nonlocal current_obs
+        rotator.step(env)
+
         # 1. 执行物理步
         next_obs, reward, terminated, truncated, info = original_step(action)
         
-        # 2. 提取数据
+        # 2. 提取全量环境数据 (注意使用切片获取所有 env)
         policy_obs = _policy_obs_tensor(next_obs)
         fsr_data = policy_obs[:, :16]
-        pos_data = policy_obs[:, 16:38]
-        
-        # 3. 镜像计算解锁状态
-        palm_force = torch.mean(fsr_data[:, PALM_FSR_IDX], dim=1)
-        is_unlocked = palm_force > PALM_THRESHOLD
+        # 获取全部 22 个关节（包含机械臂基座和手）
+        q_data = env.scene["robot"].data.joint_pos 
 
-        # 4. 记录数据
+        # 获取物体位姿 (Mocap) [num_envs, 7]
+        obj_p = env.sim.data.mocap_pos[:, target_mocap_idx, :].clone()
+        obj_q = env.sim.data.mocap_quat[:, target_mocap_idx, :].clone()
+        obj_pose = torch.cat((obj_p, obj_q), dim=-1)
+
+        # 获取手掌基座的世界位姿 (从全局 xpos/xquat 提取)
+        palm_pose_w = env.scene["robot"].data.body_link_pose_w[:, palm_body_local_idx, :]
+        palm_p = palm_pose_w[:, :3].clone()
+        palm_q = palm_pose_w[:, 3:].clone()
+        palm_pose = torch.cat((palm_p, palm_q), dim=-1)
+
+        # 3. H5 记录
         if logger is not None:
-            logger.log(current_obs, action, reward, fsr_data)
-        
-        if csv_logger is not None:
-            # 仅记录手部 16 维 action (假设 action 是适配后的 [envs, 22]，取后 16 位)
-            # 或者直接取 raw_policy 的输出，这里我们取传入 step 的 action 的后 16 位
-            hand_action = action[:, 6:] 
-            csv_logger.log(fsr_data, hand_action, pos_data, is_unlocked)
+            logger.log(
+                time=env.sim.data.time,
+                fsr=fsr_data,
+                q=q_data,
+                action=action,
+                obj_pose=obj_pose,
+                palm_pose=palm_pose
+            )
 
         current_obs = next_obs
         return next_obs, reward, terminated, truncated, info
@@ -219,6 +380,7 @@ def run_collect(task_id: str, cfg: CollectConfig) -> None:
         if csv_logger is not None: csv_logger.close()
         viewer_env.close()
         saved_steps = csv_logger.step_idx if csv_logger is not None else 0
+        saved_steps = logger.step_idx if logger is not None else saved_steps
         print(f"[SUCCESS] Saved {saved_steps} steps to CSV and H5")
 
 
