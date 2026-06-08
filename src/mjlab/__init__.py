@@ -3,7 +3,10 @@ from importlib.metadata import entry_points
 from pathlib import Path
 
 import tyro
+# import warp as wp
 import warp as wp
+print("Warp path:", wp.__file__)
+print("Warp version:", getattr(wp, "__version__", "Unknown"))
 
 MJLAB_SRC_PATH: Path = Path(__file__).parent
 

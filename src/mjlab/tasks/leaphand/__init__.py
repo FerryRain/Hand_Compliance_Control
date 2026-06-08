@@ -8,13 +8,18 @@ from mjlab.tasks.leaphand.leaphand_palm_env_cfg import (
     LeapHandPalmControlCfg,
 )
 
+from mjlab.tasks.leaphand.leaphand_palm_mcc_env_cfg import (
+    mcc_palm_contact_env_cfg,
+    MCCPalmControlCfg,
+)
+
 from mjlab.tasks.registry import register_mjlab_task
 
 register_mjlab_task(
   task_id="Leaphand-Finger-Compliance-Control",
   env_cfg=leaphand_contact_env_cfg(),
   play_env_cfg=leaphand_contact_env_cfg(play=True),
-  rl_cfg=LeapHandControlCfg(amplitude=0.8), 
+  rl_cfg=LeapHandControlCfg(amplitude=0.8),
 )
 
 register_mjlab_task(
@@ -22,4 +27,14 @@ register_mjlab_task(
   env_cfg=leaphand_palm_contact_env_cfg(),
   play_env_cfg=leaphand_palm_contact_env_cfg(play=True),
   rl_cfg=LeapHandPalmControlCfg(amplitude=0.8),
+)
+
+register_mjlab_task(
+  task_id="Leaphand-Palm-MCC-Compliance-Control",
+  env_cfg=mcc_palm_contact_env_cfg(),
+  play_env_cfg=mcc_palm_contact_env_cfg(play=True),
+  rl_cfg=MCCPalmControlCfg(
+      amplitude=0.8,
+      K_position=200.0,       # 切向高刚度 → 位置跟踪
+  ),
 )

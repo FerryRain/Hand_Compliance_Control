@@ -135,22 +135,59 @@ def joint_pos(
 
     return asset.data.joint_pos
 
+
+def qfrc_actuator_hand(
+    env: ManagerBasedRlEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Return actuator force for hand joints (index 6..21) with shape [num_envs, 16].
+
+    Used by the Torque2FSR module to estimate contact forces from motor torque
+    when real FSR sensors are unavailable (sim2real bridge).
+    """
+    asset = env.scene[asset_cfg.name]
+    return asset.data.qfrc_actuator[:, 6:22]
+
 # --- Entity 配置 ---
 
 def _get_target_box_spec() -> mujoco.MjSpec:
     spec = mujoco.MjSpec()
     # Mocap body is kinematic: mouse perturbation can place it directly.
     body = spec.worldbody.add_body(name="target_ball", mocap=True)
-    ball = body.add_geom(
-        name="ball_geom",
-        type=mujoco.mjtGeom.mjGEOM_CAPSULE,
-        size=[0.15, 0.08],
-        rgba=[0.2, 0.6, 1.0, 1.0],
-        mass=1,
+    target_geoms = (
+        body.add_geom(
+            name="target_capsule_medium_geom",
+            type=mujoco.mjtGeom.mjGEOM_CAPSULE,
+            size=[0.15, 0.08],
+            rgba=[0.2, 0.6, 1.0, 1.0],
+            mass=1,
+        ),
+        # body.add_geom(
+        #     name="target_box_medium_geom",
+        #     type=mujoco.mjtGeom.mjGEOM_BOX,
+        #     size=[0.15, 0.12, 0.12],
+        #     rgba=[0.2, 1.0, 0.5, 1.0],
+        #     mass=1,
+        # ),
+        # body.add_geom(
+        #     name="target_cylinder_medium_geom",
+        #     type=mujoco.mjtGeom.mjGEOM_CYLINDER,
+        #     size=[0.12, 0.15],
+        #     rgba=[0.3, 0.7, 1.0, 1.0],
+        #     mass=1,
+        # ),
+        # body.add_geom(
+        #     name="target_ellipsoid_medium_geom",
+        #     type=mujoco.mjtGeom.mjGEOM_ELLIPSOID,
+        #     size=[0.18, 0.15, 0.12],
+        #     rgba=[0.25, 0.8, 0.9, 1.0],
+        #     mass=1,
+        # ),
     )
-    if _ENABLE_HAND_OBJECT_ONLY_COLLISION:
-        ball.contype = _OBJECT_CONTYPE
-        ball.conaffinity = _OBJECT_CONAFFINITY
+    for geom in target_geoms:
+        if _ENABLE_HAND_OBJECT_ONLY_COLLISION:
+            geom.contype = _OBJECT_CONTYPE
+            geom.conaffinity = _OBJECT_CONAFFINITY
     return spec
 
 # --- 环境配置构建 ---
@@ -207,6 +244,10 @@ def _make_env_cfg(num_envs: int = 1, play: bool = False) -> ManagerBasedRlEnvCfg
                 func=joint_pos,
                 params={"asset_cfg": SceneEntityCfg("robot")},
             ),
+            "qfrc_actuator_hand": ObservationTermCfg(
+                func=qfrc_actuator_hand,
+                params={"asset_cfg": SceneEntityCfg("robot")},
+            ),
         })
     }
 
@@ -214,13 +255,13 @@ def _make_env_cfg(num_envs: int = 1, play: bool = False) -> ManagerBasedRlEnvCfg
         "hand_delta": JointRelativePositionActionCfg(
             entity_name="robot",
             actuator_names=(".*",),
-            scale=0.05,
+            scale=0.08,
             use_default_offset=False
         )
     }
 
     return ManagerBasedRlEnvCfg(
-        decimation=5,
+        decimation=5, # type: ignore
         scene=SceneCfg(
             terrain=TerrainEntityCfg(terrain_type="plane"),
             entities={"robot": robot_cfg, "target": target_cfg},
@@ -256,10 +297,12 @@ def leaphand_contact_env_cfg(num_envs: int = 1, play: bool = False) -> ManagerBa
 class LeapHandComplianceController:
     """
     针对 22 维架构 (6臂+16手) 的底层顺应性控制器
-    
+
     修改说明：
     1. 解锁逻辑：仅当手掌 (FSR 0-3) 检测到压力时，手指才启动顺应性调节。
     2. 拇指统一：拇指根部关节 (18, 19) 采用与其他手指相同的回缩/下压逻辑。
+    3. Torque2FSR 模式：指定 torque2fsr_model_path 时使用 MLP 从关节力矩
+       估计 FSR，绕过真实 FSR 传感器 (sim2real bridge)。
     """
     def __init__(self, device: str, num_envs: int, **kwargs):
         self.device = device
@@ -267,19 +310,30 @@ class LeapHandComplianceController:
 
         self.S_min = 0.6
         self.S_max = 1.5
-        self.K_prox = 0.15
-        self.K_mid = 0.08
-        self.K_dist = 0.04
-        self.D_force = 0.03
+        self.K_prox = 0.8
+        self.K_mid = 0.32
+        self.K_dist = 0.2
+        self.D_force = 1.2
         self.K_limit_spring = 0.3
 
         self.q_pre_grasp_list = [0.8, 0.4, 0.3]
         self.S_contact_threshold = 0.15
         self.reset_speed = 0.1
 
+        # Stabilization parameters to reduce glittering while keeping fast response.
+        self.alpha_obs = 0.2
+        self.alpha_ctrl = 0.15
+        self.contact_on_threshold = 0.20
+        self.contact_off_threshold = 0.12
+        self.error_deadband = 0.03
+        self.ds_clip = 0.2
+        self.action_rate_limit = 0.15
+
         self.q_nom = torch.zeros((num_envs, 22), device=device)
-        self.alpha = 0.85
-        self.fsr_filt = torch.zeros((num_envs, 16), device=device)
+        self.fsr_obs = torch.zeros((num_envs, 16), device=device)
+        self.fsr_ctrl = torch.zeros((num_envs, 16), device=device)
+        self.contact_state = torch.zeros((num_envs, 4), dtype=torch.bool, device=device)
+        self.prev_action = torch.zeros((num_envs, 16), device=device)
         self.is_init = False
 
         self.finger_configs = [
@@ -288,6 +342,37 @@ class LeapHandComplianceController:
             {"name": "ring",   "j": [14, 16, 17], "p_fsr": [10, 11], "d_fsr": [12]},
             {"name": "thumb", "j": [18, 20, 21], "p_fsr": [13, 14], "d_fsr": [15]},
         ]
+
+        # Per-hand-joint action normalization for joints [6..21].
+        # Proximal joints use larger scale; distal joints use smaller scale.
+        self.action_scale_hand = torch.tensor(
+            [
+                0.12, 0.08, 0.08, 0.05,
+                0.12, 0.08, 0.08, 0.05,
+                0.12, 0.08, 0.08, 0.05,
+                0.12, 0.08, 0.08, 0.05,
+            ],
+            device=device,
+            dtype=torch.float32,
+        )
+
+        # ── Torque-to-FSR mode (sim2real bridge) ──
+        self.torque2fsr: "Torque2FSRInference | None" = None  # type: ignore[name-defined]
+        torque2fsr_path = kwargs.get("torque2fsr_model_path", None)
+        if torque2fsr_path is not None:
+            self._init_torque2fsr(torque2fsr_path)
+
+    def _init_torque2fsr(self, model_path: str):
+        """Lazy-load the Torque2FSR estimator."""
+        import sys
+        _proj_root = Path(__file__).resolve().parents[4]
+        _models_dir = str(_proj_root / "finger_compliance_control" / "models")
+        if _models_dir not in sys.path:
+            sys.path.insert(0, _models_dir)
+
+        from finger_compliance_control.models.torque2fsr import Torque2FSRInference
+        self.torque2fsr = Torque2FSRInference(model_path, device=self.device)
+        print(f"[INFO] Torque2FSR mode enabled, model: {model_path}")
 
     def _compute_interval_error(self, s: torch.Tensor) -> torch.Tensor:
         """Interval error: below S_min pushes (+), above S_max retracts (-)."""
@@ -303,37 +388,69 @@ class LeapHandComplianceController:
         fsr_raw = policy_obs[:, :16]
         q_curr = policy_obs[:, 16:38]
 
+        # ── Torque-to-FSR: replace real FSR with MLP estimate ──
+        if self.torque2fsr is not None:
+            tau_hand = policy_obs[:, 38:54]        # [B, 16] qfrc_actuator hand
+            q_hand = q_curr[:, 6:22]               # [B, 16] hand joints only
+            # Match batch size (prev_action may be initialized for different num_envs)
+            if self.prev_action.shape[0] != q_hand.shape[0]:
+                self.prev_action = self.prev_action[:1].repeat(q_hand.shape[0], 1)
+            fsr_estimated = self.torque2fsr(q_hand, tau_hand, self.prev_action)
+            fsr_raw = fsr_estimated                # replace with torque-based estimate
+
         if not self.is_init:
             self.q_nom[:] = q_curr
             self.is_init = True
-            self.fsr_filt[:] = fsr_raw
+            self.fsr_obs[:] = fsr_raw
+            self.fsr_ctrl[:] = fsr_raw
 
-        last_filt = self.fsr_filt.clone()
-        self.fsr_filt = self.alpha * self.fsr_filt + (1 - self.alpha) * fsr_raw
-        df_filt = self.fsr_filt - last_filt
+        last_ctrl = self.fsr_ctrl.clone()
+        self.fsr_obs = self.alpha_obs * self.fsr_obs + (1 - self.alpha_obs) * fsr_raw
+        self.fsr_ctrl = self.alpha_ctrl * self.fsr_ctrl + (1 - self.alpha_ctrl) * fsr_raw
+        df_ctrl = self.fsr_ctrl - last_ctrl
 
         delta_comp = torch.zeros_like(q_curr)
 
-        for config in self.finger_configs:
+        for finger_idx, config in enumerate(self.finger_configs):
             j_idx = config["j"]
             f_ids = config["p_fsr"] + config["d_fsr"]
 
-            max_finger_force = torch.max(self.fsr_filt[:, f_ids], dim=1)[0]
-            has_contact = max_finger_force > self.S_contact_threshold
+            max_finger_force = torch.max(self.fsr_obs[:, f_ids], dim=1)[0]
+            prev_contact = self.contact_state[:, finger_idx]
+            has_contact = torch.where(
+                prev_contact,
+                max_finger_force >= self.contact_off_threshold,
+                max_finger_force >= self.contact_on_threshold,
+            )
+            self.contact_state[:, finger_idx] = has_contact
 
-            s_p = torch.mean(self.fsr_filt[:, config["p_fsr"]], dim=1)
-            s_d = self.fsr_filt[:, config["d_fsr"]].squeeze(-1)
-            ds_p = torch.mean(df_filt[:, config["p_fsr"]], dim=1)
+            s_p = torch.mean(self.fsr_ctrl[:, config["p_fsr"]], dim=1)
+            s_d = self.fsr_ctrl[:, config["d_fsr"]].squeeze(-1)
+            ds_p = torch.mean(df_ctrl[:, config["p_fsr"]], dim=1)
+            ds_p = torch.clamp(ds_p, min=-self.ds_clip, max=self.ds_clip)
+
+            ds_d = df_ctrl[:, config["d_fsr"]].squeeze(-1)
+            ds_d = torch.clamp(ds_d, min=-self.ds_clip, max=self.ds_clip)
 
             e_p = self._compute_interval_error(s_p)
+            e_p = torch.where(
+                torch.abs(e_p) < self.error_deadband,
+                torch.zeros_like(e_p),
+                e_p,
+            )
             comp_p = self.K_prox * e_p - self.D_force * ds_p
 
             e_d = self._compute_interval_error(s_d)
+            e_d = torch.where(
+                torch.abs(e_d) < self.error_deadband,
+                torch.zeros_like(e_d),
+                e_d,
+            )
             wrapping_factor = torch.clamp(s_d - s_p, min=0)
             adj_e_d = e_d - 0.5 * wrapping_factor
 
-            comp_m = self.K_mid * adj_e_d
-            comp_d = self.K_dist * adj_e_d
+            comp_m = self.K_mid * adj_e_d - 0.6*self.D_force * ds_d
+            comp_d = self.K_dist * adj_e_d - 0.2*self.D_force * ds_d
 
             for joint_idx, target_comp, limit_val in zip(
                 j_idx,
@@ -353,10 +470,20 @@ class LeapHandComplianceController:
         for uj in unused_hand_joints:
             delta_comp[:, uj] = self.reset_speed * (self.q_nom[:, uj] - q_curr[:, uj])
 
-        scale = 0.05
-        action = delta_comp / scale
+        hand_delta = delta_comp[:, 6:]
+        raw_action = hand_delta / self.action_scale_hand.unsqueeze(0)
+        action_cmd = torch.tanh(raw_action)
 
-        return torch.clamp(action[:, 6:], -1.0, 1.0)
+        # Rate-limit action changes to suppress high-frequency chattering.
+        action_delta = torch.clamp(
+            action_cmd - self.prev_action,
+            min=-self.action_rate_limit,
+            max=self.action_rate_limit,
+        )
+        action_out = self.prev_action + action_delta
+        self.prev_action = action_out
+
+        return action_out
 
 class NullComplianceController:
     """一个不做任何补偿的控制器，用于对比测试"""
@@ -375,8 +502,3 @@ class LeapHandControlCfg(RslRlOnPolicyRunnerCfg):
     # policy_class: type = NullComplianceController
     policy_class: type = LeapHandComplianceController
     amplitude: float = 0.5
-
-
-"""
-PYTHONPATH=src python -m mjlab.scripts.collect_data Leaphand-Finger-Compliance-Control --collect False --viewer native
-"""

@@ -1,0 +1,22 @@
+PYTHONPATH=src /home/rimlab/miniconda3/envs/mjlab/bin/python \
+/home/rimlab/Code/Hand_Compliance_Control/finger_compliance_control/scripts/evaluate_online_ab.py \
+  --task-id Leaphand-Finger-Compliance-Control \
+  --policy-a-type learned \
+  --model-a finger_compliance_control/data/models/final_v1_resume_e20_residual_qw0.1_qstep5_s42.pt \
+  --norm-a  finger_compliance_control/data/models/final_v1_resume_e20_residual_qw0.1_qstep5_s42_norm.npz \
+  --policy-b-type manual \
+  --device cuda \
+  --num-envs 16 \
+  --episodes 20 \
+  --episode-steps 400 \
+  --window 20 \
+  --drop-palm-fsr \
+  --fsr-source policy \
+  --contact-threshold 0.2 \
+  --stability-window 20 \
+  --target-anchor origin \
+  --target-offset 0.10 0.0 0.0 \
+  --randomize-object-orientation \
+  --seed 42 \
+  --log-dir finger_compliance_control/data/models/logs \
+  --log-name online_learned_vs_manual.log
