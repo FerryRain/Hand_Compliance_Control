@@ -3,6 +3,11 @@ from mjlab.tasks.leaphand.leaphand_finger_env_cfg import (
     LeapHandControlCfg,
 )
 
+from mjlab.tasks.leaphand.leaphand_finger_adhesion_env_cfg import (
+    leaphand_adhesion_env_cfg,
+    LeapHandAdhesionControlCfg,
+)
+
 from mjlab.tasks.leaphand.leaphand_palm_env_cfg import (
     leaphand_palm_contact_env_cfg,
     LeapHandPalmControlCfg,
@@ -33,8 +38,12 @@ register_mjlab_task(
   task_id="Leaphand-Palm-MCC-Compliance-Control",
   env_cfg=mcc_palm_contact_env_cfg(),
   play_env_cfg=mcc_palm_contact_env_cfg(play=True),
-  rl_cfg=MCCPalmControlCfg(
-      amplitude=0.8,
-      K_position=200.0,       # 切向高刚度 → 位置跟踪
-  ),
+  rl_cfg=MCCPalmControlCfg(amplitude=0.8),
+)
+
+register_mjlab_task(
+  task_id="Leaphand-Finger-Adhesion-Control",
+  env_cfg=leaphand_adhesion_env_cfg(),
+  play_env_cfg=leaphand_adhesion_env_cfg(play=True),
+  rl_cfg=LeapHandAdhesionControlCfg(amplitude=0.8),
 )

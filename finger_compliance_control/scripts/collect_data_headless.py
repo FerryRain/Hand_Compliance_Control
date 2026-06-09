@@ -80,6 +80,8 @@ class HeadlessCollectConfig:
     # Comma-separated profile names, e.g. "capsule_medium,box_medium".
     object_profiles: str = "capsule_medium"
     randomize_object_profile: bool = False
+    # Path to LeRobot pretrained DiffusionPolicy directory (overrides registered policy).
+    dp_model_dir: str | None = None
 
 
 class MocapObjectRotator:

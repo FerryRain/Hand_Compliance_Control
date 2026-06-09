@@ -233,15 +233,38 @@ class LeRobotDiffusionPolicyAdapter:
         self.policy.eval()
 
         cfg = PreTrainedConfig.from_pretrained(model_dir, local_files_only=True)
-        self.preprocessor, self.postprocessor = make_pre_post_processors(
-            cfg, pretrained_path=model_dir
-        )
+        try:
+            self.preprocessor, self.postprocessor = make_pre_post_processors(
+                cfg, pretrained_path=model_dir
+            )
+        except Exception:
+            # Fallback: extract stats from training checkpoint and use dataset_stats mode.
+            from pathlib import Path
+            ckpt_path = Path(model_dir).parent / "latest.pt"
+            if not ckpt_path.exists():
+                raise FileNotFoundError(
+                    f"Processor migration required and no checkpoint found at {ckpt_path}"
+                )
+            ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+            stats = ckpt["stats"]
+            self.preprocessor, self.postprocessor = make_pre_post_processors(
+                cfg, dataset_stats=stats
+            )
+            print("[INFO] Preprocessor loaded via dataset_stats from training checkpoint")
 
         input_features = self.policy.config.input_features or {}
         env_state_feature = input_features.get("observation.environment_state")
         self.env_state_dim = 0
         if env_state_feature is not None:
             self.env_state_dim = int(np.prod(env_state_feature.shape))
+
+        self.step_counter = 0
+
+    def reset(self) -> None:
+        """Clear DP internal observation queue (call on env reset)."""
+        if hasattr(self.policy, "reset"):
+            self.policy.reset()
+        self.step_counter = 0
 
     def __call__(self, obs: env_types.VecEnvObs) -> torch.Tensor:
         policy_obs = _policy_obs_tensor(obs)
@@ -260,10 +283,32 @@ class LeRobotDiffusionPolicyAdapter:
                 dtype=torch.float32,
             )
 
+        # Real-time FSR printing (every step)
+        fsr_np = fsr[0].cpu().numpy()  # env 0
+        palm_fsr = fsr_np[:4]          # sensors 0-3: palm
+        idx_fsr  = fsr_np[4:7]         # sensors 4-6: index finger
+        mid_fsr  = fsr_np[7:10]        # sensors 7-9: middle finger
+        ring_fsr = fsr_np[10:13]       # sensors 10-12: ring finger
+        thumb_fsr = fsr_np[13:16]      # sensors 13-15: thumb
+        print(
+            f"\r[step {self.step_counter:04d}] "
+            f"palm:({palm_fsr[0]:5.1f} {palm_fsr[1]:5.1f} {palm_fsr[2]:5.1f} {palm_fsr[3]:5.1f}) "
+            f"idx:({idx_fsr[0]:5.1f} {idx_fsr[1]:5.1f} {idx_fsr[2]:5.1f}) "
+            f"mid:({mid_fsr[0]:5.1f} {mid_fsr[1]:5.1f} {mid_fsr[2]:5.1f}) "
+            f"ring:({ring_fsr[0]:5.1f} {ring_fsr[1]:5.1f} {ring_fsr[2]:5.1f}) "
+            f"thumb:({thumb_fsr[0]:5.1f} {thumb_fsr[1]:5.1f} {thumb_fsr[2]:5.1f})  ",
+            end="", flush=True,
+        )
+        self.step_counter += 1
+
         with torch.no_grad():
             batch = self.preprocessor(batch)
             out = self.policy.select_action(batch)
             out = self.postprocessor(out)
+        # select_action queues internally for online inference;
+        # output may be (B,16) or (B,n_action_steps,16). Take first step if 3D.
+        if out.ndim == 3:
+            out = out[:, 0, :]
         return out
 
 
@@ -392,6 +437,8 @@ def run_collect(task_id: str, cfg: CollectConfig) -> None:
         initial_quats = get_random_quats(env.num_envs, device=device)
         env.sim.data.mocap_quat[:, target_mocap_idx, :] = initial_quats
         env.sim.forward()  # 确保状态更新
+        if hasattr(raw_policy, "reset"):
+            raw_policy.reset()
         return obs, info
 
     env.reset = reset_with_random_orientation
