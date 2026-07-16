@@ -59,13 +59,14 @@ def joint_pos(
 ) -> torch.Tensor:
     return env.scene[asset_cfg.name].data.joint_pos
 
-# MuJoCo has no perfectly rigid, zero-penetration contact constraint.  Use the
-# direct (negative) solref format to make hand/object contacts behave as a hard
-# constraint without the positive-timeconstant ``refsafe`` softening/clamping.
+# MuJoCo has no perfectly rigid, zero-penetration contact constraint. Use the
+# direct (negative) solref format with a moderately stiff response. The
+# previous (-100000, -1000) / 0.1 mm transition was too abrupt for the finger
+# position servo and caused repeated contact/separation switching.
 # Keep margin/gap at zero: MJWarp MULTICCD does not support non-zero margins,
 # and the rendered surface itself should be the contact boundary.
-HARD_CONTACT_SOLREF = (-100_000.0, -1_000.0)  # stiffness, damping
-HARD_CONTACT_SOLIMP = (0.99, 0.9999, 0.0001, 0.5, 2.0)
+HARD_CONTACT_SOLREF = (-20_000.0, -400.0)  # stiffness, damping
+HARD_CONTACT_SOLIMP = (0.90, 0.98, 0.001, 0.5, 2.0)
 HARD_CONTACT_MARGIN = 0.0
 
 

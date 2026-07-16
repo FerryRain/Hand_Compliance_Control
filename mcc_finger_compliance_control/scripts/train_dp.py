@@ -1,22 +1,27 @@
-"""Train a task-local conditional DDPM for future fingertip joint poses."""
+"""Train a LeRobot conditional 1-D U-Net diffusion policy for fingertip pose."""
 
 from __future__ import annotations
 
 import argparse
+import csv
 import json
-import math
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 import torch
+from lerobot.configs.types import FeatureType, PolicyFeature
+from lerobot.policies.diffusion.configuration_diffusion import DiffusionConfig
+from lerobot.policies.diffusion.modeling_diffusion import DiffusionPolicy
 from torch import nn
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
 from dp_dataset import (
     ACTION_DIM,
+    ENV_STATE_DIM,
+    ROBOT_STATE_DIM,
     STATE_DIM,
     FingertipDiffusionDataset,
     compute_normalization,
@@ -25,88 +30,168 @@ from dp_dataset import (
 )
 
 
-class SinusoidalTimeEmbedding(nn.Module):
-    def __init__(self, dimension: int):
-        super().__init__()
-        self.dimension = dimension
-
-    def forward(self, timestep: torch.Tensor) -> torch.Tensor:
-        half = self.dimension // 2
-        scale = math.log(10_000) / max(half - 1, 1)
-        frequency = torch.exp(
-            torch.arange(half, device=timestep.device, dtype=torch.float32) * -scale
-        )
-        angle = timestep.float().unsqueeze(-1) * frequency.unsqueeze(0)
-        return torch.cat((angle.sin(), angle.cos()), dim=-1)
-
-
-class ConditionalPoseDiffusion(nn.Module):
-    def __init__(
-        self, obs_horizon: int, pred_horizon: int, hidden_dim: int = 1024
-    ):
-        super().__init__()
-        self.obs_horizon = obs_horizon
-        self.pred_horizon = pred_horizon
-        time_dim = 128
-        self.time_embedding = SinusoidalTimeEmbedding(time_dim)
-        input_dim = (
-            obs_horizon * STATE_DIM + pred_horizon * ACTION_DIM + time_dim
-        )
-        output_dim = pred_horizon * ACTION_DIM
-        self.network = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim),
-            nn.Mish(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.Mish(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.Mish(),
-            nn.Linear(hidden_dim, output_dim),
-        )
-
-    def forward(
-        self, noisy_action: torch.Tensor, timestep: torch.Tensor, observation: torch.Tensor
-    ) -> torch.Tensor:
-        batch = observation.shape[0]
-        features = torch.cat(
-            (
-                observation.reshape(batch, -1),
-                noisy_action.reshape(batch, -1),
-                self.time_embedding(timestep),
+def build_policy(args: argparse.Namespace, device: torch.device) -> DiffusionPolicy:
+    """Build the official LeRobot DiffusionPolicy without image observations."""
+    config = DiffusionConfig(
+        input_features={
+            "observation.state": PolicyFeature(
+                type=FeatureType.STATE, shape=(ROBOT_STATE_DIM,)
             ),
-            dim=-1,
-        )
-        return self.network(features).reshape_as(noisy_action)
+            "observation.environment_state": PolicyFeature(
+                type=FeatureType.ENV, shape=(ENV_STATE_DIM,)
+            ),
+        },
+        output_features={
+            "action": PolicyFeature(type=FeatureType.ACTION, shape=(ACTION_DIM,))
+        },
+        n_obs_steps=args.obs_horizon,
+        horizon=args.pred_horizon,
+        # We use conditional_sample() to consume the complete future horizon.
+        n_action_steps=1,
+        device=str(device),
+        down_dims=tuple(args.down_dims),
+        kernel_size=args.kernel_size,
+        n_groups=args.n_groups,
+        diffusion_step_embed_dim=args.diffusion_step_embed_dim,
+        noise_scheduler_type=args.noise_scheduler,
+        num_train_timesteps=args.diffusion_steps,
+        beta_schedule="squaredcos_cap_v2",
+        prediction_type="epsilon",
+        clip_sample=True,
+        clip_sample_range=1.0,
+        num_inference_steps=args.inference_steps,
+    )
+    return DiffusionPolicy(config).to(device)
 
 
-def cosine_beta_schedule(steps: int) -> torch.Tensor:
-    x = torch.linspace(0, steps, steps + 1)
-    alpha_bar = torch.cos(((x / steps) + 0.008) / 1.008 * math.pi / 2) ** 2
-    alpha_bar = alpha_bar / alpha_bar[0]
-    return torch.clip(1 - alpha_bar[1:] / alpha_bar[:-1], 1.0e-4, 0.999)
+def _to_device(
+    batch: dict[str, torch.Tensor], device: torch.device
+) -> dict[str, torch.Tensor]:
+    return {
+        key: value.to(device, non_blocking=True)
+        for key, value in batch.items()
+    }
 
 
 @torch.no_grad()
 def validation_loss(
-    model: nn.Module,
+    policy: DiffusionPolicy,
     loader: DataLoader,
-    alpha_bar: torch.Tensor,
     device: torch.device,
     max_batches: int = 50,
 ) -> float:
-    model.eval()
+    policy.eval()
     losses = []
     for batch_index, batch in enumerate(loader):
         if batch_index >= max_batches:
             break
-        obs = batch["observation"].to(device)
-        action = batch["action"].to(device)
-        timestep = torch.randint(0, len(alpha_bar), (len(obs),), device=device)
-        noise = torch.randn_like(action)
-        weight = alpha_bar[timestep].view(-1, 1, 1)
-        noisy = weight.sqrt() * action + (1 - weight).sqrt() * noise
-        losses.append(nn.functional.mse_loss(model(noisy, timestep, obs), noise).item())
-    model.train()
+        losses.append(policy.diffusion.compute_loss(_to_device(batch, device)).item())
+    policy.train()
     return float(np.mean(losses)) if losses else float("nan")
+
+
+@torch.no_grad()
+def overfit_metrics(
+    policy: DiffusionPolicy,
+    dataset: FingertipDiffusionDataset,
+    device: torch.device,
+    action_scale: np.ndarray,
+    sample_count: int,
+    seed: int,
+) -> dict[str, float]:
+    """Sample complete future trajectories and compare with teacher labels."""
+    if sample_count <= 0 or len(dataset) == 0:
+        return {}
+    indices = np.linspace(
+        0, len(dataset) - 1, min(sample_count, len(dataset)), dtype=np.int64
+    )
+    samples = [dataset[int(index)] for index in indices]
+    batch = {
+        key: torch.stack([sample[key] for sample in samples]).to(device)
+        for key in samples[0]
+    }
+    observation = {
+        "observation.state": batch["observation.state"],
+        "observation.environment_state": batch["observation.environment_state"],
+    }
+    generator = torch.Generator(device=device).manual_seed(seed)
+    global_condition = policy.diffusion._prepare_global_conditioning(observation)
+    prediction = policy.diffusion.conditional_sample(
+        len(indices), global_cond=global_condition, generator=generator
+    )
+    target = batch["action"]
+    scale = torch.as_tensor(action_scale, device=device).view(1, 1, -1)
+    error = (prediction - target) * scale
+    baseline_error = -target * scale
+    return {
+        "sample_count": int(len(indices)),
+        "sample_mae_rad": float(error.abs().mean()),
+        "sample_rmse_rad": float(error.square().mean().sqrt()),
+        "sample_final_mae_rad": float(error[:, -1].abs().mean()),
+        "zero_delta_baseline_mae_rad": float(baseline_error.abs().mean()),
+        "zero_delta_baseline_final_mae_rad": float(
+            baseline_error[:, -1].abs().mean()
+        ),
+    }
+
+
+def write_metrics(
+    output: Path,
+    records: list[dict[str, float | int]],
+) -> None:
+    """Persist machine-readable metrics and a final training-curve PNG."""
+    (output / "metrics.json").write_text(
+        json.dumps(records, indent=2), encoding="utf-8"
+    )
+    if records:
+        with (output / "metrics.csv").open("w", newline="", encoding="utf-8") as file:
+            writer = csv.DictWriter(file, fieldnames=list(records[0]))
+            writer.writeheader()
+            writer.writerows(records)
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        steps = [int(record["step"]) for record in records]
+        figure, axes = plt.subplots(1, 2, figsize=(12, 4.5))
+        axes[0].plot(
+            steps,
+            [float(record["train_noise_loss"]) for record in records],
+            marker="o",
+            label="train noise loss",
+        )
+        val_loss = [float(record["val_noise_loss"]) for record in records]
+        if np.isfinite(val_loss).any():
+            axes[0].plot(steps, val_loss, marker="o", label="val noise loss")
+        axes[0].set_yscale("log")
+        axes[0].set_xlabel("training step")
+        axes[0].set_ylabel("MSE")
+        axes[0].set_title("Diffusion noise prediction")
+        axes[0].grid(True, alpha=0.3)
+        axes[0].legend()
+
+        for key, label in (
+            ("train_sample_mae_rad", "train generated MAE"),
+            ("val_sample_mae_rad", "val generated MAE"),
+            ("train_zero_delta_mae_rad", "train zero-delta baseline"),
+            ("val_zero_delta_mae_rad", "val zero-delta baseline"),
+        ):
+            values = [float(record[key]) for record in records]
+            if np.isfinite(values).any():
+                axes[1].plot(steps, values, marker="o", label=label)
+        axes[1].set_yscale("log")
+        axes[1].set_xlabel("training step")
+        axes[1].set_ylabel("joint trajectory MAE [rad]")
+        axes[1].set_title("Generated future trajectory")
+        axes[1].grid(True, alpha=0.3)
+        axes[1].legend()
+        figure.tight_layout()
+        figure.savefig(output / "training_curves.png", dpi=180)
+        plt.close(figure)
+    except ImportError:
+        print("[WARNING] matplotlib unavailable; CSV/JSON metrics were saved without PNG")
 
 
 def main() -> None:
@@ -121,40 +206,56 @@ def main() -> None:
     parser.add_argument("--obs-horizon", type=int, default=16)
     parser.add_argument("--pred-horizon", type=int, default=32)
     parser.add_argument("--diffusion-steps", type=int, default=100)
-    parser.add_argument("--hidden-dim", type=int, default=1024)
+    parser.add_argument("--inference-steps", type=int, default=100)
+    parser.add_argument("--noise-scheduler", choices=("DDPM", "DDIM"), default="DDPM")
+    parser.add_argument("--down-dims", type=int, nargs="+", default=(256, 512, 1024))
+    parser.add_argument("--kernel-size", type=int, default=5)
+    parser.add_argument("--n-groups", type=int, default=8)
+    parser.add_argument("--diffusion-step-embed-dim", type=int, default=128)
     parser.add_argument("--val-ratio", type=float, default=0.1)
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--save-every", type=int, default=10_000)
+    parser.add_argument(
+        "--eval-every",
+        type=int,
+        default=1_000,
+        help="Record train/validation metrics at this interval.",
+    )
+    parser.add_argument(
+        "--eval-samples",
+        type=int,
+        default=64,
+        help="Training-window trajectories sampled after each checkpoint; 0 disables.",
+    )
     args = parser.parse_args()
 
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
     output = args.output or Path(
-        f"mcc_finger_compliance_control/data/models/dp_{datetime.now():%Y%m%d_%H%M%S}"
+        f"mcc_finger_compliance_control/data/models/dp_unet_{datetime.now():%Y%m%d_%H%M%S}"
     )
     output.mkdir(parents=True, exist_ok=True)
 
+    downsampling_factor = 2 ** len(args.down_dims)
+    if args.pred_horizon % downsampling_factor:
+        raise ValueError(
+            f"pred-horizon={args.pred_horizon} must be divisible by "
+            f"2**len(down_dims)={downsampling_factor}"
+        )
+
     episodes = load_episodes(args.file, args.stride)
-    train_ids, val_ids = split_episode_ids(
-        list(episodes), args.val_ratio, args.seed
-    )
+    train_ids, val_ids = split_episode_ids(list(episodes), args.val_ratio, args.seed)
     normalization = compute_normalization(episodes, train_ids)
     train_set = FingertipDiffusionDataset(
-        episodes,
-        train_ids,
-        normalization,
-        args.obs_horizon,
-        args.pred_horizon,
+        episodes, train_ids, normalization, args.obs_horizon, args.pred_horizon
     )
     val_set = FingertipDiffusionDataset(
-        episodes,
-        val_ids,
-        normalization,
-        args.obs_horizon,
-        args.pred_horizon,
+        episodes, val_ids, normalization, args.obs_horizon, args.pred_horizon
     )
+    if not train_set:
+        raise ValueError("No training windows for the selected horizons")
     train_loader = DataLoader(
         train_set,
         batch_size=args.batch_size,
@@ -169,33 +270,34 @@ def main() -> None:
         shuffle=False,
         num_workers=args.num_workers,
     )
-    if not train_set:
-        raise ValueError("No training windows for the selected horizons")
 
-    model = ConditionalPoseDiffusion(
-        args.obs_horizon, args.pred_horizon, args.hidden_dim
-    ).to(device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-5)
-    beta = cosine_beta_schedule(args.diffusion_steps).to(device)
-    alpha_bar = torch.cumprod(1 - beta, dim=0)
+    policy = build_policy(args, device)
+    optimizer = torch.optim.AdamW(
+        policy.parameters(), lr=args.lr, weight_decay=1.0e-5
+    )
     scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda")
     iterator = iter(train_loader)
-    progress = tqdm(range(1, args.steps + 1), dynamic_ncols=True, desc="DP training")
-    best_val = float("inf")
+    progress = tqdm(range(1, args.steps + 1), dynamic_ncols=True, desc="LeRobot DP")
+    best_metric = float("inf")
+    metric_records: list[dict[str, float | int]] = []
 
-    def save(step: int, val: float, name: str) -> None:
+    def save(step: int, loss: float, metrics: dict[str, float], name: str) -> None:
         torch.save(
             {
                 "step": step,
-                "model": model.state_dict(),
+                "model": policy.state_dict(),
                 "optimizer": optimizer.state_dict(),
                 "normalization": asdict(normalization),
                 "config": vars(args),
+                "architecture": "lerobot_diffusion_conditional_unet1d",
                 "state_dim": STATE_DIM,
+                "robot_state_dim": ROBOT_STATE_DIM,
+                "environment_state_dim": ENV_STATE_DIM,
                 "action_dim": ACTION_DIM,
                 "train_episode_ids": train_ids,
                 "val_episode_ids": val_ids,
-                "val_noise_loss": val,
+                "noise_loss": loss,
+                "trajectory_metrics": metrics,
             },
             output / name,
         )
@@ -206,48 +308,111 @@ def main() -> None:
         except StopIteration:
             iterator = iter(train_loader)
             batch = next(iterator)
-        observation = batch["observation"].to(device, non_blocking=True)
-        action = batch["action"].to(device, non_blocking=True)
-        timestep = torch.randint(
-            0, args.diffusion_steps, (len(observation),), device=device
-        )
-        noise = torch.randn_like(action)
-        weight = alpha_bar[timestep].view(-1, 1, 1)
-        noisy = weight.sqrt() * action + (1 - weight).sqrt() * noise
+        batch = _to_device(batch, device)
         optimizer.zero_grad(set_to_none=True)
         with torch.autocast(device_type=device.type, enabled=device.type == "cuda"):
-            prediction = model(noisy, timestep, observation)
-            loss = nn.functional.mse_loss(prediction, noise)
+            loss = policy.diffusion.compute_loss(batch)
         scaler.scale(loss).backward()
         scaler.unscale_(optimizer)
-        nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        nn.utils.clip_grad_norm_(policy.parameters(), 1.0)
         scaler.step(optimizer)
         scaler.update()
         if step % 100 == 0:
             progress.set_postfix(loss=f"{loss.item():.5f}")
-        if step % args.save_every == 0 or step == args.steps:
-            # A one-episode overfit run intentionally has no validation split.
-            # Use the checkpoint's train loss for model selection in that case.
-            val = (
-                validation_loss(model, val_loader, alpha_bar, device)
+        should_evaluate = step % args.eval_every == 0 or step == args.steps
+        should_save = step % args.save_every == 0 or step == args.steps
+        if should_evaluate:
+            val_noise_loss = (
+                validation_loss(policy, val_loader, device)
                 if val_ids
-                else float(loss.item())
+                else float("nan")
             )
-            save(step, val, f"checkpoint_{step:07d}.pt")
-            save(step, val, "latest.pt")
-            if val < best_val:
-                best_val = val
-                save(step, val, "best.pt")
-            print(f"[DP] step={step} train={loss.item():.6f} val={val:.6f}")
+            train_metrics = overfit_metrics(
+                policy,
+                train_set,
+                device,
+                normalization.action_std,
+                args.eval_samples,
+                args.seed,
+            )
+            val_metrics = overfit_metrics(
+                policy,
+                val_set,
+                device,
+                normalization.action_std,
+                args.eval_samples,
+                args.seed + 1,
+            )
+            record: dict[str, float | int] = {
+                "step": step,
+                "train_noise_loss": float(loss.item()),
+                "val_noise_loss": val_noise_loss,
+                "train_sample_mae_rad": train_metrics.get(
+                    "sample_mae_rad", float("nan")
+                ),
+                "val_sample_mae_rad": val_metrics.get(
+                    "sample_mae_rad", float("nan")
+                ),
+                "train_sample_final_mae_rad": train_metrics.get(
+                    "sample_final_mae_rad", float("nan")
+                ),
+                "val_sample_final_mae_rad": val_metrics.get(
+                    "sample_final_mae_rad", float("nan")
+                ),
+                "train_zero_delta_mae_rad": train_metrics.get(
+                    "zero_delta_baseline_mae_rad", float("nan")
+                ),
+                "val_zero_delta_mae_rad": val_metrics.get(
+                    "zero_delta_baseline_mae_rad", float("nan")
+                ),
+            }
+            metric_records.append(record)
+            write_metrics(output, metric_records)
+            selection_metric = (
+                float(record["val_sample_mae_rad"])
+                if val_ids
+                else float(record["train_sample_mae_rad"])
+            )
+            checkpoint_metrics = {
+                "train": train_metrics,
+                "validation": val_metrics,
+                "record": record,
+            }
+            if should_save:
+                save(
+                    step,
+                    val_noise_loss,
+                    checkpoint_metrics,
+                    f"checkpoint_{step:07d}.pt",
+                )
+                save(step, val_noise_loss, checkpoint_metrics, "latest.pt")
+            if selection_metric < best_metric:
+                best_metric = selection_metric
+                save(step, val_noise_loss, checkpoint_metrics, "best.pt")
+            print(
+                f"[DP] step={step} train_noise={loss.item():.6f} "
+                f"val_noise={val_noise_loss:.6f} "
+                f"train_mae={record['train_sample_mae_rad']:.6f}rad "
+                f"val_mae={record['val_sample_mae_rad']:.6f}rad"
+            )
 
     metadata = {
         "source": str(args.file),
+        "architecture": "LeRobot DiffusionPolicy / conditional 1-D U-Net",
+        "input": {
+            "observation.state": {
+                "q_hand": 16,
+                "fingertip_force_object": 12,
+                "fingertip_contact_normal_object": 12,
+            },
+            "observation.environment_state": {"palm_twist_object": 6},
+            "total_dim": STATE_DIM,
+        },
+        "output": {"future_q_hand_delta": [args.pred_horizon, ACTION_DIM]},
         "train_episodes": len(train_ids),
         "val_episodes": len(val_ids),
         "train_windows": len(train_set),
         "val_windows": len(val_set),
-        "state_dim": STATE_DIM,
-        "action_dim": ACTION_DIM,
     }
     (output / "dataset_info.json").write_text(
         json.dumps(metadata, indent=2), encoding="utf-8"

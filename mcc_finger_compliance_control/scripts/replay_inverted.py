@@ -135,16 +135,16 @@ def _sensor_cfgs() -> tuple[ContactSensorCfg, ...]:
     )
 
 
-def _replay_env_cfg() -> ManagerBasedRlEnvCfg:
+def replay_env_cfg() -> ManagerBasedRlEnvCfg:
     robot = EntityCfg(
         spec_fn=_hand_spec,
         articulation=EntityArticulationInfoCfg(
             actuators=(
                 BuiltinPositionActuatorCfg(
                     target_names_expr=(r"^[0-9]+$",),
-                    stiffness=20.0,
-                    damping=2.0,
-                    effort_limit=500.0,
+                    stiffness=5.0,
+                    damping=0.5,
+                    effort_limit=10.0,
                 ),
             )
         ),
@@ -240,7 +240,7 @@ def replay(
     frames = len(palm) if max_steps <= 0 else min(len(palm), max_steps)
 
     run_device = device or ("cuda:0" if torch.cuda.is_available() else "cpu")
-    env = ManagerBasedRlEnv(cfg=_replay_env_cfg(), device=run_device)
+    env = ManagerBasedRlEnv(cfg=replay_env_cfg(), device=run_device)
     wrapped = RslRlVecEnvWrapper(env)
     robot = env.scene["robot"]
     tip_indices = [_find_site_index(env, name) for name in MCC_TIP_NAMES]

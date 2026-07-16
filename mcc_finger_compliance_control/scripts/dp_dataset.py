@@ -11,17 +11,16 @@ import torch
 from torch.utils.data import Dataset
 
 
-STATE_FIELDS = (
+ROBOT_STATE_FIELDS = (
     ("q_hand", 16),
     ("fingertip_force_object", 12),
-    ("fingertip_contact", 4),
-    ("fingertip_contact_pos_object", 12),
     ("fingertip_contact_normal_object", 12),
-    ("fingertip_curvature_object", 8),
-    ("palm_pose_object", 7),
-    ("planned_palm_angular_velocity_object", 3),
 )
-STATE_DIM = sum(size for _, size in STATE_FIELDS)
+ENV_STATE_FIELDS = (("palm_twist_object", 6),)
+ROBOT_STATE_DIM = sum(size for _, size in ROBOT_STATE_FIELDS)
+ENV_STATE_DIM = sum(size for _, size in ENV_STATE_FIELDS)
+STATE_FIELDS = ROBOT_STATE_FIELDS + ENV_STATE_FIELDS
+STATE_DIM = ROBOT_STATE_DIM + ENV_STATE_DIM
 ACTION_DIM = 16
 
 
@@ -92,7 +91,10 @@ def compute_normalization(
         # not a one-step motor command. Center it at zero and scale by the
         # demonstrated joint-pose spread.
         action_mean=np.zeros(ACTION_DIM, dtype=np.float32),
-        action_std=np.maximum(q_values.std(axis=0), 1.0e-4).astype(np.float32),
+        # LeRobot's diffusion scheduler clips the denoised action to [-1, 1].
+        # A demonstrated joint range guarantees every q_future-q_current label
+        # lies in that interval without clipping valid teacher motion.
+        action_std=np.maximum(np.ptp(q_values, axis=0), 1.0e-4).astype(np.float32),
     )
 
 
@@ -132,7 +134,10 @@ class FingertipDiffusionDataset(Dataset):
         action = (
             action - self.normalization.action_mean
         ) / self.normalization.action_std
+        history_tensor = torch.from_numpy(history.astype(np.float32))
         return {
-            "observation": torch.from_numpy(history.astype(np.float32)),
+            "observation.state": history_tensor[:, :ROBOT_STATE_DIM],
+            "observation.environment_state": history_tensor[:, ROBOT_STATE_DIM:],
             "action": torch.from_numpy(action.astype(np.float32)),
+            "action_is_pad": torch.zeros(self.pred_horizon, dtype=torch.bool),
         }

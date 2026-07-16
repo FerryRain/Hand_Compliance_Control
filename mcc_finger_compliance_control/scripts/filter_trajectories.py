@@ -21,7 +21,31 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=None)
     parser.add_argument("--report", type=Path, default=None)
     parser.add_argument("--contact-threshold", type=float, default=None)
+    parser.add_argument(
+        "--min-all4-ratio",
+        type=float,
+        default=1.0,
+        help="Minimum fraction of frames where all four fingertips are loaded.",
+    )
+    parser.add_argument(
+        "--min-per-tip-ratio",
+        type=float,
+        default=1.0,
+        help="Minimum loaded-contact ratio required for every fingertip.",
+    )
+    parser.add_argument(
+        "--max-loss-run",
+        type=int,
+        default=0,
+        help="Maximum consecutive frames without simultaneous four-tip contact.",
+    )
     args = parser.parse_args()
+    if not 0.0 <= args.min_all4_ratio <= 1.0:
+        raise ValueError("--min-all4-ratio must lie in [0, 1]")
+    if not 0.0 <= args.min_per_tip_ratio <= 1.0:
+        raise ValueError("--min-per-tip-ratio must lie in [0, 1]")
+    if args.max_loss_run < 0:
+        raise ValueError("--max-loss-run must be non-negative")
 
     output = args.output or args.input.with_name(f"{args.input.stem}_strict4tip.h5")
     report = args.report or args.input.with_name(
@@ -53,7 +77,22 @@ def main() -> None:
             per_tip = loaded_contact[mask].mean(axis=0)
             all_four = loaded_contact[mask].all(axis=1)
             lost = np.flatnonzero(~all_four)
-            passed = bool(all_four.all())
+            loss_runs: list[int] = []
+            current_run = 0
+            for is_lost in ~all_four:
+                if is_lost:
+                    current_run += 1
+                elif current_run:
+                    loss_runs.append(current_run)
+                    current_run = 0
+            if current_run:
+                loss_runs.append(current_run)
+            max_loss_run = max(loss_runs, default=0)
+            passed = bool(
+                all_four.mean() >= args.min_all4_ratio
+                and per_tip.min() >= args.min_per_tip_ratio
+                and max_loss_run <= args.max_loss_run
+            )
             if passed:
                 accepted_ids.append(int(eid))
             rows.append(
@@ -62,6 +101,8 @@ def main() -> None:
                     "strict_pass": int(passed),
                     "frames": int(mask.sum()),
                     "all4_ratio": float(all_four.mean()),
+                    "max_loss_run": int(max_loss_run),
+                    "loss_events": int(len(loss_runs)),
                     "tip0_ratio": float(per_tip[0]),
                     "tip1_ratio": float(per_tip[1]),
                     "tip2_ratio": float(per_tip[2]),
@@ -87,13 +128,25 @@ def main() -> None:
         with h5py.File(output, "w") as dst:
             for key, value in src.attrs.items():
                 dst.attrs[key] = value
-            dst.attrs["quality_filter"] = "strict_continuous_four_fingertips_v1"
+            strict = (
+                args.min_all4_ratio == 1.0
+                and args.min_per_tip_ratio == 1.0
+                and args.max_loss_run == 0
+            )
+            dst.attrs["quality_filter"] = (
+                "strict_continuous_four_fingertips_v2"
+                if strict
+                else "relaxed_four_fingertips_v2"
+            )
             dst.attrs["quality_contact_threshold"] = threshold
+            dst.attrs["quality_min_all4_ratio"] = args.min_all4_ratio
+            dst.attrs["quality_min_per_tip_ratio"] = args.min_per_tip_ratio
+            dst.attrs["quality_max_loss_run"] = args.max_loss_run
             dst.attrs["quality_source_file"] = args.input.name
             dst.attrs["quality_total_trajectories"] = len(rows)
             dst.attrs["quality_selected_trajectories"] = len(accepted_ids)
             dst.attrs["num_trajectories"] = len(accepted_ids)
-            dst.attrs["strict_four_tip_continuous_contact"] = True
+            dst.attrs["strict_four_tip_continuous_contact"] = strict
 
             for name, source in src.items():
                 flat = _flatten_env(np.asarray(source))
@@ -110,8 +163,9 @@ def main() -> None:
                 )
 
     print(
-        f"[FILTER] strict pass={len(accepted_ids)}/{len(rows)} "
-        f"threshold={threshold:.3f} N"
+        f"[FILTER] pass={len(accepted_ids)}/{len(rows)} "
+        f"threshold={threshold:.3f}N all4>={args.min_all4_ratio:.4f} "
+        f"per_tip>={args.min_per_tip_ratio:.4f} max_loss_run<={args.max_loss_run}"
     )
     print(f"[FILTER] output: {output}")
     print(f"[FILTER] report: {report}")

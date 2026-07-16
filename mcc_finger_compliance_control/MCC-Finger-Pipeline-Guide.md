@@ -347,6 +347,24 @@ python mcc_finger_compliance_control/scripts/filter_trajectories.py \
 
 CSV 会给出每条轨迹的四指联合接触率、各指接触率、最小力和首次失联步。
 
+如果用于 `stride=5` 的 DP 训练，不希望因零散的 1–4 帧掉接触删除整条轨迹，可以使用 relaxed
+筛选：
+
+```bash
+RELAXED="mcc_finger_compliance_control/data/trajectories/${RUN}_relaxed99.h5"
+
+python mcc_finger_compliance_control/scripts/filter_trajectories.py \
+  "${RAW}" \
+  --output "${RELAXED}" \
+  --contact-threshold 0.05 \
+  --min-all4-ratio 0.99 \
+  --min-per-tip-ratio 0.99 \
+  --max-loss-run 5
+```
+
+它要求四指同时接触率和每指接触率均至少 99%，同时把单次连续掉接触限制在 5 个仿真帧以内。
+正式训练优先使用该数据；100% 严格筛选更适合作为最高质量评测子集。
+
 ## 5. 数据反演
 
 反演将“世界中物体运动、手固定”变成“物体坐标系固定、手相对物体运动”。先设置路径：
@@ -373,9 +391,12 @@ python mcc_finger_compliance_control/scripts/invert_trajectories.py \
 - `fingertip_contact_normal_object`
 - `fingertip_curvature_object`
 - `planned_palm_angular_velocity_object`
+- `palm_twist_object`
 
-由于采集阶段的 contact normal 在当前 MJWarp 传感器中可能为零，反演脚本根据胶囊解析几何和接触位置重新计算
-normal 与两主曲率 proxy。不要直接使用原始 H5 中的 `fingertip_contact_normal_world` 训练。
+`palm_twist_object` 是 palm 相对物体的 6D 速度，前三维为线速度，后三维为角速度。脚本按 episode
+使用后向差分计算，只依赖当前帧和历史帧，不读取未来信息。DP 使用的
+`fingertip_contact_normal_object` 来自接触传感器记录法向经过坐标变换后的结果；解析胶囊曲率等字段
+仍保留用于离线分析，但不再进入当前最小 DP 输入。
 
 ## 6. Replay
 
@@ -412,25 +433,27 @@ Replay 也支持 CPU：把上述命令中的 `--device cuda:0` 改成 `--device 
 
 ## 7. Diffusion Policy 训练
 
-当前任务专用 DP 不依赖旧 FSR DP。训练定义为：
+当前任务专用 DP 使用 LeRobot 0.4.4 的 `DiffusionPolicy` 和 conditional 1-D U-Net，不依赖旧 FSR
+DP，也不再使用接触点位置、解析曲率或 palm 绝对相对位姿等特权输入。训练定义为：
 
 ```text
 历史输入（默认 16 个采样点）：
-  q_hand                         16D
-  fingertip_force_object        12D
-  fingertip_contact              4D
-  fingertip_contact_pos_object  12D
-  fingertip_contact_normal_object 12D
-  fingertip_curvature_object     8D
-  palm_pose_object               7D
-  planned_palm_angular_velocity_object 3D
-  合计                           74D
+  observation.state：
+    q_hand                           16D
+    fingertip_force_object          12D
+    fingertip_contact_normal_object 12D
+
+  observation.environment_state：
+    palm_twist_object                6D
+
+  合计                              46D
 
 输出：
   未来 32 个采样点的 Δq_hand，单步 16D
 ```
 
-`stride=5` 时相邻采样点间隔为 0.05 s：历史窗口覆盖 0.8 s，预测窗口覆盖 1.6 s。
+3D 力为零时已经隐式表达无接触，因此最小骨架没有再重复加入 4D contact flag。`stride=5` 时相邻
+采样点间隔为 0.05 s：16 点历史从首点到当前点覆盖 0.75 s，32 点预测覆盖未来 1.6 s。
 
 ### 7.1 小规模 overfit/流水线测试
 
@@ -438,15 +461,18 @@ Replay 也支持 CPU：把上述命令中的 `--device cuda:0` 改成 `--device 
 python mcc_finger_compliance_control/scripts/train_dp.py \
   --file "${INVERTED}" \
   --device cuda:0 \
-  --steps 2000 \
+  --steps 3000 \
   --batch-size 128 \
   --stride 5 \
-  --obs-horizon 8 \
-  --pred-horizon 16 \
-  --diffusion-steps 50 \
-  --hidden-dim 256 \
-  --num-workers 4 \
-  --save-every 500
+  --obs-horizon 16 \
+  --pred-horizon 32 \
+  --diffusion-steps 100 \
+  --inference-steps 50 \
+  --down-dims 128 256 512 \
+  --val-ratio 0 \
+  --num-workers 0 \
+  --save-every 1000 \
+  --eval-samples 64
 ```
 
 无 CUDA 时可以先做一个更小的 CPU 冒烟测试：
@@ -461,9 +487,11 @@ python mcc_finger_compliance_control/scripts/train_dp.py \
   --obs-horizon 4 \
   --pred-horizon 8 \
   --diffusion-steps 10 \
-  --hidden-dim 128 \
+  --inference-steps 10 \
+  --down-dims 32 64 128 \
   --num-workers 0 \
-  --save-every 100
+  --save-every 100 \
+  --eval-samples 8
 ```
 
 这个命令只用于确认数据读取、反向传播和模型保存都正常，不能用它判断最终模型效果。
@@ -481,19 +509,32 @@ python mcc_finger_compliance_control/scripts/train_dp.py \
   --obs-horizon 16 \
   --pred-horizon 32 \
   --diffusion-steps 100 \
-  --hidden-dim 1024 \
+  --inference-steps 100 \
+  --down-dims 256 512 1024 \
   --val-ratio 0.1 \
   --num-workers 4 \
-  --save-every 10000
+  --eval-every 1000 \
+  --save-every 10000 \
+  --eval-samples 64
 ```
 
 模型默认保存到：
 
 ```text
-mcc_finger_compliance_control/data/models/dp_<timestamp>/
+mcc_finger_compliance_control/data/models/dp_unet_<timestamp>/
 ```
 
-包含 `latest.pt`、`best.pt`、阶段 checkpoint 和 `dataset_info.json`。训练/验证按完整 episode 划分，不会把同一轨迹的窗口同时放入两边。
+包含：
+
+- `latest.pt`、`best.pt` 和阶段 checkpoint；
+- `dataset_info.json`；
+- `metrics.csv`：方便用 pandas、Excel 或其他脚本继续分析；
+- `metrics.json`：完整机器可读指标；
+- `training_curves.png`：训练结束后的 loss 和生成轨迹 MAE 曲线。
+
+训练/验证按完整 episode 划分，不会把同一轨迹的窗口同时放入两边。`--eval-every` 控制中间
+metrics 的记录间隔，`--save-every` 控制完整 checkpoint 的保存间隔，两者不必相同。`best.pt`
+按照验证集生成轨迹 MAE 选择，而不是只看 diffusion noise loss。
 
 ## 8. 推荐执行顺序
 

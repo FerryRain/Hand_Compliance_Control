@@ -54,6 +54,35 @@ def _capsule_surface_features(
     return normal.astype(np.float32), curvature.astype(np.float32)
 
 
+def _backward_palm_twist(
+    palm_pose_object: np.ndarray,
+    episode_id: np.ndarray,
+    dt: float,
+) -> np.ndarray:
+    """Compute causal object-frame palm linear/angular velocity per episode."""
+    position, rotation = _pose_to_rt(palm_pose_object)
+    twist = np.zeros((*palm_pose_object.shape[:-1], 6), dtype=np.float32)
+    flat_episode = episode_id.reshape(-1)
+    flat_position = position.reshape(-1, 3)
+    flat_rotation = rotation.reshape(-1, 3, 3)
+    flat_twist = twist.reshape(-1, 6)
+    for eid in np.unique(flat_episode):
+        indices = np.flatnonzero(flat_episode == eid)
+        if indices.size < 2:
+            continue
+        linear = (flat_position[indices[1:]] - flat_position[indices[:-1]]) / dt
+        relative_rotation = (
+            np.swapaxes(flat_rotation[indices[:-1]], -1, -2)
+            @ flat_rotation[indices[1:]]
+        )
+        angular = R.from_matrix(relative_rotation).as_rotvec() / dt
+        flat_twist[indices[1:], :3] = linear.astype(np.float32)
+        flat_twist[indices[1:], 3:] = angular.astype(np.float32)
+        # Avoid an artificial zero-velocity impulse at the first recorded frame.
+        flat_twist[indices[0]] = flat_twist[indices[1]]
+    return twist
+
+
 def invert(input_path: Path, output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with h5py.File(input_path, "r") as source, h5py.File(output_path, "w") as target:
@@ -61,7 +90,18 @@ def invert(input_path: Path, output_path: Path) -> None:
         palm_pose = np.asarray(source["palm_pose_world"], dtype=np.float64)
         tip_pose = np.asarray(source["fingertip_pose_world"], dtype=np.float64)
 
-        target.create_dataset("palm_pose_object", data=_relative_pose(object_pose, palm_pose))
+        palm_pose_object = _relative_pose(object_pose, palm_pose)
+        target.create_dataset("palm_pose_object", data=palm_pose_object)
+        episode_id = np.asarray(source["episode_id"], dtype=np.int64)
+        control_dt = float(source.attrs.get("control_dt", 0.01))
+        target.create_dataset(
+            "palm_twist_object",
+            data=_backward_palm_twist(
+                palm_pose_object,
+                episode_id,
+                control_dt,
+            ),
+        )
         target.create_dataset(
             "fingertip_pose_object",
             data=_relative_pose(object_pose[..., None, :], tip_pose),
@@ -98,9 +138,24 @@ def invert(input_path: Path, output_path: Path) -> None:
                 "fingertip_contact_pos_object",
                 data=contact_pos_object.astype(np.float32),
             )
-            normal_object, curvature_object = _capsule_surface_features(
+            analytic_normal, curvature_object = _capsule_surface_features(
                 contact_pos_object, valid
             )
+            if "fingertip_contact_normal_world" in source:
+                normal_world = np.asarray(
+                    source["fingertip_contact_normal_world"], dtype=np.float64
+                )
+                normal_object = np.einsum(
+                    "...ij,...fj->...fi",
+                    object_r_t,
+                    normal_world,
+                )
+                normal_object = np.where(valid[..., None], normal_object, 0.0)
+                normal_object = normal_object.astype(np.float32)
+                normal_source = "recorded_contact_sensor"
+            else:
+                normal_object = analytic_normal
+                normal_source = "analytic_capsule_fallback"
             target.create_dataset(
                 "fingertip_contact_normal_object",
                 data=normal_object,
@@ -129,6 +184,8 @@ def invert(input_path: Path, output_path: Path) -> None:
         target.attrs["force_frame"] = "object"
         target.attrs["source_file"] = str(input_path)
         target.attrs["surface_features"] = "analytic_capsule_from_contact_position"
+        target.attrs["contact_normal_source"] = normal_source
+        target.attrs["palm_twist"] = "causal_backward_difference_in_object_frame"
         target.attrs["capsule_radius"] = CAPSULE_RADIUS
         target.attrs["capsule_half_length"] = CAPSULE_HALF_LENGTH
     print(f"[SUCCESS] inverted trajectory saved to {output_path}")
