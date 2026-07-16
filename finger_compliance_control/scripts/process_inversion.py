@@ -34,11 +34,11 @@ def run_inversion(input_path, output_path=None):
         output_path = input_path.replace(".h5", "_inverted.h5")
 
     print(f"[INFO] Reading from {input_path}...")
-    
+
     with h5py.File(input_path, "r") as f_in:
         # 使用 np.array() 代替 [:]
-        obj_poses = np.array(f_in["obj_pose"])
-        palm_poses = np.array(f_in["palm_pose"])
+        obj_poses = np.array(f_in["obj_pose"], dtype=np.float64)
+        palm_poses = np.array(f_in["palm_pose"], dtype=np.float64)
         fsr_data = np.array(f_in["fsr"])
         q_data = np.array(f_in["q"])
         time_data = np.array(f_in["time"])
@@ -53,63 +53,95 @@ def run_inversion(input_path, output_path=None):
                 "This usually means collect_data logged the wrong body name. "
                 "Re-collect data after fixing palm body selection."
             )
-        
-        num_steps, num_envs, _ = obj_poses.shape
-        
-        # 准备输出容器
-        # 在新坐标系下，obj_pose 永远是 [0,0,0, 1,0,0,0] (原点 + 单位旋转)
-        # 我们主要计算新的 palm_pose_inverted
-        palm_poses_inv = np.zeros_like(palm_poses)
-        
-        print(f"[INFO] Processing {num_envs} environments over {num_steps} steps...")
 
-        for e in range(num_envs):
-            for t in range(num_steps):
-                # 1. 提取当前时刻物体的位姿 T_world_obj
-                obj_p = obj_poses[t, e, :3]
-                obj_q = obj_poses[t, e, 3:]
-                T_w_obj = pose_to_matrix(obj_p, obj_q)
-                
-                # 2. 提取当前时刻手掌的位姿 T_world_palm
-                palm_p = palm_poses[t, e, :3]
-                palm_q = palm_poses[t, e, 3:]
-                T_w_palm = pose_to_matrix(palm_p, palm_q)
-                
-                # 3. 核心转换逻辑：计算手掌相对于物体的位姿
-                # T_obj_palm = inv(T_w_obj) * T_w_palm
-                # 这样当物体被重置到原点时，手掌就在这个相对位姿上
-                T_rel = np.linalg.inv(T_w_obj) @ T_w_palm
-                
-                # 4. 转回 pos, quat 存入结果
-                new_p, new_q = matrix_to_pose(T_rel)
-                palm_poses_inv[t, e, :3] = new_p
-                palm_poses_inv[t, e, 3:] = new_q
+        num_steps, num_envs, _ = obj_poses.shape
+        total = num_steps * num_envs
+        print(f"[INFO] Processing {num_envs} environments x {num_steps} steps "
+              f"= {total:,} frames (vectorized)...")
+
+        # --- 向量化计算 ---
+        # obj/palm 位姿: (T, E, 7) -> (px,py,pz, qw,qx,qy,qz)
+        obj_p = obj_poses[..., :3]          # (T, E, 3)
+        obj_q_mj = obj_poses[..., 3:]       # (T, E, 4)  w,x,y,z
+        palm_p = palm_poses[..., :3]
+        palm_q_mj = palm_poses[..., 3:]
+
+        # MuJoCo (w,x,y,z) -> scipy (x,y,z,w)
+        obj_q_scipy = obj_q_mj[..., [1, 2, 3, 0]].reshape(-1, 4)
+        palm_q_scipy = palm_q_mj[..., [1, 2, 3, 0]].reshape(-1, 4)
+
+        obj_R = R.from_quat(obj_q_scipy)        # (T*E,)
+        palm_R = R.from_quat(palm_q_scipy)
+
+        obj_R_mat = obj_R.as_matrix()            # (T*E, 3, 3)
+        palm_R_mat = palm_R.as_matrix()
+
+        # R_rel = R_obj^T @ R_palm
+        R_rel_mat = obj_R_mat.transpose(0, 2, 1) @ palm_R_mat  # (T*E, 3, 3)
+
+        # p_rel = R_obj^T @ (p_palm - p_obj)
+        delta_p = (palm_p - obj_p).reshape(-1, 3, 1)            # (T*E, 3, 1)
+        p_rel = (obj_R_mat.transpose(0, 2, 1) @ delta_p).squeeze(-1)  # (T*E, 3)
+        p_rel = p_rel.reshape(num_steps, num_envs, 3)
+
+        # R_rel -> MuJoCo quat (w,x,y,z)
+        R_rel_obj = R.from_matrix(R_rel_mat)
+        q_rel_scipy = R_rel_obj.as_quat()                        # (T*E, 4) x,y,z,w
+        q_rel_mj = q_rel_scipy[:, [3, 0, 1, 2]].reshape(num_steps, num_envs, 4)
+
+        palm_poses_inv = np.concatenate([p_rel, q_rel_mj], axis=-1).astype(np.float32)
 
         # 保存新文件
+        print(f"[INFO] Writing inverted data to {output_path}...")
         with h5py.File(output_path, "w") as f_out:
             f_out.create_dataset("time", data=time_data)
             f_out.create_dataset("fsr", data=fsr_data)
             f_out.create_dataset("q", data=q_data) # 关节角保持不变
             f_out.create_dataset("palm_pose_world", data=palm_poses_inv)
-            
+
             # 物体位姿固定在原点
-            fixed_obj = np.zeros_like(obj_poses)
+            fixed_obj = np.zeros_like(obj_poses, dtype=np.float32)
             fixed_obj[:, :, 3] = 1.0 # w=1, x,y,z=0
             f_out.create_dataset("obj_pose_world", data=fixed_obj)
-            
-            # 也可以把 action 存下来（如果有记录的话）
-            if "action" in f_in:
-                f_out.create_dataset("action", data=np.array(f_in["action"]))
+
+            # 透传额外字段
+            for field in ["action", "fingertip_force_3d", "fingertip_pos", "episode_id",
+                          "finger_contact", "contact_stability", "fsr_delta_norm",
+                          "finger_force", "full_contact", "force_balance"]:
+                if field in f_in:
+                    f_out.create_dataset(field, data=np.array(f_in[field]))
 
         print(f"[SUCCESS] Inverted data saved to {output_path}")
 
 if __name__ == "__main__":
-    # 使用示例
+    import argparse
     import glob
-    # 找到最新的 h5 文件
-    list_of_files = glob.glob('./finger_copliance_control/data/*.h5')
-    if list_of_files:
-        latest_file = max(list_of_files, key=os.path.getctime)
-        run_inversion(latest_file)
+
+    parser = argparse.ArgumentParser(
+        description="Invert H5 data: transform palm_pose to object-centric frame."
+    )
+    parser.add_argument(
+        "--file", type=str, default=None,
+        help="Path to input .h5 file. If omitted, use the latest in data/headless/.",
+    )
+    parser.add_argument(
+        "--output", type=str, default=None,
+        help="Output path. Default: <input>_inverted.h5.",
+    )
+    args = parser.parse_args()
+
+    if args.file:
+        input_path = args.file
     else:
-        print("No H5 files found.")
+        list_of_files = glob.glob('./finger_compliance_control/data/headless/*.h5')
+        # Also search old location
+        list_of_files += glob.glob('./finger_compliance_control/data/*.h5')
+        # Exclude already-inverted files
+        list_of_files = [f for f in list_of_files if "_inverted" not in f]
+        if list_of_files:
+            input_path = max(list_of_files, key=os.path.getctime)
+        else:
+            print("No H5 files found.")
+            exit(1)
+
+    run_inversion(input_path, args.output)

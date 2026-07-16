@@ -162,8 +162,29 @@ def _get_target_box_spec() -> mujoco.MjSpec:
             rgba=[0.2, 0.6, 1.0, 1.0],
             mass=1,
         ),
+        body.add_geom(
+            name="target_box_medium_geom",
+            type=mujoco.mjtGeom.mjGEOM_BOX,
+            size=[0.15, 0.12, 0.12],
+            rgba=[0.2, 1.0, 0.5, 1.0],
+            mass=1,
+        ),
+        body.add_geom(
+            name="target_cylinder_medium_geom",
+            type=mujoco.mjtGeom.mjGEOM_CYLINDER,
+            size=[0.12, 0.15],
+            rgba=[0.3, 0.7, 1.0, 1.0],
+            mass=1,
+        ),
+        body.add_geom(
+            name="target_ellipsoid_medium_geom",
+            type=mujoco.mjtGeom.mjGEOM_ELLIPSOID,
+            size=[0.18, 0.15, 0.12],
+            rgba=[0.25, 0.8, 0.9, 1.0],
+            mass=1,
+        ),
     )
-    # conaffinity=9: bit0=1 正常碰撞, bit3=8 给 FSR(contype=8) 做 gap 吸附检测
+    # conaffinity=9: bit0=1 正常碰撞, bit3=8 给 FSR(contype=8) 做 gap 吸附
     for geom in target_geoms:
         geom.conaffinity = 9
     return spec
@@ -189,20 +210,39 @@ def _make_env_cfg(num_envs: int = 1, play: bool = False) -> ManagerBasedRlEnvCfg
         init_state=EntityCfg.InitialStateCfg(
             pos=(0, 0, 0),
             joint_pos={
+                # arm
                 "joint1": 0.0,
                 "joint2": 1.183,
                 "joint3": -3.1416,
                 "joint4": 3.1415,
                 "joint5": 1.183,
                 "joint6": -1.569,
-                "13": 1.57},
+                # hand: side-sway 归零，屈伸按预抓握姿态 (prox=0.8, mid=0.4, dist=0.3)
+                "0": 0.0,   # index abduction
+                "1": 0.8,   # index prox
+                "2": 0.4,   # index mid
+                "3": 0.3,   # index dist
+                "4": 0.0,   # middle abduction
+                "5": 0.8,   # middle prox
+                "6": 0.4,   # middle mid
+                "7": 0.3,   # middle dist
+                "8": 0.0,   # ring abduction
+                "9": 0.8,   # ring prox
+                "10": 0.4,  # ring mid
+                "11": 0.3,  # ring dist
+                "12": 0.8,  # thumb prox
+                "13": 1.57, # thumb abduction (保持原有)
+                "14": 0.4,  # thumb mid
+                "15": 0.3,  # thumb dist
+            },
         ),
     )
     
     target_cfg = EntityCfg(
         spec_fn=_get_target_box_spec,
         init_state=EntityCfg.InitialStateCfg(
-            pos=(0.7007, 0.0003, 0.8377),
+            pos=(0.7007, 0.0003, 0.7877),
+            rot=(0.0, 1.0, 0.0, 1.0),
             lin_vel=(0.0, 0.0, 0.0),
             ang_vel=(0.0, 0.0, 0.0),
         ),
@@ -292,10 +332,18 @@ class LeapHandComplianceController:
     2. 拇指统一：拇指根部关节 (18, 19) 采用与其他手指相同的回缩/下压逻辑。
     3. Torque2FSR 模式：指定 torque2fsr_model_path 时使用 MLP 从关节力矩
        估计 FSR，绕过真实 FSR 传感器 (sim2real bridge)。
+
+    控制模式：
+    - enable_fsr_compliance=False (默认): 仅侧摆关节 (7,11,15,19)
+      恢复到名义位置，屈伸关节不动，配合主动吸附器工作。
+    - enable_fsr_compliance=True: 完整 FSR 柔顺控制。
     """
     def __init__(self, device: str, num_envs: int, **kwargs):
         self.device = device
         self.num_envs = num_envs
+
+        # ── 控制模式开关 ──
+        self.enable_fsr_compliance = kwargs.get("enable_fsr_compliance", False)
 
         self.S_min = 0.6
         self.S_max = 1.5
@@ -377,87 +425,96 @@ class LeapHandComplianceController:
         fsr_raw = policy_obs[:, :16]
         q_curr = policy_obs[:, 16:38]
 
-        # ── Torque-to-FSR: replace real FSR with MLP estimate ──
-        if self.torque2fsr is not None:
-            tau_hand = policy_obs[:, 38:54]        # [B, 16] qfrc_actuator hand
-            q_hand = q_curr[:, 6:22]               # [B, 16] hand joints only
-            # Match batch size (prev_action may be initialized for different num_envs)
-            if self.prev_action.shape[0] != q_hand.shape[0]:
-                self.prev_action = self.prev_action[:1].repeat(q_hand.shape[0], 1)
-            fsr_estimated = self.torque2fsr(q_hand, tau_hand, self.prev_action)
-            fsr_raw = fsr_estimated                # replace with torque-based estimate
-
         if not self.is_init:
             self.q_nom[:] = q_curr
             self.is_init = True
-            self.fsr_obs[:] = fsr_raw
-            self.fsr_ctrl[:] = fsr_raw
-
-        last_ctrl = self.fsr_ctrl.clone()
-        self.fsr_obs = self.alpha_obs * self.fsr_obs + (1 - self.alpha_obs) * fsr_raw
-        self.fsr_ctrl = self.alpha_ctrl * self.fsr_ctrl + (1 - self.alpha_ctrl) * fsr_raw
-        df_ctrl = self.fsr_ctrl - last_ctrl
+            if self.enable_fsr_compliance:
+                self.fsr_obs[:] = fsr_raw
+                self.fsr_ctrl[:] = fsr_raw
 
         delta_comp = torch.zeros_like(q_curr)
 
-        for finger_idx, config in enumerate(self.finger_configs):
-            j_idx = config["j"]
-            f_ids = config["p_fsr"] + config["d_fsr"]
+        if self.enable_fsr_compliance:
+            # ── Torque-to-FSR: replace real FSR with MLP estimate ──
+            if self.torque2fsr is not None:
+                tau_hand = policy_obs[:, 38:54]        # [B, 16] qfrc_actuator hand
+                q_hand = q_curr[:, 6:22]               # [B, 16] hand joints only
+                # Match batch size (prev_action may be initialized for different num_envs)
+                if self.prev_action.shape[0] != q_hand.shape[0]:
+                    self.prev_action = self.prev_action[:1].repeat(q_hand.shape[0], 1)
+                fsr_estimated = self.torque2fsr(q_hand, tau_hand, self.prev_action)
+                fsr_raw = fsr_estimated                # replace with torque-based estimate
 
-            max_finger_force = torch.max(self.fsr_obs[:, f_ids], dim=1)[0]
-            prev_contact = self.contact_state[:, finger_idx]
-            has_contact = torch.where(
-                prev_contact,
-                max_finger_force >= self.contact_off_threshold,
-                max_finger_force >= self.contact_on_threshold,
-            )
-            self.contact_state[:, finger_idx] = has_contact
+            last_ctrl = self.fsr_ctrl.clone()
+            self.fsr_obs = self.alpha_obs * self.fsr_obs + (1 - self.alpha_obs) * fsr_raw
+            self.fsr_ctrl = self.alpha_ctrl * self.fsr_ctrl + (1 - self.alpha_ctrl) * fsr_raw
+            df_ctrl = self.fsr_ctrl - last_ctrl
 
-            s_p = torch.mean(self.fsr_ctrl[:, config["p_fsr"]], dim=1)
-            s_d = self.fsr_ctrl[:, config["d_fsr"]].squeeze(-1)
-            ds_p = torch.mean(df_ctrl[:, config["p_fsr"]], dim=1)
-            ds_p = torch.clamp(ds_p, min=-self.ds_clip, max=self.ds_clip)
+            for finger_idx, config in enumerate(self.finger_configs):
+                j_idx = config["j"]
+                f_ids = config["p_fsr"] + config["d_fsr"]
 
-            ds_d = df_ctrl[:, config["d_fsr"]].squeeze(-1)
-            ds_d = torch.clamp(ds_d, min=-self.ds_clip, max=self.ds_clip)
+                max_finger_force = torch.max(self.fsr_obs[:, f_ids], dim=1)[0]
+                prev_contact = self.contact_state[:, finger_idx]
+                has_contact = torch.where(
+                    prev_contact,
+                    max_finger_force >= self.contact_off_threshold,
+                    max_finger_force >= self.contact_on_threshold,
+                )
+                self.contact_state[:, finger_idx] = has_contact
 
-            e_p = self._compute_interval_error(s_p)
-            e_p = torch.where(
-                torch.abs(e_p) < self.error_deadband,
-                torch.zeros_like(e_p),
-                e_p,
-            )
-            comp_p = self.K_prox * e_p - self.D_force * ds_p
+                s_p = torch.mean(self.fsr_ctrl[:, config["p_fsr"]], dim=1)
+                s_d = self.fsr_ctrl[:, config["d_fsr"]].squeeze(-1)
+                ds_p = torch.mean(df_ctrl[:, config["p_fsr"]], dim=1)
+                ds_p = torch.clamp(ds_p, min=-self.ds_clip, max=self.ds_clip)
 
-            e_d = self._compute_interval_error(s_d)
-            e_d = torch.where(
-                torch.abs(e_d) < self.error_deadband,
-                torch.zeros_like(e_d),
-                e_d,
-            )
-            wrapping_factor = torch.clamp(s_d - s_p, min=0)
-            adj_e_d = e_d - 0.5 * wrapping_factor
+                ds_d = df_ctrl[:, config["d_fsr"]].squeeze(-1)
+                ds_d = torch.clamp(ds_d, min=-self.ds_clip, max=self.ds_clip)
 
-            comp_m = self.K_mid * adj_e_d - 0.6*self.D_force * ds_d
-            comp_d = self.K_dist * adj_e_d - 0.2*self.D_force * ds_d
+                e_p = self._compute_interval_error(s_p)
+                e_p = torch.where(
+                    torch.abs(e_p) < self.error_deadband,
+                    torch.zeros_like(e_p),
+                    e_p,
+                )
+                comp_p = self.K_prox * e_p - self.D_force * ds_p
 
-            for joint_idx, target_comp, limit_val in zip(
-                j_idx,
-                (comp_p, comp_m, comp_d),
-                self.q_pre_grasp_list,
-            ):
+                e_d = self._compute_interval_error(s_d)
+                e_d = torch.where(
+                    torch.abs(e_d) < self.error_deadband,
+                    torch.zeros_like(e_d),
+                    e_d,
+                )
+                wrapping_factor = torch.clamp(s_d - s_p, min=0)
+                adj_e_d = e_d - 0.5 * wrapping_factor
 
-                current_q = q_curr[:, joint_idx]
-                dist_to_limit = limit_val - current_q
+                comp_m = self.K_mid * adj_e_d - 0.6*self.D_force * ds_d
+                comp_d = self.K_dist * adj_e_d - 0.2*self.D_force * ds_d
 
-                limit_active = (~has_contact) & (current_q > limit_val) & (target_comp > 0)
-                spring_delta = dist_to_limit * self.K_limit_spring
-                safe_delta = torch.where(limit_active, spring_delta, target_comp)
-                delta_comp[:, joint_idx] = safe_delta
+                for joint_idx, target_comp, limit_val in zip(
+                    j_idx,
+                    (comp_p, comp_m, comp_d),
+                    self.q_pre_grasp_list,
+                ):
 
-        unused_hand_joints = [7, 11, 15, 19]
-        for uj in unused_hand_joints:
-            delta_comp[:, uj] = self.reset_speed * (self.q_nom[:, uj] - q_curr[:, uj])
+                    current_q = q_curr[:, joint_idx]
+                    dist_to_limit = limit_val - current_q
+
+                    limit_active = (~has_contact) & (current_q > limit_val) & (target_comp > 0)
+                    spring_delta = dist_to_limit * self.K_limit_spring
+                    safe_delta = torch.where(limit_active, spring_delta, target_comp)
+                    delta_comp[:, joint_idx] = safe_delta
+
+        # ── 侧摆恢复 (始终启用，配合主动吸附器) ──
+        # 侧摆关节 (abduction): qpos[7,11,15] 对应 XML joint "0","4","8", range ±1.047, neutral=0
+        # 拇指侧摆: qpos[19] 对应 XML joint "13", 用初始捕捉值作为 nominal
+        _sidesway_joints = [7, 11, 15, 19]
+        _sidesway_neutral = [0.0, 0.0, 0.0, None]  # None = fallback to q_nom
+        _sidesway_gain = 0.3   # 高于屈伸关节的 reset_speed，确保侧摆优先归位
+
+        for uj, neutral in zip(_sidesway_joints, _sidesway_neutral):
+            target = self.q_nom[:, uj] if neutral is None else neutral
+            delta_comp[:, uj] = _sidesway_gain * (target - q_curr[:, uj])
 
         hand_delta = delta_comp[:, 6:]
         raw_action = hand_delta / self.action_scale_hand.unsqueeze(0)
@@ -488,6 +545,6 @@ class LeapHandAdhesionControlCfg(RslRlOnPolicyRunnerCfg):
     seed: int = 42
     device: str = "cuda:0"
     """用于传递给采集脚本的配置"""
-    policy_class: type = NullComplianceController
-    # policy_class: type = LeapHandComplianceController
+    policy_class: type = LeapHandComplianceController
+    # policy_class: type = NullComplianceController
     amplitude: float = 0.5

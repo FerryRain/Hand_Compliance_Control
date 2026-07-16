@@ -18,6 +18,11 @@ from mjlab.tasks.leaphand.leaphand_palm_mcc_env_cfg import (
     MCCPalmControlCfg,
 )
 
+from mjlab.tasks.leaphand.leaphand_mcc_finger_env_cfg import (
+    mcc_finger_contact_env_cfg,
+    MCCLeapHandPositionControlCfg,
+)
+
 from mjlab.tasks.registry import register_mjlab_task
 
 register_mjlab_task(
@@ -46,4 +51,11 @@ register_mjlab_task(
   env_cfg=leaphand_adhesion_env_cfg(),
   play_env_cfg=leaphand_adhesion_env_cfg(play=True),
   rl_cfg=LeapHandAdhesionControlCfg(amplitude=0.8),
+)
+
+register_mjlab_task(
+  task_id="Leaphand-Finger-MCC-Position-Control",
+  env_cfg=mcc_finger_contact_env_cfg(),
+  play_env_cfg=mcc_finger_contact_env_cfg(play=True),
+  rl_cfg=MCCLeapHandPositionControlCfg(amplitude=0.5),
 )

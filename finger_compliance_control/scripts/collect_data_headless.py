@@ -64,6 +64,7 @@ class HeadlessCollectConfig:
     max_episodes: int = 600
     total_steps: int | None = None
     reset_interval: int = 0
+    resample_axes_interval: int = 1000  # 每隔N步随机切换物体转轴（0=不切换）
     filename: str | None = None
     device: str | None = None
     viewer: Literal["headless", "native", "viser"] = "headless"
@@ -71,7 +72,7 @@ class HeadlessCollectConfig:
     ccd_iterations: int = 200
     contact_threshold: float = 0.20
     stability_window: int = 20
-    action_noise_std: float = 0.02
+    action_noise_std: float = 0
     target_anchor: Literal["palm", "origin"] = "origin"
     target_offset: tuple[float, float, float] = (0.10, 0.0, 0.0)
     fsr_source: Literal["policy", "sensor"] = "policy"
@@ -79,7 +80,7 @@ class HeadlessCollectConfig:
     randomize_object_orientation: bool = True
     # Comma-separated profile names, e.g. "capsule_medium,box_medium".
     object_profiles: str = "capsule_medium"
-    randomize_object_profile: bool = False
+    randomize_object_profile: bool = True
     # Path to LeRobot pretrained DiffusionPolicy directory (overrides registered policy).
     dp_model_dir: str | None = None
 
@@ -90,34 +91,60 @@ class MocapObjectRotator:
         self.device = device
         self.dt = dt
         self.mocap_idx = mocap_idx
+        self._episode_step = 0  # 当期已跑步数，reset时归零
 
-        axes = torch.randn((self.num_envs, 3), device=device)
+        self.axes = torch.zeros((self.num_envs, 3), device=device)
+        self.speeds = torch.zeros(self.num_envs, device=device)
+        # 正弦振荡参数
+        self.trans_amp = torch.zeros((self.num_envs, 3), device=device)    # 各轴振幅 (m)
+        self.trans_freq = torch.zeros((self.num_envs, 3), device=device)   # 各轴频率 (Hz)
+        self.trans_phase = torch.zeros((self.num_envs, 3), device=device)  # 各轴相位 (rad)
+        self.trans_base = torch.zeros((self.num_envs, 3), device=device)   # 振荡中心 (m)
+        self.resample_axes()
+
+    def resample_axes(self):
+        """每期随机切换旋转轴、转速和振荡参数，增加轨迹多样性。"""
+        axes = torch.randn((self.num_envs, 3), device=self.device)
         self.axes = axes / torch.norm(axes, dim=-1, keepdim=True)
-        self.speeds = torch.rand(self.num_envs, device=device) * 0.5 + 0.3
+        self.speeds = torch.rand(self.num_envs, device=self.device) * 0.5 + 0.3
+
+        self.trans_amp = torch.rand(self.num_envs, 3, device=self.device) * 0.02 + 0.005  # 0.5-2.5 cm
+        self.trans_freq = torch.rand(self.num_envs, 3, device=self.device) * 0.3 + 0.1   # 0.2-0.7 Hz
+        self.trans_phase = torch.rand(self.num_envs, 3, device=self.device) * 2 * 3.14159  # 0-2π
+        self._episode_step = 0
+        print(f"[ROTATOR] resample_axes: "
+              f"speeds∈[{self.speeds.min().item():.3f},{self.speeds.max().item():.3f}] rad/s, "
+              f"amp∈[{self.trans_amp.min().item():.4f},{self.trans_amp.max().item():.4f}] m")
+
+    def set_base_position(self, pos: torch.Tensor):
+        """在reset后调用，记录当期振荡中心（当前物体位置）。"""
+        self.trans_base = pos.clone()
 
     def step(self, env: ManagerBasedRlEnv):
-        current_quat = env.sim.data.mocap_quat[:, self.mocap_idx, :].clone()
+        self._episode_step += 1
+        t_sec = (self._episode_step * self.dt).unsqueeze(-1)  # type: ignore # 当期已过秒数, (num_envs,1)
 
+        # ── 旋转 ──
+        current_quat = env.sim.data.mocap_quat[:, self.mocap_idx, :].clone()
         theta = self.speeds * self.dt
         cos_t = torch.cos(theta / 2).unsqueeze(-1)
         sin_t = torch.sin(theta / 2).unsqueeze(-1)
         delta_quat = torch.cat([cos_t, self.axes * sin_t], dim=-1)
-
         w1, x1, y1, z1 = current_quat.unbind(-1)
         w2, x2, y2, z2 = delta_quat.unbind(-1)
         new_quat = torch.stack(
-            [
-                w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
-                w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
-                w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
-                w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2,
-            ],
-            dim=-1,
-        )
-
+            [w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
+             w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+             w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
+             w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2], dim=-1)
         env.sim.data.mocap_quat[:, self.mocap_idx, :] = (
             new_quat / torch.norm(new_quat, dim=-1, keepdim=True)
         )
+
+        # ── 正弦振荡：围绕base位置做3轴Lissajous运动 ──
+        osc = torch.sin(2.0 * 3.14159 * self.trans_freq * t_sec + self.trans_phase)
+        offset = self.trans_amp * osc  # [B, 3] * [B, 3]
+        env.sim.data.mocap_pos[:, self.mocap_idx, :] = self.trans_base + offset
 
 
 FINGER_FSR_IDS: tuple[tuple[int, ...], ...] = (
@@ -211,14 +238,12 @@ class TargetObjectProfileRandomizer:
     def randomize(self) -> None:
         num_envs = self.env.num_envs
         n_profiles = len(self.profiles)
-        if n_profiles == 0:
-            return
+        if n_profiles <= 1:
+            return  # 单物体不需要随机化
 
         if self.cfg.randomize_object_profile:
             profile_idx = torch.randint(
-                low=0,
-                high=n_profiles,
-                size=(num_envs,),
+                low=0, high=n_profiles, size=(num_envs,),
                 device=self.device,
             )
         else:
@@ -226,43 +251,46 @@ class TargetObjectProfileRandomizer:
 
         geom_size = self.model.geom_size
         geom_rgba = self.model.geom_rgba
+        env_ids = torch.arange(num_envs, device=self.device, dtype=torch.long)
 
+        # ── 每个环境只保留选中的物体，其余完全隐藏 ──
         if geom_size.ndim == 3 and geom_rgba.ndim == 3:
-            env_ids = torch.arange(num_envs, device=self.device, dtype=torch.long)
-
-            # Shrink non-selected profiles so each env effectively has one active target shape.
-            hidden_size = self.base_size.unsqueeze(0).repeat(num_envs, 1, 1) * 1e-3
-            geom_size[env_ids.unsqueeze(-1), self.geom_ids.unsqueeze(0)] = hidden_size
-
-            hidden_rgba = self.base_rgba.unsqueeze(0).repeat(num_envs, 1, 1)
-            hidden_rgba[..., 3] = 0.15
-            geom_rgba[env_ids.unsqueeze(-1), self.geom_ids.unsqueeze(0)] = hidden_rgba
-
-            selected_geom_ids = self.geom_ids[profile_idx]
-            geom_size[env_ids, selected_geom_ids] = self.base_size[profile_idx]
-            geom_rgba[env_ids, selected_geom_ids] = self.base_rgba[profile_idx]
-            return
-
-        # Fallback path for non-expanded/global model fields.
-        if not self._warned_global:
-            print(
-                "[WARN] Target geom fields are not per-env expanded; "
-                "object profile randomization is applied globally."
+            # 先把所有物体缩小到不可见
+            hidden = self.base_size.unsqueeze(0).repeat(num_envs, 1, 1) * 1e-6
+            geom_size[env_ids.unsqueeze(-1), self.geom_ids.unsqueeze(0)] = hidden
+            # rgba: alpha=0 完全透明
+            zero_rgba = torch.zeros_like(
+                self.base_rgba.unsqueeze(0).repeat(num_envs, 1, 1)
             )
-            self._warned_global = True
+            geom_rgba[env_ids.unsqueeze(-1), self.geom_ids.unsqueeze(0)] = zero_rgba
 
-        chosen = int(profile_idx[0].item())
-        geom_size = self.model.geom_size
-        if geom_size.ndim == 2:
-            geom_size[self.geom_ids] = self.base_size * 1e-3
+            # 恢复每个环境选中的物体
+            selected = self.geom_ids[profile_idx]  # [num_envs]
+            geom_size[env_ids, selected] = self.base_size[profile_idx]
+            geom_rgba[env_ids, selected] = self.base_rgba[profile_idx]
+
         else:
-            geom_size[self.geom_ids] = self.base_size * 1e-3
-        geom_rgba[self.geom_ids] = self.base_rgba
-        geom_rgba[self.geom_ids, 3] = 0.15
+            # 全局 fallback：逐个环境设置（效率低但可靠）
+            if not self._warned_global:
+                print(
+                    "[WARN] geom fields not per-env expanded; "
+                    "using env-loop fallback. Object randomization is GLOBAL."
+                )
+                self._warned_global = True
 
-        selected_geom_id = int(self.geom_ids[chosen].item())
-        geom_size[selected_geom_id] = self.base_size[chosen]
-        geom_rgba[selected_geom_id] = self.base_rgba[chosen]
+            # 全部缩小
+            geom_size[self.geom_ids] = self.base_size * 1e-6
+            geom_rgba[self.geom_ids] = 0.0
+
+            # 只恢复第一个环境的选中物体
+            chosen = int(profile_idx[0].item())
+            selected_geom_id = int(self.geom_ids[chosen].item())
+            geom_size[selected_geom_id] = self.base_size[chosen]
+            geom_rgba[selected_geom_id] = self.base_rgba[chosen]
+
+        # ── 物理刷新：确保几何变化生效 ──
+        if hasattr(self.env.sim, 'forward'):
+            self.env.sim.forward()
 
 
 class H5DataLogger:
@@ -330,6 +358,13 @@ class H5DataLogger:
                 chunks=(chunk_size, num_envs),
                 dtype="f4",
             ),
+            "episode_id": self.file.create_dataset(
+                "episode_id",
+                (0, num_envs),
+                maxshape=(None, num_envs),
+                chunks=(chunk_size, num_envs),
+                dtype="i4",
+            ),
             "finger_force": self.file.create_dataset(
                 "finger_force",
                 (0, num_envs, 4),
@@ -372,6 +407,23 @@ class H5DataLogger:
                 chunks=(chunk_size, num_envs, 1),
                 dtype="f4",
             ),
+            # 指尖原始3D力矢量（非归一化）：4指 × 3D = 12D
+            # index=(0:3), middle=(3:6), ring=(6:9), thumb=(9:12)
+            # 从 ContactSensor 远端传感器 (6,9,12,15) 读取原始 force 向量
+            "fingertip_force_3d": self.file.create_dataset(
+                "fingertip_force_3d",
+                (0, num_envs, 12),
+                maxshape=(None, num_envs, 12),
+                chunks=(chunk_size, num_envs, 12),
+                dtype="f4",
+            ),
+            "fingertip_pos": self.file.create_dataset(
+                "fingertip_pos",
+                (0, num_envs, 12),
+                maxshape=(None, num_envs, 12),
+                chunks=(chunk_size, num_envs, 12),
+                dtype="f4",
+            ),
         }
 
     @staticmethod
@@ -384,15 +436,18 @@ class H5DataLogger:
         arr = np.asarray(data)
         return arr.item() if arr.ndim == 0 else arr
 
-    def log(self, time, fsr, q, action, qfrc_actuator, obj_pose, palm_pose, quality):
+    def log(self, time, fsr, q, action, qfrc_actuator, obj_pose, palm_pose, quality,
+            fingertip_force=None, episode_id=None, fingertip_pos=None):
         new_size = self.step_idx + 1
         for name, dset in self.dsets.items():
-            if name == "time":
+            if name in ("time", "episode_id"):
                 dset.resize((new_size, self.num_envs))
             else:
                 dset.resize((new_size, self.num_envs, dset.shape[2]))
 
         self.dsets["time"][self.step_idx] = self._to_host(time)
+        if episode_id is not None:
+            self.dsets["episode_id"][self.step_idx] = self._to_host(episode_id)
         self.dsets["fsr"][self.step_idx] = self._to_host(fsr)
         self.dsets["q"][self.step_idx] = self._to_host(q)
         self.dsets["action"][self.step_idx] = self._to_host(action)
@@ -415,11 +470,19 @@ class H5DataLogger:
         self.dsets["fsr_delta_norm"][self.step_idx] = self._to_host(
             quality["fsr_delta_norm"]
         )
+        if fingertip_force is not None:
+            self.dsets["fingertip_force_3d"][self.step_idx] = self._to_host(fingertip_force)
+        if fingertip_pos is not None:
+            self.dsets["fingertip_pos"][self.step_idx] = self._to_host(fingertip_pos)
         self.step_idx += 1
 
-    def close(self):
+    def close(self, source_robot_joint_names: list[str] | None = None):
         self.file.attrs["num_envs"] = self.num_envs
         self.file.attrs["total_steps"] = self.step_idx
+        if source_robot_joint_names is not None:
+            self.file.attrs["source_robot_joint_names"] = np.array(
+                source_robot_joint_names, dtype=h5py.string_dtype()
+            )
         self.file.close()
 
 
@@ -463,10 +526,12 @@ def _compute_contact_quality(
     full_contact_run: torch.Tensor,
     cfg: HeadlessCollectConfig,
 ) -> tuple[dict[str, torch.Tensor], torch.Tensor]:
-    finger_force = torch.stack(
-        [fsr_data[:, ids].mean(dim=1) for ids in FINGER_FSR_IDS],
-        dim=1,
-    )
+    # 指尖接触判定：仅用远端指尖传感器 (index=6, middle=9, ring=12, thumb=15)
+    # finger_force = fsr_data[:, [6, 9, 12, 15]]  # [B, 4]
+    finger_force = torch.stack([
+        fsr_data[:, ids].mean(dim=1) for ids in [
+            (4,5,6), (7,8,9), (10,11,12), (13,14,15)
+        ]], dim=1)
     finger_contact = (finger_force >= cfg.contact_threshold).to(fsr_data.dtype)
     full_contact = torch.all(finger_contact > 0.5, dim=1, keepdim=True).to(fsr_data.dtype)
 
@@ -547,6 +612,66 @@ def _read_fsr_data(
     return policy_obs[:, :fsr_dims]
 
 
+# 指尖远端 FSR 传感器索引（index=6, middle=9, ring=12, thumb=15）
+_DISTAL_FSR_IDS = (6, 9, 12, 15)
+
+# 指尖 body 名称（对应 index, middle, ring, thumb）
+_FINGERTIP_BODY_NAMES = ("fingertip", "fingertip_2", "fingertip_3", "thumb_fingertip")
+
+
+def _read_fingertip_positions(
+    env: ManagerBasedRlEnv,
+    palm_body_local_idx: int,
+) -> torch.Tensor:
+    """Read 4 fingertip body positions relative to palm.
+
+    Returns: [B, 12] — index=(0:3), middle=(3:6), ring=(6:9), thumb=(9:12)
+    Positions in world frame, will be converted to palm-relative later.
+    """
+    robot = env.scene["robot"]
+    body_poses = robot.data.body_link_pose_w  # [B, n_bodies, 7]
+    local_names = [body.name or "" for body in robot.data.indexing.bodies]
+
+    result = torch.zeros(body_poses.shape[0], 12, device=body_poses.device, dtype=body_poses.dtype)
+    palm_pos = body_poses[:, palm_body_local_idx, :3]  # [B, 3]
+
+    for i, name in enumerate(_FINGERTIP_BODY_NAMES):
+        if name in local_names:
+            ft_local_idx = local_names.index(name)
+            ft_world = body_poses[:, ft_local_idx, :3]  # [B, 3]
+            result[:, i * 3 : (i + 1) * 3] = ft_world - palm_pos  # palm-relative
+    return result
+
+
+def _read_fingertip_force(
+    env: ManagerBasedRlEnv,
+) -> torch.Tensor:
+    """Read raw 3D force vectors for the 4 distal FSR sensors.
+
+    Returns:
+        [B, 12] — index=(0:3), middle=(3:6), ring=(6:9), thumb=(9:12)
+        Zero vector when no contact.
+        Magnitude = |force_3d|, direction = normalize(force_3d).
+    """
+    zero = torch.zeros(1, 12, device=env.device)
+    try:
+        sensor = env.scene["fsr_contact"]
+        force = sensor.data.force  # [B, N, 3]
+        if force is None:
+            return zero.expand(1, 12)
+    except Exception:
+        return zero
+
+    B = force.shape[0]
+    n_sensors = force.shape[1]
+    result = torch.zeros(B, 12, device=force.device, dtype=force.dtype)
+
+    for i, idx in enumerate(_DISTAL_FSR_IDS):
+        if idx < n_sensors:
+            result[:, i * 3 : (i + 1) * 3] = force[:, idx, :]
+    return result
+
+
 def _build_registered_policy(task_id: str, cfg: HeadlessCollectConfig, num_envs: int) -> Any:
     policy_cfg = load_rl_cfg(task_id)
     policy_class = getattr(policy_cfg, "policy_class", None)
@@ -618,6 +743,7 @@ def run_headless_collect(task_id: str, cfg: HeadlessCollectConfig) -> None:
     device = cfg.device or ("cuda:0" if torch.cuda.is_available() else "cpu")
     total_steps = cfg.total_steps or (cfg.episode_length * cfg.max_episodes)
     reset_interval = cfg.reset_interval
+    resample_axes_interval = cfg.resample_axes_interval
 
     with _suppress_mujoco_output():
         env_cfg = load_env_cfg(task_id, play=True)
@@ -653,6 +779,8 @@ def run_headless_collect(task_id: str, cfg: HeadlessCollectConfig) -> None:
     )
 
     raw_policy = _build_registered_policy(task_id, cfg, env.num_envs)
+    # If use fingertip control, uncomment the following line to give the policy access to the env for FSR reading.
+    raw_policy._env = env  # type: ignore
 
     with _suppress_mujoco_output():
         obs, _ = env.reset()
@@ -666,9 +794,15 @@ def run_headless_collect(task_id: str, cfg: HeadlessCollectConfig) -> None:
         object_profile_randomizer,
     )
 
+    rotator.set_base_position(
+        env.sim.data.mocap_pos[:, target_mocap_idx, :].clone()
+    )
+
     prev_fsr_data = torch.zeros((env.num_envs, cfg.fsr_dims), device=env.device)
     full_contact_run = torch.zeros((env.num_envs,), dtype=torch.int32, device=env.device)
+    episode_id = torch.zeros((env.num_envs,), dtype=torch.int32, device=env.device)
     fsr_nonzero_steps = 0
+    viewer_step_count = 0  # viewer模式下全局步数计数
 
     try:
         if cfg.viewer == "headless":
@@ -678,6 +812,12 @@ def run_headless_collect(task_id: str, cfg: HeadlessCollectConfig) -> None:
 
             for step in step_iter:
                 rotator.step(env)
+                # 每 N 步随机切换物体转轴（不重置环境）
+                if resample_axes_interval > 0 and (step + 1) % resample_axes_interval == 0:
+                    rotator.resample_axes()
+                    rotator.set_base_position(
+                        env.sim.data.mocap_pos[:, target_mocap_idx, :].clone()
+                    )
                 action = _adapt_action_dim(raw_policy(obs), action_dim)
                 if cfg.action_noise_std > 0:
                     action = torch.clamp(
@@ -714,6 +854,8 @@ def run_headless_collect(task_id: str, cfg: HeadlessCollectConfig) -> None:
                     cfg,
                 )
                 prev_fsr_data = fsr_data.clone()
+                fingertip_force = _read_fingertip_force(env)
+                fingertip_pos = _read_fingertip_positions(env, palm_body_local_idx)
 
                 logger.log(
                     time=env.sim.data.time,
@@ -724,6 +866,9 @@ def run_headless_collect(task_id: str, cfg: HeadlessCollectConfig) -> None:
                     obj_pose=obj_pose,
                     palm_pose=palm_pose,
                     quality=quality,
+                    fingertip_force=fingertip_force,
+                    episode_id=episode_id,
+                    fingertip_pos=fingertip_pos,
                 )
 
                 obs = next_obs
@@ -742,6 +887,11 @@ def run_headless_collect(task_id: str, cfg: HeadlessCollectConfig) -> None:
                     )
                     prev_fsr_data.zero_()
                     full_contact_run.zero_()
+                    episode_id += 1
+                    rotator.resample_axes()  # 每期随机新转轴+转速
+                    rotator.set_base_position(
+                        env.sim.data.mocap_pos[:, target_mocap_idx, :].clone()
+                    )
         else:
             original_step = env.step
             original_reset = env.reset
@@ -759,11 +909,22 @@ def run_headless_collect(task_id: str, cfg: HeadlessCollectConfig) -> None:
                 )
                 prev_fsr_data.zero_()
                 full_contact_run.zero_()
+                rotator.resample_axes()
+                rotator.set_base_position(
+                    env.sim.data.mocap_pos[:, target_mocap_idx, :].clone()
+                )
                 return reset_obs, info
 
             def step_with_logging(action: torch.Tensor):
-                nonlocal fsr_nonzero_steps, prev_fsr_data, full_contact_run
+                nonlocal fsr_nonzero_steps, prev_fsr_data, full_contact_run, viewer_step_count
+                viewer_step_count += 1
                 rotator.step(env)
+                # 每 N 步随机切换物体转轴（不重置环境）
+                if resample_axes_interval > 0 and viewer_step_count % resample_axes_interval == 0:
+                    rotator.resample_axes()
+                    rotator.set_base_position(
+                        env.sim.data.mocap_pos[:, target_mocap_idx, :].clone()
+                    )
                 next_obs, reward, terminated, truncated, info = original_step(action)
 
                 fsr_data = _read_fsr_data(
@@ -793,6 +954,8 @@ def run_headless_collect(task_id: str, cfg: HeadlessCollectConfig) -> None:
                 )
                 full_contact_run = full_contact_run_new
                 prev_fsr_data = fsr_data.clone()
+                fingertip_force = _read_fingertip_force(env)
+                fingertip_pos = _read_fingertip_positions(env, palm_body_local_idx)
 
                 logger.log(
                     time=env.sim.data.time,
@@ -803,6 +966,9 @@ def run_headless_collect(task_id: str, cfg: HeadlessCollectConfig) -> None:
                     obj_pose=obj_pose,
                     palm_pose=palm_pose,
                     quality=quality,
+                    fingertip_force=fingertip_force,
+                    episode_id=torch.zeros(env.num_envs, dtype=torch.int32, device=env.device),
+                    fingertip_pos=fingertip_pos,
                 )
                 return next_obs, reward, terminated, truncated, info
 
@@ -831,7 +997,8 @@ def run_headless_collect(task_id: str, cfg: HeadlessCollectConfig) -> None:
                 ViserPlayViewer(viewer_env, policy).run()
             viewer_env.close()
     finally:
-        logger.close()
+        joint_names_list = list(env.scene["robot"].joint_names)
+        logger.close(source_robot_joint_names=joint_names_list)
         env.close()
 
     contact_ratio = float(fsr_nonzero_steps) / max(1, int(logger.step_idx))

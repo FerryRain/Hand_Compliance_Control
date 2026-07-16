@@ -54,13 +54,11 @@ from dp_dataset import (
 
 # ── Paths ────────────────────────────────────────────────────────────────────
 H5_PATH = Path(
-    "/home/rimlab/Code/Hand_Compliance_Control/"
-    "finger_compliance_control/data/headless/"
-    "collect_20260603_170927.h5"
+    "./finger_compliance_control/data/train_dp/"
+    "collect_20260609_215735.h5"
 )
 OUTPUT_ROOT = Path(
-    "/home/rimlab/Code/Hand_Compliance_Control/"
-    "finger_compliance_control/data/models"
+    "./finger_compliance_control/data/models"
 )
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -75,10 +73,10 @@ class TrainConfig:
         h5_path: str = str(H5_PATH),
         stride: int = 1,
         clip_fsr_pct: float = 99.9,
-        val_envs: tuple[int, ...] = (62, 63),
+        val_envs: tuple[int, ...] = (30, 31),
         # Window
         n_obs_steps: int = 16,
-        horizon: int = 16,
+        horizon: int = 24,               # must be >= n_obs_steps + n_action_steps - 1
         n_action_steps: int = 4,
         # Filter
         filter_enabled: bool = True,
@@ -86,6 +84,8 @@ class TrainConfig:
         delta_percentile: float = 90.0,
         delta_threshold: float | None = None,
         filter_ratio: float = 0.7,
+        min_action_norm: float = 0.01,
+        min_action_std: float = 0.005,
         # Training
         training_steps: int = 100_000,
         batch_size: int = 256,
@@ -93,17 +93,21 @@ class TrainConfig:
         weight_decay: float = 1e-5,
         grad_clip_norm: float = 1.0,
         # UNet
-        down_dims: tuple[int, ...] = (512, 1024, 2048),
+        down_dims: tuple[int, ...] = (256, 512, 1024),
         kernel_size: int = 5,
         n_groups: int = 8,
         diffusion_step_embed_dim: int = 128,
-        num_inference_steps: int = 10,
+        num_inference_steps: int = 100,
+        noise_scheduler_type: str = "DDPM",
+        prediction_type: str = "sample",
         # Logging
         log_interval: int = 100,
         val_interval: int = 2000,
         save_interval: int = 10_000,
         num_workers: int = 4,
         output_dir: str | None = None,
+        state_dim: int = 69,
+        action_dim: int = 22,
     ):
         self.h5_path = h5_path
         self.stride = stride
@@ -117,6 +121,8 @@ class TrainConfig:
         self.delta_percentile = delta_percentile
         self.delta_threshold = delta_threshold
         self.filter_ratio = filter_ratio
+        self.min_action_norm = min_action_norm
+        self.min_action_std = min_action_std
         self.training_steps = training_steps
         self.batch_size = batch_size
         self.lr = lr
@@ -127,11 +133,15 @@ class TrainConfig:
         self.n_groups = n_groups
         self.diffusion_step_embed_dim = diffusion_step_embed_dim
         self.num_inference_steps = num_inference_steps
+        self.noise_scheduler_type = noise_scheduler_type
+        self.prediction_type = prediction_type
         self.log_interval = log_interval
         self.val_interval = val_interval
         self.save_interval = save_interval
         self.num_workers = num_workers
         self.output_dir = output_dir
+        self.state_dim = state_dim
+        self.action_dim = action_dim
 
 
 # ── Model ─────────────────────────────────────────────────────────────────────
@@ -139,12 +149,16 @@ class TrainConfig:
 def build_policy(cfg: TrainConfig) -> DiffusionPolicy:
     """Build DiffusionPolicy from config."""
     input_features = {
-        "observation.state": PolicyFeature(type=FeatureType.STATE, shape=(38,)),
+        "observation.state": PolicyFeature(
+            type=FeatureType.STATE, shape=(cfg.state_dim,)
+        ),
         "observation.environment_state": PolicyFeature(
             type=FeatureType.ENV, shape=(1,)
         ),
     }
-    output_features = {"action": PolicyFeature(type=FeatureType.ACTION, shape=(16,))}
+    output_features = {
+        "action": PolicyFeature(type=FeatureType.ACTION, shape=(cfg.action_dim,))
+    }
 
     policy_cfg = DiffusionConfig(
         input_features=input_features,
@@ -158,6 +172,8 @@ def build_policy(cfg: TrainConfig) -> DiffusionPolicy:
         n_groups=cfg.n_groups,
         diffusion_step_embed_dim=cfg.diffusion_step_embed_dim,
         num_inference_steps=cfg.num_inference_steps,
+        noise_scheduler_type=cfg.noise_scheduler_type,
+        prediction_type=cfg.prediction_type,
     )
     return DiffusionPolicy(policy_cfg).to(DEVICE)
 
@@ -165,7 +181,7 @@ def build_policy(cfg: TrainConfig) -> DiffusionPolicy:
 # ── Metrics ───────────────────────────────────────────────────────────────────
 
 @torch.no_grad()
-def compute_action_metrics(
+def compute_q_metrics(
     policy: DiffusionPolicy,
     dataloader: DataLoader,
     preprocessor,
@@ -199,27 +215,61 @@ def compute_action_metrics(
         # NOTE: pred and target are BOTH in preprocessor-normalized [0,1] space.
         # Do NOT postprocess — that would compare denormalized preds against normalized targets.
 
-        # Ground-truth action at the CURRENT timestep is the n_obs-th action
-        # (action[t-n_obs+1 : t-n_obs+1+horizon], current = index n_obs-1).
+        # Standard LeRobot alignment: action index (n_obs-1) = current timestep t.
+        # Take n_action_steps starting from there as the ground-truth for execution.
         start = policy.config.n_obs_steps - 1
         target = batch["action"][:, start : start + n_action_steps, :]
 
         all_preds.append(pred.cpu())
         all_targets.append(target.cpu())
 
-    preds = torch.cat(all_preds, dim=0).reshape(-1, 16)  # flatten batch+time
-    targets = torch.cat(all_targets, dim=0).reshape(-1, 16)
+    act_dim = pred.shape[-1]  # e.g., 19 (Δpalm=3 + finger=16)
+    preds = torch.cat(all_preds, dim=0).reshape(-1, act_dim)
+    targets = torch.cat(all_targets, dim=0).reshape(-1, act_dim)
 
-    # Per-dimension R²
+    # Reshape back to [N, n_action_steps, act_dim] for per-step analysis
+    preds_3d = torch.cat(all_preds, dim=0)
+    targets_3d = torch.cat(all_targets, dim=0)
+
+    # Per-dimension R² (all steps)
     ss_res = ((targets - preds) ** 2).sum(dim=0)
     ss_tot = ((targets - targets.mean(dim=0, keepdim=True)) ** 2).sum(dim=0)
     r2_per_dim = 1 - ss_res / (ss_tot + 1e-8)
     mean_r2 = r2_per_dim.mean().item()
 
+    # Hierarchical action is palm pose (pos3 + rot6D) + q_pre16 = 25D.
+    # Keep the legacy pos3 + rotvec3 + finger16 = 22D interpretation too.
+    rot_end = 9 if act_dim == 25 else 6
+    r2_pos = r2_per_dim[:3].mean().item()
+    r2_rot = r2_per_dim[3:rot_end].mean().item()
+    r2_finger = r2_per_dim[rot_end:].mean().item()
     mae = (preds - targets).abs().mean().item()
 
+    # Future-only R²: skip step 0
+    future_preds = preds_3d[:, 1:, :].reshape(-1, act_dim)
+    future_targets = targets_3d[:, 1:, :].reshape(-1, act_dim)
+    ss_res_f = ((future_targets - future_preds) ** 2).sum(dim=0)
+    ss_tot_f = ((future_targets - future_targets.mean(dim=0, keepdim=True)) ** 2).sum(dim=0)
+    r2_future_per_dim = 1 - ss_res_f / (ss_tot_f + 1e-8)
+    mean_r2_future = r2_future_per_dim.mean().item()
+    r2_pos_future = r2_future_per_dim[:3].mean().item()
+    r2_rot_future = r2_future_per_dim[3:rot_end].mean().item()
+    r2_finger_future = r2_future_per_dim[rot_end:].mean().item()
+    mae_future = (future_preds - future_targets).abs().mean().item()
+
     policy.train()
-    return {"val_r2": float(mean_r2), "val_mae": float(mae)}
+    return {
+        "val_r2": float(mean_r2),
+        "val_mae": float(mae),
+        "val_r2_future": float(mean_r2_future),
+        "val_mae_future": float(mae_future),
+        "val_r2_pos": float(r2_pos),
+        "val_r2_rot": float(r2_rot),
+        "val_r2_finger": float(r2_finger),
+        "val_r2_pos_future": float(r2_pos_future),
+        "val_r2_rot_future": float(r2_rot_future),
+        "val_r2_finger_future": float(r2_finger_future),
+    }
 
 
 # ── Checkpointing ─────────────────────────────────────────────────────────────
@@ -229,25 +279,26 @@ def save_pretrained_full(
     preprocessor,
     postprocessor,
     save_dir: Path,
+    stats: dict | None = None,
 ):
     """Save model in LeRobot pretrained format + preprocessor stats.
 
-    Produces: config.json, model.safetensors, preprocessor_stats.pt
+    Produces: config.json, model.safetensors, and standard LeRobot preprocessor files.
     """
     save_dir.mkdir(parents=True, exist_ok=True)
 
     # LeRobot standard format
     policy.save_pretrained(save_dir)
 
-    # Save preprocessor stats separately (needed for inference)
-    stats_path = save_dir / "preprocessor_stats.pt"
-    torch.save(
-        {
-            "preprocessor_norm_stats": getattr(preprocessor, "norm_stats", None),
-            "postprocessor_norm_stats": getattr(postprocessor, "norm_stats", None),
-        },
-        stats_path,
-    )
+    # Save preprocessor / postprocessor in LeRobot standard format
+    # (creates stats files that from_pretrained / make_pre_post_processors can load)
+    preprocessor.save_pretrained(save_dir)
+    postprocessor.save_pretrained(save_dir)
+
+    # Also save raw dataset_stats dict for reference / debugging
+    if stats is not None:
+        stats_path = save_dir / "dataset_stats.pt"
+        torch.save(stats, stats_path)
 
     print(f"  Pretrained model saved → {save_dir}")
 
@@ -294,6 +345,9 @@ def _serializable_config(cfg: TrainConfig) -> dict:
         "kernel_size": cfg.kernel_size,
         "n_groups": cfg.n_groups,
         "diffusion_step_embed_dim": cfg.diffusion_step_embed_dim,
+        "num_inference_steps": cfg.num_inference_steps,
+        "noise_scheduler_type": cfg.noise_scheduler_type,
+        "prediction_type": cfg.prediction_type,
         "clip_fsr_pct": cfg.clip_fsr_pct,
         "stride": cfg.stride,
         "filter_enabled": cfg.filter_enabled,
@@ -301,6 +355,8 @@ def _serializable_config(cfg: TrainConfig) -> dict:
         "delta_percentile": cfg.delta_percentile,
         "delta_threshold": cfg.delta_threshold,
         "filter_ratio": cfg.filter_ratio,
+        "state_dim": cfg.state_dim,
+        "action_dim": cfg.action_dim,
     }
 
 
@@ -328,13 +384,31 @@ def train(cfg: TrainConfig, resume_from: Path | None = None):
     print(f"  Diffusion Policy Training — Finger Compliance Control")
     print(f"  Device: {DEVICE}  Steps: {cfg.training_steps}  Batch: {cfg.batch_size}")
     print(f"  Window: obs={cfg.n_obs_steps}  H={cfg.horizon}  act={cfg.n_action_steps}")
-    print(f"  UNet: {cfg.down_dims}  LR: {cfg.lr}")
+    print(
+        f"  UNet: {cfg.down_dims}  LR: {cfg.lr}  "
+        f"Diffusion: {cfg.noise_scheduler_type}/{cfg.prediction_type} "
+        f"inference_steps={cfg.num_inference_steps}"
+    )
     print(f"{'='*70}\n")
+
+    # ── Validate horizon constraint ──
+    min_horizon = cfg.n_obs_steps + cfg.n_action_steps - 1
+    if cfg.horizon < min_horizon:
+        raise ValueError(
+            f"horizon ({cfg.horizon}) must be >= n_obs_steps + n_action_steps - 1 "
+            f"({min_horizon}). LeRobot's generate_actions hardcodes slicing "
+            f"action[n_obs-1 : n_obs-1+n_action_steps], which would go out of bounds."
+        )
 
     # ── Data ──
     train_data, val_data = load_data(
         cfg.h5_path, cfg.stride, cfg.clip_fsr_pct, cfg.val_envs
     )
+    cfg.state_dim = int(train_data.state.shape[-1])
+    cfg.action_dim = int(train_data.action.shape[-1])
+    if val_data.state.shape[-1] != cfg.state_dim or val_data.action.shape[-1] != cfg.action_dim:
+        raise ValueError("Train/validation state or action dimensions differ")
+    print(f"  Model IO inferred from H5: state={cfg.state_dim} action={cfg.action_dim}")
     stats = compute_stats(train_data.state, train_data.action)
 
     filter_cfg = None
@@ -346,8 +420,16 @@ def train(cfg: TrainConfig, resume_from: Path | None = None):
             filter_ratio=cfg.filter_ratio,
         )
 
-    train_ds = FilteredWindowDataset(train_data, cfg.n_obs_steps, cfg.horizon, filter_cfg)
-    val_ds = FilteredWindowDataset(val_data, cfg.n_obs_steps, cfg.horizon, filter_cfg)
+    # 缓存路径: 基于 H5 路径 + 窗口/过滤参数生成唯一文件名, 避免重复计算
+    import hashlib, os
+    _cache_key = f"{cfg.h5_path}_{cfg.stride}_{cfg.n_obs_steps}_{cfg.horizon}_{cfg.min_fingers_in_contact}_{cfg.filter_ratio}_{cfg.min_action_norm}_{cfg.min_action_std}"
+    _cache_hash = hashlib.md5(_cache_key.encode()).hexdigest()[:12]
+    _cache_dir = os.path.join(os.path.dirname(cfg.h5_path), ".window_cache")
+    _train_cache = os.path.join(_cache_dir, f"train_{_cache_hash}.npz")
+    _val_cache = os.path.join(_cache_dir, f"val_{_cache_hash}.npz")
+
+    train_ds = FilteredWindowDataset(train_data, cfg.n_obs_steps, cfg.horizon, filter_cfg, cache_path=_train_cache)
+    val_ds = FilteredWindowDataset(val_data, cfg.n_obs_steps, cfg.horizon, filter_cfg, cache_path=_val_cache)
 
     train_dl = DataLoader(
         train_ds,
@@ -471,7 +553,7 @@ def train(cfg: TrainConfig, resume_from: Path | None = None):
                 val_loss = run_validation(policy, val_dl, preprocessor)
 
                 # Also compute action metrics
-                action_m = compute_action_metrics(
+                action_m = compute_q_metrics(
                     policy, val_dl, preprocessor,
                     n_action_steps=cfg.n_action_steps,
                 )
@@ -493,7 +575,9 @@ def train(cfg: TrainConfig, resume_from: Path | None = None):
                 print(
                     f"\n  Step {step:7d} | "
                     f"train_loss={train_avg:.5f}  val_loss={val_loss:.5f}  "
-                    f"R²={action_m['val_r2']:.4f}  MAE={action_m['val_mae']:.4f}  "
+                    f"R²(all)={action_m['val_r2']:.4f}  pos={action_m['val_r2_pos_future']:.4f}  "
+                    f"rot={action_m['val_r2_rot_future']:.4f}  "
+                    f"finger={action_m['val_r2_finger_future']:.4f}  MAE={action_m['val_mae']:.4f}  "
                     f"{status}"
                 )
 
@@ -506,7 +590,7 @@ def train(cfg: TrainConfig, resume_from: Path | None = None):
                 if is_best:
                     save_pretrained_full(
                         policy, preprocessor, postprocessor,
-                        save_dir / "pretrained",
+                        save_dir / "pretrained", stats=stats,
                     )
 
             # ── Periodic save ──
@@ -524,7 +608,7 @@ def train(cfg: TrainConfig, resume_from: Path | None = None):
     # ── Final save ──
     print("\n  Saving final model...")
     val_loss = run_validation(policy, val_dl, preprocessor)
-    action_m = compute_action_metrics(
+    action_m = compute_q_metrics(
         policy, val_dl, preprocessor, n_action_steps=cfg.n_action_steps
     )
     is_best = val_loss < best_val_loss
@@ -543,7 +627,7 @@ def train(cfg: TrainConfig, resume_from: Path | None = None):
         policy, optimizer, scaler, step, stats, cfg,# type: ignore
         save_dir, metrics=entry, is_best=is_best,
     )
-    save_pretrained_full(policy, preprocessor, postprocessor, save_dir / "pretrained")
+    save_pretrained_full(policy, preprocessor, postprocessor, save_dir / "pretrained", stats=stats)
 
     # Save metrics history
     with open(save_dir / "metrics.json", "w") as f:
@@ -581,16 +665,19 @@ def main():
     global DEVICE
 
     parser = argparse.ArgumentParser(
-        description="Train Diffusion Policy for finger compliance control"
+        description="Train Diffusion Policy for hierarchical palm/finger compliance control"
     )
     # Data
     parser.add_argument("--h5-path", type=str, default=str(H5_PATH))
-    parser.add_argument("--stride", type=int, default=1)
+    parser.add_argument("--stride", type=int, default=3,
+                       help="Temporal downsampling (1=100Hz, 3=~33Hz, 5=20Hz)")
     parser.add_argument("--clip-fsr-pct", type=float, default=99.9)
-    parser.add_argument("--val-envs", type=int, nargs="+", default=[62, 63])
+    parser.add_argument("--val-envs", type=int, nargs="+", default=[30, 31],
+                       help="Environment indices for validation split")
     # Window
     parser.add_argument("--n-obs-steps", type=int, default=16)
-    parser.add_argument("--horizon", type=int, default=16)
+    parser.add_argument("--horizon", type=int, default=24,
+                       help="Action horizon (must be >= n_obs_steps + n_action_steps - 1)")
     parser.add_argument("--n-action-steps", type=int, default=4)
     # Filter
     parser.add_argument("--no-filter", action="store_true",
@@ -603,6 +690,10 @@ def main():
                        help="Manual fsr_delta_norm threshold (overrides percentile)")
     parser.add_argument("--filter-ratio", type=float, default=0.7,
                        help="Fraction of window frames that must pass filter")
+    parser.add_argument("--min-action-norm", type=float, default=0.01,
+                       help="Min mean action L2-norm in window (remove static frames)")
+    parser.add_argument("--min-action-std", type=float, default=0.005,
+                       help="Min std of action L2-norm in window (remove static frames)")
     # Training
     parser.add_argument("--steps", type=int, default=100_000)
     parser.add_argument("--batch-size", type=int, default=256)
@@ -618,14 +709,28 @@ def main():
     # Model
     parser.add_argument("--small", action="store_true",
                        help="Use smaller UNet (64,128,256) for quick tests")
+    parser.add_argument("--down-dims", type=int, nargs="+", default=None,
+                       help="UNet down dims, e.g. '--down-dims 256 512 1024'")
+    parser.add_argument("--num-inference-steps", type=int, default=100,
+                       help="Reverse diffusion steps. Training uses 100 noise steps; use 100 for strict overfit tests")
+    parser.add_argument("--noise-scheduler", choices=["DDPM", "DDIM"], default="DDPM")
+    parser.add_argument("--prediction-type", choices=["epsilon", "sample"], default="sample",
+                       help="UNet target: added noise (standard DP) or the clean action trajectory")
     parser.add_argument("--device", type=str, default=DEVICE)
     parser.add_argument("--resume", type=str, default=None,
                        help="Path to checkpoint directory to resume from")
     args = parser.parse_args()
 
     DEVICE = args.device
+    if DEVICE == "cuda":
+        torch.backends.cudnn.benchmark = True
 
-    down_dims = (64, 128, 256) if args.small else (512, 1024, 2048)
+    if args.down_dims is not None:
+        down_dims = tuple(args.down_dims)
+    elif args.small:
+        down_dims = (64, 128, 256)
+    else:
+        down_dims = (256, 512, 1024)  # TrainConfig default
     diffusion_step_embed_dim = 64 if args.small else 128
 
     cfg = TrainConfig(
@@ -641,6 +746,8 @@ def main():
         delta_percentile=args.delta_percentile,
         delta_threshold=args.delta_threshold,
         filter_ratio=args.filter_ratio,
+        min_action_norm=args.min_action_norm,
+        min_action_std=args.min_action_std,
         training_steps=args.steps,
         batch_size=args.batch_size,
         lr=args.lr,
@@ -648,6 +755,9 @@ def main():
         grad_clip_norm=args.grad_clip,
         down_dims=down_dims,
         diffusion_step_embed_dim=diffusion_step_embed_dim,
+        num_inference_steps=args.num_inference_steps,
+        noise_scheduler_type=args.noise_scheduler,
+        prediction_type=args.prediction_type,
         log_interval=args.log_interval,
         val_interval=args.val_interval,
         save_interval=args.save_interval,

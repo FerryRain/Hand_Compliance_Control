@@ -46,7 +46,7 @@
     <geom friction="1.2 0.005 0.0001" solimp="0.8 0.9 0.01" solref="0.005 2.0" />
 
     <default class="fsr_adhesion">
-      <geom gap="0.02" contype="8" conaffinity="1"/>
+      <geom gap="0.0" contype="8" conaffinity="1"/>
     </default>
 
 
@@ -258,17 +258,17 @@
   </worldbody>
 
   <actuator>
-    <adhesion name="adhere_pip_1" body="pip_1_fsr" ctrlrange="0 1" gain="60"/>
-    <adhesion name="adhere_dip_1" body="dip_1_fsr" ctrlrange="0 1" gain="40"/>
-    <adhesion name="adhere_tip_1" body="tip_1_fsr" ctrlrange="0 1" gain="20"/>
-    <adhesion name="adhere_pip_2" body="pip_2_fsr" ctrlrange="0 1" gain="60"/>
-    <adhesion name="adhere_dip_2" body="dip_2_fsr" ctrlrange="0 1" gain="40"/>
-    <adhesion name="adhere_tip_2" body="tip_2_fsr" ctrlrange="0 1" gain="20"/>
-    <adhesion name="adhere_pip_3" body="pip_3_fsr" ctrlrange="0 1" gain="60"/>
-    <adhesion name="adhere_dip_3" body="dip_3_fsr" ctrlrange="0 1" gain="40"/>
-    <adhesion name="adhere_tip_3" body="tip_3_fsr" ctrlrange="0 1" gain="20"/>
-    <adhesion name="adhere_thumb_pip" body="thumb_pip_fsr" ctrlrange="0 1" gain="60"/>
-    <adhesion name="adhere_thumb_dip" body="thumb_dip_fsr" ctrlrange="0 1" gain="40"/>
-    <adhesion name="adhere_thumb_tip" body="thumb_tip_fsr" ctrlrange="0 1" gain="20"/>
+    <adhesion name="adhere_pip_1" body="pip_1_fsr" ctrlrange="0 1" gain="120"/>
+    <adhesion name="adhere_dip_1" body="dip_1_fsr" ctrlrange="0 1" gain="80"/>
+    <adhesion name="adhere_tip_1" body="tip_1_fsr" ctrlrange="0 1" gain="40"/>
+    <adhesion name="adhere_pip_2" body="pip_2_fsr" ctrlrange="0 1" gain="120"/>
+    <adhesion name="adhere_dip_2" body="dip_2_fsr" ctrlrange="0 1" gain="80"/>
+    <adhesion name="adhere_tip_2" body="tip_2_fsr" ctrlrange="0 1" gain="40"/>
+    <adhesion name="adhere_pip_3" body="pip_3_fsr" ctrlrange="0 1" gain="120"/>
+    <adhesion name="adhere_dip_3" body="dip_3_fsr" ctrlrange="0 1" gain="80"/>
+    <adhesion name="adhere_tip_3" body="tip_3_fsr" ctrlrange="0 1" gain="40"/>
+    <adhesion name="adhere_thumb_pip" body="thumb_pip_fsr" ctrlrange="0 1" gain="120"/>
+    <adhesion name="adhere_thumb_dip" body="thumb_dip_fsr" ctrlrange="0 1" gain="80"/>
+    <adhesion name="adhere_thumb_tip" body="thumb_tip_fsr" ctrlrange="0 1" gain="40"/>
   </actuator>
 </mujoco>

@@ -275,11 +275,25 @@ def qfrc_bias_arm(
     env: ManagerBasedRlEnv,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
-    """获取 arm 关节的静力学偏置力（重力+科氏力）。
+    """获取 arm 关节的静力学偏置力（重力+科氏力），支持多环境。
 
-    与 MCC 保持一致：在另一个独立 observer 中 qvel=0 得到纯重力偏置。
-    这里为了重用现有 env 的 mj_data，直接取 qfrc_bias（包含速度相关项）。
+    优先使用 warp 批量数据 (env.sim.data.struct.qfrc_bias)，
+    回退到单实例 mj_data（仅 num_envs=1 时）。
     """
+    # 多环境：从 warp struct 读取批量数据
+    if hasattr(env.sim, "data") and hasattr(env.sim.data, "struct"):
+        st = env.sim.data.struct
+        if hasattr(st, "qfrc_bias"):
+            bias = getattr(st, "qfrc_bias")
+            # warp 数组 → torch tensor
+            if not torch.is_tensor(bias):
+                bias = torch.as_tensor(
+                    bias.numpy(), device=env.device, dtype=torch.float32,
+                )
+            if bias.ndim == 1:
+                bias = bias.unsqueeze(0)
+            return bias[:, 0:6]
+    # 单环境回退
     if hasattr(env.sim, "mj_data"):
         bias = env.sim.mj_data.qfrc_bias
         bias_t = torch.as_tensor(bias, device=env.device, dtype=torch.float32)

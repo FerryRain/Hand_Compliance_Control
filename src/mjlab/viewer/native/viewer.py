@@ -442,7 +442,12 @@ class NativeMujocoViewer(BaseViewer):
     """Close viewer and cleanup."""
     v = self.viewer
     self.viewer = None
-    if v:
+    # Clicking the window's X lets GLFW/MuJoCo's render thread destroy the
+    # native GLX context first. Calling Handle.close() again after
+    # is_running() became false can issue a second glXDestroyContext and abort
+    # the whole process with GLXBadContext. For programmatic/Ctrl-C shutdown
+    # the handle is still running, so close it normally.
+    if v and v.is_running():
       v.close()
     self.log("[INFO] MuJoCo viewer closed", VerbosityLevel.INFO)
 
