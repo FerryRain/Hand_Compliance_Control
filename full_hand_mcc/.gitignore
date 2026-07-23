@@ -1,0 +1,5 @@
+__pycache__/
+*.py[cod]
+output/
+outputs/*
+!outputs/full_hand_mcc_surface_slide_final.mp4

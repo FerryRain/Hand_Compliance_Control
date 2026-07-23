@@ -1,10 +1,8 @@
 import os
 import select
 import sys
-import termios
 import threading
 import time
-import tty
 import warnings
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable, Optional, Sequence
@@ -12,6 +10,13 @@ from typing import Any, Callable, Iterable, Optional, Sequence
 import numpy as np
 import numpy.typing as npt
 import yaml
+
+try:
+    import termios
+    import tty
+except ImportError:
+    termios = None
+    tty = None
 
 AXIS_BINDINGS = {
     "w": (0, +1),
@@ -504,6 +509,13 @@ class KeyboardListener:
     def start(self) -> bool:
         if self._thread is not None:
             return True
+        if termios is None or tty is None:
+            warnings.warn(
+                "Keyboard teleop disabled: Unix terminal control is unavailable.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            return False
         if not sys.stdin.isatty():
             warnings.warn(
                 "Keyboard teleop disabled: stdin is not a TTY.",
@@ -603,6 +615,14 @@ class KeyboardControlReceiver:
         if not sys.stdin.isatty():
             warnings.warn(
                 f"{self.name} keyboard control disabled: stdin is not a TTY.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            return
+        if termios is None or tty is None:
+            warnings.warn(
+                f"{self.name} keyboard control disabled: Unix terminal control "
+                "is unavailable.",
                 RuntimeWarning,
                 stacklevel=2,
             )
