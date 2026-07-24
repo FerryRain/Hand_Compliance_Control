@@ -192,7 +192,7 @@ def _load_fixed_palm_mcc_hand_spec() -> mujoco.MjSpec:
 
 
 def _tip_sensor_cfgs() -> tuple[ContactSensorCfg, ...]:
-    return tuple(
+    tip_sensors = tuple(
         ContactSensorCfg(
             name=f"{site_name}_contact",
             # Read the exact 3-D contact resultant on the visible fingertip geom.
@@ -205,6 +205,45 @@ def _tip_sensor_cfgs() -> tuple[ContactSensorCfg, ...]:
         )
         for site_name, geom_name in zip(MCC_TIP_NAMES, MCC_TIP_GEOM_NAMES)
     )
+    arm_object_guard = ContactSensorCfg(
+        name="arm_object_collision",
+        primary=ContactMatch(
+            mode="geom",
+            pattern=r"^(?:base_collision|link[1-6]_collision)$",
+            entity="robot",
+        ),
+        secondary=ContactMatch(
+            mode="body",
+            pattern=r"^target_ball$",
+            entity="target",
+        ),
+        fields=("found", "force", "dist", "pos", "normal"),
+        reduce="none",
+        num_slots=1,
+    )
+    non_tip_hand_object_guard = ContactSensorCfg(
+        name="non_tip_hand_object_collision",
+        primary=ContactMatch(
+            mode="geom",
+            pattern=(
+                r"^(?:palm_lower_collision|"
+                r"mcp_joint(?:_[23])?_geom|"
+                r"pip(?:_[234])?_geom|"
+                r"dip(?:_[23])?_geom|"
+                r"thumb_(?:pip|dip)_geom)$"
+            ),
+            entity="robot",
+        ),
+        secondary=ContactMatch(
+            mode="body",
+            pattern=r"^target_ball$",
+            entity="target",
+        ),
+        fields=("found", "force", "dist", "pos", "normal"),
+        reduce="none",
+        num_slots=1,
+    )
+    return (*tip_sensors, arm_object_guard, non_tip_hand_object_guard)
 
 
 def fingertip_force_3d_world(env: ManagerBasedRlEnv) -> torch.Tensor:

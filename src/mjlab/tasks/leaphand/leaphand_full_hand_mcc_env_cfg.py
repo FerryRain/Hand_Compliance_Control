@@ -38,6 +38,7 @@ from mjlab.tasks.leaphand.full_hand_mcc_core import (
 from mjlab.tasks.leaphand.leaphand_mcc_finger_env_cfg import (
     DEFAULT_PREGRASP_Q,
     MCC_TARGET_ARM_Q,
+    MCC_TIP_BODY_NAMES,
     MCC_TIP_GEOM_NAMES,
     MCC_TIP_NAMES,
     _LEAPHAND_XML as _TACTILE_ROBOT_XML,
@@ -66,6 +67,29 @@ PALM_CONTROL_SITE = "full_hand_palm_contact"
 PALM_CONTROL_OFFSET_LOCAL = (-0.0559703, -0.04142053, -0.0340008)
 FULL_HAND_CAPSULE_RADIUS = 0.02
 FULL_HAND_CAPSULE_HALF_HEIGHT = 0.235
+FULL_HAND_OBJECT_SHAPE = "capsule"
+FULL_HAND_COLLISION_MODE = "full_robot"
+FULL_HAND_HIGHLIGHT_THUMB = True
+# The legacy tactile model places each tip FSR on the local -X face of its
+# fingertip body.  This is the physical finger-pad outward normal; the
+# opposite +X face is the nail/back side.
+MCC_TIP_PAD_NORMAL_LOCAL = np.asarray(
+    ((-1.0, 0.0, 0.0),) * 4,
+    dtype=np.float64,
+)
+# The standalone LeapHand model and the hand attached to xArm describe the
+# same palm frame with different axes.  For any vector, attached-palm
+# coordinates are R @ fixed-palm coordinates.  Omitting this proper rotation
+# made the fixed-palm MCC's inward correction point outward for the middle and
+# ring fingers.
+FIXED_TO_ATTACHED_PALM_ROTATION = np.asarray(
+    (
+        (0.0, 1.0, 0.0),
+        (1.0, 0.0, 0.0),
+        (0.0, 0.0, -1.0),
+    ),
+    dtype=np.float64,
+)
 HAND_QPOS_NAMES = (
     "1", "0", "2", "3",
     "5", "4", "6", "7",
@@ -74,33 +98,64 @@ HAND_QPOS_NAMES = (
 )
 
 
+def _configure_full_hand_target_geom(geom) -> None:
+    """Apply the selected axisymmetric test surface to an MjSpec geom."""
+
+    if FULL_HAND_OBJECT_SHAPE == "capsule":
+        geom.type = mujoco.mjtGeom.mjGEOM_CAPSULE
+        geom.size[:] = (
+            FULL_HAND_CAPSULE_RADIUS,
+            FULL_HAND_CAPSULE_HALF_HEIGHT,
+            0.0,
+        )
+    elif FULL_HAND_OBJECT_SHAPE == "ellipsoid":
+        geom.type = mujoco.mjtGeom.mjGEOM_ELLIPSOID
+        geom.size[:] = (
+            FULL_HAND_CAPSULE_RADIUS,
+            FULL_HAND_CAPSULE_RADIUS,
+            FULL_HAND_CAPSULE_HALF_HEIGHT,
+        )
+    else:
+        raise ValueError(
+            f"Unsupported full-hand object shape: {FULL_HAND_OBJECT_SHAPE!r}"
+        )
+
+
 def _get_full_hand_contact_target_spec() -> mujoco.MjSpec:
-    """Use a capsule that collides only with the four tactile fingertip pads."""
+    """Use the selected surface with a dedicated robot/object collision bit."""
 
     spec = _get_hard_contact_target_spec()
     geom = spec.geom("target_capsule_medium_geom")
     if geom is None:
         raise ValueError("target_capsule_medium_geom is missing")
-    geom.size[:] = (
-        FULL_HAND_CAPSULE_RADIUS,
-        FULL_HAND_CAPSULE_HALF_HEIGHT,
-        0.0,
-    )
-    # Dedicated target collision bit.  Non-tip robot geoms retain the default
-    # bit 1, while the four tactile pads opt into bit 2 below.
+    _configure_full_hand_target_geom(geom)
+    # Dedicated target collision bit.  Every physical robot geom opts into
+    # this bit below.  This keeps terrain/self collision filtering unchanged
+    # while making arm, palm, and non-tip finger collisions physically real.
     geom.contype = 2
     geom.conaffinity = 0
     return spec
 
 
 def _load_full_hand_robot_spec() -> mujoco.MjSpec:
-    """Enable target collision only on the four measured fingertip geoms."""
+    """Configure staged fingertip-only or complete-robot target collision."""
 
     spec = _load_mcc_leaphand_spec()
     fingertip_geoms = set(MCC_TIP_GEOM_NAMES)
     found: set[str] = set()
     for geom in spec.geoms:
         name = geom.name or ""
+        if FULL_HAND_HIGHLIGHT_THUMB and name.startswith("thumb_"):
+            geom.rgba = (
+                (0.95, 0.18, 1.0, 1.0)
+                if name == "thumb_fingertip_geom"
+                else (0.48, 0.16, 0.68, 1.0)
+            )
+        if (
+            FULL_HAND_COLLISION_MODE == "full_robot"
+            and (geom.contype != 0 or geom.conaffinity != 0)
+        ):
+            geom.conaffinity = int(geom.conaffinity) | 2
         if name in fingertip_geoms:
             geom.conaffinity = int(geom.conaffinity) | 2
             found.add(name)
@@ -165,14 +220,22 @@ def full_hand_mcc_env_cfg(
     hand_actuator.stiffness = 35.0
     hand_actuator.damping = 2.5
     hand_actuator.effort_limit = 35.0
+    # Entity joint selectors are regular expressions. Bare numeric names such
+    # as "1" also match "10".."15", silently copying the index-finger value
+    # into six later joints. Remove those ambiguous keys and use anchors.
+    for ambiguous_name in (
+        *(f"joint{joint_id}" for joint_id in range(1, 7)),
+        *HAND_QPOS_NAMES,
+    ):
+        robot_cfg.init_state.joint_pos.pop(ambiguous_name, None)
     robot_cfg.init_state.joint_pos.update(
         {
             **{
-                f"joint{joint_id + 1}": float(value)
+                f"^joint{joint_id + 1}$": float(value)
                 for joint_id, value in enumerate(MCC_TARGET_ARM_Q)
             },
             **{
-                joint_name: float(value)
+                f"^{joint_name}$": float(value)
                 for joint_name, value in zip(
                     HAND_QPOS_NAMES, DEFAULT_PREGRASP_Q, strict=True
                 )
@@ -276,6 +339,9 @@ class PalmPoseResult(NamedTuple):
 
 def _spec_with_palm_contact_site() -> mujoco.MjSpec:
     spec = _load_mcc_leaphand_spec()
+    for geom in spec.geoms:
+        if geom.contype != 0 or geom.conaffinity != 0:
+            geom.conaffinity = int(geom.conaffinity) | 2
     palm = spec.body("palm_lower")
     if palm is None:
         raise ValueError("palm_lower is missing from the xArm6 + LEAP model")
@@ -287,6 +353,20 @@ def _spec_with_palm_contact_site() -> mujoco.MjSpec:
             size=(0.004, 0.0, 0.0),
             rgba=(0.2, 1.0, 0.2, 0.8),
         )
+    collision_target = spec.worldbody.add_body(
+        name="planner_collision_target",
+        mocap=True,
+        pos=(10.0, 10.0, 10.0),
+    )
+    collision_geom = collision_target.add_geom(
+        name="planner_collision_target_geom",
+        type=mujoco.mjtGeom.mjGEOM_CAPSULE,
+        size=(FULL_HAND_CAPSULE_RADIUS, FULL_HAND_CAPSULE_HALF_HEIGHT, 0.0),
+        contype=2,
+        conaffinity=0,
+        mass=1.0,
+    )
+    _configure_full_hand_target_geom(collision_geom)
     return spec
 
 
@@ -329,6 +409,62 @@ class FivePointReachabilitySolver:
         )
         if self.palm_body_id < 0:
             raise ValueError("palm_lower body is missing from the reachability model")
+        self.collision_target_geom_id = mujoco.mj_name2id(
+            self.model,
+            mujoco.mjtObj.mjOBJ_GEOM,
+            "planner_collision_target_geom",
+        )
+        collision_target_body_id = mujoco.mj_name2id(
+            self.model,
+            mujoco.mjtObj.mjOBJ_BODY,
+            "planner_collision_target",
+        )
+        if self.collision_target_geom_id < 0 or collision_target_body_id < 0:
+            raise ValueError("Planner collision target is missing")
+        self.collision_target_mocap_id = int(
+            self.model.body_mocapid[collision_target_body_id]
+        )
+        fingertip_geoms = set(MCC_TIP_GEOM_NAMES)
+        self.tip_geom_ids = np.asarray(
+            [
+                mujoco.mj_name2id(
+                    self.model,
+                    mujoco.mjtObj.mjOBJ_GEOM,
+                    name,
+                )
+                for name in MCC_TIP_GEOM_NAMES
+            ],
+            dtype=np.int32,
+        )
+        if np.any(self.tip_geom_ids < 0):
+            raise ValueError("One or more fingertip collision geoms are missing")
+        self.tip_body_ids = np.asarray(
+            [
+                mujoco.mj_name2id(
+                    self.model,
+                    mujoco.mjtObj.mjOBJ_BODY,
+                    name,
+                )
+                for name in MCC_TIP_BODY_NAMES
+            ],
+            dtype=np.int32,
+        )
+        if np.any(self.tip_body_ids < 0):
+            raise ValueError("One or more fingertip bodies are missing")
+        self.non_tip_geom_ids = np.asarray(
+            [
+                geom_id
+                for geom_id in range(self.model.ngeom)
+                if geom_id != self.collision_target_geom_id
+                and (
+                    self.model.geom(geom_id).name or ""
+                ) not in fingertip_geoms
+                and (
+                    self.model.geom(geom_id).name or ""
+                )
+            ],
+            dtype=np.int32,
+        )
 
         joint_names = tuple(f"joint{i}" for i in range(1, 7)) + HAND_QPOS_NAMES
         self.qpos_indices: list[int] = []
@@ -369,6 +505,163 @@ class FivePointReachabilitySolver:
         return (
             self.data.xpos[self.palm_body_id].copy(),
             self.data.xmat[self.palm_body_id].reshape(3, 3).copy(),
+        )
+
+    def fingertip_pad_normals(
+        self,
+        joint_position: np.ndarray,
+    ) -> np.ndarray:
+        """Return the four physical finger-pad outward normals in world axes."""
+
+        self.forward_points(joint_position)
+        return np.asarray(
+            [
+                self.data.xmat[int(body_id)].reshape(3, 3)
+                @ local_normal
+                for body_id, local_normal in zip(
+                    self.tip_body_ids,
+                    MCC_TIP_PAD_NORMAL_LOCAL,
+                    strict=True,
+                )
+            ],
+            dtype=np.float64,
+        )
+
+    def minimum_non_tip_clearance(
+        self,
+        joint_position: np.ndarray,
+        object_center: np.ndarray,
+        object_rotation: np.ndarray,
+        distance_limit: float = 1.0,
+    ) -> tuple[float, str]:
+        """Return signed clearance from the capsule to any non-tip robot geom."""
+
+        center = np.asarray(object_center, dtype=np.float64).reshape(3)
+        rotation = np.asarray(object_rotation, dtype=np.float64).reshape(3, 3)
+        quat_xyzw = R.from_matrix(rotation).as_quat()
+        self.data.mocap_pos[self.collision_target_mocap_id] = center
+        self.data.mocap_quat[self.collision_target_mocap_id] = np.roll(
+            quat_xyzw, 1
+        )
+        self.forward_points(joint_position)
+        best_distance = float(distance_limit)
+        best_name = ""
+        for geom_id in self.non_tip_geom_ids:
+            distance = float(
+                mujoco.mj_geomDistance(
+                    self.model,
+                    self.data,
+                    int(geom_id),
+                    self.collision_target_geom_id,
+                    distance_limit,
+                    None,
+                )
+            )
+            if distance < best_distance:
+                best_distance = distance
+                best_name = self.model.geom(int(geom_id)).name or ""
+        return best_distance, best_name
+
+    def geometry_clearances(
+        self,
+        joint_position: np.ndarray,
+        object_center: np.ndarray,
+        object_rotation: np.ndarray,
+        distance_limit: float = 1.0,
+    ) -> tuple[np.ndarray, np.ndarray, tuple[str, ...]]:
+        """Return signed tip and non-tip distances to the planning capsule."""
+
+        center = np.asarray(object_center, dtype=np.float64).reshape(3)
+        rotation = np.asarray(object_rotation, dtype=np.float64).reshape(3, 3)
+        quat_xyzw = R.from_matrix(rotation).as_quat()
+        self.data.mocap_pos[self.collision_target_mocap_id] = center
+        self.data.mocap_quat[self.collision_target_mocap_id] = np.roll(
+            quat_xyzw, 1
+        )
+        self.forward_points(joint_position)
+
+        def distances(geom_ids: np.ndarray) -> np.ndarray:
+            return np.asarray(
+                [
+                    mujoco.mj_geomDistance(
+                        self.model,
+                        self.data,
+                        int(geom_id),
+                        self.collision_target_geom_id,
+                        distance_limit,
+                        None,
+                    )
+                    for geom_id in geom_ids
+                ],
+                dtype=np.float64,
+            )
+
+        non_tip_names = tuple(
+            self.model.geom(int(geom_id)).name or ""
+            for geom_id in self.non_tip_geom_ids
+        )
+        return (
+            distances(self.tip_geom_ids),
+            distances(self.non_tip_geom_ids),
+            non_tip_names,
+        )
+
+    def self_collision_contacts(
+        self,
+        joint_position: np.ndarray,
+    ) -> tuple[tuple[tuple[int, int], ...], np.ndarray]:
+        """Return active robot/robot contact pairs with the target moved away."""
+
+        self.data.mocap_pos[self.collision_target_mocap_id] = (
+            5.0,
+            5.0,
+            5.0,
+        )
+        self.forward_points(joint_position)
+        pairs: list[tuple[int, int]] = []
+        distances: list[float] = []
+        for contact_id in range(self.data.ncon):
+            contact = self.data.contact[contact_id]
+            geom1 = int(contact.geom1)
+            geom2 = int(contact.geom2)
+            body1 = int(self.model.geom_bodyid[geom1])
+            body2 = int(self.model.geom_bodyid[geom2])
+            if body1 == 0 or body2 == 0:
+                continue
+            if (
+                geom1 == self.collision_target_geom_id
+                or geom2 == self.collision_target_geom_id
+            ):
+                continue
+            pair = tuple(sorted((geom1, geom2)))
+            if pair in pairs:
+                continue
+            pairs.append(pair)
+            distances.append(float(contact.dist))
+        return tuple(pairs), np.asarray(distances, dtype=np.float64)
+
+    def geometry_pair_distances(
+        self,
+        joint_position: np.ndarray,
+        geom_pairs: tuple[tuple[int, int], ...],
+        distance_limit: float = 0.03,
+    ) -> np.ndarray:
+        """Return signed distances for a fixed set of self-collision pairs."""
+
+        self.forward_points(joint_position)
+        return np.asarray(
+            [
+                mujoco.mj_geomDistance(
+                    self.model,
+                    self.data,
+                    geom1,
+                    geom2,
+                    distance_limit,
+                    None,
+                )
+                for geom1, geom2 in geom_pairs
+            ],
+            dtype=np.float64,
         )
 
     def solve_palm_pose(
@@ -547,6 +840,135 @@ class FivePointReachabilitySolver:
             iterations,
         )
 
+    def solve_fingertips_fixed_arm(
+        self,
+        target_points: np.ndarray,
+        seed_joint_position: np.ndarray,
+        tolerance: float = 2.5e-4,
+    ) -> ReachabilityResult:
+        """Solve four fingertip targets using only the 16 hand joints.
+
+        This is the appropriate warm start for surface MPC states whose palm
+        travel ratio is zero.  The generic five-point solver intentionally
+        stops once it reaches its runtime IK tolerance (normally several
+        millimetres), which creates a no-motion dead zone for small MPC
+        increments.  Here the six arm joints are held exactly fixed and the
+        tighter seed tolerance forces real fingertip articulation.
+        """
+
+        targets = np.asarray(target_points, dtype=np.float64).reshape(5, 3)
+        q = np.asarray(seed_joint_position, dtype=np.float64).reshape(22).copy()
+        q = np.minimum(np.maximum(q, self.lower), self.upper)
+        fixed_arm = q[:6].copy()
+        posture_anchor = q[6:].copy()
+        best_q = q.copy()
+        best_points = self.forward_points(q)
+        tip_error = (targets[1:] - best_points[1:]).ravel()
+        best_cost = float(tip_error @ tip_error)
+        iterations = 0
+        hand_dofs = self.dof_indices_np[6:]
+        damping = max(0.05 * self.damping, 1.0e-6)
+        regularization = min(self.posture_regularization, 1.0e-7)
+
+        for iterations in range(1, self.max_iterations + 1):
+            points = self.forward_points(q)
+            error = (targets[1:] - points[1:]).ravel()
+            tip_residual = np.linalg.norm(error.reshape(4, 3), axis=1)
+            if float(tip_residual.max()) <= tolerance:
+                residual = np.concatenate(
+                    (
+                        np.asarray(
+                            [np.linalg.norm(targets[0] - points[0])],
+                            dtype=np.float64,
+                        ),
+                        tip_residual,
+                    )
+                )
+                return ReachabilityResult(
+                    True,
+                    q,
+                    points,
+                    residual,
+                    iterations,
+                )
+
+            jacobian_blocks: list[np.ndarray] = []
+            for site_id in self.site_ids[1:]:
+                jacp = np.zeros((3, self.model.nv), dtype=np.float64)
+                jacr = np.zeros((3, self.model.nv), dtype=np.float64)
+                mujoco.mj_jacSite(
+                    self.model,
+                    self.data,
+                    jacp,
+                    jacr,
+                    int(site_id),
+                )
+                jacobian_blocks.append(jacp[:, hand_dofs])
+            jacobian = np.vstack(jacobian_blocks)
+            lhs = jacobian.T @ jacobian
+            lhs += (damping + regularization) * np.eye(16)
+            rhs = (
+                jacobian.T @ error
+                - regularization * (q[6:] - posture_anchor)
+            )
+            dq_hand = np.linalg.solve(lhs, rhs)
+            dq_hand = np.clip(
+                dq_hand,
+                -self.max_joint_step,
+                self.max_joint_step,
+            )
+
+            accepted_step = False
+            scale = 1.0
+            while scale >= 1.0 / 64.0:
+                candidate = q.copy()
+                candidate[:6] = fixed_arm
+                candidate[6:] += scale * dq_hand
+                candidate = np.minimum(
+                    np.maximum(candidate, self.lower),
+                    self.upper,
+                )
+                candidate[:6] = fixed_arm
+                candidate_points = self.forward_points(candidate)
+                candidate_error = (
+                    targets[1:] - candidate_points[1:]
+                ).ravel()
+                candidate_cost = float(
+                    candidate_error @ candidate_error
+                    + regularization
+                    * np.sum((candidate[6:] - posture_anchor) ** 2)
+                )
+                if candidate_cost < best_cost:
+                    q = candidate
+                    best_q = candidate.copy()
+                    best_points = candidate_points.copy()
+                    best_cost = candidate_cost
+                    accepted_step = True
+                    break
+                scale *= 0.5
+            if not accepted_step:
+                break
+
+        residual = np.concatenate(
+            (
+                np.asarray(
+                    [np.linalg.norm(targets[0] - best_points[0])],
+                    dtype=np.float64,
+                ),
+                np.linalg.norm(
+                    targets[1:] - best_points[1:],
+                    axis=1,
+                ),
+            )
+        )
+        return ReachabilityResult(
+            bool(float(residual.max()) <= tolerance),
+            best_q,
+            best_points,
+            residual,
+            iterations,
+        )
+
 
 class MotorForceFingerMCCController:
     """Four fingertip MCC driven by all 16 measured motor torque residuals."""
@@ -579,6 +1001,12 @@ class MotorForceFingerMCCController:
         self.normal_preload_m = float(
             kwargs.get("finger_normal_preload_m", 0.0015)
         )
+        self.normal_preload_scales = np.asarray(
+            kwargs.get("finger_normal_preload_scales", np.ones(4)),
+            dtype=np.float64,
+        ).reshape(4)
+        if np.any(self.normal_preload_scales < 0.0):
+            raise ValueError("finger normal preload scales cannot be negative")
         self.normal_compliance_m_per_n = float(
             kwargs.get("finger_normal_compliance_m_per_n", 0.00035)
         )
@@ -588,6 +1016,41 @@ class MotorForceFingerMCCController:
         self.model = _load_fixed_palm_mcc_hand_spec().compile()
         self.data = mujoco.MjData(self.model)
         self.config = mink.Configuration(self.model)
+        # The environment/action order is HAND_QPOS_NAMES, whereas MuJoCo's
+        # compiled fixed-palm model stores qpos/dofs in XML tree order.  They
+        # are not interchangeable (notably the first two axes of the three
+        # non-thumb fingers are swapped).  Keep every fixed-palm Jacobian and
+        # configuration conversion explicitly in action order.
+        self.hand_qpos_indices = np.asarray(
+            [
+                int(
+                    self.model.jnt_qposadr[
+                        mujoco.mj_name2id(
+                            self.model,
+                            mujoco.mjtObj.mjOBJ_JOINT,
+                            name,
+                        )
+                    ]
+                )
+                for name in HAND_QPOS_NAMES
+            ],
+            dtype=np.int32,
+        )
+        self.hand_dof_indices = np.asarray(
+            [
+                int(
+                    self.model.jnt_dofadr[
+                        mujoco.mj_name2id(
+                            self.model,
+                            mujoco.mjtObj.mjOBJ_JOINT,
+                            name,
+                        )
+                    ]
+                )
+                for name in HAND_QPOS_NAMES
+            ],
+            dtype=np.int32,
+        )
         self.tip_ids = np.asarray(
             [
                 mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, name)
@@ -610,8 +1073,30 @@ class MotorForceFingerMCCController:
 
         self.world_model = _load_mcc_leaphand_spec().compile()
         self.world_data = mujoco.MjData(self.world_model)
+        world_joint_names = (
+            tuple(f"joint{i}" for i in range(1, 7))
+            + HAND_QPOS_NAMES
+        )
+        self.world_qpos_indices = np.asarray(
+            [
+                int(
+                    self.world_model.jnt_qposadr[
+                        mujoco.mj_name2id(
+                            self.world_model,
+                            mujoco.mjtObj.mjOBJ_JOINT,
+                            name,
+                        )
+                    ]
+                )
+                for name in world_joint_names
+            ],
+            dtype=np.int32,
+        )
         self.world_palm_id = mujoco.mj_name2id(
             self.world_model, mujoco.mjtObj.mjOBJ_BODY, "palm_lower"
+        )
+        self.fixed_to_attached_palm_rotation = (
+            FIXED_TO_ATTACHED_PALM_ROTATION.copy()
         )
         gains = FullHandMCCGains(
             dt=self.control_dt,
@@ -648,12 +1133,14 @@ class MotorForceFingerMCCController:
         self.motor_force_setpoint = np.maximum(baseline, 0.1)
 
     def _set_hand_q(self, q_hand: np.ndarray) -> None:
-        self.data.qpos[:] = q_hand
+        self.data.qpos[:] = 0.0
+        self.data.qpos[self.hand_qpos_indices] = q_hand
         self.data.qvel[:] = 0.0
         mujoco.mj_forward(self.model, self.data)
 
     def _world_palm_pose(self, q_full: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        self.world_data.qpos[:] = q_full
+        self.world_data.qpos[:] = 0.0
+        self.world_data.qpos[self.world_qpos_indices] = q_full
         self.world_data.qvel[:] = 0.0
         mujoco.mj_forward(self.world_model, self.world_data)
         return (
@@ -668,7 +1155,7 @@ class MotorForceFingerMCCController:
             jacp = np.zeros((3, self.model.nv), dtype=np.float64)
             jacr = np.zeros((3, self.model.nv), dtype=np.float64)
             mujoco.mj_jacSite(self.model, self.data, jacp, jacr, int(site_id))
-            jacobians.append(jacp.copy())
+            jacobians.append(jacp[:, self.hand_dof_indices].copy())
         return positions, jacobians
 
     def _motor_torque_to_tip_forces(
@@ -712,7 +1199,13 @@ class MotorForceFingerMCCController:
         batch = q_full_batch.shape[0]
 
         palm_actual_local_batch = np.broadcast_to(
-            np.asarray(PALM_CONTROL_OFFSET_LOCAL, dtype=np.float64),
+            (
+                self.fixed_to_attached_palm_rotation.T
+                @ np.asarray(
+                    PALM_CONTROL_OFFSET_LOCAL,
+                    dtype=np.float64,
+                )
+            ),
             (batch, 1, 3),
         ).copy()
         palm_desired_local_batch = np.zeros((batch, 1, 3))
@@ -731,18 +1224,24 @@ class MotorForceFingerMCCController:
             self._set_hand_q(q_full[6:22])
             positions, jacobians = self._tip_positions_and_jacobians()
             palm_origin, palm_rotation = self._world_palm_pose(q_full)
+            world_to_fixed = (
+                self.fixed_to_attached_palm_rotation.T
+                @ palm_rotation.T
+            )
             actual_local_batch[env_id] = positions
             desired_local_batch[env_id] = (
-                palm_rotation.T @ (targets_world[env_id] - palm_origin).T
+                world_to_fixed
+                @ (targets_world[env_id] - palm_origin).T
             ).T
             palm_desired_local_batch[env_id, 0] = (
-                palm_rotation.T @ (palm_target_np[env_id] - palm_origin)
+                world_to_fixed
+                @ (palm_target_np[env_id] - palm_origin)
             )
             normals_local_batch[env_id] = (
-                palm_rotation.T @ normals_world[env_id].T
+                world_to_fixed @ normals_world[env_id].T
             ).T
             palm_normals_local_batch[env_id, 0] = (
-                palm_rotation.T @ palm_normal_np[env_id]
+                world_to_fixed @ palm_normal_np[env_id]
             )
             palm_force_local_batch[env_id, 0] = (
                 self.core.gains.desired_palm_force
@@ -771,7 +1270,8 @@ class MotorForceFingerMCCController:
         ik_local_batch = np.zeros((batch, 4, 3), dtype=np.float32)
         for env_id in range(batch):
             q_hand = q_full_batch[env_id, 6:22]
-            self.config.data.qpos[:] = q_hand
+            self.config.data.qpos[:] = 0.0
+            self.config.data.qpos[self.hand_qpos_indices] = q_hand
             mujoco.mj_forward(self.config.model, self.config.data)
             self.posture_task.set_target_from_configuration(self.config)
             for task, target, site_id in zip(
@@ -793,7 +1293,9 @@ class MotorForceFingerMCCController:
                     limits=self.limits,
                 )
                 self.config.integrate_inplace(velocity, self.control_dt)
-            q_ref = self.config.data.qpos.copy()
+            q_ref = self.config.data.qpos[
+                self.hand_qpos_indices
+            ].copy()
 
             if self.variant == "motor_torque_mcc":
                 desired_external_tau = np.zeros(16, dtype=np.float64)
@@ -822,11 +1324,15 @@ class MotorForceFingerMCCController:
                     normals_local_batch[env_id],
                     forces_local_batch[env_id],
                 )):
+                    finger_preload_m = (
+                        self.normal_preload_m
+                        * self.normal_preload_scales[finger]
+                    )
                     desired_force = self.motor_force_setpoint[finger]
                     measured_normal = abs(float(np.dot(measured_force, normal)))
                     force_error = desired_force - measured_normal
                     normal_displacement = (
-                        self.normal_preload_m
+                        finger_preload_m
                         + self.normal_compliance_m_per_n * force_error
                     )
                     # Map the requested inward pad displacement through the
@@ -840,7 +1346,7 @@ class MotorForceFingerMCCController:
                     normal_displacement = np.clip(
                         normal_displacement,
                         -self.max_release_correction * 0.10,
-                        self.normal_preload_m
+                        finger_preload_m
                         + self.nominal_tracking_radius * 0.10,
                     )
                     target_displacement = -normal_displacement * normal
@@ -954,6 +1460,9 @@ class FullHandMCCController:
         self.arm_mcc_correction_limit = float(
             kwargs.get("arm_mcc_correction_limit", 0.012)
         )
+        self.arm_force_feedback_gain = float(
+            kwargs.get("arm_force_feedback_gain", 3.0e-4)
+        )
         palm_kwargs = dict(kwargs)
         palm_kwargs["f_desired_normal"] = float(
             kwargs.get("palm_desired_force", 3.0)
@@ -980,6 +1489,7 @@ class FullHandMCCController:
         self.last_debug: dict[str, torch.Tensor] = {}
         self._previous_action: torch.Tensor | None = None
         self._arm_anchor: torch.Tensor | None = None
+        self._arm_external_torque_setpoint: torch.Tensor | None = None
 
     def _skip_legacy_palm_preparation(self) -> None:
         """Start MCC at the validated five-contact pose, not the old retreat pose."""
@@ -993,6 +1503,25 @@ class FullHandMCCController:
         self.fingers.reset()
         self._previous_action = None
         self._arm_anchor = None
+        self._arm_external_torque_setpoint = None
+
+    @staticmethod
+    def _arm_external_torque(palm_obs: torch.Tensor) -> torch.Tensor:
+        """Estimate six external joint torques from actuator/bias residuals."""
+
+        actuator_torque = palm_obs[:, 28:34]
+        bias_torque = palm_obs[:, 34:40]
+        return -(actuator_torque - bias_torque)
+
+    def calibrate_arm_force_setpoint(
+        self,
+        palm_obs: torch.Tensor,
+    ) -> None:
+        """Capture the loaded four-contact arm torque as the MCC setpoint."""
+
+        self._arm_external_torque_setpoint = (
+            self._arm_external_torque(palm_obs).detach().clone()
+        )
 
     def __call__(
         self,
@@ -1025,42 +1554,34 @@ class FullHandMCCController:
         tracking_points = (
             kinematic_points if kinematic_points is not None else contact_points
         )
-        current_rotvec = palm_obs[:, 79:82].detach().cpu().numpy()
-        normals_np = surface_normals[:, 0].detach().cpu().numpy()
-        palm_target = np.zeros((contact_points.shape[0], 6), dtype=np.float32)
-        for env_id in range(contact_points.shape[0]):
-            # Preserve the live palm orientation.  Reorienting local +Z to an
-            # arbitrary surface normal can demand a large coupled arm motion
-            # even when the contact site itself is already close to target.
-            palm_target[env_id, 3:] = current_rotvec[env_id]
-            target_rotation = R.from_rotvec(
-                palm_target[env_id, 3:]
-            ).as_matrix()
-            palm_target[env_id, :3] = (
-                tracking_points[env_id, 0].detach().cpu().numpy()
-                - target_rotation
-                @ np.asarray(PALM_CONTROL_OFFSET_LOCAL, dtype=np.float32)
-            )
-
-        palm_action_all = self.palm(
-            {"policy": palm_obs},
-            f_cmd=(
-                -float(self.fingers.core.gains.desired_palm_force)
-                * surface_normals[:, 0]
-            ),
-            x_des=torch.as_tensor(palm_target, device=self.device),
-        )
         if self._arm_anchor is None:
             self._arm_anchor = palm_obs[:, :6].detach().clone()
         current_arm = palm_obs[:, :6]
         nominal_arm = (
             joint_reference[:, :6] if joint_reference is not None else self._arm_anchor
         )
-        arm_mcc_delta = torch.clamp(
-            palm_action_all[:, :6] - current_arm,
-            -self.arm_mcc_correction_limit,
-            self.arm_mcc_correction_limit,
-        )
+        arm_external_torque = self._arm_external_torque(palm_obs)
+        if (
+            self.arm_mcc_correction_limit > 0.0
+            and self._arm_external_torque_setpoint is not None
+        ):
+            # Position-servo deflection is proportional to the actuator
+            # torque balancing the external load.  A bounded proportional
+            # correction around the calibrated loaded state provides force
+            # feedback without the legacy admittance controller's hidden
+            # reference/integral wind-up.
+            arm_force_error = (
+                arm_external_torque
+                - self._arm_external_torque_setpoint
+            )
+            arm_mcc_delta = torch.clamp(
+                self.arm_force_feedback_gain * arm_force_error,
+                -self.arm_mcc_correction_limit,
+                self.arm_mcc_correction_limit,
+            )
+        else:
+            arm_force_error = torch.zeros_like(arm_external_torque)
+            arm_mcc_delta = torch.zeros_like(current_arm)
         arm_nominal_with_mcc = nominal_arm + arm_mcc_delta
         trust_center = (
             nominal_arm if joint_reference is not None else self._arm_anchor
@@ -1097,6 +1618,9 @@ class FullHandMCCController:
             "five_contact_targets": contact_points.detach().clone(),
             "five_kinematic_targets": tracking_points.detach().clone(),
             "five_surface_normals": surface_normals.detach().clone(),
+            "arm_external_torque": arm_external_torque.detach().clone(),
+            "arm_force_error": arm_force_error.detach().clone(),
+            "arm_force_joint_correction": arm_mcc_delta.detach().clone(),
             "nominal_joint_reference": (
                 joint_reference.detach().clone()
                 if joint_reference is not None
@@ -1147,6 +1671,7 @@ class FullHandMCCControlCfg(RslRlOnPolicyRunnerCfg):
     action_rate_limit: float = 0.18
     arm_trust_region: float = 0.08
     arm_mcc_correction_limit: float = 0.012
+    arm_force_feedback_gain: float = 3.0e-4
     finger_mcc_tracking_radius: float = 0.15
     finger_force_closure_gain: float = 0.02
     finger_max_release_correction: float = 0.01

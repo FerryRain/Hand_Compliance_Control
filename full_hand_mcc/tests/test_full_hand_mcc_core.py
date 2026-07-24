@@ -201,6 +201,64 @@ class SurfaceGeometryTest(unittest.TestCase):
         for frame in frames:
             np.testing.assert_allclose(frame.T @ frame, np.eye(3), atol=1.0e-6)
 
+    def test_ellipsoid_meridian_round_trip_and_frames(self) -> None:
+        radial_radius = 0.15
+        axial_radius = 0.28
+        total = GEOMETRY.ellipsoid_meridian_total_length(
+            radial_radius,
+            axial_radius,
+        )
+        arc = np.linspace(0.01, total - 0.01, 17)
+        azimuth = np.linspace(-2.0, 2.0, 17)
+        center = np.asarray([0.3, -0.2, 0.8])
+        rotation = np.asarray(
+            [
+                [0.0, -1.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 0.0, 1.0],
+            ]
+        )
+        points, normals, frames = GEOMETRY.ellipsoid_meridian_targets(
+            arc,
+            azimuth,
+            center,
+            rotation,
+            radial_radius,
+            axial_radius,
+        )
+        recovered_arc, recovered_azimuth = (
+            GEOMETRY.ellipsoid_meridian_coordinates(
+                points,
+                center,
+                rotation,
+                radial_radius,
+                axial_radius,
+            )
+        )
+        np.testing.assert_allclose(recovered_arc, arc, atol=2.0e-6)
+        np.testing.assert_allclose(recovered_azimuth, azimuth, atol=1.0e-6)
+        np.testing.assert_allclose(normals, frames[:, :, 0], atol=1.0e-7)
+        for frame in frames:
+            np.testing.assert_allclose(frame.T @ frame, np.eye(3), atol=1.0e-6)
+
+    def test_ellipsoid_has_large_continuous_curvature_change(self) -> None:
+        radial_radius = 0.15
+        axial_radius = 0.28
+        total = GEOMETRY.ellipsoid_meridian_total_length(
+            radial_radius,
+            axial_radius,
+        )
+        curvature = GEOMETRY.ellipsoid_meridian_curvature(
+            np.linspace(0.0, 0.5 * total, 1001),
+            radial_radius,
+            axial_radius,
+        )
+        self.assertTrue(np.all(np.isfinite(curvature)))
+        self.assertGreater(
+            float(curvature.max() / curvature.min()),
+            6.0,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
