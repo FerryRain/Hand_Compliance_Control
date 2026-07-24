@@ -10,3 +10,4 @@ outputs/*
 !outputs/passivity_tank_surface_slide.mp4
 !outputs/generalization_radius18mm.mp4
 !outputs/generalization_radius22mm_extended_acquisition.mp4
+!outputs/thick_object_slow_surface_slide.mp4

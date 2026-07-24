@@ -38,6 +38,7 @@ from mjlab.tasks.leaphand.leaphand_full_hand_mcc_env_cfg import (
     FullHandMCCControlCfg,
     full_hand_mcc_env_cfg,
 )
+from mjlab.tasks.leaphand.leaphand_mcc_finger_env_cfg import MCC_TIP_NAMES
 import mjlab.tasks.leaphand.leaphand_full_hand_mcc_env_cfg as full_hand_env_module
 from mjlab.viewer import NativeMujocoViewer, ViserPlayViewer
 
@@ -58,12 +59,22 @@ def main() -> None:
     parser.add_argument(
         "--object-radius-m",
         type=float,
-        default=FULL_HAND_CAPSULE_RADIUS,
+        default=0.15,
     )
     parser.add_argument(
         "--object-half-height-m",
         type=float,
-        default=FULL_HAND_CAPSULE_HALF_HEIGHT,
+        default=0.26,
+    )
+    parser.add_argument(
+        "--object-center-x-m",
+        type=float,
+        default=0.85,
+    )
+    parser.add_argument(
+        "--object-center-y-m",
+        type=float,
+        default=0.0003,
     )
     parser.add_argument(
         "--object-center-z-m",
@@ -77,6 +88,7 @@ def main() -> None:
             "continuous_inward",
             "meridian_inward",
             "adaptive_surface_mpc",
+            "circumferential_surface_mpc",
         ),
         default="adaptive_surface_mpc",
     )
@@ -84,10 +96,20 @@ def main() -> None:
     parser.add_argument("--stage-move-fraction", type=float, default=0.78)
     parser.add_argument("--surface-preload-mm", type=float, default=2.0)
     parser.add_argument("--max-plan-joint-step-rad", type=float, default=0.03)
-    parser.add_argument("--motion-start", type=int, default=500)
-    parser.add_argument("--ik-tolerance-mm", type=float, default=4.0)
+    parser.add_argument("--motion-start", type=int, default=1000)
+    parser.add_argument("--ik-tolerance-mm", type=float, default=5.0)
     parser.add_argument("--ik-max-iterations", type=int, default=160)
     parser.add_argument("--palm-ik-weight", type=float, default=5.0)
+    parser.add_argument(
+        "--palm-path-tolerance-mm",
+        type=float,
+        default=50.0,
+        help=(
+            "Maximum deviation from the nominal non-contact palm path. "
+            "The accepted palm plan point is always replaced by the actual "
+            "URDF-reachable point."
+        ),
+    )
     parser.add_argument("--mpc-keyframes", type=int, default=40)
     parser.add_argument("--mpc-max-nfev", type=int, default=120)
     parser.add_argument("--mpc-progress-tolerance-mm", type=float, default=4.0)
@@ -100,11 +122,20 @@ def main() -> None:
     parser.add_argument("--contact-failure-window", type=int, default=20)
     parser.add_argument("--min-contact-force-n", type=float, default=0.10)
     parser.add_argument("--min-contact-ratio", type=float, default=0.99)
+    parser.add_argument(
+        "--max-contact-penetration-mm",
+        type=float,
+        default=1.0,
+        help=(
+            "Reject the video if MuJoCo reports deeper fingertip/object "
+            "penetration at any time."
+        ),
+    )
     parser.add_argument("--contact-settle-frames", type=int, default=3)
     parser.add_argument("--contact-calibration-start", type=int, default=15)
     parser.add_argument("--preshape-frames", type=int, default=0)
-    parser.add_argument("--object-approach-frames", type=int, default=1)
-    parser.add_argument("--object-retreat-distance-m", type=float, default=0.0)
+    parser.add_argument("--object-approach-frames", type=int, default=300)
+    parser.add_argument("--object-retreat-distance-m", type=float, default=0.20)
     parser.add_argument(
         "--planning-center-shift-m",
         type=float,
@@ -169,17 +200,20 @@ def main() -> None:
         default=1.5,
         help="Scale the calibrated finger contact preload offset.",
     )
-    parser.add_argument("--print-every", type=int, default=50)
-    parser.add_argument("--steps", type=int, default=1160)
+    parser.add_argument("--print-every", type=int, default=300)
+    parser.add_argument("--steps", type=int, default=7000)
     parser.add_argument("--fps", type=float, default=30.0)
     parser.add_argument("--width", type=int, default=960)
     parser.add_argument("--height", type=int, default=720)
+    parser.add_argument("--camera-distance-m", type=float, default=1.12)
+    parser.add_argument("--camera-elevation-deg", type=float, default=-18.0)
+    parser.add_argument("--camera-azimuth-deg", type=float, default=325.0)
     parser.add_argument(
         "--output",
         type=Path,
         default=Path(
             "full_hand_mcc/outputs/"
-            "adaptive_mpc_motor_force_feedback.mp4"
+            "thick_object_slow_surface_slide.mp4"
         ),
     )
     parser.add_argument(
@@ -187,7 +221,7 @@ def main() -> None:
         type=Path,
         default=Path(
             "full_hand_mcc/outputs/"
-            "adaptive_mpc_motor_force_feedback_plan.npz"
+            "thick_object_slow_surface_slide_plan.npz"
         ),
     )
     parser.add_argument(
@@ -213,6 +247,10 @@ def main() -> None:
         raise ValueError("--surface-preload-mm cannot be negative")
     if args.mpc_keyframes < 2:
         raise ValueError("--mpc-keyframes must be at least two")
+    if args.palm_path_tolerance_mm < args.ik_tolerance_mm:
+        raise ValueError(
+            "--palm-path-tolerance-mm must be at least --ik-tolerance-mm"
+        )
     if args.contact_search_step_rad <= 0.0:
         raise ValueError("--contact-search-step-rad must be positive")
     if args.contact_search_limit_rad <= 0.0:
@@ -237,6 +275,8 @@ def main() -> None:
         raise ValueError("--arm-servo-load-scale cannot be negative")
     if args.finger_servo_load_scale < 0.0:
         raise ValueError("--finger-servo-load-scale cannot be negative")
+    if args.max_contact_penetration_mm < 0.0:
+        raise ValueError("--max-contact-penetration-mm cannot be negative")
 
     CAPSULE_RADIUS = args.object_radius_m
     CAPSULE_HALF_HEIGHT = args.object_half_height_m
@@ -246,10 +286,13 @@ def main() -> None:
     device = args.device or ("cuda:0" if torch.cuda.is_available() else "cpu")
     env_cfg = full_hand_mcc_env_cfg(num_envs=1, play=True)
     env_cfg.scene.entities["target"].init_state.pos = (
-        0.7007,
-        0.0003,
+        args.object_center_x_m,
+        args.object_center_y_m,
         args.object_center_z_m,
     )
+    env_cfg.viewer.distance = args.camera_distance_m
+    env_cfg.viewer.elevation = args.camera_elevation_deg
+    env_cfg.viewer.azimuth = args.camera_azimuth_deg
     if args.viewer == "video":
         env_cfg.viewer.width = args.width
         env_cfg.viewer.height = args.height
@@ -304,6 +347,8 @@ def main() -> None:
             self.surface_error = np.full(5, np.inf)
             self.joint_error = np.full(22, np.inf)
             self.tactile_force = np.zeros(4)
+            self.contact_distance_m = np.full(4, np.nan)
+            self.max_penetration_m = np.zeros(4)
             self.contact_frames = np.zeros(4, dtype=np.int64)
             self.evaluated_frames = 0
             self.bad_contact_streak = 0
@@ -481,6 +526,13 @@ def main() -> None:
             assert self.targets is not None
             assert self.kinematic_targets is not None
             assert self.reachable_q is not None
+            if args.planner == "circumferential_surface_mpc":
+                self._build_circumferential_surface_mpc_plan(
+                    center=center,
+                    rotation=rotation,
+                    frame_count=args.steps - args.motion_start,
+                )
+                return
             if args.reuse_plan is not None:
                 cached = np.load(args.reuse_plan)
                 joint_plan = np.asarray(
@@ -748,6 +800,230 @@ def main() -> None:
                 f"start_z_m={start_local[:, 2].round(4).tolist()} "
                 f"end_z_m={end_local[:, 2].round(4).tolist()} "
                 f"max_residual_mm="
+                f"{float(residual_plan.max() * 1000):.2f} "
+                f"saved={args.plan_output.resolve()}",
+                flush=True,
+            )
+
+        def _build_circumferential_surface_mpc_plan(
+            self,
+            *,
+            center: np.ndarray,
+            rotation: np.ndarray,
+            frame_count: int,
+        ) -> None:
+            """Move the rigid five-point constellation around a thick capsule.
+
+            The four tactile pads remain on their initial cylindrical rings.
+            The palm-root point is rotated with the hand as a kinematic
+            reference, but is never treated as a physical contact.
+            """
+
+            assert self.targets is not None
+            assert self.kinematic_targets is not None
+            assert self.reachable_q is not None
+            start_surface = self.targets.copy()
+            start_points = self.kinematic_targets.copy()
+            start_local = (rotation.T @ (start_surface - center).T).T
+            if np.any(
+                np.abs(start_local[1:, 2])
+                > CAPSULE_HALF_HEIGHT - 1.0e-4
+            ):
+                raise RuntimeError(
+                    "Circumferential surface MPC requires all fingertip "
+                    "contacts on the capsule cylinder, not an end cap: "
+                    f"local_z_m={start_local[1:, 2].round(4).tolist()}"
+                )
+
+            keyframe_count = min(args.mpc_keyframes, frame_count)
+            coarse_distance = np.linspace(
+                0.0,
+                args.axial_travel_m,
+                keyframe_count + 1,
+            )
+            coarse_q = np.zeros((keyframe_count + 1, 22), dtype=np.float64)
+            coarse_q[0] = self.reachable_q
+            coarse_residual = np.zeros((keyframe_count + 1, 5), dtype=np.float64)
+            coarse_nfev = np.zeros(keyframe_count + 1, dtype=np.int32)
+            previous_q = self.reachable_q.copy()
+            preload = args.surface_preload_mm / 1000.0
+
+            def rotated_targets(
+                distance: float,
+            ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+                theta = (
+                    float(args.axial_direction)
+                    * distance
+                    / CAPSULE_RADIUS
+                )
+                world_rotation = (
+                    rotation
+                    @ R.from_rotvec((0.0, 0.0, theta)).as_matrix()
+                    @ rotation.T
+                )
+                surface = (
+                    center
+                    + (world_rotation @ (start_surface - center).T).T
+                )
+                points = (
+                    center
+                    + (world_rotation @ (start_points - center).T).T
+                )
+                _, normals = capsule_project(
+                    surface,
+                    center,
+                    rotation,
+                    CAPSULE_RADIUS,
+                    CAPSULE_HALF_HEIGHT,
+                )
+                preload_fraction = min(
+                    distance / max(0.025, args.axial_travel_m),
+                    1.0,
+                )
+                points[1:] -= (
+                    preload_fraction * preload * normals[1:]
+                )
+                return surface, points, normals
+
+            for keyframe in range(1, keyframe_count + 1):
+                distance = float(coarse_distance[keyframe])
+                _, desired_points, _ = rotated_targets(distance)
+                result = reachability.solve(desired_points, previous_q)
+                tip_error = float(result.residual_m[1:].max())
+                palm_error = float(result.residual_m[0])
+                if (
+                    tip_error > args.ik_tolerance_mm / 1000.0
+                    or palm_error > args.palm_path_tolerance_mm / 1000.0
+                ):
+                    raise RuntimeError(
+                        "Circumferential surface MPC found an unreachable "
+                        f"five-point state at keyframe={keyframe}/"
+                        f"{keyframe_count}, distance_m={distance:.4f}, "
+                        f"residual_mm="
+                        f"{(result.residual_m * 1000).round(2).tolist()}"
+                    )
+                coarse_q[keyframe] = result.joint_position
+                coarse_residual[keyframe, 1:] = result.residual_m[1:]
+                coarse_nfev[keyframe] = result.iterations
+                previous_q = result.joint_position
+                print(
+                    "[CIRCUMFERENTIAL-MPC] "
+                    f"keyframe={keyframe:02d}/{keyframe_count} "
+                    f"surface_travel_m={distance:.4f} "
+                    f"five_point_error_mm="
+                    f"{(result.residual_m * 1000).round(2).tolist()} "
+                    f"iterations={result.iterations}",
+                    flush=True,
+                )
+
+            sample_coordinate = np.linspace(
+                0.0,
+                float(keyframe_count),
+                frame_count,
+            )
+            joint_plan = np.column_stack(
+                [
+                    np.interp(
+                        sample_coordinate,
+                        np.arange(keyframe_count + 1),
+                        coarse_q[:, joint],
+                    )
+                    for joint in range(22)
+                ]
+            ).astype(np.float32)
+            distance_plan = np.linspace(
+                0.0,
+                args.axial_travel_m,
+                frame_count,
+                dtype=np.float32,
+            )
+            surface_plan = np.zeros((frame_count, 5, 3), dtype=np.float32)
+            kinematic_plan = np.zeros_like(surface_plan)
+            normal_plan = np.zeros_like(surface_plan)
+            residual_plan = np.zeros((frame_count, 5), dtype=np.float32)
+            for frame, distance in enumerate(distance_plan):
+                surface, desired_points, normals = rotated_targets(
+                    float(distance)
+                )
+                achieved_points = reachability.forward_points(
+                    joint_plan[frame]
+                )
+                # The palm root is a non-contact load-feedback coordinate.
+                # Replace its nominal rigid orbit with the point actually
+                # achieved by this joint-limit-valid arm state.  Fingertip
+                # surface targets remain unchanged and strictly checked.
+                desired_points[0] = achieved_points[0]
+                surface[0] = achieved_points[0]
+                surface_plan[frame] = surface
+                kinematic_plan[frame] = desired_points
+                normal_plan[frame] = normals
+                residual_plan[frame] = np.linalg.norm(
+                    achieved_points - desired_points,
+                    axis=1,
+                )
+
+            max_joint_step = float(
+                np.max(np.abs(np.diff(joint_plan, axis=0)))
+            )
+            if max_joint_step > args.max_plan_joint_step_rad:
+                raise RuntimeError(
+                    "Circumferential surface MPC joint step exceeds bound: "
+                    f"{max_joint_step:.5f}rad > "
+                    f"{args.max_plan_joint_step_rad:.5f}rad"
+                )
+            if (
+                float(residual_plan[-1, 1:].max())
+                > args.ik_tolerance_mm / 1000.0
+            ):
+                raise RuntimeError(
+                    "Circumferential surface MPC interpolation failed final "
+                    f"fingertip reachability: "
+                    f"{(residual_plan[-1] * 1000).round(2).tolist()}mm"
+                )
+
+            self.plan_surface = surface_plan
+            self.plan_kinematic = kinematic_plan
+            self.plan_normals = normal_plan
+            self.plan_q = joint_plan
+            self.plan_residual = residual_plan
+            self.plan_distance = distance_plan
+            self.planned_axial_travel = float(distance_plan[-1])
+            end_local = (
+                rotation.T @ (surface_plan[-1] - center).T
+            ).T
+            args.plan_output.parent.mkdir(parents=True, exist_ok=True)
+            np.savez(
+                args.plan_output,
+                surface_points_m=surface_plan,
+                kinematic_points_m=kinematic_plan,
+                joint_positions_rad=joint_plan,
+                progress_m=np.repeat(
+                    distance_plan[:, None], 5, axis=1
+                ),
+                progress_residual_m=residual_plan,
+                normal_error_m=np.zeros_like(residual_plan),
+                axial_distance_m=distance_plan,
+                planner=np.asarray(args.planner),
+                surface_preload_mm=np.asarray(args.surface_preload_mm),
+                max_joint_step_rad=np.asarray(max_joint_step),
+                coarse_joint_positions_rad=coarse_q,
+                coarse_progress_m=np.repeat(
+                    coarse_distance[:, None], 5, axis=1
+                ),
+                coarse_normal_error_m=np.zeros_like(coarse_residual),
+                coarse_cost=np.zeros(keyframe_count + 1),
+                coarse_nfev=coarse_nfev,
+                start_surface_local_m=start_local,
+                end_surface_local_m=end_local,
+            )
+            print(
+                "[CIRCUMFERENTIAL-PLAN] passed | "
+                f"frames={frame_count} keyframes={keyframe_count} "
+                f"surface_travel_m={self.planned_axial_travel:.4f} "
+                f"rotation_deg="
+                f"{np.degrees(args.axial_travel_m / CAPSULE_RADIUS):.2f} "
+                f"max_joint_step_rad={max_joint_step:.5f} "
+                f"max_five_point_error_mm="
                 f"{float(residual_plan.max() * 1000):.2f} "
                 f"saved={args.plan_output.resolve()}",
                 flush=True,
@@ -1392,6 +1668,21 @@ def main() -> None:
                 .cpu()
                 .numpy()
             )
+            for finger, site_name in enumerate(MCC_TIP_NAMES):
+                sensor_data = env.scene[f"{site_name}_contact"].data
+                if (
+                    sensor_data.found is not None
+                    and sensor_data.dist is not None
+                    and bool(sensor_data.found[0, 0].item())
+                ):
+                    distance = float(sensor_data.dist[0, 0].item())
+                    self.contact_distance_m[finger] = distance
+                    self.max_penetration_m[finger] = max(
+                        self.max_penetration_m[finger],
+                        max(-distance, 0.0),
+                    )
+                else:
+                    self.contact_distance_m[finger] = np.nan
             if not self.contact_calibrated:
                 for finger, tactile_force in enumerate(self.tactile_force):
                     if tactile_force < args.min_contact_force_n:
@@ -1560,6 +1851,8 @@ def main() -> None:
                     f"{np.max(np.abs(self.joint_error[6:])):.3f}] "
                     f"tip_force_N={motor_force.cpu().numpy().round(2).tolist()} "
                     f"tactile_force_N={self.tactile_force.round(2).tolist()} "
+                    f"contact_dist_mm="
+                    f"{(self.contact_distance_m * 1000).round(3).tolist()} "
                     f"tank={float(debug['energy_tank'][0]):.3f} "
                     f"axial_travel_m={self.executed_axial_travel:.4f} "
                     f"plan_frame={self.plan_index}",
@@ -1644,6 +1937,13 @@ def main() -> None:
                     f"{args.min_contact_ratio:.1%}: "
                     f"{contact_ratio.round(4).tolist()}"
                 )
+            max_penetration_mm = policy.max_penetration_m * 1000.0
+            if np.any(max_penetration_mm > args.max_contact_penetration_mm):
+                raise RuntimeError(
+                    "Fingertip/object penetration exceeded required limit "
+                    f"{args.max_contact_penetration_mm:.3f}mm: "
+                    f"{max_penetration_mm.round(3).tolist()}"
+                )
             print(
                 f"[VIDEO] saved={args.output.resolve()} frames={frames_written} "
                 f"duration_s={args.steps * dt:.2f} fps={args.fps:.1f} "
@@ -1651,6 +1951,8 @@ def main() -> None:
                 f"axial_travel_m={policy.executed_axial_travel:.4f} "
                 f"max_motor_force_correction_rad="
                 f"{policy.max_force_correction_rad:.6f} "
+                f"max_contact_penetration_mm="
+                f"{max_penetration_mm.round(3).tolist()} "
                 f"final_tip_site_standoff_mm="
                 f"{(policy.surface_error[1:] * 1000).round(2).tolist()}",
                 flush=True,

@@ -19,17 +19,21 @@ Non-tip contacts therefore cannot hide a detached fingertip.
 ## Validated result
 
 The default `adaptive_surface_mpc` run was validated on Windows with an RTX
-4090 D and `cuda:0`:
+4090 D and `cuda:0`. It now uses a visibly thick capsule (150 mm radius,
+260 mm cylindrical half-height) and a reference-video-paced rollout:
 
 - planned and executed travel: `0.2000 m`;
-- adaptive-MPC keyframes / execution frames: `40 / 660`;
+- total video / sliding duration: `70 s / 60 s`;
+- adaptive-MPC keyframes / execution frames: `40 / 6000`;
 - per-point final progress: `[200, 200, 200, 200, 200] mm`;
-- maximum plan joint step: `0.00205 rad`;
+- maximum plan joint step: `0.00023 rad`;
 - maximum progress error: `0.66 mm`;
-- maximum planned fingertip normal error: `2.02 mm`;
+- maximum planned fingertip normal error: `1.98 mm`;
 - physical contact ratios (index, middle, ring, thumb):
   `[1.0, 1.0, 1.0, 1.0]`;
-- maximum nonzero motor-force correction: `0.006886 rad`.
+- maximum nonzero motor-force correction: `0.005207 rad`;
+- maximum MuJoCo fingertip/object penetration:
+  `[0.0, 0.0, 0.0, 0.0] mm`.
 
 The controller does not use natural finger closure. It first records the
 22-joint loaded servo deflection that established real four-finger contact,
@@ -49,8 +53,8 @@ From the repository root:
 
 This command solves the 40-keyframe MPC from scratch and writes:
 
-- `full_hand_mcc/outputs/adaptive_mpc_motor_force_feedback.mp4`
-- `full_hand_mcc/outputs/adaptive_mpc_motor_force_feedback_plan.npz`
+- `full_hand_mcc/outputs/thick_object_slow_surface_slide.mp4`
+- `full_hand_mcc/outputs/thick_object_slow_surface_slide_plan.npz`
 
 For a live viewer, replace `--viewer video` with `--viewer native`.
 
@@ -71,10 +75,12 @@ The rollout automatically:
 2. requires all four real fingertip sensors to remain in contact;
 3. records loaded arm/finger servo offsets and per-finger motor-force baselines;
 4. solves all five points jointly against the xArm6 + LEAP Hand model and joint limits;
-5. moves 0.20 m through 40 MPC keyframes and 660 rate-limited commands;
+5. moves 0.20 m through 40 MPC keyframes and 6000 rate-limited commands;
 6. aborts after prolonged contact loss;
 7. rejects the result if any fingertip contact ratio is below 99%;
-8. reports the actual motor-force correction so a zero-gain run cannot be
+8. rejects the result if MuJoCo reports more than 1 mm of fingertip/object
+   penetration;
+9. reports the actual motor-force correction so a zero-gain run cannot be
    mislabeled as force feedback.
 
 `--reuse-plan <plan.npz>` may be used only for controller-variant tuning. The
@@ -117,16 +123,19 @@ Reviewed matrix using the same MCC gains:
 | capsule, radius 22 mm, half-height 235 mm | 500 frames | n/a | thumb did not reach before motion | fail |
 | capsule, radius 22 mm, half-height 235 mm | 700 frames | 0.20 m | `[1,1,1,1]` | pass |
 | short capsule, radius 20 mm, half-height 110 mm, shifted center | n/a | n/a | initial penetration caused numerical divergence | fail |
+| thick capsule, radius 150 mm, half-height 260 mm | 1000 frames | 0.20 m | `[1,1,1,1]` | pass, zero reported penetration |
 
-Thus the current analytic method generalizes over the tested 18–22 mm radius
-range after adaptive contact-acquisition time, but it does **not** yet
-generalize to arbitrary object length/placement. The short-object failure is
-kept as evidence for a future DP policy that can learn collision-free
-pre-contact approach, object-conditioned preload, and contact recovery.
+Thus the current analytic method covers the tested 18–22 mm grasping range and
+the 150 mm one-sided surface-following case. It still does **not** generalize
+to arbitrary object length, placement, or a full 0.20 m circumferential orbit.
+The short-object and circumferential-workspace failures are kept as evidence
+for a future DP policy that can learn collision-free pre-contact approach,
+object-conditioned preload, reachable path selection, and contact recovery.
 
 ## Important controls
 
-- `--object-radius-m`, `--object-half-height-m`, `--object-center-z-m`:
+- `--object-radius-m`, `--object-half-height-m`,
+  `--object-center-{x,y,z}-m`:
   object geometry and placement;
 - `--axial-travel-m`: requested surface travel;
 - `--motion-start`, `--steps`: contact-acquisition and motion windows;
@@ -135,12 +144,18 @@ pre-contact approach, object-conditioned preload, and contact recovery.
 - `--finger-servo-load-scale`: calibrated contact preload margin;
 - `--finger-normal-compliance-mm-per-n`: motor-force feedback gain;
 - `--min-contact-ratio`: required physical contact ratio;
+- `--max-contact-penetration-mm`: hard rejection threshold for reported
+  fingertip/object penetration;
 - `--contact-failure-window`: consecutive bad frames before immediate abort.
 
 ## Known limitations and follow-up
 
 - The palm-root point is a planning coordinate, not a required physical contact.
 - Radius generalization is validated; arbitrary geometry generalization is not.
+- A 150 mm-radius thick object is validated for a 0.20 m longitudinal slide.
+- A 0.20 m circumferential orbit around the 150 mm object exceeds the tested
+  xArm workspace after about 0.135 m; the code retains
+  `circumferential_surface_mpc` as an explicit experimental planner.
 - The 22 mm object needs a longer contact-acquisition window.
 - Moving a short object directly into the hand can create deep initial
   penetration. A collision-free approach planner or learned DP approach policy
