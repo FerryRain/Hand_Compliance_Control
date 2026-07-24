@@ -143,6 +143,16 @@ def main() -> None:
         help="Refine only --seed-grasp instead of running all global starts.",
     )
     parser.add_argument(
+        "--start-index",
+        type=int,
+        default=None,
+        help=(
+            "Select one indexed optimizer start after the optional seed is "
+            "inserted; useful for reproducing and refining a specific arm "
+            "kinematic branch."
+        ),
+    )
+    parser.add_argument(
         "--output",
         type=Path,
         default=Path(
@@ -293,6 +303,13 @@ def main() -> None:
         if args.seed_only:
             starts = starts[:1]
             q_starts = q_starts[:1]
+    if args.start_index is not None:
+        if not 0 <= args.start_index < len(starts):
+            raise ValueError(
+                f"--start-index must be in [0, {len(starts) - 1}]"
+            )
+        starts = [starts[args.start_index]]
+        q_starts = [q_starts[args.start_index]]
     lower = np.concatenate(
         (solver.lower, np.asarray((0.35, -0.50, 0.45)))
     )

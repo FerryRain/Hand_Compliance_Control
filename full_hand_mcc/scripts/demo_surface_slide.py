@@ -77,6 +77,120 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--palm-late-follow-start-m",
+        type=float,
+        default=1.0,
+        help=(
+            "Fingertip surface progress at which the non-contact palm starts "
+            "a smooth late-route slowdown. The default is beyond ordinary "
+            "routes and therefore disables the slowdown."
+        ),
+    )
+    parser.add_argument(
+        "--palm-late-follow-ratio",
+        type=float,
+        default=1.0,
+        help=(
+            "Palm-to-fingertip velocity ratio after the late-follow ramp. "
+            "This preserves a rigid, collision-safe grasp early in the "
+            "route, then assigns the remaining travel to finger articulation."
+        ),
+    )
+    parser.add_argument(
+        "--palm-late-follow-ramp-m",
+        type=float,
+        default=0.04,
+        help=(
+            "Fingertip surface distance over which palm velocity transitions "
+            "smoothly to --palm-late-follow-ratio."
+        ),
+    )
+    parser.add_argument(
+        "--palm-follow-surface-frame",
+        action="store_true",
+        help=(
+            "Rotate the non-contact palm target with the mean physical "
+            "fingertip contact frame. This is intended for long routes that "
+            "cross a curved end cap."
+        ),
+    )
+    parser.add_argument(
+        "--palm-surface-frame-gain",
+        type=float,
+        default=1.0,
+        help=(
+            "Fraction of the local contact-frame rotation transported to "
+            "the palm when --palm-follow-surface-frame is enabled."
+        ),
+    )
+    parser.add_argument(
+        "--palm-clearance-lift-m",
+        type=float,
+        default=0.0,
+        help=(
+            "Maximum collision-avoidance displacement of the palm away from "
+            "the initial fingertip contact patch while the fingertips stay "
+            "on their planned surface route."
+        ),
+    )
+    parser.add_argument(
+        "--palm-clearance-ramp-m",
+        type=float,
+        default=0.04,
+        help=(
+            "Surface distance over which --palm-clearance-lift-m is smoothly "
+            "introduced; the lift remains active for the rest of the route."
+        ),
+    )
+    parser.add_argument(
+        "--palm-clearance-tilt-deg",
+        type=float,
+        default=0.0,
+        help=(
+            "Maximum collision-avoidance palm tilt. Positive values rotate "
+            "the lower palm edge away from the initial fingertip contact "
+            "patch, reducing the radial lift demanded from the fingers."
+        ),
+    )
+    parser.add_argument(
+        "--palm-clearance-tilt-release-start-m",
+        type=float,
+        default=1.0,
+        help=(
+            "Surface progress at which the collision-avoidance palm tilt "
+            "starts returning smoothly to zero. The default disables release "
+            "for ordinary routes."
+        ),
+    )
+    parser.add_argument(
+        "--palm-clearance-tilt-release-ramp-m",
+        type=float,
+        default=0.04,
+        help="Surface distance over which the late palm tilt is released.",
+    )
+    parser.add_argument(
+        "--palm-clearance-secondary-lift-m",
+        type=float,
+        default=0.0,
+        help=(
+            "Additional late-route outward palm displacement. This staged "
+            "lift avoids over-extending the fingers during the initial cap "
+            "transition while protecting the palm near the widest section."
+        ),
+    )
+    parser.add_argument(
+        "--palm-clearance-secondary-start-m",
+        type=float,
+        default=0.10,
+        help="Surface progress at which the staged secondary lift starts.",
+    )
+    parser.add_argument(
+        "--palm-clearance-secondary-ramp-m",
+        type=float,
+        default=0.04,
+        help="Surface distance over which the staged secondary lift ramps in.",
+    )
+    parser.add_argument(
         "--finger-gait-amplitude-m",
         type=float,
         default=0.0,
@@ -210,6 +324,15 @@ def main() -> None:
             "and its contact point's local inward object-surface normal."
         ),
     )
+    parser.add_argument(
+        "--planner-pad-angle-margin-deg",
+        type=float,
+        default=5.0,
+        help=(
+            "Extra fingertip-pad angle margin enforced at every MPC segment "
+            "to leave room for dynamic force-control and gait corrections."
+        ),
+    )
     parser.add_argument("--motion-start", type=int, default=1000)
     parser.add_argument("--ik-tolerance-mm", type=float, default=5.0)
     parser.add_argument("--ik-max-iterations", type=int, default=160)
@@ -279,6 +402,16 @@ def main() -> None:
         help=(
             "Reject the video if MuJoCo reports deeper fingertip/object "
             "penetration at any time."
+        ),
+    )
+    parser.add_argument(
+        "--max-runtime-self-penetration-mm",
+        type=float,
+        default=0.01,
+        help=(
+            "Numerical penetration tolerance for robot/robot contacts during "
+            "GPU execution. Object collisions remain governed by separate "
+            "zero-frame collision guards."
         ),
     )
     parser.add_argument(
@@ -439,6 +572,12 @@ def main() -> None:
         raise ValueError("--axial-travel-m must be positive")
     if not 0.0 <= args.palm_travel_ratio <= 1.0:
         raise ValueError("--palm-travel-ratio must be in [0, 1]")
+    if args.palm_late_follow_start_m < 0.0:
+        raise ValueError("--palm-late-follow-start-m cannot be negative")
+    if not 0.0 <= args.palm_late_follow_ratio <= 1.0:
+        raise ValueError("--palm-late-follow-ratio must be in [0, 1]")
+    if args.palm_late_follow_ramp_m <= 0.0:
+        raise ValueError("--palm-late-follow-ramp-m must be positive")
     if args.finger_gait_amplitude_m < 0.0:
         raise ValueError("--finger-gait-amplitude-m cannot be negative")
     if args.runtime_finger_gait_rad < 0.0:
@@ -501,10 +640,47 @@ def main() -> None:
         raise ValueError("--finger-servo-load-scale cannot be negative")
     if args.max_contact_penetration_mm < 0.0:
         raise ValueError("--max-contact-penetration-mm cannot be negative")
+    if args.max_runtime_self_penetration_mm < 0.0:
+        raise ValueError(
+            "--max-runtime-self-penetration-mm cannot be negative"
+        )
     if args.min_non_tip_clearance_mm < 0.0:
         raise ValueError("--min-non-tip-clearance-mm cannot be negative")
     if not 0.0 < args.max_pad_angle_deg < 90.0:
         raise ValueError("--max-pad-angle-deg must be in (0, 90)")
+    if not 0.0 <= args.planner_pad_angle_margin_deg < args.max_pad_angle_deg:
+        raise ValueError(
+            "--planner-pad-angle-margin-deg must be in "
+            "[0, --max-pad-angle-deg)"
+        )
+    if not 0.0 <= args.palm_surface_frame_gain <= 1.0:
+        raise ValueError("--palm-surface-frame-gain must be in [0, 1]")
+    if args.palm_clearance_lift_m < 0.0:
+        raise ValueError("--palm-clearance-lift-m cannot be negative")
+    if args.palm_clearance_ramp_m <= 0.0:
+        raise ValueError("--palm-clearance-ramp-m must be positive")
+    if args.palm_clearance_tilt_deg < 0.0:
+        raise ValueError("--palm-clearance-tilt-deg cannot be negative")
+    if args.palm_clearance_tilt_release_start_m < 0.0:
+        raise ValueError(
+            "--palm-clearance-tilt-release-start-m cannot be negative"
+        )
+    if args.palm_clearance_tilt_release_ramp_m <= 0.0:
+        raise ValueError(
+            "--palm-clearance-tilt-release-ramp-m must be positive"
+        )
+    if args.palm_clearance_secondary_lift_m < 0.0:
+        raise ValueError(
+            "--palm-clearance-secondary-lift-m cannot be negative"
+        )
+    if args.palm_clearance_secondary_start_m < 0.0:
+        raise ValueError(
+            "--palm-clearance-secondary-start-m cannot be negative"
+        )
+    if args.palm_clearance_secondary_ramp_m <= 0.0:
+        raise ValueError(
+            "--palm-clearance-secondary-ramp-m must be positive"
+        )
 
     CAPSULE_RADIUS = args.object_radius_m
     CAPSULE_HALF_HEIGHT = args.object_half_height_m
@@ -534,6 +710,17 @@ def main() -> None:
             optimized_grasp["joint_position_rad"],
             dtype=np.float64,
         ).reshape(22)
+        original_wrist_roll = float(optimized_q[5])
+        optimized_q[5] = (
+            (optimized_q[5] + np.pi) % (2.0 * np.pi)
+            - np.pi
+        )
+        if not np.isclose(optimized_q[5], original_wrist_roll):
+            print(
+                "[INITIAL-GRASP] canonicalized periodic xArm joint6 "
+                f"{original_wrist_roll:.6f} -> {optimized_q[5]:.6f} rad",
+                flush=True,
+            )
         optimized_center = np.asarray(
             optimized_grasp["object_center_m"],
             dtype=np.float64,
@@ -662,6 +849,8 @@ def main() -> None:
             self.finger_q_min = np.full((4, 4), np.inf)
             self.finger_q_max = np.full((4, 4), -np.inf)
             self.max_penetration_m = np.zeros(4)
+            self.max_runtime_self_penetration_m = 0.0
+            self.runtime_self_near_contact_frames = 0
             self.arm_collision_frames = 0
             self.non_tip_hand_collision_frames = 0
             self.contact_frames = np.zeros(4, dtype=np.int64)
@@ -1449,6 +1638,14 @@ def main() -> None:
             coarse_q[0] = self.reachable_q
             coarse_residual = np.zeros((keyframe_count + 1, 5), dtype=np.float64)
             coarse_nfev = np.zeros(keyframe_count + 1, dtype=np.int32)
+            planner_pad_alignment = float(
+                np.cos(
+                    np.deg2rad(
+                        args.max_pad_angle_deg
+                        - args.planner_pad_angle_margin_deg
+                    )
+                )
+            )
             previous_q = self.reachable_q.copy()
             preload = args.surface_preload_mm / 1000.0
 
@@ -1706,9 +1903,18 @@ def main() -> None:
                 keyframe_count + 1,
             )
             coarse_progress = np.zeros((keyframe_count + 1, 5), dtype=np.float64)
+            coarse_target_progress = np.zeros_like(coarse_progress)
             coarse_normal_error = np.zeros_like(coarse_progress)
             coarse_cost = np.zeros(keyframe_count + 1, dtype=np.float64)
             coarse_nfev = np.zeros(keyframe_count + 1, dtype=np.int32)
+            planner_pad_alignment = float(
+                np.cos(
+                    np.deg2rad(
+                        args.max_pad_angle_deg
+                        - args.planner_pad_angle_margin_deg
+                    )
+                )
+            )
 
             def contact_state(
                 q: np.ndarray,
@@ -1757,16 +1963,101 @@ def main() -> None:
             initial_palm_position, initial_palm_rotation = (
                 reachability.forward_palm_pose(start_q)
             )
+            palm_site_offset_local = (
+                initial_palm_rotation.T
+                @ (
+                    self.kinematic_targets[0]
+                    - initial_palm_position
+                )
+            )
+            (
+                initial_surface_points,
+                _,
+                initial_contact_frames,
+            ) = capsule_meridian_targets(
+                start_arc,
+                start_azimuth,
+                center,
+                rotation,
+                CAPSULE_RADIUS,
+                CAPSULE_HALF_HEIGHT,
+            )
+
+            def mean_fingertip_contact_frame(
+                frames: np.ndarray,
+            ) -> np.ndarray:
+                """Build a proper frame for the four-contact surface patch."""
+
+                normal = np.mean(frames[1:, :, 0], axis=0)
+                normal /= max(float(np.linalg.norm(normal)), 1.0e-12)
+                meridian = np.mean(frames[1:, :, 2], axis=0)
+                meridian -= normal * float(np.dot(normal, meridian))
+                meridian /= max(
+                    float(np.linalg.norm(meridian)),
+                    1.0e-12,
+                )
+                azimuth = np.cross(meridian, normal)
+                azimuth /= max(float(np.linalg.norm(azimuth)), 1.0e-12)
+                meridian = np.cross(normal, azimuth)
+                return np.column_stack((normal, azimuth, meridian))
+
+            initial_contact_frame = mean_fingertip_contact_frame(
+                initial_contact_frames
+            )
+            initial_patch_center = np.mean(
+                initial_surface_points[1:],
+                axis=0,
+            )
+            initial_palm_patch_offset = (
+                initial_contact_frame.T
+                @ (
+                    self.kinematic_targets[0]
+                    - initial_patch_center
+                )
+            )
             previous_q = start_q.copy()
             previous_delta = np.zeros(22, dtype=np.float64)
+
+            def palm_follow_distance(fingertip_distance: float) -> float:
+                """Integrate a smooth late-route palm velocity schedule."""
+
+                base_distance = (
+                    args.palm_travel_ratio * fingertip_distance
+                )
+                late_distance = max(
+                    fingertip_distance - args.palm_late_follow_start_m,
+                    0.0,
+                )
+                ramp = args.palm_late_follow_ramp_m
+                if late_distance < ramp:
+                    phase = late_distance / ramp
+                    slowdown_integral = ramp * (
+                        phase**3 - 0.5 * phase**4
+                    )
+                else:
+                    # Integral of smoothstep(phase) over [0, 1] is 1/2.
+                    slowdown_integral = late_distance - 0.5 * ramp
+                return max(
+                    base_distance
+                    - (1.0 - args.palm_late_follow_ratio)
+                    * slowdown_integral,
+                    0.0,
+                )
+
             for keyframe in range(1, keyframe_count + 1):
                 desired_distance = float(coarse_distance[keyframe])
+                desired_palm_distance = palm_follow_distance(
+                    desired_distance
+                )
+                palm_path_ratio = desired_palm_distance / max(
+                    desired_distance,
+                    1.0e-12,
+                )
                 desired_arc = start_arc + direction * desired_distance
                 desired_arc[0] = (
                     start_arc[0]
                     + direction
-                    * args.palm_travel_ratio
-                    * desired_distance
+                    * desired_palm_distance
                 )
                 gait_phase = np.sin(
                     np.pi * desired_distance / args.axial_travel_m
@@ -1798,12 +2089,132 @@ def main() -> None:
                     + preload_fraction
                     * (target_signed_standoff - initial_signed_standoff)
                 )
-                palm_target = (
-                    self.kinematic_targets[0]
+                desired_surface, _, desired_frames = (
+                    capsule_meridian_targets(
+                        desired_arc,
+                        desired_azimuth,
+                        center,
+                        rotation,
+                        CAPSULE_RADIUS,
+                        CAPSULE_HALF_HEIGHT,
+                    )
+                )
+                if args.palm_follow_surface_frame:
+                    desired_contact_frame = mean_fingertip_contact_frame(
+                        desired_frames
+                    )
+                    full_palm_frame_transport = (
+                        desired_contact_frame
+                        @ initial_contact_frame.T
+                    )
+                    palm_frame_transport = R.from_rotvec(
+                        args.palm_surface_frame_gain
+                        * R.from_matrix(
+                            full_palm_frame_transport
+                        ).as_rotvec()
+                    ).as_matrix()
+                    transported_contact_frame = (
+                        palm_frame_transport @ initial_contact_frame
+                    )
+                    desired_palm_rotation = (
+                        palm_frame_transport @ initial_palm_rotation
+                    )
+                else:
+                    desired_palm_rotation = initial_palm_rotation
+                desired_patch_center = np.mean(
+                    desired_surface[1:],
+                    axis=0,
+                )
+                transported_palm_target = (
+                    desired_patch_center
+                    + transported_contact_frame
+                    @ initial_palm_patch_offset
+                    if args.palm_follow_surface_frame
+                    else self.kinematic_targets[0]
                     + direction
-                    * args.palm_travel_ratio
                     * desired_distance
                     * rotation[:, 2]
+                )
+                palm_target = (
+                    self.kinematic_targets[0]
+                    + palm_path_ratio
+                    * (
+                        transported_palm_target
+                        - self.kinematic_targets[0]
+                    )
+                )
+                clearance_phase = min(
+                    desired_distance / args.palm_clearance_ramp_m,
+                    1.0,
+                )
+                clearance_phase = (
+                    clearance_phase
+                    * clearance_phase
+                    * (3.0 - 2.0 * clearance_phase)
+                )
+                tilt_release_phase = float(
+                    np.clip(
+                        (
+                            desired_distance
+                            - args.palm_clearance_tilt_release_start_m
+                        )
+                        / args.palm_clearance_tilt_release_ramp_m,
+                        0.0,
+                        1.0,
+                    )
+                )
+                tilt_release_phase = (
+                    tilt_release_phase
+                    * tilt_release_phase
+                    * (3.0 - 2.0 * tilt_release_phase)
+                )
+                clearance_tilt = R.from_rotvec(
+                    -np.deg2rad(args.palm_clearance_tilt_deg)
+                    * clearance_phase
+                    * (1.0 - tilt_release_phase)
+                    * initial_contact_frame[:, 1]
+                ).as_matrix()
+                desired_palm_rotation = (
+                    clearance_tilt @ desired_palm_rotation
+                )
+                secondary_clearance_phase = np.clip(
+                    (
+                        desired_distance
+                        - args.palm_clearance_secondary_start_m
+                    )
+                    / args.palm_clearance_secondary_ramp_m,
+                    0.0,
+                    1.0,
+                )
+                secondary_clearance_phase = (
+                    secondary_clearance_phase
+                    * secondary_clearance_phase
+                    * (3.0 - 2.0 * secondary_clearance_phase)
+                )
+                palm_target += (
+                    (
+                        args.palm_clearance_lift_m
+                        * clearance_phase
+                        + args.palm_clearance_secondary_lift_m
+                        * secondary_clearance_phase
+                    )
+                    * initial_contact_frame[:, 0]
+                )
+                desired_arc[0] = (
+                    start_arc[0]
+                    + float(
+                        np.dot(
+                            palm_target - self.kinematic_targets[0],
+                            rotation[:, 2],
+                        )
+                    )
+                )
+                coarse_target_progress[keyframe] = direction * (
+                    desired_arc - start_arc
+                )
+                desired_palm_body_position = (
+                    palm_target
+                    - desired_palm_rotation @ palm_site_offset_local
                 )
 
                 def residual(
@@ -1812,8 +2223,10 @@ def main() -> None:
                     joint_regularization: float,
                     progress_scale: float,
                     normal_scale: float,
+                    monotonic_scale: float = 150.0,
+                    pad_scale: float = 8.0,
                 ) -> np.ndarray:
-                    points, _, _, arc, auxiliary = contact_state(q)
+                    points, _, surface_normals, arc, auxiliary = contact_state(q)
                     azimuth = auxiliary[:, 0]
                     signed_standoff = auxiliary[:, 1]
                     azimuth_error = (
@@ -1856,7 +2269,7 @@ def main() -> None:
                     )
                     _, palm_rotation = reachability.forward_palm_pose(q)
                     palm_orientation_error = R.from_matrix(
-                        initial_palm_rotation @ palm_rotation.T
+                        desired_palm_rotation @ palm_rotation.T
                     ).as_rotvec()
                     clearance_violation = np.zeros(1, dtype=np.float64)
                     if args.collision_mode == "full_robot":
@@ -1870,13 +2283,22 @@ def main() -> None:
                             - non_tip_clearance,
                             0.0,
                         )
+                    pad_alignment = np.einsum(
+                        "ij,ij->i",
+                        reachability.fingertip_pad_normals(q),
+                        -surface_normals[1:],
+                    )
+                    pad_alignment_violation = np.maximum(
+                        planner_pad_alignment - pad_alignment,
+                        0.0,
+                    )
                     return np.concatenate(
                         (
                             progress_scale * progress_violation
                             + 1.0 * progress_error,
                             normal_scale * normal_violation
                             + 0.3 * tip_normal_error,
-                            150.0 * monotonic_violation,
+                            monotonic_scale * monotonic_violation,
                             30.0 * (points[0] - palm_target),
                             0.02 * palm_orientation_error,
                             0.01 * (q[6:] - start_q[6:]),
@@ -1884,6 +2306,7 @@ def main() -> None:
                             joint_regularization * (q - previous_q),
                             0.0008 * (q - previous_q - previous_delta),
                             1000.0 * clearance_violation,
+                            pad_scale * pad_alignment_violation,
                         )
                     )
 
@@ -1895,11 +2318,11 @@ def main() -> None:
 
                 def segment_collision_status(
                     candidate_q: np.ndarray,
-                ) -> tuple[float, str, int]:
-                    """Audit the complete joint interpolation into a keyframe."""
+                ) -> tuple[float, str, int, float]:
+                    """Audit collision and pad angle through a keyframe."""
 
                     if args.collision_mode != "full_robot":
-                        return np.inf, "", 0
+                        return np.inf, "", 0, 1.0
                     sample_count = max(
                         4,
                         int(np.ceil(frame_count / keyframe_count)),
@@ -1907,6 +2330,7 @@ def main() -> None:
                     minimum = np.inf
                     nearest = ""
                     self_pair_count = 0
+                    minimum_pad_alignment = 1.0
                     for fraction in np.linspace(
                         0.0,
                         1.0,
@@ -1930,18 +2354,23 @@ def main() -> None:
                             reachability.self_collision_contacts(sample_q)
                         )
                         self_pair_count += len(sample_self_pairs)
-                    return minimum, nearest, self_pair_count
-
-                desired_surface, _, desired_frames = (
-                    capsule_meridian_targets(
-                        desired_arc,
-                        desired_azimuth,
-                        center,
-                        rotation,
-                        CAPSULE_RADIUS,
-                        CAPSULE_HALF_HEIGHT,
+                        _, _, sample_normals, _, _ = contact_state(sample_q)
+                        sample_pad_alignment = np.einsum(
+                            "ij,ij->i",
+                            reachability.fingertip_pad_normals(sample_q),
+                            -sample_normals[1:],
+                        )
+                        minimum_pad_alignment = min(
+                            minimum_pad_alignment,
+                            float(sample_pad_alignment.min()),
+                        )
+                    return (
+                        minimum,
+                        nearest,
+                        self_pair_count,
+                        minimum_pad_alignment,
                     )
-                )
+
                 transported_offset = initial_frame_offset.copy()
                 transported_offset[:, 0] = desired_standoff
                 surface_ik_points = (
@@ -1958,12 +2387,8 @@ def main() -> None:
                 # follow the variable-curvature surface.
                 surface_ik_points[0] = palm_target
                 surface_arm_result = reachability.solve_palm_pose(
-                    initial_palm_position
-                    + direction
-                    * args.palm_travel_ratio
-                    * desired_distance
-                    * rotation[:, 2],
-                    initial_palm_rotation,
+                    desired_palm_body_position,
+                    desired_palm_rotation,
                     previous_q,
                     position_tolerance=2.5e-4,
                     orientation_tolerance=1.0e-3,
@@ -1987,6 +2412,7 @@ def main() -> None:
                     surface_ik_clearance,
                     surface_ik_nearest,
                     surface_ik_self_count,
+                    surface_ik_pad_alignment,
                 ) = segment_collision_status(surface_ik_seed)
                 endpoint_self_pairs, _ = (
                     reachability.self_collision_contacts(
@@ -2010,7 +2436,9 @@ def main() -> None:
                     f"non_tip_clearance_mm="
                     f"{surface_ik_clearance * 1000:.2f} "
                     f"nearest={surface_ik_nearest or 'none'} "
-                    f"self_collision_pairs={surface_ik_self_count}",
+                    f"self_collision_pairs={surface_ik_self_count} "
+                    f"max_pad_angle_deg="
+                    f"{np.degrees(np.arccos(np.clip(surface_ik_pad_alignment, -1, 1))):.2f}",
                     f"endpoint_self_pairs={endpoint_self_pair_names}",
                     flush=True,
                 )
@@ -2018,12 +2446,8 @@ def main() -> None:
                 rigid_seed_input = previous_q.copy()
                 rigid_seed_input[6:] = start_q[6:]
                 rigid_arm_result = reachability.solve_palm_pose(
-                    initial_palm_position
-                    + direction
-                    * args.palm_travel_ratio
-                    * desired_distance
-                    * rotation[:, 2],
-                    initial_palm_rotation,
+                    desired_palm_body_position,
+                    desired_palm_rotation,
                     rigid_seed_input,
                     position_tolerance=1.0e-3,
                     orientation_tolerance=3.0e-3,
@@ -2049,6 +2473,8 @@ def main() -> None:
                     surface_ik_clearance
                     >= args.min_non_tip_clearance_mm / 1000.0
                     and surface_ik_self_count == 0
+                    and surface_ik_pad_alignment
+                    >= planner_pad_alignment
                 )
                 if (
                     float(surface_ik_progress_error.max())
@@ -2096,11 +2522,13 @@ def main() -> None:
                     rigid_clearance,
                     _,
                     rigid_self_collision_count,
+                    rigid_pad_alignment,
                 ) = segment_collision_status(rigid_arm_seed)
                 rigid_collision_safe = bool(
                     rigid_clearance
                     >= args.min_non_tip_clearance_mm / 1000.0
                     and rigid_self_collision_count == 0
+                    and rigid_pad_alignment >= planner_pad_alignment
                 )
                 if (
                     args.finger_gait_amplitude_m <= 0.0
@@ -2177,6 +2605,15 @@ def main() -> None:
                     normal_error = np.abs(
                         candidate_aux[:, 1] - desired_standoff
                     )
+                    candidate_tangential_error = (
+                        (
+                            candidate_aux[:, 0]
+                            - desired_azimuth
+                            + np.pi
+                        )
+                        % (2.0 * np.pi)
+                        - np.pi
+                    ) * CAPSULE_RADIUS
                     monotonic_error = np.maximum(
                         minimum_progress
                         - direction * (candidate_arc - start_arc),
@@ -2197,8 +2634,24 @@ def main() -> None:
                             - args.mpc_normal_tolerance_mm / 1000.0,
                             0.0,
                         )
+                        + 1000.0
+                        * max(
+                            float(
+                                np.abs(
+                                    candidate_tangential_error[1:]
+                                ).max()
+                            )
+                            - args.mpc_tangential_tolerance_mm / 1000.0,
+                            0.0,
+                        )
                         + 8.0 * float(progress_error.max())
                         + 5.0 * float(normal_error[1:].max())
+                        + 5.0
+                        * float(
+                            np.abs(
+                                candidate_tangential_error[1:]
+                            ).max()
+                        )
                         + 0.02 * float(
                             np.max(np.abs(result.x - previous_q))
                         )
@@ -2209,6 +2662,7 @@ def main() -> None:
                             clearance,
                             _,
                             candidate_self_count,
+                            candidate_pad_alignment,
                         ) = segment_collision_status(result.x)
                         clearance_violation = max(
                             args.min_non_tip_clearance_mm / 1000.0
@@ -2219,6 +2673,15 @@ def main() -> None:
                             score += 1.0e6 + 1.0e6 * clearance_violation
                         if candidate_self_count:
                             score += 1.0e6 + candidate_self_count
+                        if candidate_pad_alignment < planner_pad_alignment:
+                            score += (
+                                1.0e6
+                                + 1.0e6
+                                * (
+                                    planner_pad_alignment
+                                    - candidate_pad_alignment
+                                )
+                            )
                     candidates.append(
                         (
                             score,
@@ -2235,6 +2698,21 @@ def main() -> None:
                     normal_error,
                     achieved_arc,
                 ) = min(candidates, key=lambda item: item[0])
+                preliminary_progress = direction * (
+                    achieved_arc - start_arc
+                )
+                preliminary_monotonic_error = np.maximum(
+                    minimum_progress - preliminary_progress,
+                    0.0,
+                )
+                preliminary_pad_alignment = 1.0
+                if args.collision_mode == "full_robot":
+                    (
+                        _,
+                        _,
+                        _,
+                        preliminary_pad_alignment,
+                    ) = segment_collision_status(best.x)
                 _, _, _, _, best_auxiliary = contact_state(best.x)
                 tangential_error = (
                     (
@@ -2246,38 +2724,41 @@ def main() -> None:
                     - np.pi
                 ) * CAPSULE_RADIUS
                 if (
-                    float(np.abs(tangential_error[1:]).max())
-                    > args.mpc_tangential_tolerance_mm / 1000.0
-                ):
-                    raise RuntimeError(
-                        "Adaptive surface MPC missed fingertip tangential "
-                        f"gait: keyframe={keyframe}/{keyframe_count} "
-                        f"distance_m={desired_distance:.4f} "
-                        f"error_mm="
-                        f"{(np.abs(tangential_error[1:]) * 1000).round(2).tolist()}"
-                    )
-                if (
                     float(progress_error.max())
                     > active_progress_tolerance_mm / 1000.0
                     or float(normal_error[1:].max())
                     > args.mpc_normal_tolerance_mm / 1000.0
+                    or float(np.abs(tangential_error[1:]).max())
+                    > args.mpc_tangential_tolerance_mm / 1000.0
+                    or float(preliminary_monotonic_error.max())
+                    > args.mpc_monotonic_tolerance_mm / 1000.0
+                    or preliminary_pad_alignment < planner_pad_alignment
                 ):
                     # Constraint-repair pass: warm-start from the best
                     # compromise and sharply penalize only band violations.
                     # This avoids loosening tolerances for a single contact
                     # that misses the feasible set by a fraction of a mm.
                     repair_seed = best.x.copy()
-                    for progress_scale, normal_scale in (
-                        (100.0, 60.0),
-                        (60.0, 100.0),
-                        (120.0, 120.0),
+                    for (
+                        progress_scale,
+                        normal_scale,
+                        monotonic_scale,
+                        pad_scale,
+                    ) in (
+                        (100.0, 60.0, 450.0, 16.0),
+                        (60.0, 100.0, 700.0, 24.0),
+                        (120.0, 120.0, 1000.0, 36.0),
+                        (180.0, 140.0, 1400.0, 56.0),
                     ):
                         repaired = least_squares(
-                            lambda q, ps=progress_scale, ns=normal_scale: residual(
+                            lambda q, ps=progress_scale, ns=normal_scale,
+                            ms=monotonic_scale, pads=pad_scale: residual(
                                 q,
                                 joint_regularization=0.0,
                                 progress_scale=ps,
                                 normal_scale=ns,
+                                monotonic_scale=ms,
+                                pad_scale=pads,
                             ),
                             repair_seed,
                             bounds=(lower, upper),
@@ -2296,6 +2777,15 @@ def main() -> None:
                         repaired_normal_error = np.abs(
                             repaired_aux[:, 1] - desired_standoff
                         )
+                        repaired_tangential_error = (
+                            (
+                                repaired_aux[:, 0]
+                                - desired_azimuth
+                                + np.pi
+                            )
+                            % (2.0 * np.pi)
+                            - np.pi
+                        ) * CAPSULE_RADIUS
                         repaired_monotonic_error = np.maximum(
                             minimum_progress
                             - direction * (repaired_arc - start_arc),
@@ -2317,9 +2807,25 @@ def main() -> None:
                                 - args.mpc_normal_tolerance_mm / 1000.0,
                                 0.0,
                             )
+                            + 1000.0
+                            * max(
+                                float(
+                                    np.abs(
+                                        repaired_tangential_error[1:]
+                                    ).max()
+                                )
+                                - args.mpc_tangential_tolerance_mm / 1000.0,
+                                0.0,
+                            )
                             + 8.0 * float(repaired_progress_error.max())
                             + 5.0
                             * float(repaired_normal_error[1:].max())
+                            + 5.0
+                            * float(
+                                np.abs(
+                                    repaired_tangential_error[1:]
+                                ).max()
+                            )
                             + 0.02
                             * float(
                                 np.max(np.abs(repaired.x - previous_q))
@@ -2331,6 +2837,7 @@ def main() -> None:
                                 clearance,
                                 _,
                                 repaired_self_count,
+                                repaired_pad_alignment,
                             ) = segment_collision_status(repaired.x)
                             clearance_violation = max(
                                 args.min_non_tip_clearance_mm / 1000.0
@@ -2345,6 +2852,15 @@ def main() -> None:
                             if repaired_self_count:
                                 repaired_score += (
                                     1.0e6 + repaired_self_count
+                                )
+                            if repaired_pad_alignment < planner_pad_alignment:
+                                repaired_score += (
+                                    1.0e6
+                                    + 1.0e6
+                                    * (
+                                        planner_pad_alignment
+                                        - repaired_pad_alignment
+                                    )
                                 )
                         candidates.append(
                             (
@@ -2363,6 +2879,16 @@ def main() -> None:
                         normal_error,
                         achieved_arc,
                     ) = min(candidates, key=lambda item: item[0])
+                _, _, _, _, best_auxiliary = contact_state(best.x)
+                tangential_error = (
+                    (
+                        best_auxiliary[:, 0]
+                        - desired_azimuth
+                        + np.pi
+                    )
+                    % (2.0 * np.pi)
+                    - np.pi
+                ) * CAPSULE_RADIUS
                 achieved_progress = direction * (
                     achieved_arc - start_arc
                 )
@@ -2401,16 +2927,29 @@ def main() -> None:
                         f"error_mm="
                         f"{(normal_error[1:] * 1000).round(2).tolist()}"
                     )
+                if (
+                    float(np.abs(tangential_error[1:]).max())
+                    > args.mpc_tangential_tolerance_mm / 1000.0
+                ):
+                    raise RuntimeError(
+                        "Adaptive surface MPC missed fingertip tangential "
+                        f"gait: keyframe={keyframe}/{keyframe_count} "
+                        f"distance_m={desired_distance:.4f} "
+                        f"error_mm="
+                        f"{(np.abs(tangential_error[1:]) * 1000).round(2).tolist()}"
+                    )
                 if args.collision_mode == "full_robot":
                     (
                         best_clearance,
                         best_nearest,
                         best_self_count,
+                        best_pad_alignment,
                     ) = segment_collision_status(best.x)
                     if (
                         best_clearance
                         < args.min_non_tip_clearance_mm / 1000.0
                         or best_self_count
+                        or best_pad_alignment < planner_pad_alignment
                     ):
                         raise RuntimeError(
                             "Adaptive surface MPC has no collision-free "
@@ -2419,7 +2958,11 @@ def main() -> None:
                             f"{best_clearance * 1000:.3f} "
                             f"required_mm={args.min_non_tip_clearance_mm:.3f} "
                             f"nearest={best_nearest} "
-                            f"self_collision_pairs={best_self_count}"
+                            f"self_collision_pairs={best_self_count} "
+                            f"max_pad_angle_deg="
+                            f"{np.degrees(np.arccos(np.clip(best_pad_alignment, -1, 1))):.2f} "
+                            f"planner_limit_deg="
+                            f"{args.max_pad_angle_deg - args.planner_pad_angle_margin_deg:.2f}"
                         )
                 q = best.x
                 coarse_q[keyframe] = q
@@ -2469,7 +3012,8 @@ def main() -> None:
                 )
                 desired_progress = np.full(5, desired_distance)
                 desired_progress[0] = (
-                    args.palm_travel_ratio * desired_distance
+                    (1.0 - blend) * coarse_progress[left, 0]
+                    + blend * coarse_progress[left + 1, 0]
                 )
                 surface_plan[frame] = surface
                 kinematic_plan[frame] = points
@@ -2496,10 +3040,7 @@ def main() -> None:
                 )
                 distance_plan[frame] = float(np.min(progress[1:]))
 
-            final_target_progress = np.full(5, args.axial_travel_m)
-            final_target_progress[0] = (
-                args.palm_travel_ratio * args.axial_travel_m
-            )
+            final_target_progress = coarse_target_progress[-1]
             final_progress_error = np.abs(
                 progress_plan[-1] - final_target_progress
             )
@@ -2934,11 +3475,37 @@ def main() -> None:
                     reachability.self_collision_contacts(live_q)
                 )
                 if runtime_self_pairs:
-                    raise RuntimeError(
-                        "Runtime robot self-collision detected: "
-                        f"pairs={len(runtime_self_pairs)} deepest_mm="
-                        f"{runtime_self_distances.min() * 1000:.3f}"
+                    runtime_self_penetration_m = max(
+                        -float(runtime_self_distances.min()),
+                        0.0,
                     )
+                    self.max_runtime_self_penetration_m = max(
+                        self.max_runtime_self_penetration_m,
+                        runtime_self_penetration_m,
+                    )
+                    self.runtime_self_near_contact_frames += 1
+                    runtime_self_pair_names = [
+                        (
+                            reachability.model.geom(pair[0]).name,
+                            reachability.model.geom(pair[1]).name,
+                        )
+                        for pair in runtime_self_pairs
+                    ]
+                    if (
+                        runtime_self_penetration_m * 1000.0
+                        > args.max_runtime_self_penetration_mm
+                    ):
+                        raise RuntimeError(
+                            "Runtime robot self-collision exceeded numerical "
+                            "penetration tolerance: "
+                            f"pairs={len(runtime_self_pairs)} deepest_mm="
+                            f"{runtime_self_distances.min() * 1000:.6f} "
+                            f"limit_mm="
+                            f"{args.max_runtime_self_penetration_mm:.6f} "
+                            f"pair_names={runtime_self_pair_names} "
+                            f"distances_mm="
+                            f"{(runtime_self_distances * 1000).round(6).tolist()}"
+                        )
                 tip_contact = self.tactile_force >= args.min_contact_force_n
                 self.contact_frames += tip_contact.astype(np.int64)
                 self.evaluated_frames += 1
@@ -3269,6 +3836,10 @@ def main() -> None:
                 f"{policy.max_arm_force_correction_rad:.6f} "
                 f"max_contact_penetration_mm="
                 f"{max_penetration_mm.round(3).tolist()} "
+                f"max_runtime_self_penetration_mm="
+                f"{policy.max_runtime_self_penetration_m * 1000:.6f} "
+                f"runtime_self_near_contact_frames="
+                f"{policy.runtime_self_near_contact_frames} "
                 f"contact_surface_travel_m="
                 f"{policy.contact_surface_travel_m.round(4).tolist()} "
                 f"tip_in_palm_travel_m="

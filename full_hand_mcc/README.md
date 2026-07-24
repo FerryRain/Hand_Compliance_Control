@@ -55,6 +55,42 @@ The controller explicitly applies
 using the fixed-palm Jacobian. The diagnostic script verifies about 0.01 mm
 tip-position agreement and direction cosine `1.0` for all four Jacobians.
 
+## Accepted 280 mm bottom-to-top slide
+
+The current longest reviewed run moves all four physical fingertip pads from
+the lower capsule end-cap region to the upper cylinder/end-cap boundary. The
+object has `100 mm` radius and `170 mm` cylindrical half-height. A smooth
+alternative xArm IK branch first translates the complete grasp `60 mm`
+downward, preserving the four-finger/object geometry while providing enough
+arm workspace for the whole route. The adaptive MPC then uses a staged
+`22 + 10 mm` palm clearance lift and a `15 deg` palm tilt; the palm is a
+non-contact planning point.
+
+The accepted 38-second CUDA run reports:
+
+- planned/executed axial route: `280.0 / 280.0 mm`;
+- physical tip-site surface travel:
+  `[281.5, 281.6, 280.5, 280.5] mm`;
+- continuous-contact ratios:
+  `[0.9988, 1.0, 0.9997, 0.9988]`;
+- motion of each tip relative to the palm:
+  `[16.9, 8.4, 17.0, 19.2] mm`;
+- per-finger maximum joint excursions:
+  `[0.2600, 0.2665, 0.4755, 0.6003] rad`;
+- minimum planned non-tip/object clearance: `3.833 mm`;
+- maximum planned/runtime pad angle:
+  `46.70 / 47.99 deg` (limit `50 deg`, inward dot product `> 0.64`);
+- tip/object penetration and arm/non-tip-hand object collision frames:
+  `0 mm` and `0 / 0`;
+- maximum runtime same-finger near-contact penetration:
+  `0.047670 mm` (`0.05 mm` numerical tolerance).
+
+The ring and thumb use independent `5 mm` and `3 mm` normal preloads to keep
+real tactile contact through the high-curvature transition. This is not a
+hidden natural-closure command: each preload is projected through that
+finger's Jacobian along its local inward surface normal, while the full
+22-DoF trajectory and collision guards remain active.
+
 ## Variable-curvature validation
 
 The latest reviewed demo replaces the long constant-curvature cylinder with a
@@ -144,6 +180,55 @@ Run the variable-curvature transition case:
   --output full_hand_mcc\outputs\capsule_cap_transition.mp4
 ```
 
+Run the accepted 280 mm bottom-to-top case:
+
+```powershell
+.\.venv\Scripts\python.exe full_hand_mcc\scripts\demo_surface_slide.py `
+  --viewer video --device cuda:0 `
+  --object-shape capsule `
+  --object-radius-m 0.10 --object-half-height-m 0.17 `
+  --collision-mode full_robot `
+  --initial-grasp full_hand_mcc\assets\capsule_100x170_bottom_to_top_v1.npz `
+  --planner adaptive_surface_mpc `
+  --axial-travel-m 0.28 --axial-direction 1 `
+  --palm-travel-ratio 1 `
+  --palm-clearance-lift-m 0.022 --palm-clearance-ramp-m 0.04 `
+  --palm-clearance-tilt-deg 15 `
+  --palm-clearance-secondary-lift-m 0.010 `
+  --palm-clearance-secondary-start-m 0.10 `
+  --palm-clearance-secondary-ramp-m 0.04 `
+  --mpc-keyframes 113 --mpc-max-nfev 300 `
+  --mpc-progress-tolerance-mm 3 `
+  --mpc-intermediate-progress-tolerance-mm 3 `
+  --mpc-normal-tolerance-mm 3 --mpc-tangential-tolerance-mm 3 `
+  --mpc-monotonic-tolerance-mm 0.6 `
+  --runtime-tip-gait-mm 4 --runtime-gait-cycles 3 `
+  --runtime-gait-finger-scales 0.85 1 0.85 1 `
+  --finger-normal-preload-mm 1 `
+  --finger-normal-preload-scales 1 1 5 3 `
+  --finger-servo-load-scale 0.5 `
+  --arm-mcc-correction-rad 0.001 `
+  --min-non-tip-clearance-mm 2 --max-pad-angle-deg 50 `
+  --planner-pad-angle-margin-deg 0 `
+  --max-runtime-self-penetration-mm 0.05 `
+  --min-meridian-curvature-ratio 2 `
+  --min-tip-surface-travel-m 0.25 `
+  --min-tip-relative-travel-m 0.004 `
+  --min-finger-joint-excursion-rad 0.05 `
+  --motion-start 350 --steps 3800 --object-approach-frames 250 `
+  --camera-azimuth-deg 100 --camera-distance-m 1.05 `
+  --camera-elevation-deg -5 `
+  --plan-output full_hand_mcc\outputs\capsule_100x170_bottom_to_top_plan.npz `
+  --output full_hand_mcc\outputs\capsule_100x170_bottom_to_top.mp4
+```
+
+The first run solves 113 MPC keyframes. Reuse the accepted plan on later
+replays with
+`--reuse-plan full_hand_mcc\outputs\capsule_100x170_bottom_to_top_plan.npz`.
+To search another collision-free arm branch while preserving the same
+four-finger/object grasp, use
+`full_hand_mcc\scripts\search_long_route_arm_branch.py`.
+
 For a live viewer, replace `--viewer video` with `--viewer native`. MJLab runs
 natively on Windows for this task; WSL is not required.
 
@@ -195,9 +280,9 @@ collision audits are not accepted as final evidence.
 
 ## Generalization and limitations
 
-- Object radius/half-height/pose are runtime parameters, but only the 150 mm
-  thick-object case above has passed the final physical-pad and full-robot
-  visual audit.
+- The `100 mm` radius, `170 mm` half-height bottom-to-top case and the
+  `150 mm` radius variable-curvature case have passed the final physical-pad
+  and full-robot visual audit.
 - Earlier 18-22 mm radius tests are retained as numerical experiments and
   require rerunning under the final checks.
 - Arbitrary mesh geometry, short-object collision-free approach, and a full
@@ -206,7 +291,8 @@ collision audits are not accepted as final evidence.
   contact recovery.
 - The 200 mm constant-curvature run is mostly arm transport: each tip moves
   only `0.3-0.6 mm` relative to the palm. The variable-curvature run improves
-  this to `4.1-5.9 mm` and passes explicit active-finger-motion thresholds.
+  this to `4.1-5.9 mm`; the 280 mm bottom-to-top run reaches
+  `8.4-19.2 mm` and passes explicit active-finger-motion thresholds.
 - Higher-curvature ellipsoid candidates were explored but rejected: the
   current xArm6 + LEAP Hand configuration encountered protected MCP-to-DIP
   self-clearance or link/object constraints after roughly `14-18 mm`.
