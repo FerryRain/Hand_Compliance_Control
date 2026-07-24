@@ -2,7 +2,8 @@
 
 > 本文档是 `full_hand_mcc` 的可恢复实验日志。顶部要求不可删除。每完成一个
 > 设计、实现或验证阶段都要及时更新并提交，确保任务中断、上下文压缩或更换
-> session 后可以从“当前正在做”继续。
+> session 后可以从“当前正在做”继续。每次上下文压缩/摘要恢复后必须重新读
+> 根 `PROCESS.md`、本文档和 #7 最新评论，再执行任何代码或仿真命令。
 
 ## 固定验收要求
 
@@ -54,7 +55,7 @@
 
 ### 1. FR3 资产与装配
 
-状态：进行中。
+状态：模型装配与编译已通过，待环境/GPU 验证。
 
 - 上游：
   `google-deepmind/mujoco_menagerie/franka_fr3_v2`（Apache-2.0）。
@@ -70,13 +71,25 @@
 1. `MjSpec.attach` 默认前缀导致 `fingertip` 等名称找不到：
    改为 `prefix=""`, `suffix=""`。
 2. attach 后两个源 XML 的相对 mesh 路径失去各自基准目录：
-   正在合并前把所有 mesh 路径解析为绝对路径。
+   已在合并前把所有 mesh 路径解析为绝对路径。
 3. 含中文的 `D:\文档` 路径被 MuJoCo C XML 解析器显示为乱码：
    所有编译/GPU 命令必须在 `D:\Code\...\mjlab_full_hand_mcc` 执行。
+4. 初次同步时 `Copy-Item -LiteralPath "...\*"` 不展开通配符，导致 8 个 STL
+   漏拷贝；改为逐文件 `-LiteralPath` 同步。后续不要用该写法复制二进制资产。
+
+编译检查（2026-07-25）：
+
+```text
+nq=23, nv=23, bodies=28, geoms=25
+joint order:
+fr3v2_joint1..7,
+1,0,2,3, 5,4,6,7, 9,8,10,11, 12,13,14,15
+FivePointReachabilitySolver: lower.shape=(23,), points.shape=(5,3)
+```
 
 ### 2. 23 DoF 环境/控制器
 
-状态：代码改造进行中，尚未通过编译验收。
+状态：核心模型/求解器编译通过；环境运行与三个脚本尚未验收。
 
 已改：
 
@@ -134,8 +147,5 @@
 
 1. 读根 `PROCESS.md`、本文档和 issue #7 最新评论。
 2. `git status --short --branch`，确认在 `main`，不要创建分支。
-3. 在 `D:\Code\Hand_Compliance_Control\mjlab_full_hand_mcc` 编译
-   `_load_fr3_leaphand_spec()`，先解决 mesh/attach 问题。
-4. 按“尚未改完”列表完成三个脚本的 23/7 参数化。
-5. 每完成一项立即更新本文档并提交一个 process 检查点。
-
+3. 模型编译已经通过；按“尚未改完”列表完成三个脚本的 23/7 参数化。
+4. 每完成一项立即更新本文档并提交一个 process 检查点。
