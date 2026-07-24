@@ -92,7 +92,8 @@ FivePointReachabilitySolver: lower.shape=(23,), points.shape=(5,3)
 
 ### 2. 23 DoF 环境/控制器
 
-状态：核心模型/求解器与脚本导入通过；环境/GPU 尚未验收。
+状态：核心模型/求解器、环境 GPU reset 与单步 23 维 action 已通过；完整滑动
+仍在验收。
 
 已改：
 
@@ -116,14 +117,22 @@ FivePointReachabilitySolver: lower.shape=(23,), points.shape=(5,3)
 - `diagnose_finger_normal_mapping.py` 完成 23/7 切片。
 - 10 个 `test_full_hand_mcc_core.py` unittest 通过。
 
+GPU smoke（2026-07-25）：
+
+- Windows、RTX 4090 D、`cuda:0`。
+- ActionManager：23 维（FR3 7 + LEAP 16）。
+- 掌根观测 44 维（q23、arm qd7、actuator7、bias7）；手指观测 83 维。
+- 环境 reset 与单步 action 成功。
+
 尚未完成：
 
 - 添加针对 FR3 资产关节顺序、法兰安装方向、自碰撞和环境 action 维度的回归测试。
-- CPU 长路线与 GPU 环境运行验收。
+- GPU 完整 0.48 m 滑动运行与视频视觉验收。
 
 ### 3. 到顶部路线
 
-状态：初始抓取优化通过，长路线搜索尚未运行。
+状态：0.48 m 到上端帽面路线已通过静态审查；动态首关键帧暴露手指内部
+0.080 mm 自碰撞，正在提高初始抓取的静态自碰撞安全余量。
 
 初始抓取：
 
@@ -146,6 +155,41 @@ FivePointReachabilitySolver: lower.shape=(23,), points.shape=(5,3)
    作为数值终止条件，而不是固定距离即成功。
 4. 同时优化 FR3 冗余关节和平滑度，约束机械臂/物体净距。
 5. GPU 执行速度降低，镜头必须能清楚看见拇指和顶部接触。
+
+### 4. 0.48 m 路线与动态失败记录（2026-07-25）
+
+v2 高净空抓取：
+
+- `full_hand_mcc/assets/fr3_capsule_100x170_grasp_high_clearance_v2.npz`
+- 物体中心 `[0.403194, -0.133078, 0.303655] m`。
+- 最大指尖目标偏差 0.423 mm；指腹角
+  `[37.01, 38.73, 37.86, 19.44] deg`。
+- 非指尖/物体最小净距 14.505 mm；静态自碰撞对 0。
+- 受保护自碰撞净距 `[0.050, 0.509, 0.649] mm`，第一项余量过小。
+
+v2 长路线：
+
+- `full_hand_mcc/assets/fr3_capsule_100x170_top_route_high_clearance_v2.npz`
+- 胶囊表面规划行程 0.48 m；四指终点均进入上端帽面。
+- 静态路线 FR3/物体最小净距 43.669 mm，最大相邻机械臂步长 0.05686 rad。
+- 物体沿 240° 方位接近可避免掌部/机械臂穿物体。
+
+已拒绝的动态结果：
+
+- GPU 接近物体与接触校准成功，未出现非指尖/物体碰撞。
+- Adaptive MPC 第一个滑动关键帧出现
+  `mcp_joint_geom`–`dip_geom = -0.079774 mm`。
+- 允许的动态数值容差仅 0.05 mm；该结果是真实超限，不能通过提高容差掩盖。
+- v3 第一次尝试要求所有受保护净距至少 1 mm，但优化只能得到约
+  `[0.674, 0.747, 0.444] mm`，因此按约束拒绝且没有保存无效资产。
+
+当前方法：
+
+1. 以 v2 为 seed，目标受保护净距 1.5 mm、硬下限先设 0.4–0.5 mm；这比动态
+   扰动量保留约一个数量级的静态缓冲，同时仍需在 GPU 中验证 0.05 mm 阈值。
+2. v3 通过后重新搜索 0.48 m 路线。
+3. 先做端点自碰撞精确检查，再做完整 4700 步 GPU 运行，避免生成明显失败视频。
+4. 只有数值审查和抽帧视觉审查同时通过，才更新验收记录和交付视频。
 
 ## 验收记录（待填）
 
@@ -171,6 +215,7 @@ FivePointReachabilitySolver: lower.shape=(23,), points.shape=(5,3)
 
 1. 读根 `PROCESS.md`、本文档和 issue #7 最新评论。
 2. `git status --short --branch`，确认在 `main`，不要创建分支。
-3. 从 `fr3_capsule_100x170_grasp_v1.npz` 运行 0.40–0.45 m 长路线搜索，
-   数值确认四指最终都进入上端帽面。
-4. 每完成一项立即更新本文档并提交一个 process 检查点。
+3. 从 `fr3_capsule_100x170_grasp_high_clearance_v2.npz` 重做 v3 抓取：
+   目标自碰撞净距 1.5 mm，硬下限 0.4–0.5 mm。
+4. 从 v3 重建 0.48 m 路线并重跑 GPU；动态自碰撞仍按 0.05 mm 严格验收。
+5. 每完成一项立即更新本文档并提交一个 process 检查点。
