@@ -164,6 +164,43 @@ class SurfaceGeometryTest(unittest.TestCase):
         )
         np.testing.assert_allclose(moved, moved_surface, atol=1.0e-6)
 
+    def test_capsule_meridian_plan_round_trip_and_frames(self) -> None:
+        radius = 0.07
+        half_height = 0.10
+        total = np.pi * radius + 2.0 * half_height
+        arc = np.linspace(0.01, total - 0.01, 9)
+        azimuth = np.linspace(-2.4, 2.4, 9)
+        center = np.asarray([0.3, -0.2, 0.8])
+        rotation = np.asarray(
+            [
+                [0.0, -1.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 0.0, 1.0],
+            ]
+        )
+        points, normals, frames = GEOMETRY.capsule_meridian_targets(
+            arc,
+            azimuth,
+            center,
+            rotation,
+            radius,
+            half_height,
+        )
+        recovered_arc, recovered_azimuth = (
+            GEOMETRY.capsule_meridian_coordinates(
+                points,
+                center,
+                rotation,
+                radius,
+                half_height,
+            )
+        )
+        np.testing.assert_allclose(recovered_arc, arc, atol=1.0e-6)
+        np.testing.assert_allclose(recovered_azimuth, azimuth, atol=1.0e-6)
+        np.testing.assert_allclose(normals, frames[:, :, 0], atol=1.0e-7)
+        for frame in frames:
+            np.testing.assert_allclose(frame.T @ frame, np.eye(3), atol=1.0e-6)
+
 
 if __name__ == "__main__":
     unittest.main()

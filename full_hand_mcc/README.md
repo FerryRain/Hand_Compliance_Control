@@ -1,151 +1,153 @@
-# Full-hand Minimalist Compliance Control
+# Full-hand MCC surface-sliding demo
 
-This package extends the existing palm MCC and force-recording fingertip task
-into one five-contact controller:
+This directory contains the Windows/CUDA MJLab demo for full-hand Minimalist
+Compliance Control (MCC). The xArm6 moves the hand along a reachable trajectory,
+while all 16 LEAP Hand motor-load channels provide four independent fingertip
+force estimates.
 
-```text
-arm motor torque (6) -> palm wrench MCC ----------\
-                                                    -> 5 reachable references
-finger motor torque (16) -> 4 tip force MCC ------/   -> arm + finger commands
-```
+The five planning points are ordered as:
 
-The input is exactly five world-frame points in this order:
-
-1. palm root contact site;
+1. palm-root planning site (kinematic only; physical palm contact is not required);
 2. index fingertip;
 3. middle fingertip;
 4. ring fingertip;
 5. thumb fingertip.
 
-Each point also has an outward object-surface normal. Targets must pass
-`FivePointReachabilitySolver`: the solver uses the real 22-DoF MuJoCo model,
-the model's joint limits, the palm contact site and all four fingertip sites.
-A target is not sent to the controller unless all five FK residuals are below
-the configured tolerance.
+Only the four tactile fingertip geoms can collide with the target object.
+Non-tip contacts therefore cannot hide a detached fingertip.
 
-The visible fingertip collision meshes do not have their kinematic sites on
-the mesh surface. The demo therefore establishes real four-finger contact
-first, measures the collision-consistent site-to-surface standoff, and moves
-both the five surface inputs and the corresponding kinematic references
-together. This prevents a nominal IK target from pulling a fingertip through
-the object or letting the hand fall back to an unconstrained natural closure.
+## Validated result
 
-During sliding, the five-point solver owns the tangential trajectory. The arm
-MCC is a bounded correction around that trajectory. Each finger uses its four
-motor torque residuals to estimate contact force; the force error adjusts only
-that finger's three flexion motors while preserving its side-axis value from
-the five-point solution.
+The default `adaptive_surface_mpc` run was validated on Windows with an RTX
+4090 D and `cuda:0`:
 
-## Five versions
+- planned and executed travel: `0.2000 m`;
+- adaptive-MPC keyframes / execution frames: `40 / 660`;
+- per-point final progress: `[200, 200, 200, 200, 200] mm`;
+- maximum plan joint step: `0.00205 rad`;
+- maximum progress error: `0.66 mm`;
+- maximum planned fingertip normal error: `2.02 mm`;
+- physical contact ratios (index, middle, ring, thumb):
+  `[1.0, 1.0, 1.0, 1.0]`;
+- maximum nonzero motor-force correction: `0.006886 rad`.
 
-| Variant | Main idea | Best use |
-|---|---|---|
-| `independent_mcc` | Five decoupled Cartesian MCC loops | Simple baseline and gain debugging |
-| `motor_torque_mcc` | Adds direct 16-motor torque-error correction after fingertip IK | Fast force response, but torque sign must be calibrated |
-| `hierarchical_mcc` | Palm motion has priority; fingertips regulate positions relative to the palm | Large arm motion and weak finger workspace |
-| `hybrid_force_position` | Tangential position + normal PI force, with four-finger load balancing | Recommended default for surface sliding |
-| `passivity_tank` | Hybrid MCC plus an energy tank and whole-hand rate limit | Hard/unknown objects and conservative hardware tests |
+The controller does not use natural finger closure. It first records the
+22-joint loaded servo deflection that established real four-finger contact,
+then transports that preload along the URDF-valid trajectory. During motion,
+joint tracking lead compensation rejects arm/finger servo lag. Each finger's
+motor-force error is converted into an inward Cartesian displacement and then
+mapped through that finger's actual `3 x 4` Jacobian.
 
-## Windows support
+## Run on Windows
 
-MJLab runs natively on Windows; WSL is not required for this demo. The
-validated run used Windows, CUDA, an RTX 4090 D, MuJoCo-Warp and
-`device=cuda:0`. Run the command from the repository root. The examples below
-assume the project environment already exists at `.venv`; if not, install the
-repository dependencies using the main MJLab setup before running the demo.
-
-Check the environment:
-
-```powershell
-.\.venv\Scripts\python.exe -c "import torch, mujoco; print(torch.cuda.is_available(), mujoco.__version__)"
-```
-
-## Run the demo
-
-From the repository root and the existing `mjlab` environment:
-
-```bash
-python full_hand_mcc/scripts/demo_surface_slide.py \
-  --variant hybrid_force_position \
-  --viewer native \
-  --device cuda:0
-```
-
-Use `--viewer viser` when a native viewer is inconvenient, or `--device cpu`
-for a slow CPU smoke test.
-
-Record the real MJLab/MuJoCo-Warp rollout as a finite MP4:
-
-```bash
-python full_hand_mcc/scripts/demo_surface_slide.py \
-  --variant hybrid_force_position \
-  --viewer video \
-  --device cuda:0 \
-  --steps 500 \
-  --motion-start 100 \
-  --slide-speed 0.06 \
-  --fps 30 \
-  --width 960 \
-  --height 720 \
-  --finger-force-n 12 \
-  --min-contact-ratio 0.99 \
-  --output full_hand_mcc/outputs/full_hand_mcc_surface_slide_final.mp4
-```
-
-On Windows, use the project virtual environment executable:
+From the repository root:
 
 ```powershell
 .\.venv\Scripts\python.exe full_hand_mcc\scripts\demo_surface_slide.py `
-  --variant hybrid_force_position --viewer video --device cuda:0 `
-  --steps 500 --motion-start 100 --slide-speed 0.06 --fps 30 `
-  --width 960 --height 720 --finger-force-n 12 `
-  --min-contact-ratio 0.99 `
-  --output full_hand_mcc\outputs\full_hand_mcc_surface_slide_final.mp4
+  --viewer video --device cuda:0
 ```
 
-The demo performs these phases automatically:
+This command solves the 40-keyframe MPC from scratch and writes:
 
-1. approach the capsule and require all four real fingertip contact sensors;
-2. capture collision-consistent surface/site offsets;
-3. rotate all five surface targets tangentially around the capsule;
-4. recheck every increment against the 22-DoF model and joint limits;
-5. fail immediately on prolonged contact loss and fail at the end if any
-   fingertip's contact ratio is below `--min-contact-ratio`.
+- `full_hand_mcc/outputs/adaptive_mpc_motor_force_feedback.mp4`
+- `full_hand_mcc/outputs/adaptive_mpc_motor_force_feedback_plan.npz`
 
-An unreachable motion increment is bisected and otherwise rejected. A video is
-not reported as successful merely because an MP4 was written.
+For a live viewer, replace `--viewer video` with `--viewer native`.
 
-The full-hand task uses a 70 mm-radius, 100 mm-half-height capsule selected by
-the real 22-DoF reachability solver. It keeps the arm MCC in a small bounded
-region around the validated five-contact pose, so force-reference drift cannot
-pull the whole hand away from the object.
+Run the core tests:
 
-The validated 5-second Windows/CUDA run achieved fingertip contact ratios
-`[0.9925, 0.9950, 0.9975, 1.0000]` for index, middle, ring and thumb.
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s full_hand_mcc\tests -v
+```
 
-Useful controls:
+MJLab runs natively on Windows for this task; WSL is not required. The validated
+stack used MuJoCo-Warp, CUDA, and the repository-local `.venv`.
 
-- `--slide-speed`: surface angular speed in rad/s;
-- `--motion-start`: first simulation step that moves the surface points;
-- `--finger-force-n`: desired motor-estimated force for each fingertip;
-- `--min-contact-force-n`: contact-sensor force threshold;
-- `--min-contact-ratio`: required per-finger ratio over the sliding phase;
-- `--contact-failure-window`: maximum consecutive bad frames before abort;
-- `--ik-tolerance-mm`: maximum five-point FK residual.
+## What the demo checks
 
-## Task registration
+The rollout automatically:
 
-The task is registered as `Leaphand-Full-Hand-MCC-Control` in
-`src/mjlab/tasks/leaphand/__init__.py`. The standalone demo also directly
-imports the cfg, so it can be run without going through the task picker.
+1. performs tactile-supervised pre-contact search;
+2. requires all four real fingertip sensors to remain in contact;
+3. records loaded arm/finger servo offsets and per-finger motor-force baselines;
+4. solves all five points jointly against the xArm6 + LEAP Hand model and joint limits;
+5. moves 0.20 m through 40 MPC keyframes and 660 rate-limited commands;
+6. aborts after prolonged contact loss;
+7. rejects the result if any fingertip contact ratio is below 99%;
+8. reports the actual motor-force correction so a zero-gain run cannot be
+   mislabeled as force feedback.
 
-## Hardware bring-up
+`--reuse-plan <plan.npz>` may be used only for controller-variant tuning. The
+default command intentionally replans from the current calibrated contact pose.
 
-Before using a real hand:
+## Five reviewed MCC variants
 
-1. verify the sign of each `tau_ext = -(tau_motor - tau_bias)` channel;
-2. identify per-motor zero offsets with the hand unloaded;
-3. start with `passivity_tank`, 0.2 N fingertip force, and 1 N palm force;
-4. cap motor effort and stop on stale torque data, joint-limit proximity,
-   unexpected contact loss, or reachability rejection;
-5. only then tune `hybrid_force_position`.
+All five variants completed 0.20 m with four 100% physical contact ratios:
+
+| Variant | Main difference | Video |
+|---|---|---|
+| `hybrid_force_position` | Tangential position plus normal motor-force feedback | `outputs/adaptive_mpc_motor_force_feedback.mp4` |
+| `independent_mcc` | Independent contact-coordinate loops | `outputs/independent_mcc_surface_slide.mp4` |
+| `motor_torque_mcc` | Direct motor-torque residual path | `outputs/motor_torque_mcc_surface_slide.mp4` |
+| `hierarchical_mcc` | Palm/arm priority with fingertip-relative regulation | `outputs/hierarchical_mcc_surface_slide.mp4` |
+| `passivity_tank` | Whole-hand rate limiter and energy tank | `outputs/passivity_tank_surface_slide.mp4` |
+
+The hybrid controller is the recommended default. The other variants are
+reviewed alternatives, not claims that one trajectory proves identical
+hardware behavior for every controller.
+
+## Object-size generalization
+
+Object dimensions are runtime parameters:
+
+```powershell
+.\.venv\Scripts\python.exe full_hand_mcc\scripts\demo_surface_slide.py `
+  --viewer video --device cuda:0 `
+  --object-radius-m 0.018 `
+  --output full_hand_mcc\outputs\generalization_radius18mm.mp4 `
+  --plan-output full_hand_mcc\outputs\generalization_radius18mm_plan.npz
+```
+
+Reviewed matrix using the same MCC gains:
+
+| Object | Contact acquisition | Travel | Contact ratios | Result |
+|---|---:|---:|---|---|
+| capsule, radius 18 mm, half-height 235 mm | 500 frames | 0.20 m | `[1,1,1,1]` | pass |
+| capsule, radius 20 mm, half-height 235 mm | 500 frames | 0.20 m | `[1,1,1,1]` | pass |
+| capsule, radius 22 mm, half-height 235 mm | 500 frames | n/a | thumb did not reach before motion | fail |
+| capsule, radius 22 mm, half-height 235 mm | 700 frames | 0.20 m | `[1,1,1,1]` | pass |
+| short capsule, radius 20 mm, half-height 110 mm, shifted center | n/a | n/a | initial penetration caused numerical divergence | fail |
+
+Thus the current analytic method generalizes over the tested 18–22 mm radius
+range after adaptive contact-acquisition time, but it does **not** yet
+generalize to arbitrary object length/placement. The short-object failure is
+kept as evidence for a future DP policy that can learn collision-free
+pre-contact approach, object-conditioned preload, and contact recovery.
+
+## Important controls
+
+- `--object-radius-m`, `--object-half-height-m`, `--object-center-z-m`:
+  object geometry and placement;
+- `--axial-travel-m`: requested surface travel;
+- `--motion-start`, `--steps`: contact-acquisition and motion windows;
+- `--mpc-keyframes`: joint-space surface-MPC resolution;
+- `--surface-preload-mm`: inward preload embedded in the planned path;
+- `--finger-servo-load-scale`: calibrated contact preload margin;
+- `--finger-normal-compliance-mm-per-n`: motor-force feedback gain;
+- `--min-contact-ratio`: required physical contact ratio;
+- `--contact-failure-window`: consecutive bad frames before immediate abort.
+
+## Known limitations and follow-up
+
+- The palm-root point is a planning coordinate, not a required physical contact.
+- Radius generalization is validated; arbitrary geometry generalization is not.
+- The 22 mm object needs a longer contact-acquisition window.
+- Moving a short object directly into the hand can create deep initial
+  penetration. A collision-free approach planner or learned DP approach policy
+  is still required.
+- Hardware use requires motor torque sign/offset identification, conservative
+  effort limits, stale-data handling, and emergency stop logic.
+
+Progress and failure evidence are tracked in
+[Issue #3](https://github.com/FerryRain/Hand_Compliance_Control/issues/3) and
+[Issue #4](https://github.com/FerryRain/Hand_Compliance_Control/issues/4).

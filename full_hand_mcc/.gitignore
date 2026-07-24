@@ -3,3 +3,10 @@ __pycache__/
 output/
 outputs/*
 !outputs/full_hand_mcc_surface_slide_final.mp4
+!outputs/adaptive_mpc_motor_force_feedback.mp4
+!outputs/independent_mcc_surface_slide.mp4
+!outputs/motor_torque_mcc_surface_slide.mp4
+!outputs/hierarchical_mcc_surface_slide.mp4
+!outputs/passivity_tank_surface_slide.mp4
+!outputs/generalization_radius18mm.mp4
+!outputs/generalization_radius22mm_extended_acquisition.mp4
