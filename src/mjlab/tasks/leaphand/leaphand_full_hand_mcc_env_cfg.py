@@ -1,4 +1,4 @@
-"""Full-hand MCC adapter for xArm6 + LEAP Hand.
+"""Full-hand MCC adapter for Franka FR3 + LEAP Hand.
 
 Architecture:
 
@@ -22,7 +22,6 @@ import mujoco
 import numpy as np
 import torch
 from scipy.spatial.transform import Rotation as R
-import mjlab.tasks.leaphand.leaphand_palm_mcc_env_cfg as _palm_mcc_module
 
 from mjlab.envs import ManagerBasedRlEnv, ManagerBasedRlEnvCfg
 from mjlab.envs.mdp.actions import JointPositionActionCfg
@@ -37,39 +36,48 @@ from mjlab.tasks.leaphand.full_hand_mcc_core import (
 )
 from mjlab.tasks.leaphand.leaphand_mcc_finger_env_cfg import (
     DEFAULT_PREGRASP_Q,
-    MCC_TARGET_ARM_Q,
     MCC_TIP_BODY_NAMES,
     MCC_TIP_GEOM_NAMES,
+    MCC_TIP_SITE_LOCAL_POSITIONS,
     MCC_TIP_NAMES,
     _LEAPHAND_XML as _TACTILE_ROBOT_XML,
     _get_hard_contact_target_spec,
     _load_fixed_palm_mcc_hand_spec,
-    _load_mcc_leaphand_spec,
     fingertip_force_3d,
     joint_pos,
     mcc_finger_contact_env_cfg,
 )
 from mjlab.tasks.leaphand.leaphand_palm_mcc_env_cfg import (
-    MCCPalmComplianceController,
-    joint_vel_arm,
     palm_jacobian,
     palm_jacobian_rot,
     palm_pos,
     palm_rot,
-    qfrc_actuator_arm,
-    qfrc_bias_arm,
     target_body_pos,
     target_body_rot,
 )
 
 
 PALM_CONTROL_SITE = "full_hand_palm_contact"
-PALM_CONTROL_OFFSET_LOCAL = (-0.0559703, -0.04142053, -0.0340008)
+PALM_CONTROL_OFFSET_LOCAL = (0.0, 0.0, 0.0)
 FULL_HAND_CAPSULE_RADIUS = 0.02
 FULL_HAND_CAPSULE_HALF_HEIGHT = 0.235
 FULL_HAND_OBJECT_SHAPE = "capsule"
 FULL_HAND_COLLISION_MODE = "full_robot"
 FULL_HAND_HIGHLIGHT_THUMB = True
+ARM_DOF = 7
+HAND_DOF = 16
+TOTAL_DOF = ARM_DOF + HAND_DOF
+ARM_JOINT_NAMES = tuple(f"fr3v2_joint{i}" for i in range(1, ARM_DOF + 1))
+FR3_HOME_Q = np.asarray(
+    (0.0, 0.0, 0.0, -1.57079, 0.0, 1.57079, -0.7853),
+    dtype=np.float32,
+)
+_FR3_LEAP_XML = (
+    _TACTILE_ROBOT_XML.parents[1]
+    / "fr3_leap_hand"
+    / "fr3v2_collision.xml"
+)
+_LEAP_HAND_ONLY_XML = _TACTILE_ROBOT_XML.with_name("leap_hand_tactile.xml")
 # The legacy tactile model places each tip FSR on the local -X face of its
 # fingertip body.  This is the physical finger-pad outward normal; the
 # opposite +X face is the nail/back side.
@@ -82,14 +90,7 @@ MCC_TIP_PAD_NORMAL_LOCAL = np.asarray(
 # coordinates are R @ fixed-palm coordinates.  Omitting this proper rotation
 # made the fixed-palm MCC's inward correction point outward for the middle and
 # ring fingers.
-FIXED_TO_ATTACHED_PALM_ROTATION = np.asarray(
-    (
-        (0.0, 1.0, 0.0),
-        (1.0, 0.0, 0.0),
-        (0.0, 0.0, -1.0),
-    ),
-    dtype=np.float64,
-)
+FIXED_TO_ATTACHED_PALM_ROTATION = np.eye(3, dtype=np.float64)
 HAND_QPOS_NAMES = (
     "1", "0", "2", "3",
     "5", "4", "6", "7",
@@ -137,10 +138,86 @@ def _get_full_hand_contact_target_spec() -> mujoco.MjSpec:
     return spec
 
 
+def _load_fr3_leaphand_spec() -> mujoco.MjSpec:
+    """Attach the fixed-base LEAP hand to the official FR3 flange model."""
+
+    fr3_spec = mujoco.MjSpec.from_file(str(_FR3_LEAP_XML))
+    hand_spec = mujoco.MjSpec.from_file(str(_LEAP_HAND_ONLY_XML))
+    # MjSpec attachment loses the source XML directory used for resolving
+    # relative mesh paths. Resolve both asset sets before the two specs merge.
+    for mesh in fr3_spec.meshes:
+        mesh.file = str((_FR3_LEAP_XML.parent / mesh.file).resolve())
+    for mesh in hand_spec.meshes:
+        mesh.file = str((_LEAP_HAND_ONLY_XML.parent / mesh.file).resolve())
+
+    # The standalone hand has a free palm joint.  Once attached to the FR3
+    # flange the palm belongs to the serial chain and must not retain it.
+    palm_base = hand_spec.joint("palm_base")
+    if palm_base is not None:
+        hand_spec.delete(palm_base)
+    for exclude in list(hand_spec.excludes):
+        if exclude.bodyname1 == "thumb_pip" and exclude.bodyname2 == "pip4":
+            hand_spec.delete(exclude)
+
+    palm = hand_spec.body("palm_lower")
+    if palm is None:
+        raise ValueError(f"palm_lower is missing from {_LEAP_HAND_ONLY_XML}")
+    palm.pos = (0.0, 0.0, 0.0)
+    palm.quat = (1.0, 0.0, 0.0, 0.0)
+    for joint in hand_spec.joints:
+        name = joint.name or ""
+        if name.isdigit() and 0 <= int(name) < HAND_DOF:
+            joint.damping = (0.03, 0.0, 0.0)
+            joint.frictionloss = 0.001
+
+    flange = fr3_spec.body("fr3v2_link8")
+    if flange is None:
+        raise ValueError("fr3v2_link8 is missing from the FR3 model")
+    # Keep the same pad-side convention as the validated xArm assembly while
+    # centring the hand on the FR3 flange.  The small offset represents the
+    # rigid hand adapter.
+    # The extra local-X half turn sends the fingers away from the FR3 wrist.
+    # Without it the pre-grasp fingers point back toward links 6/7 and overlap
+    # the arm collision meshes by as much as 49 mm.
+    mount_rotation = R.from_euler(
+        "xyz", (0.0, -np.pi, np.pi / 2.0)
+    ) * R.from_euler("x", np.pi)
+    mount_xyzw = mount_rotation.as_quat()
+    mount = flange.add_site(
+        name="leap_hand_mount",
+        pos=(0.0, 0.0, 0.035),
+        quat=tuple(float(value) for value in np.roll(mount_xyzw, 1)),
+        size=(0.002, 0.0, 0.0),
+        rgba=(0.2, 0.8, 1.0, 0.5),
+    )
+    fr3_spec.attach(hand_spec, prefix="", suffix="", site=mount)
+
+    existing_sites = {site.name for site in fr3_spec.sites}
+    for body_name, site_name, site_pos in zip(
+        MCC_TIP_BODY_NAMES,
+        MCC_TIP_NAMES,
+        MCC_TIP_SITE_LOCAL_POSITIONS,
+        strict=True,
+    ):
+        if site_name in existing_sites:
+            continue
+        body = fr3_spec.body(body_name)
+        if body is None:
+            raise ValueError(f"Fingertip body {body_name!r} is missing after attachment")
+        body.add_site(
+            name=site_name,
+            pos=site_pos,
+            type=mujoco.mjtGeom.mjGEOM_SPHERE,
+            size=(0.004, 0.0, 0.0),
+            rgba=(1.0, 0.8, 0.1, 0.8),
+        )
+    return fr3_spec
+
+
 def _load_full_hand_robot_spec() -> mujoco.MjSpec:
     """Configure staged fingertip-only or complete-robot target collision."""
 
-    spec = _load_mcc_leaphand_spec()
+    spec = _load_fr3_leaphand_spec()
     fingertip_geoms = set(MCC_TIP_GEOM_NAMES)
     found: set[str] = set()
     for geom in spec.geoms:
@@ -169,14 +246,14 @@ def joint_vel_hand(
     env: ManagerBasedRlEnv,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
-    return env.scene[asset_cfg.name].data.joint_vel[:, 6:22]
+    return env.scene[asset_cfg.name].data.joint_vel[:, ARM_DOF:TOTAL_DOF]
 
 
 def qfrc_actuator_hand(
     env: ManagerBasedRlEnv,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
-    return env.scene[asset_cfg.name].data.qfrc_actuator[:, 6:22]
+    return env.scene[asset_cfg.name].data.qfrc_actuator[:, ARM_DOF:TOTAL_DOF]
 
 
 def qfrc_bias_hand(
@@ -188,7 +265,7 @@ def qfrc_bias_hand(
     asset = env.scene[asset_cfg.name]
     direct = getattr(asset.data, "qfrc_bias", None)
     if direct is not None:
-        return direct[:, 6:22]
+        return direct[:, ARM_DOF:TOTAL_DOF]
     if hasattr(env.sim.data, "struct") and hasattr(env.sim.data.struct, "qfrc_bias"):
         bias = env.sim.data.struct.qfrc_bias
         if not torch.is_tensor(bias):
@@ -197,8 +274,42 @@ def qfrc_bias_hand(
             )
         if bias.ndim == 1:
             bias = bias.unsqueeze(0)
-        return bias[:, 6:22]
-    return torch.zeros((env.num_envs, 16), device=env.device)
+        return bias[:, ARM_DOF:TOTAL_DOF]
+    return torch.zeros((env.num_envs, HAND_DOF), device=env.device)
+
+
+def joint_vel_arm_fr3(
+    env: ManagerBasedRlEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    return env.scene[asset_cfg.name].data.joint_vel[:, :ARM_DOF]
+
+
+def qfrc_actuator_arm_fr3(
+    env: ManagerBasedRlEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    return env.scene[asset_cfg.name].data.qfrc_actuator[:, :ARM_DOF]
+
+
+def qfrc_bias_arm_fr3(
+    env: ManagerBasedRlEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    asset = env.scene[asset_cfg.name]
+    direct = getattr(asset.data, "qfrc_bias", None)
+    if direct is not None:
+        return direct[:, :ARM_DOF]
+    if hasattr(env.sim.data, "struct") and hasattr(env.sim.data.struct, "qfrc_bias"):
+        bias = env.sim.data.struct.qfrc_bias
+        if not torch.is_tensor(bias):
+            bias = torch.as_tensor(
+                bias.numpy(), device=env.device, dtype=torch.float32
+            )
+        if bias.ndim == 1:
+            bias = bias.unsqueeze(0)
+        return bias[:, :ARM_DOF]
+    return torch.zeros((env.num_envs, ARM_DOF), device=env.device)
 
 
 def full_hand_mcc_env_cfg(
@@ -210,6 +321,11 @@ def full_hand_mcc_env_cfg(
     cfg = mcc_finger_contact_env_cfg(num_envs=num_envs, play=play)
     robot_cfg = cfg.scene.entities["robot"]
     robot_cfg.spec_fn = _load_full_hand_robot_spec
+    arm_actuator = robot_cfg.articulation.actuators[0]
+    arm_actuator.target_names_expr = (r"^fr3v2_joint[1-7]$",)
+    arm_actuator.stiffness = 2200.0
+    arm_actuator.damping = 220.0
+    arm_actuator.effort_limit = 87.0
     # The standalone finger task intentionally uses a very soft 5 Nm/rad
     # position servo.  In the five-contact task that servo stalls against the
     # capsule before reaching the collision-consistent IK reference, which
@@ -231,8 +347,10 @@ def full_hand_mcc_env_cfg(
     robot_cfg.init_state.joint_pos.update(
         {
             **{
-                f"^joint{joint_id + 1}$": float(value)
-                for joint_id, value in enumerate(MCC_TARGET_ARM_Q)
+                f"^{joint_name}$": float(value)
+                for joint_name, value in zip(
+                    ARM_JOINT_NAMES, FR3_HOME_Q, strict=True
+                )
             },
             **{
                 f"^{joint_name}$": float(value)
@@ -250,6 +368,11 @@ def full_hand_mcc_env_cfg(
     # surface downward by 0.20 m.  This avoids introducing new target geometry
     # into the palm/proximal-link region above the fingertip contact band.
     cfg.scene.entities["target"].init_state.pos = (0.7007, 0.0003, 0.7077)
+    cfg.actions["arm_pos"] = JointPositionActionCfg(
+        entity_name="robot",
+        actuator_names=(r"^fr3v2_joint[1-7]$",),
+        use_default_offset=False,
+    )
     cfg.actions["hand_delta"] = JointPositionActionCfg(
         entity_name="robot",
         actuator_names=(r"^[0-9]+$",),
@@ -267,13 +390,13 @@ def full_hand_mcc_env_cfg(
             {
                 "joint_pos": ObservationTermCfg(func=joint_pos, params={"asset_cfg": robot}),
                 "joint_vel_arm": ObservationTermCfg(
-                    func=joint_vel_arm, params={"asset_cfg": robot}
+                    func=joint_vel_arm_fr3, params={"asset_cfg": robot}
                 ),
                 "qfrc_actuator_arm": ObservationTermCfg(
-                    func=qfrc_actuator_arm, params={"asset_cfg": robot}
+                    func=qfrc_actuator_arm_fr3, params={"asset_cfg": robot}
                 ),
                 "qfrc_bias_arm": ObservationTermCfg(
-                    func=qfrc_bias_arm, params={"asset_cfg": robot}
+                    func=qfrc_bias_arm_fr3, params={"asset_cfg": robot}
                 ),
                 "palm_jacobian": ObservationTermCfg(
                     func=palm_jacobian,
@@ -301,7 +424,7 @@ def full_hand_mcc_env_cfg(
                 ),
             }
         ),
-        # Layout: force(12), q(22), qd_hand(16), tau_motor(16), bias_hand(16).
+        # Layout: force(12), q(23), qd_hand(16), tau_motor(16), bias_hand(16).
         "finger": ObservationGroupCfg(
             {
                 "fingertip_force_3d": ObservationTermCfg(func=fingertip_force_3d),
@@ -338,13 +461,13 @@ class PalmPoseResult(NamedTuple):
 
 
 def _spec_with_palm_contact_site() -> mujoco.MjSpec:
-    spec = _load_mcc_leaphand_spec()
+    spec = _load_fr3_leaphand_spec()
     for geom in spec.geoms:
         if geom.contype != 0 or geom.conaffinity != 0:
             geom.conaffinity = int(geom.conaffinity) | 2
     palm = spec.body("palm_lower")
     if palm is None:
-        raise ValueError("palm_lower is missing from the xArm6 + LEAP model")
+        raise ValueError("palm_lower is missing from the FR3 + LEAP model")
     if spec.site(PALM_CONTROL_SITE) is None:
         palm.add_site(
             name=PALM_CONTROL_SITE,
@@ -466,7 +589,7 @@ class FivePointReachabilitySolver:
             dtype=np.int32,
         )
 
-        joint_names = tuple(f"joint{i}" for i in range(1, 7)) + HAND_QPOS_NAMES
+        joint_names = ARM_JOINT_NAMES + HAND_QPOS_NAMES
         self.qpos_indices: list[int] = []
         self.dof_indices: list[int] = []
         lower: list[float] = []
@@ -492,7 +615,7 @@ class FivePointReachabilitySolver:
         )
 
     def forward_points(self, joint_position: np.ndarray) -> np.ndarray:
-        q = np.asarray(joint_position, dtype=np.float64).reshape(22)
+        q = np.asarray(joint_position, dtype=np.float64).reshape(TOTAL_DOF)
         self.data.qpos[self.qpos_indices_np] = q
         self.data.qvel[:] = 0.0
         mujoco.mj_forward(self.model, self.data)
@@ -677,7 +800,7 @@ class FivePointReachabilitySolver:
 
         target_pos = np.asarray(target_position, dtype=np.float64).reshape(3)
         target_rot = np.asarray(target_rotation, dtype=np.float64).reshape(3, 3)
-        q = np.asarray(seed_joint_position, dtype=np.float64).reshape(22).copy()
+        q = np.asarray(seed_joint_position, dtype=np.float64).reshape(TOTAL_DOF).copy()
         q = np.minimum(np.maximum(q, self.lower), self.upper)
         best_q = q.copy()
         best_cost = np.inf
@@ -712,11 +835,11 @@ class FivePointReachabilitySolver:
                 jacr,
                 self.palm_body_id,
             )
-            arm_dofs = self.dof_indices_np[:6]
+            arm_dofs = self.dof_indices_np[:ARM_DOF]
             jacobian = np.vstack((jacp[:, arm_dofs], jacr[:, arm_dofs]))
             weights = np.asarray([1.0, 1.0, 1.0, 0.2, 0.2, 0.2])
             weighted_j = weights[:, None] * jacobian
-            lhs = jacobian.T @ weighted_j + 1.0e-3 * np.eye(6)
+            lhs = jacobian.T @ weighted_j + 1.0e-3 * np.eye(ARM_DOF)
             rhs = jacobian.T @ (
                 weights * np.concatenate((pos_error, rot_error))
             )
@@ -731,7 +854,7 @@ class FivePointReachabilitySolver:
             scale = 1.0
             while scale >= 1.0 / 32.0:
                 candidate = q.copy()
-                candidate[:6] += scale * dq_arm
+                candidate[:ARM_DOF] += scale * dq_arm
                 candidate = np.minimum(
                     np.maximum(candidate, self.lower),
                     self.upper,
@@ -776,7 +899,7 @@ class FivePointReachabilitySolver:
         seed_joint_position: np.ndarray,
     ) -> ReachabilityResult:
         targets = np.asarray(target_points, dtype=np.float64).reshape(5, 3)
-        q = np.asarray(seed_joint_position, dtype=np.float64).reshape(22).copy()
+        q = np.asarray(seed_joint_position, dtype=np.float64).reshape(TOTAL_DOF).copy()
         q = np.minimum(np.maximum(q, self.lower), self.upper)
         posture_anchor = q.copy()
         best_q = q.copy()
@@ -852,21 +975,21 @@ class FivePointReachabilitySolver:
         travel ratio is zero.  The generic five-point solver intentionally
         stops once it reaches its runtime IK tolerance (normally several
         millimetres), which creates a no-motion dead zone for small MPC
-        increments.  Here the six arm joints are held exactly fixed and the
+        increments.  Here the seven arm joints are held exactly fixed and the
         tighter seed tolerance forces real fingertip articulation.
         """
 
         targets = np.asarray(target_points, dtype=np.float64).reshape(5, 3)
-        q = np.asarray(seed_joint_position, dtype=np.float64).reshape(22).copy()
+        q = np.asarray(seed_joint_position, dtype=np.float64).reshape(TOTAL_DOF).copy()
         q = np.minimum(np.maximum(q, self.lower), self.upper)
-        fixed_arm = q[:6].copy()
-        posture_anchor = q[6:].copy()
+        fixed_arm = q[:ARM_DOF].copy()
+        posture_anchor = q[ARM_DOF:].copy()
         best_q = q.copy()
         best_points = self.forward_points(q)
         tip_error = (targets[1:] - best_points[1:]).ravel()
         best_cost = float(tip_error @ tip_error)
         iterations = 0
-        hand_dofs = self.dof_indices_np[6:]
+        hand_dofs = self.dof_indices_np[ARM_DOF:]
         damping = max(0.05 * self.damping, 1.0e-6)
         regularization = min(self.posture_regularization, 1.0e-7)
 
@@ -909,7 +1032,7 @@ class FivePointReachabilitySolver:
             lhs += (damping + regularization) * np.eye(16)
             rhs = (
                 jacobian.T @ error
-                - regularization * (q[6:] - posture_anchor)
+                - regularization * (q[ARM_DOF:] - posture_anchor)
             )
             dq_hand = np.linalg.solve(lhs, rhs)
             dq_hand = np.clip(
@@ -922,13 +1045,13 @@ class FivePointReachabilitySolver:
             scale = 1.0
             while scale >= 1.0 / 64.0:
                 candidate = q.copy()
-                candidate[:6] = fixed_arm
-                candidate[6:] += scale * dq_hand
+                candidate[:ARM_DOF] = fixed_arm
+                candidate[ARM_DOF:] += scale * dq_hand
                 candidate = np.minimum(
                     np.maximum(candidate, self.lower),
                     self.upper,
                 )
-                candidate[:6] = fixed_arm
+                candidate[:ARM_DOF] = fixed_arm
                 candidate_points = self.forward_points(candidate)
                 candidate_error = (
                     targets[1:] - candidate_points[1:]
@@ -936,7 +1059,7 @@ class FivePointReachabilitySolver:
                 candidate_cost = float(
                     candidate_error @ candidate_error
                     + regularization
-                    * np.sum((candidate[6:] - posture_anchor) ** 2)
+                    * np.sum((candidate[ARM_DOF:] - posture_anchor) ** 2)
                 )
                 if candidate_cost < best_cost:
                     q = candidate
@@ -1071,12 +1194,9 @@ class MotorForceFingerMCCController:
         self.posture_task = mink.PostureTask(self.model, cost=0.08)
         self.limits = [mink.ConfigurationLimit(self.model)]
 
-        self.world_model = _load_mcc_leaphand_spec().compile()
+        self.world_model = _load_fr3_leaphand_spec().compile()
         self.world_data = mujoco.MjData(self.world_model)
-        world_joint_names = (
-            tuple(f"joint{i}" for i in range(1, 7))
-            + HAND_QPOS_NAMES
-        )
+        world_joint_names = ARM_JOINT_NAMES + HAND_QPOS_NAMES
         self.world_qpos_indices = np.asarray(
             [
                 int(
@@ -1184,9 +1304,30 @@ class MotorForceFingerMCCController:
         tip_normals_world: torch.Tensor,
         nominal_hand_q: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        q_full_batch = finger_obs[:, 12:34].detach().cpu().numpy().astype(np.float64)
-        tau_motor = finger_obs[:, 50:66].detach().cpu().numpy().astype(np.float64)
-        bias_motor = finger_obs[:, 66:82].detach().cpu().numpy().astype(np.float64)
+        q_full_batch = (
+            finger_obs[:, 12 : 12 + TOTAL_DOF]
+            .detach()
+            .cpu()
+            .numpy()
+            .astype(np.float64)
+        )
+        motor_offset = 12 + TOTAL_DOF + HAND_DOF
+        tau_motor = (
+            finger_obs[:, motor_offset : motor_offset + HAND_DOF]
+            .detach()
+            .cpu()
+            .numpy()
+            .astype(np.float64)
+        )
+        bias_motor = (
+            finger_obs[
+                :, motor_offset + HAND_DOF : motor_offset + 2 * HAND_DOF
+            ]
+            .detach()
+            .cpu()
+            .numpy()
+            .astype(np.float64)
+        )
         targets_world = tip_targets_world.detach().cpu().numpy().astype(np.float64)
         normals_world = tip_normals_world.detach().cpu().numpy().astype(np.float64)
         palm_target_np = palm_target_world.detach().cpu().numpy().astype(np.float64)
@@ -1221,7 +1362,7 @@ class MotorForceFingerMCCController:
 
         for env_id in range(batch):
             q_full = q_full_batch[env_id]
-            self._set_hand_q(q_full[6:22])
+            self._set_hand_q(q_full[ARM_DOF:TOTAL_DOF])
             positions, jacobians = self._tip_positions_and_jacobians()
             palm_origin, palm_rotation = self._world_palm_pose(q_full)
             world_to_fixed = (
@@ -1269,7 +1410,7 @@ class MotorForceFingerMCCController:
         force_joint_correction_batch = np.zeros((batch, 16), dtype=np.float32)
         ik_local_batch = np.zeros((batch, 4, 3), dtype=np.float32)
         for env_id in range(batch):
-            q_hand = q_full_batch[env_id, 6:22]
+            q_hand = q_full_batch[env_id, ARM_DOF:TOTAL_DOF]
             self.config.data.qpos[:] = 0.0
             self.config.data.qpos[self.hand_qpos_indices] = q_hand
             mujoco.mj_forward(self.config.model, self.config.data)
@@ -1463,21 +1604,6 @@ class FullHandMCCController:
         self.arm_force_feedback_gain = float(
             kwargs.get("arm_force_feedback_gain", 3.0e-4)
         )
-        palm_kwargs = dict(kwargs)
-        palm_kwargs["f_desired_normal"] = float(
-            kwargs.get("palm_desired_force", 3.0)
-        )
-        # The legacy palm module used a workstation-specific absolute path.
-        # Point its observer at the repository-local no-limit model before the
-        # first controller instance is constructed.
-        _palm_mcc_module._LEAPHAND_XML = _TACTILE_ROBOT_XML.with_name(
-            "xarm6_leap_hand_nolimit.xml"
-        )
-        _palm_mcc_module._OBSERVER_CACHE.clear()
-        self.palm = MCCPalmComplianceController(
-            device=device, num_envs=num_envs, **palm_kwargs
-        )
-        self._skip_legacy_palm_preparation()
         finger_kwargs = dict(kwargs)
         finger_kwargs.pop("variant", None)
         self.fingers = MotorForceFingerMCCController(
@@ -1491,15 +1617,7 @@ class FullHandMCCController:
         self._arm_anchor: torch.Tensor | None = None
         self._arm_external_torque_setpoint: torch.Tensor | None = None
 
-    def _skip_legacy_palm_preparation(self) -> None:
-        """Start MCC at the validated five-contact pose, not the old retreat pose."""
-
-        for state in self.palm.states:
-            state["prep_counter"] = self.palm.prep_steps
-
     def reset(self) -> None:
-        self.palm._init_states()
-        self._skip_legacy_palm_preparation()
         self.fingers.reset()
         self._previous_action = None
         self._arm_anchor = None
@@ -1507,10 +1625,12 @@ class FullHandMCCController:
 
     @staticmethod
     def _arm_external_torque(palm_obs: torch.Tensor) -> torch.Tensor:
-        """Estimate six external joint torques from actuator/bias residuals."""
+        """Estimate seven FR3 external joint torques from actuator/bias residuals."""
 
-        actuator_torque = palm_obs[:, 28:34]
-        bias_torque = palm_obs[:, 34:40]
+        actuator_start = TOTAL_DOF + ARM_DOF
+        bias_start = actuator_start + ARM_DOF
+        actuator_torque = palm_obs[:, actuator_start:bias_start]
+        bias_torque = palm_obs[:, bias_start : bias_start + ARM_DOF]
         return -(actuator_torque - bias_torque)
 
     def calibrate_arm_force_setpoint(
@@ -1543,10 +1663,10 @@ class FullHandMCCController:
             )
         if joint_reference is not None and joint_reference.shape != (
             contact_points.shape[0],
-            22,
+            TOTAL_DOF,
         ):
             raise ValueError(
-                "joint_reference must be (B,22), got "
+                f"joint_reference must be (B,{TOTAL_DOF}), got "
                 f"{tuple(joint_reference.shape)}"
             )
 
@@ -1555,10 +1675,12 @@ class FullHandMCCController:
             kinematic_points if kinematic_points is not None else contact_points
         )
         if self._arm_anchor is None:
-            self._arm_anchor = palm_obs[:, :6].detach().clone()
-        current_arm = palm_obs[:, :6]
+            self._arm_anchor = palm_obs[:, :ARM_DOF].detach().clone()
+        current_arm = palm_obs[:, :ARM_DOF]
         nominal_arm = (
-            joint_reference[:, :6] if joint_reference is not None else self._arm_anchor
+            joint_reference[:, :ARM_DOF]
+            if joint_reference is not None
+            else self._arm_anchor
         )
         arm_external_torque = self._arm_external_torque(palm_obs)
         if (
@@ -1600,7 +1722,9 @@ class FullHandMCCController:
             tracking_points[:, 1:],
             surface_normals[:, 1:],
             nominal_hand_q=(
-                joint_reference[:, 6:22] if joint_reference is not None else None
+                joint_reference[:, ARM_DOF:TOTAL_DOF]
+                if joint_reference is not None
+                else None
             ),
         )
         action = torch.cat((arm_action, finger_action), dim=-1)
@@ -1624,7 +1748,10 @@ class FullHandMCCController:
             "nominal_joint_reference": (
                 joint_reference.detach().clone()
                 if joint_reference is not None
-                else torch.cat((self._arm_anchor, palm_obs[:, 6:22]), dim=-1)
+                else torch.cat(
+                    (self._arm_anchor, palm_obs[:, ARM_DOF:TOTAL_DOF]),
+                    dim=-1,
+                )
             ),
         }
         return action

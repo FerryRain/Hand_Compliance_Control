@@ -6,7 +6,7 @@ Run from the repository root:
         --variant hybrid_force_position --viewer native
 
 The five target points are kept on the capsule analytically.  Every proposed
-slide increment is then accepted only after the real 22-DoF model reaches all
+slide increment is then accepted only after the real 23-DoF model reaches all
 five points within the configured tolerance.
 """
 
@@ -38,8 +38,12 @@ from mjlab.tasks.leaphand.full_hand_mcc_geometry import (
     ellipsoid_project,
 )
 from mjlab.tasks.leaphand.leaphand_full_hand_mcc_env_cfg import (
+    ARM_DOF,
+    ARM_JOINT_NAMES,
     FULL_HAND_CAPSULE_HALF_HEIGHT,
     FULL_HAND_CAPSULE_RADIUS,
+    HAND_DOF,
+    TOTAL_DOF,
     FivePointReachabilitySolver,
     FullHandMCCControlCfg,
     full_hand_mcc_env_cfg,
@@ -287,7 +291,7 @@ def main() -> None:
         type=float,
         default=float(np.pi),
         help=(
-            "Additional xArm joint-6 roll. A pi roll turns the LeapHand "
+            "Additional FR3 joint-7 tool roll. Keep it inside the FR3 limit; "
             "palmar fingertip side toward an object outside the arm workspace."
         ),
     )
@@ -455,7 +459,7 @@ def main() -> None:
         type=float,
         choices=(-1.0, 1.0),
         default=-1.0,
-        help="-1 follows the xArm-reachable downward object meridian.",
+        help="-1 follows the opposite object meridian direction.",
     )
     parser.add_argument("--contact-tracking-radius-rad", type=float, default=0.05)
     parser.add_argument(
@@ -561,7 +565,7 @@ def main() -> None:
         type=Path,
         default=None,
         help=(
-            "Load an optimized collision-free 22-DoF initial pose and object "
+            "Load an optimized collision-free 23-DoF initial pose and object "
             "center from an NPZ produced by optimize_full_robot_grasp.py."
         ),
     )
@@ -709,18 +713,7 @@ def main() -> None:
         optimized_q = np.asarray(
             optimized_grasp["joint_position_rad"],
             dtype=np.float64,
-        ).reshape(22)
-        original_wrist_roll = float(optimized_q[5])
-        optimized_q[5] = (
-            (optimized_q[5] + np.pi) % (2.0 * np.pi)
-            - np.pi
-        )
-        if not np.isclose(optimized_q[5], original_wrist_roll):
-            print(
-                "[INITIAL-GRASP] canonicalized periodic xArm joint6 "
-                f"{original_wrist_roll:.6f} -> {optimized_q[5]:.6f} rad",
-                flush=True,
-            )
+        ).reshape(TOTAL_DOF)
         optimized_center = np.asarray(
             optimized_grasp["object_center_m"],
             dtype=np.float64,
@@ -728,11 +721,15 @@ def main() -> None:
         robot_joint_pos = env_cfg.scene.entities[
             "robot"
         ].init_state.joint_pos
-        for joint_id, value in enumerate(optimized_q[:6], start=1):
-            robot_joint_pos[f"^joint{joint_id}$"] = float(value)
+        for joint_name, value in zip(
+            ARM_JOINT_NAMES,
+            optimized_q[:ARM_DOF],
+            strict=True,
+        ):
+            robot_joint_pos[f"^{joint_name}$"] = float(value)
         for joint_name, value in zip(
             full_hand_env_module.HAND_QPOS_NAMES,
-            optimized_q[6:22],
+            optimized_q[ARM_DOF:TOTAL_DOF],
             strict=True,
         ):
             robot_joint_pos[f"^{joint_name}$"] = float(value)
@@ -748,11 +745,13 @@ def main() -> None:
             flush=True,
         )
     else:
-        joint6_init = env_cfg.scene.entities[
+        joint7_init = env_cfg.scene.entities[
             "robot"
-        ].init_state.joint_pos["^joint6$"]
-        env_cfg.scene.entities["robot"].init_state.joint_pos["^joint6$"] = (
-            float(joint6_init) + args.tool_roll_rad
+        ].init_state.joint_pos["^fr3v2_joint7$"]
+        env_cfg.scene.entities["robot"].init_state.joint_pos[
+            "^fr3v2_joint7$"
+        ] = (
+            float(joint7_init) + args.tool_roll_rad
         )
     retreat_azimuth = np.deg2rad(args.object_retreat_azimuth_deg)
     retreat_direction = args.object_retreat_direction_sign * np.asarray(
@@ -836,7 +835,7 @@ def main() -> None:
             self.actual_points = np.zeros((5, 3))
             self.tracking_error = np.full(5, np.inf)
             self.surface_error = np.full(5, np.inf)
-            self.joint_error = np.full(22, np.inf)
+            self.joint_error = np.full(TOTAL_DOF, np.inf)
             self.tactile_force = np.zeros(4)
             self.contact_distance_m = np.full(4, np.nan)
             self.actual_contact_points = np.full((4, 3), np.nan)
@@ -863,7 +862,7 @@ def main() -> None:
             self.max_arm_force_correction_rad = 0.0
             self.precontact_closure = np.zeros(16, dtype=np.float32)
             self.last_command_q: np.ndarray | None = None
-            self.contact_servo_offset_q = np.zeros(22, dtype=np.float32)
+            self.contact_servo_offset_q = np.zeros(TOTAL_DOF, dtype=np.float32)
             self.plan_surface: np.ndarray | None = None
             self.plan_kinematic: np.ndarray | None = None
             self.plan_normals: np.ndarray | None = None
@@ -1044,7 +1043,7 @@ def main() -> None:
             return center, R.from_quat(quat_xyzw).as_matrix()
 
         def _initialize(self, obs) -> None:
-            q = obs["palm"][0, :22].detach().cpu().numpy()
+            q = obs["palm"][0, :TOTAL_DOF].detach().cpu().numpy()
             retreat_center, rotation = self._object_pose(obs)
             center = np.asarray(
                 (
@@ -1104,7 +1103,7 @@ def main() -> None:
             self.targets = surface_targets
             # Hold the live arm pose while the object approaches.  The
             # projected five-point IK above is a feasibility check only; using
-            # it as a first-frame command can jump the high-stiffness xArm
+            # it as a first-frame command can jump the high-stiffness FR3
             # servo and destabilize a wrist-rolled configuration.
             self.kinematic_targets = live_points.copy()
             self.normals = normals
@@ -1203,11 +1202,12 @@ def main() -> None:
                 else live_q.copy()
             )
             calibrated_offset = contact_command_q - live_q
-            self.contact_servo_offset_q[:6] = (
-                args.arm_servo_load_scale * calibrated_offset[:6]
+            self.contact_servo_offset_q[:ARM_DOF] = (
+                args.arm_servo_load_scale * calibrated_offset[:ARM_DOF]
             )
-            self.contact_servo_offset_q[6:22] = (
-                args.finger_servo_load_scale * calibrated_offset[6:22]
+            self.contact_servo_offset_q[ARM_DOF:TOTAL_DOF] = (
+                args.finger_servo_load_scale
+                * calibrated_offset[ARM_DOF:TOTAL_DOF]
             )
             self.targets = surface_targets
             self.kinematic_targets = live_points.copy()
@@ -1245,7 +1245,7 @@ def main() -> None:
             self.contact_current_arc = contact_arc.copy()
             self.contact_start_in_palm = contact_in_palm.copy()
             self.contact_current_in_palm = contact_in_palm.copy()
-            finger_q = live_q[6:22].reshape(4, 4)
+            finger_q = live_q[ARM_DOF:TOTAL_DOF].reshape(4, 4)
             self.finger_q_min = finger_q.copy()
             self.finger_q_max = finger_q.copy()
             self._build_axial_plan(center, rotation)
@@ -1304,11 +1304,11 @@ def main() -> None:
                     cached["joint_positions_rad"], dtype=np.float32
                 )
                 expected_frames = args.steps - args.motion_start
-                if joint_plan.shape != (expected_frames, 22):
+                if joint_plan.shape != (expected_frames, TOTAL_DOF):
                     raise RuntimeError(
                         "Cached plan frame shape mismatch: "
                         f"got={joint_plan.shape} "
-                        f"expected={(expected_frames, 22)}"
+                        f"expected={(expected_frames, TOTAL_DOF)}"
                     )
                 self.plan_surface = np.asarray(
                     cached["surface_points_m"], dtype=np.float32
@@ -1406,7 +1406,7 @@ def main() -> None:
             surface_plan = np.zeros((frame_count, 5, 3), dtype=np.float32)
             kinematic_plan = np.zeros_like(surface_plan)
             normal_plan = np.zeros_like(surface_plan)
-            joint_plan = np.zeros((frame_count, 22), dtype=np.float32)
+            joint_plan = np.zeros((frame_count, TOTAL_DOF), dtype=np.float32)
             residual_plan = np.zeros((frame_count, 5), dtype=np.float32)
             distance_plan = np.zeros(frame_count, dtype=np.float32)
             palm_pose_error_plan = np.zeros((frame_count, 2), dtype=np.float32)
@@ -1634,7 +1634,9 @@ def main() -> None:
                 args.axial_travel_m,
                 keyframe_count + 1,
             )
-            coarse_q = np.zeros((keyframe_count + 1, 22), dtype=np.float64)
+            coarse_q = np.zeros(
+                (keyframe_count + 1, TOTAL_DOF), dtype=np.float64
+            )
             coarse_q[0] = self.reachable_q
             coarse_residual = np.zeros((keyframe_count + 1, 5), dtype=np.float64)
             coarse_nfev = np.zeros(keyframe_count + 1, dtype=np.int32)
@@ -1729,7 +1731,7 @@ def main() -> None:
                         np.arange(keyframe_count + 1),
                         coarse_q[:, joint],
                     )
-                    for joint in range(22)
+                    for joint in range(TOTAL_DOF)
                 ]
             ).astype(np.float32)
             distance_plan = np.linspace(
@@ -1892,7 +1894,9 @@ def main() -> None:
                 20.0,
             )
             keyframe_count = min(args.mpc_keyframes, frame_count)
-            coarse_q = np.zeros((keyframe_count + 1, 22), dtype=np.float64)
+            coarse_q = np.zeros(
+                (keyframe_count + 1, TOTAL_DOF), dtype=np.float64
+            )
             coarse_q[0] = np.minimum(
                 np.maximum(self.reachable_q, lower),
                 upper,
@@ -2016,7 +2020,7 @@ def main() -> None:
                 )
             )
             previous_q = start_q.copy()
-            previous_delta = np.zeros(22, dtype=np.float64)
+            previous_delta = np.zeros(TOTAL_DOF, dtype=np.float64)
 
             def palm_follow_distance(fingertip_distance: float) -> float:
                 """Integrate a smooth late-route palm velocity schedule."""
@@ -2301,7 +2305,11 @@ def main() -> None:
                             monotonic_scale * monotonic_violation,
                             30.0 * (points[0] - palm_target),
                             0.02 * palm_orientation_error,
-                            0.01 * (q[6:] - start_q[6:]),
+                            0.01
+                            * (
+                                q[ARM_DOF:TOTAL_DOF]
+                                - start_q[ARM_DOF:TOTAL_DOF]
+                            ),
                             1000.0 * CAPSULE_RADIUS * azimuth_error,
                             joint_regularization * (q - previous_q),
                             0.0008 * (q - previous_q - previous_delta),
@@ -2432,7 +2440,7 @@ def main() -> None:
                     f"five_point_error_mm="
                     f"{(surface_ik_result.residual_m * 1000).round(2).tolist()} "
                     f"max_arm_step_rad="
-                    f"{float(np.max(np.abs(surface_ik_seed[:6] - previous_q[:6]))):.5f} "
+                    f"{float(np.max(np.abs(surface_ik_seed[:ARM_DOF] - previous_q[:ARM_DOF]))):.5f} "
                     f"non_tip_clearance_mm="
                     f"{surface_ik_clearance * 1000:.2f} "
                     f"nearest={surface_ik_nearest or 'none'} "
@@ -2444,7 +2452,7 @@ def main() -> None:
                 )
 
                 rigid_seed_input = previous_q.copy()
-                rigid_seed_input[6:] = start_q[6:]
+                rigid_seed_input[ARM_DOF:] = start_q[ARM_DOF:]
                 rigid_arm_result = reachability.solve_palm_pose(
                     desired_palm_body_position,
                     desired_palm_rotation,
@@ -2995,7 +3003,7 @@ def main() -> None:
             surface_plan = np.zeros((frame_count, 5, 3), dtype=np.float32)
             kinematic_plan = np.zeros_like(surface_plan)
             normal_plan = np.zeros_like(surface_plan)
-            joint_plan = np.zeros((frame_count, 22), dtype=np.float32)
+            joint_plan = np.zeros((frame_count, TOTAL_DOF), dtype=np.float32)
             residual_plan = np.zeros((frame_count, 5), dtype=np.float32)
             distance_plan = np.zeros(frame_count, dtype=np.float32)
             progress_plan = np.zeros((frame_count, 5), dtype=np.float32)
@@ -3154,7 +3162,7 @@ def main() -> None:
             The main arm trajectory remains the validated end-to-end plan.
             Each fingertip target is regenerated by forward kinematics after
             a slow joint-space gait, so the five points always correspond to
-            one real 22-DoF robot configuration.
+            one real 23-DoF robot configuration.
             """
 
             if (
@@ -3202,7 +3210,7 @@ def main() -> None:
                     continue
                 tangent /= tangent_norm
                 row = 3 * (finger + 1)
-                col = 6 + 4 * finger
+                col = ARM_DOF + 4 * finger
                 finger_jacobian = jacobian[
                     row : row + 3, col : col + 4
                 ]
@@ -3252,7 +3260,7 @@ def main() -> None:
             assert self.kinematic_targets is not None
             assert self.normals is not None
             assert self.reachable_q is not None
-            live_q = obs["palm"][0, :22].detach().cpu().numpy()
+            live_q = obs["palm"][0, :TOTAL_DOF].detach().cpu().numpy()
             self.tactile_force = (
                 torch.linalg.vector_norm(
                     obs["finger"][0, :12].reshape(4, 3), dim=-1
@@ -3296,8 +3304,8 @@ def main() -> None:
                         else np.asarray([])
                     )
                     raise RuntimeError(
-                        "Arm-object collision guard triggered: an xArm "
-                        "base/link1..link6 collision geom touched the target. "
+                        "Arm-object collision guard triggered: an FR3 "
+                        "link0..link7 collision geom touched the target. "
                         f"contact_slots="
                         f"{arm_guard.found[0].detach().cpu().numpy().tolist()} "
                         f"dist_mm={guard_distance_mm.round(3).tolist()}"
@@ -3335,7 +3343,7 @@ def main() -> None:
                 # fingertips away from the capsule and was the source of the
                 # earlier visually invalid grasp.
                 search_q = self.reachable_q.copy()
-                search_q[6:22] += self.precontact_closure
+                search_q[ARM_DOF:TOTAL_DOF] += self.precontact_closure
                 search_points = reachability.forward_points(search_q)
                 search_surface, search_normals = capsule_project(
                     search_points,
@@ -3349,7 +3357,7 @@ def main() -> None:
                     if tactile_force >= args.min_contact_force_n:
                         continue
                     row = 3 * (finger + 1)
-                    col = 6 + 4 * finger
+                    col = ARM_DOF + 4 * finger
                     finger_jacobian = stacked_jacobian[
                         row : row + 3,
                         col : col + 4,
@@ -3552,7 +3560,7 @@ def main() -> None:
                             axis=1,
                         ),
                     )
-                finger_q = live_q[6:22].reshape(4, 4)
+                finger_q = live_q[ARM_DOF:TOTAL_DOF].reshape(4, 4)
                 self.finger_q_min = np.minimum(
                     self.finger_q_min, finger_q
                 )
@@ -3573,9 +3581,9 @@ def main() -> None:
                         f"tactile_force_N="
                         f"{self.tactile_force.round(2).tolist()} "
                         f"arm_joint_error_rad="
-                        f"{self.joint_error[:6].round(3).tolist()} "
+                        f"{self.joint_error[:ARM_DOF].round(3).tolist()} "
                         f"finger_joint_error_rad="
-                        f"{self.joint_error[6:].round(3).tolist()}"
+                        f"{self.joint_error[ARM_DOF:].round(3).tolist()}"
                     )
             target_t = torch.as_tensor(
                 self.targets[None], device=device, dtype=torch.float32
@@ -3588,25 +3596,34 @@ def main() -> None:
             )
             command_q = self.reachable_q.copy()
             if not self.contact_calibrated:
-                command_q[6:22] += self.precontact_closure
+                command_q[ARM_DOF:TOTAL_DOF] += self.precontact_closure
                 command_q = np.minimum(
                     np.maximum(command_q, reachability.lower),
                     reachability.upper,
                 )
-                command_q[6:22] = live_q[6:22] + np.clip(
-                    command_q[6:22] - live_q[6:22],
+                command_q[ARM_DOF:TOTAL_DOF] = live_q[
+                    ARM_DOF:TOTAL_DOF
+                ] + np.clip(
+                    command_q[ARM_DOF:TOTAL_DOF]
+                    - live_q[ARM_DOF:TOTAL_DOF],
                     -args.contact_search_step_rad,
                     args.contact_search_step_rad,
                 )
             else:
                 command_q += self.contact_servo_offset_q
-                command_q[:6] += (
+                command_q[:ARM_DOF] += (
                     args.arm_trajectory_tracking_gain
-                    * (self.reachable_q[:6] - live_q[:6])
+                    * (
+                        self.reachable_q[:ARM_DOF]
+                        - live_q[:ARM_DOF]
+                    )
                 )
-                command_q[6:22] += (
+                command_q[ARM_DOF:TOTAL_DOF] += (
                     args.finger_trajectory_tracking_gain
-                    * (self.reachable_q[6:22] - live_q[6:22])
+                    * (
+                        self.reachable_q[ARM_DOF:TOTAL_DOF]
+                        - live_q[ARM_DOF:TOTAL_DOF]
+                    )
                 )
                 command_q = np.minimum(
                     np.maximum(command_q, reachability.lower),
@@ -3649,8 +3666,10 @@ def main() -> None:
                 # before true tactile contact has been established.  This
                 # phase is absolute position hold plus independent tactile
                 # search; motor-force MCC starts after calibration.
-                action[:, :6] = joint_reference_t[:, :6]
-                action[:, 6:22] = joint_reference_t[:, 6:22]
+                action[:, :ARM_DOF] = joint_reference_t[:, :ARM_DOF]
+                action[:, ARM_DOF:TOTAL_DOF] = joint_reference_t[
+                    :, ARM_DOF:TOTAL_DOF
+                ]
             if self.step % max(args.print_every, 1) == 0:
                 debug = controller.last_debug
                 motor_force = torch.linalg.vector_norm(
@@ -3664,8 +3683,8 @@ def main() -> None:
                     f"actual_tip_kinematic_target_mm="
                     f"{(self.tracking_error[1:] * 1000).round(2).tolist()} "
                     f"max_joint_error_rad="
-                    f"[{np.max(np.abs(self.joint_error[:6])):.3f},"
-                    f"{np.max(np.abs(self.joint_error[6:])):.3f}] "
+                    f"[{np.max(np.abs(self.joint_error[:ARM_DOF])):.3f},"
+                    f"{np.max(np.abs(self.joint_error[ARM_DOF:])):.3f}] "
                     f"tip_force_N={motor_force.cpu().numpy().round(2).tolist()} "
                     f"tactile_force_N={self.tactile_force.round(2).tolist()} "
                     f"contact_dist_mm="

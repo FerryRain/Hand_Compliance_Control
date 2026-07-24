@@ -9,7 +9,9 @@ import numpy as np
 
 from mjlab.tasks.leaphand.full_hand_mcc_geometry import capsule_project
 from mjlab.tasks.leaphand.leaphand_full_hand_mcc_env_cfg import (
+    ARM_DOF,
     FIXED_TO_ATTACHED_PALM_ROTATION,
+    TOTAL_DOF,
     FivePointReachabilitySolver,
     MotorForceFingerMCCController,
 )
@@ -43,7 +45,7 @@ def main() -> None:
         num_envs=1,
         variant="hybrid_force_position",
     )
-    fixed._set_hand_q(q[6:22])
+    fixed._set_hand_q(q[ARM_DOF:TOTAL_DOF])
     fixed_positions, fixed_jacobians = (
         fixed._tip_positions_and_jacobians()
     )
@@ -75,7 +77,7 @@ def main() -> None:
         )
         full_j = full_jacobian[
             3 * (finger + 1) : 3 * (finger + 2),
-            6 + base : 6 + base + 4,
+            ARM_DOF + base : ARM_DOF + base + 4,
         ]
         predicted_world = full_j @ correction
         predicted_local = fixed_j @ correction

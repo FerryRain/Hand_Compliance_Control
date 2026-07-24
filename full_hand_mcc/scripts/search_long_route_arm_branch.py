@@ -1,7 +1,7 @@
-"""Find an xArm IK branch that preserves a grasp over a long surface route.
+"""Find an FR3 IK branch that preserves a grasp over a long surface route.
 
 The four LeapHand joint configurations and object-relative contact geometry
-remain unchanged.  Only the six arm joints are replaced by another inverse-
+remain unchanged.  Only the seven arm joints are replaced by another inverse-
 kinematics branch that realizes the same initial palm pose and can follow the
 requested collision-avoidance palm trajectory end to end.
 """
@@ -20,6 +20,7 @@ from mjlab.tasks.leaphand.full_hand_mcc_geometry import (
     capsule_project,
 )
 from mjlab.tasks.leaphand.leaphand_full_hand_mcc_env_cfg import (
+    ARM_DOF,
     FivePointReachabilitySolver,
 )
 import mjlab.tasks.leaphand.leaphand_full_hand_mcc_env_cfg as env_module
@@ -46,7 +47,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--seed-grasp", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--travel-m", type=float, default=0.28)
+    parser.add_argument("--travel-m", type=float, default=0.40)
     parser.add_argument(
         "--world-offset-z-m",
         type=float,
@@ -139,7 +140,7 @@ def main() -> None:
     initial_contact_frame = _mean_contact_frame(initial_frames)
 
     def minimum_arm_object_clearance(q: np.ndarray) -> float:
-        """Return clearance for the xArm base/links, excluding hand geoms."""
+        """Return clearance for the FR3 base/links, excluding hand geoms."""
 
         _, non_tip_distance, non_tip_names = solver.geometry_clearances(
             q,
@@ -148,8 +149,7 @@ def main() -> None:
         )
         arm_mask = np.asarray(
             [
-                name == "base_collision"
-                or name.startswith("link")
+                name.startswith("fr3v2_link")
                 for name in non_tip_names
             ],
             dtype=bool,
@@ -192,18 +192,19 @@ def main() -> None:
         return body_position, desired_rotation
 
     rng = np.random.default_rng(args.random_seed)
-    finite_lower = solver.lower[:6]
-    finite_upper = solver.upper[:6]
-    arm_seeds = [q_seed[:6].copy()]
-    # Structured wrist/elbow perturbations are much more productive than
-    # purely random guesses for the six xArm inverse-kinematics branches.
-    for joint1_offset in (0.0, -np.pi, np.pi):
-        for joint4_offset in (0.0, -np.pi, np.pi):
-            for joint6_offset in (0.0, -np.pi, np.pi):
-                candidate = q_seed[:6].copy()
+    finite_lower = solver.lower[:ARM_DOF]
+    finite_upper = solver.upper[:ARM_DOF]
+    arm_seeds = [q_seed[:ARM_DOF].copy()]
+    # FR3 redundancy is continuous rather than the periodic xArm wrist
+    # branches used by the previous model. Structured shoulder/elbow/tool
+    # perturbations cover useful null-space seeds before random sampling.
+    for joint1_offset in (0.0, -0.8, 0.8):
+        for joint3_offset in (0.0, -0.8, 0.8):
+            for joint7_offset in (0.0, -1.0, 1.0):
+                candidate = q_seed[:ARM_DOF].copy()
                 candidate[0] += joint1_offset
-                candidate[3] += joint4_offset
-                candidate[5] += joint6_offset
+                candidate[2] += joint3_offset
+                candidate[6] += joint7_offset
                 arm_seeds.append(
                     np.minimum(
                         np.maximum(candidate, finite_lower),
@@ -214,14 +215,14 @@ def main() -> None:
         rng.uniform(
             finite_lower,
             finite_upper,
-            size=(args.random_starts, 6),
+            size=(args.random_starts, ARM_DOF),
         )
     )
 
     branches: list[np.ndarray] = []
     for seed_index, arm_seed in enumerate(arm_seeds):
         q0 = q_seed.copy()
-        q0[:6] = arm_seed
+        q0[:ARM_DOF] = arm_seed
         result = solver.solve_palm_pose(
             initial_palm_body_position,
             initial_palm_rotation,
@@ -234,7 +235,12 @@ def main() -> None:
             continue
         candidate = result.joint_position
         if any(
-            float(np.linalg.norm(candidate[:6] - branch[:6])) < 0.05
+            float(
+                np.linalg.norm(
+                    candidate[:ARM_DOF] - branch[:ARM_DOF]
+                )
+            )
+            < 0.05
             for branch in branches
         ):
             continue
@@ -250,7 +256,7 @@ def main() -> None:
         print(
             "[START-BRANCH] "
             f"seed={seed_index} branch={len(branches) - 1} "
-            f"arm_q={candidate[:6].round(5).tolist()} "
+            f"arm_q={candidate[:ARM_DOF].round(5).tolist()} "
             f"clearance_mm={clearance * 1000:.3f}",
             flush=True,
         )
@@ -305,7 +311,14 @@ def main() -> None:
                 break
             maximum_step = max(
                 maximum_step,
-                float(np.max(np.abs(candidate[:6] - previous[:6]))),
+                float(
+                    np.max(
+                        np.abs(
+                            candidate[:ARM_DOF]
+                            - previous[:ARM_DOF]
+                        )
+                    )
+                ),
             )
             minimum_clearance = min(minimum_clearance, segment_clearance)
             previous = candidate
@@ -330,7 +343,7 @@ def main() -> None:
     successful.sort(key=lambda item: (item[1], item[0]), reverse=True)
     best_clearance, neg_best_step, best_branch = successful[0]
     output_q = q_seed.copy()
-    output_q[:6] = best_branch[:6]
+    output_q[:ARM_DOF] = best_branch[:ARM_DOF]
     payload = {name: source[name] for name in source.files}
     payload["joint_position_rad"] = output_q
     payload["object_center_m"] = center
@@ -345,7 +358,7 @@ def main() -> None:
     print(
         "[LONG-ROUTE-BRANCH] "
         f"saved={args.output.resolve()} "
-        f"arm_q={best_branch[:6].round(6).tolist()} "
+        f"arm_q={best_branch[:ARM_DOF].round(6).tolist()} "
         f"min_clearance_mm={best_clearance * 1000:.3f} "
         f"max_arm_step_rad={-neg_best_step:.5f}",
         flush=True,

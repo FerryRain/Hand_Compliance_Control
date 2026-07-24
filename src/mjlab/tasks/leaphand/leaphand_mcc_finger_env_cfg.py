@@ -209,7 +209,10 @@ def _tip_sensor_cfgs() -> tuple[ContactSensorCfg, ...]:
         name="arm_object_collision",
         primary=ContactMatch(
             mode="geom",
-            pattern=r"^(?:base_collision|link[1-6]_collision)$",
+            pattern=(
+                r"^(?:base_collision|link[1-6]_collision|"
+                r"fr3v2_link[0-7]_collision)$"
+            ),
             entity="robot",
         ),
         secondary=ContactMatch(

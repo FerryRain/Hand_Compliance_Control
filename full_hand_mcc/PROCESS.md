@@ -76,6 +76,9 @@
    所有编译/GPU 命令必须在 `D:\Code\...\mjlab_full_hand_mcc` 执行。
 4. 初次同步时 `Copy-Item -LiteralPath "...\*"` 不展开通配符，导致 8 个 STL
    漏拷贝；改为逐文件 `-LiteralPath` 同步。后续不要用该写法复制二进制资产。
+5. 首版法兰旋转让手指从掌根朝 FR3 腕部方向伸展，link6/link7 与指节最深重叠
+   49.27 mm。测试四种候选装配旋转后，在原旋转右乘局部 X 轴 180°；手指改为
+   朝法兰外侧伸展，home pose 的 FR3/LEAP 自碰撞对从 10 降为 0。
 
 编译检查（2026-07-25）：
 
@@ -89,7 +92,7 @@ FivePointReachabilitySolver: lower.shape=(23,), points.shape=(5,3)
 
 ### 2. 23 DoF 环境/控制器
 
-状态：核心模型/求解器编译通过；环境运行与三个脚本尚未验收。
+状态：核心模型/求解器与脚本导入通过；环境/GPU 尚未验收。
 
 已改：
 
@@ -102,16 +105,37 @@ FivePointReachabilitySolver: lower.shape=(23,), points.shape=(5,3)
 - 移除只支持 xArm6 的旧掌部控制器实例；保留更直接的 FR3
   “执行器力矩 - bias 力矩”校准残差 MCC。
 
-尚未改完：
+已完成：
 
-- `demo_surface_slide.py` 中 22、6、`joint6` 周期处理等硬编码。
-- `optimize_full_robot_grasp.py` 的 22+3 优化变量切片。
-- `search_long_route_arm_branch.py` 的 6 DoF seed/分支逻辑。
-- 单元测试的预期维度与 FR3 资产测试。
+- `demo_surface_slide.py` 的 22/6 硬编码改为 `TOTAL_DOF/ARM_DOF`，优化抓取加载
+  改用 `fr3v2_joint1..7`，删除 xArm 周期 joint6 归一化。
+- `optimize_full_robot_grasp.py` 改为 23+3 变量，旧 22 DoF stage-1 计划会被
+  明确忽略；全局 seed 改为 FR3 joint1/joint3/joint7 冗余扰动。
+- `search_long_route_arm_branch.py` 改为 7 DoF FR3 null-space seed，默认行程
+  从 0.28 m 提高到 0.40 m。
+- `diagnose_finger_normal_mapping.py` 完成 23/7 切片。
+- 10 个 `test_full_hand_mcc_core.py` unittest 通过。
+
+尚未完成：
+
+- 添加针对 FR3 资产关节顺序、法兰安装方向、自碰撞和环境 action 维度的回归测试。
+- CPU 长路线与 GPU 环境运行验收。
 
 ### 3. 到顶部路线
 
-状态：未开始运行 FR3 规划。
+状态：初始抓取优化通过，长路线搜索尚未运行。
+
+初始抓取：
+
+- 文件：`full_hand_mcc/assets/fr3_capsule_100x170_grasp_v1.npz`
+- 物体：胶囊半径 0.10 m，半高 0.17 m。
+- 中心：`[0.404851, -0.126491, 0.450205] m`
+- 四指尖几何误差最大：0.043 mm。
+- 指腹角：`[38.89, 37.30, 34.27, 13.65] deg`。
+- 非指尖/物体最小净距：4.885 mm（最近 `thumb_dip_geom`）。
+- 受保护手指自碰撞净距：`[0.372, 0.581, 0.698] mm`。
+- 自碰撞对：0。
+- 这是静态优化结果；真实 GPU 接触、负载反馈和视频尚未验收。
 
 计划：
 
@@ -147,5 +171,6 @@ FivePointReachabilitySolver: lower.shape=(23,), points.shape=(5,3)
 
 1. 读根 `PROCESS.md`、本文档和 issue #7 最新评论。
 2. `git status --short --branch`，确认在 `main`，不要创建分支。
-3. 模型编译已经通过；按“尚未改完”列表完成三个脚本的 23/7 参数化。
+3. 从 `fr3_capsule_100x170_grasp_v1.npz` 运行 0.40–0.45 m 长路线搜索，
+   数值确认四指最终都进入上端帽面。
 4. 每完成一项立即更新本文档并提交一个 process 检查点。

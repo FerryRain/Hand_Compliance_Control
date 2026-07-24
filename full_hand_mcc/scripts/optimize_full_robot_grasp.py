@@ -14,11 +14,12 @@ from mjlab.tasks.leaphand.full_hand_mcc_geometry import (
     ellipsoid_project,
 )
 from mjlab.tasks.leaphand.leaphand_full_hand_mcc_env_cfg import (
+    FR3_HOME_Q,
+    TOTAL_DOF,
     FivePointReachabilitySolver,
 )
 from mjlab.tasks.leaphand.leaphand_mcc_finger_env_cfg import (
     DEFAULT_PREGRASP_Q,
-    MCC_TARGET_ARM_Q,
 )
 import mjlab.tasks.leaphand.leaphand_full_hand_mcc_env_cfg as env_module
 
@@ -31,8 +32,8 @@ def main() -> None:
         choices=("capsule", "ellipsoid"),
         default="capsule",
     )
-    parser.add_argument("--radius", type=float, default=0.15)
-    parser.add_argument("--half-height", type=float, default=0.26)
+    parser.add_argument("--radius", type=float, default=0.10)
+    parser.add_argument("--half-height", type=float, default=0.17)
     parser.add_argument("--clearance-mm", type=float, default=5.0)
     parser.add_argument(
         "--self-clearance-mm",
@@ -246,48 +247,59 @@ def main() -> None:
         (0.0145, 0.0118, 0.0140, 0.0145),
         dtype=np.float64,
     )
+    reference_q: np.ndarray | None = None
     if args.stage1_plan.exists():
         stage1 = np.load(args.stage1_plan)
-        reference_q = np.asarray(
+        stage1_q = np.asarray(
             stage1["joint_positions_rad"][0],
             dtype=np.float64,
         )
-    else:
+        if stage1_q.shape == (TOTAL_DOF,):
+            reference_q = stage1_q
+        else:
+            print(
+                "[SEED] ignoring legacy stage-1 plan with "
+                f"{stage1_q.size} DoF; FR3 requires {TOTAL_DOF}",
+                flush=True,
+            )
+    if reference_q is None:
         reference_q = np.concatenate(
             (
-                MCC_TARGET_ARM_Q.astype(np.float64),
+                FR3_HOME_Q.astype(np.float64),
                 np.asarray(DEFAULT_PREGRASP_Q, dtype=np.float64),
             )
         )
-        reference_q[5] += np.pi
-
+ 
     starts = [
-        np.asarray((0.94, -0.05, 0.7077)),
-        np.asarray((0.90, -0.20, 0.7077)),
-        np.asarray((0.90, 0.12, 0.7077)),
-        np.asarray((0.82, -0.28, 0.7077)),
-        np.asarray((0.74, -0.05, 0.60)),
-        np.asarray((0.74, 0.20, 0.60)),
-        np.asarray((0.74, -0.30, 0.60)),
-        np.asarray((0.62, -0.05, 0.60)),
+        np.asarray((0.56, -0.04, 0.48)),
+        np.asarray((0.58, -0.02, 0.50)),
+        np.asarray((0.54, -0.06, 0.50)),
+        np.asarray((0.60, -0.08, 0.48)),
+        np.asarray((0.54, 0.02, 0.48)),
+        np.asarray((0.62, -0.02, 0.52)),
+        np.asarray((0.50, -0.04, 0.52)),
+        np.asarray((0.58, -0.10, 0.52)),
     ]
     q_starts: list[np.ndarray] = []
-    wrist_offsets = (
-        0.0,
-        -np.pi,
-        np.pi,
-        -np.pi,
-        0.5 * np.pi,
-        -0.5 * np.pi,
-        1.5 * np.pi,
-        -1.5 * np.pi,
+    arm_seed_offsets = (
+        (0.0, 0.0, 0.0),
+        (0.4, 0.0, 0.0),
+        (-0.4, 0.0, 0.0),
+        (0.0, 0.5, 0.0),
+        (0.0, -0.5, 0.0),
+        (0.0, 0.0, 0.8),
+        (0.0, 0.0, -0.8),
+        (0.3, -0.4, 0.6),
     )
-    for wrist_offset in wrist_offsets:
+    for joint1_offset, joint3_offset, joint7_offset in arm_seed_offsets:
         q_seed = reference_q.copy()
-        q_seed[5] = np.clip(
-            q_seed[5] + wrist_offset,
-            solver.lower[5] + 1.0e-6,
-            solver.upper[5] - 1.0e-6,
+        q_seed[0] += joint1_offset
+        q_seed[2] += joint3_offset
+        q_seed[6] += joint7_offset
+        q_seed = np.clip(
+            q_seed,
+            solver.lower + 1.0e-6,
+            solver.upper - 1.0e-6,
         )
         q_starts.append(q_seed)
     if args.seed_grasp is not None:
@@ -311,10 +323,10 @@ def main() -> None:
         starts = [starts[args.start_index]]
         q_starts = [q_starts[args.start_index]]
     lower = np.concatenate(
-        (solver.lower, np.asarray((0.35, -0.50, 0.45)))
+        (solver.lower, np.asarray((0.30, -0.50, 0.30)))
     )
     upper = np.concatenate(
-        (solver.upper, np.asarray((1.10, 0.50, 0.90)))
+        (solver.upper, np.asarray((1.00, 0.50, 0.90)))
     )
     results: list[tuple[float, np.ndarray, object]] = []
 
@@ -381,8 +393,8 @@ def main() -> None:
             )
 
         def smooth_pad_residual(x: np.ndarray) -> np.ndarray:
-            q = x[:22]
-            center = x[22:25]
+            q = x[:TOTAL_DOF]
+            center = x[TOTAL_DOF : TOTAL_DOF + 3]
             (
                 points,
                 _,
@@ -441,7 +453,10 @@ def main() -> None:
             _,
             smooth_alignment,
             smooth_standoff,
-        ) = pad_state(x0[:22], x0[22:25])
+        ) = pad_state(
+            x0[:TOTAL_DOF],
+            x0[TOTAL_DOF : TOTAL_DOF + 3],
+        )
         print(
             f"start={start_index} smooth_pad_cost="
             f"{smooth_result.cost:.6f} nfev={smooth_result.nfev} "
@@ -456,8 +471,8 @@ def main() -> None:
         def residual(x: np.ndarray) -> np.ndarray:
             nonlocal eval_count
             eval_count += 1
-            q = x[:22]
-            center = x[22:25]
+            q = x[:TOTAL_DOF]
+            center = x[TOTAL_DOF : TOTAL_DOF + 3]
             (
                 points,
                 surface_normals,
@@ -537,24 +552,24 @@ def main() -> None:
                 verbose=1 if collision_pass == 0 else 0,
             )
             remaining_pairs, remaining_distances = (
-                solver.self_collision_contacts(result.x[:22])
+                solver.self_collision_contacts(result.x[:TOTAL_DOF])
             )
             (
                 restore_tip_distance,
                 restore_non_tip_distance,
                 _,
             ) = solver.geometry_clearances(
-                result.x[:22],
-                result.x[22:25],
+                result.x[:TOTAL_DOF],
+                result.x[TOTAL_DOF : TOTAL_DOF + 3],
                 rotation,
             )
             _, _, restore_alignment, _ = pad_state(
-                result.x[:22],
-                result.x[22:25],
+                result.x[:TOTAL_DOF],
+                result.x[TOTAL_DOF : TOTAL_DOF + 3],
             )
             restore_protected_self_distance = (
                 solver.geometry_pair_distances(
-                    result.x[:22],
+                    result.x[:TOTAL_DOF],
                     protected_self_pairs,
                 )
             )
@@ -608,8 +623,8 @@ def main() -> None:
                 object_clearance_weight = 5000.0
             physical_seed = result.x
         assert result is not None
-        q = result.x[:22]
-        center = result.x[22:25]
+        q = result.x[:TOTAL_DOF]
+        center = result.x[TOTAL_DOF : TOTAL_DOF + 3]
         tip_distance, non_tip_distance, non_tip_names = (
             solver.geometry_clearances(q, center, rotation)
         )
@@ -709,8 +724,8 @@ def main() -> None:
         )
     feasible_results.sort(key=lambda item: item[0])
     _, best_x, best_result = feasible_results[0]
-    best_q = best_x[:22]
-    best_center = best_x[22:25]
+    best_q = best_x[:TOTAL_DOF]
+    best_center = best_x[TOTAL_DOF : TOTAL_DOF + 3]
     tip_distance, non_tip_distance, non_tip_names = (
         solver.geometry_clearances(best_q, best_center, rotation)
     )

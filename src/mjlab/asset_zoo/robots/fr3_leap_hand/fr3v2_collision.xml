@@ -1,0 +1,114 @@
+<?xml version="1.0"?>
+<!--
+  Franka Research 3 kinematics, inertials and collision meshes derived from
+  google-deepmind/mujoco_menagerie/franka_fr3_v2 (Apache-2.0).
+  The low-poly collision meshes are intentionally reused for rendering so the
+  simulation stays lightweight. See LICENSE and UPSTREAM_README.md.
+-->
+<mujoco model="fr3v2_leap_mount">
+  <compiler angle="radian" autolimits="true" balanceinertia="true"/>
+
+  <default>
+    <joint type="hinge" damping="0.003" frictionloss="0.2"/>
+    <geom type="mesh" friction="1.0 0.005 0.0001"
+          solimp="0.99 0.99 0.003" rgba="0.92 0.92 0.92 1"/>
+  </default>
+
+  <asset>
+    <mesh name="fr3v2_link0_mesh" file="assets/link0.stl"/>
+    <mesh name="fr3v2_link1_mesh" file="assets/link1.stl"/>
+    <mesh name="fr3v2_link2_mesh" file="assets/link2.stl"/>
+    <mesh name="fr3v2_link3_mesh" file="assets/link3.stl"/>
+    <mesh name="fr3v2_link4_mesh" file="assets/link4.stl"/>
+    <mesh name="fr3v2_link5_mesh" file="assets/link5.stl"/>
+    <mesh name="fr3v2_link6_mesh" file="assets/link6.stl"/>
+    <mesh name="fr3v2_link7_mesh" file="assets/link7.stl"/>
+  </asset>
+
+  <worldbody>
+    <body name="base">
+      <body name="fr3v2_link0">
+        <inertial pos="-0.0172 0.0004 0.0745"
+                  quat="0.661377 -0.250161 -0.250161 0.661377"
+                  mass="3.85"
+                  diaginertia="0.0115 0.0107656 0.00673444"/>
+        <geom name="fr3v2_link0_collision" mesh="fr3v2_link0_mesh"
+              rgba="0.18 0.18 0.18 1"/>
+        <body name="fr3v2_link1" pos="0 0 0.333">
+          <inertial pos="-0.00458 0.027016 -0.0618"
+                    quat="0.989811 0.110789 0.00992127 0.0888923"
+                    mass="2.4377"
+                    diaginertia="0.0233003 0.0222611 0.00463865"/>
+          <joint name="fr3v2_joint1" axis="0 0 1"
+                 range="-2.7437 2.7437" actuatorfrcrange="-87 87"/>
+          <geom name="fr3v2_link1_collision" mesh="fr3v2_link1_mesh"/>
+          <body name="fr3v2_link2" quat="0.707107 -0.707107 0 0">
+            <inertial pos="-0.003473 -0.168509 -0.010479"
+                      quat="0.644329 0.758803 -0.0323054 0.0895283"
+                      mass="2.2375"
+                      diaginertia="0.0192001 0.0173406 0.0052593"/>
+            <joint name="fr3v2_joint2" axis="0 0 1"
+                   range="-1.7837 1.7837" actuatorfrcrange="-87 87"/>
+            <geom name="fr3v2_link2_collision" mesh="fr3v2_link2_mesh"/>
+            <body name="fr3v2_link3" pos="0 -0.316 0"
+                  quat="0.707107 0.707107 0 0">
+              <inertial pos="0.092968 0.01801 0.033533"
+                        quat="0.877348 -0.0280595 -0.265819 0.398514"
+                        mass="2.18579"
+                        diaginertia="0.0146052 0.0104212 0.00447362"/>
+              <joint name="fr3v2_joint3" axis="0 0 1"
+                     range="-2.9007 2.9007" actuatorfrcrange="-87 87"/>
+              <geom name="fr3v2_link3_collision" mesh="fr3v2_link3_mesh"/>
+              <body name="fr3v2_link4" pos="0.0825 0 0"
+                    quat="0.707107 0.707107 0 0">
+                <inertial pos="-0.068745 0.092947 0.011195"
+                          quat="0.725019 0.567552 -0.379628 -0.0900828"
+                          mass="2.17587"
+                          diaginertia="0.0126388 0.00973606 0.00442618"/>
+                <joint name="fr3v2_joint4" axis="0 0 1"
+                       range="-3.0421 -0.1518" actuatorfrcrange="-87 87"/>
+                <geom name="fr3v2_link4_collision" mesh="fr3v2_link4_mesh"/>
+                <body name="fr3v2_link5" pos="-0.0825 0.384 0"
+                      quat="0.707107 -0.707107 0 0">
+                  <inertial pos="-0.004197 0.010257 -0.058103"
+                            quat="0.993747 -0.0901363 0.0101557 0.0651102"
+                            mass="2.17482"
+                            diaginertia="0.0318998 0.0305191 0.0038801"/>
+                  <joint name="fr3v2_joint5" axis="0 0 1"
+                         range="-2.8065 2.8065" actuatorfrcrange="-12 12"/>
+                  <geom name="fr3v2_link5_collision" mesh="fr3v2_link5_mesh"
+                        rgba="0.82 0.82 0.82 1"/>
+                  <body name="fr3v2_link6" quat="0.707107 0.707107 0 0">
+                    <inertial pos="0.070958 -0.014137 -0.035324"
+                              quat="-0.141552 0.574736 0.130817 0.795317"
+                              mass="1.56762"
+                              diaginertia="0.0047496 0.0041461 0.0024043"/>
+                    <joint name="fr3v2_joint6" axis="0 0 1"
+                           range="0.5445 4.5169" actuatorfrcrange="-12 12"/>
+                    <geom name="fr3v2_link6_collision" mesh="fr3v2_link6_mesh"/>
+                    <body name="fr3v2_link7" pos="0.088 0 0"
+                          quat="0.707107 0.707107 0 0">
+                      <inertial pos="0.008204 0.001156 0.061016"
+                                quat="0.70836 0.00347393 0.0424735 0.704564"
+                                mass="0.682876"
+                                diaginertia="0.00110022 0.000899844 0.000699938"/>
+                      <joint name="fr3v2_joint7" axis="0 0 1"
+                             range="-3.0159 3.0159" actuatorfrcrange="-12 12"/>
+                      <geom name="fr3v2_link7_collision" mesh="fr3v2_link7_mesh"
+                            rgba="0.18 0.18 0.18 1"/>
+                      <body name="fr3v2_link8" pos="0 0 0.107"/>
+                    </body>
+                  </body>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <keyframe>
+    <key name="home" qpos="0 0 0 -1.57079 0 1.57079 -0.7853"/>
+  </keyframe>
+</mujoco>
