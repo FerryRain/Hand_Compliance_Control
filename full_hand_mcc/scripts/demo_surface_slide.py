@@ -543,6 +543,18 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--transient-contact-normal-recovery-start-m",
+        type=float,
+        default=None,
+        help=(
+            "Optional later recovery start for the swing-finger normal "
+            "standoff only. This supports a lift-move-place schedule: "
+            "meridian/tangential alignment can begin first, then the "
+            "finger closes back onto the surface. The default reuses "
+            "--transient-contact-recovery-start-m."
+        ),
+    )
+    parser.add_argument(
         "--mpc-transient-normal-tolerance-mm",
         type=float,
         default=6.0,
@@ -926,6 +938,18 @@ def main() -> None:
         raise ValueError(
             "--transient-contact-recovery-start-m must lie strictly inside "
             "the transient contact window"
+        )
+    if (
+        args.transient_contact_normal_recovery_start_m is not None
+        and not (
+            args.transient_contact_start_m
+            < args.transient_contact_normal_recovery_start_m
+            < args.transient_contact_end_m
+        )
+    ):
+        raise ValueError(
+            "--transient-contact-normal-recovery-start-m must lie strictly "
+            "inside the transient contact window"
         )
     if args.mpc_transient_normal_tolerance_mm < args.mpc_normal_tolerance_mm:
         raise ValueError(
@@ -2485,23 +2509,29 @@ def main() -> None:
 
             def transient_recovery_phase(
                 surface_distance: float,
+                recovery_start_m: float | None = None,
             ) -> float:
+                active_recovery_start_m = (
+                    args.transient_contact_recovery_start_m
+                    if recovery_start_m is None
+                    else recovery_start_m
+                )
                 if (
                     not transient_contact_active(surface_distance)
-                    or args.transient_contact_recovery_start_m is None
+                    or active_recovery_start_m is None
                     or surface_distance
-                    <= args.transient_contact_recovery_start_m
+                    <= active_recovery_start_m
                 ):
                     return 0.0
                 phase = float(
                     np.clip(
                         (
                             surface_distance
-                            - args.transient_contact_recovery_start_m
+                            - active_recovery_start_m
                         )
                         / (
                             args.transient_contact_end_m
-                            - args.transient_contact_recovery_start_m
+                            - active_recovery_start_m
                         ),
                         0.0,
                         1.0,
@@ -2519,7 +2549,8 @@ def main() -> None:
                 )
                 if transient_contact_active(surface_distance):
                     recovery_phase = transient_recovery_phase(
-                        surface_distance
+                        surface_distance,
+                        args.transient_contact_normal_recovery_start_m,
                     )
                     tolerances[args.transient_contact_finger] = (
                         (
@@ -4252,6 +4283,11 @@ def main() -> None:
                     np.nan
                     if args.transient_contact_recovery_start_m is None
                     else args.transient_contact_recovery_start_m
+                ),
+                transient_contact_normal_recovery_start_m=np.asarray(
+                    np.nan
+                    if args.transient_contact_normal_recovery_start_m is None
+                    else args.transient_contact_normal_recovery_start_m
                 ),
                 mpc_transient_normal_tolerance_mm=np.asarray(
                     args.mpc_transient_normal_tolerance_mm
