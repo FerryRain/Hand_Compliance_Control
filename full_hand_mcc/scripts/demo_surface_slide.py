@@ -3325,6 +3325,64 @@ def main() -> None:
                         )
                         + 1.0e-3 * float(result.cost)
                     )
+                    progress_excess = max(
+                        float(progress_error.max())
+                        - active_progress_tolerance_mm / 1000.0,
+                        0.0,
+                    )
+                    (
+                        candidate_normal_ok,
+                        candidate_contact_mask,
+                        candidate_normal_tolerances,
+                    ) = scheduled_contact_status(
+                        normal_error[1:],
+                        desired_distance,
+                    )
+                    normal_excess = float(
+                        np.max(
+                            np.maximum(
+                                normal_error[1:]
+                                - candidate_normal_tolerances,
+                                0.0,
+                            )
+                        )
+                    )
+                    tangential_excess = max(
+                        float(
+                            np.abs(
+                                candidate_tangential_error[1:]
+                            ).max()
+                        )
+                        - args.mpc_tangential_tolerance_mm / 1000.0,
+                        0.0,
+                    )
+                    monotonic_excess = max(
+                        float(monotonic_error.max())
+                        - args.mpc_monotonic_tolerance_mm / 1000.0,
+                        0.0,
+                    )
+                    for hard_excess in (
+                        progress_excess,
+                        tangential_excess,
+                        monotonic_excess,
+                    ):
+                        if hard_excess > 0.0:
+                            score += 1.0e6 + 1.0e6 * hard_excess
+                    if not candidate_normal_ok:
+                        score += (
+                            1.0e6
+                            + 1.0e6 * normal_excess
+                            + 1000.0
+                            * max(
+                                args.min_planner_contact_fingers
+                                - int(
+                                    np.count_nonzero(
+                                        candidate_contact_mask
+                                    )
+                                ),
+                                0,
+                            )
+                        )
                     candidate_palm_error = float(
                         np.linalg.norm(candidate_points[0] - palm_target)
                     )
@@ -3555,6 +3613,66 @@ def main() -> None:
                             )
                             + 1.0e-3 * float(repaired.cost)
                         )
+                        repaired_progress_excess = max(
+                            float(repaired_progress_error.max())
+                            - active_progress_tolerance_mm / 1000.0,
+                            0.0,
+                        )
+                        (
+                            repaired_normal_ok,
+                            repaired_contact_mask,
+                            repaired_normal_tolerances,
+                        ) = scheduled_contact_status(
+                            repaired_normal_error[1:],
+                            desired_distance,
+                        )
+                        repaired_normal_excess = float(
+                            np.max(
+                                np.maximum(
+                                    repaired_normal_error[1:]
+                                    - repaired_normal_tolerances,
+                                    0.0,
+                                )
+                            )
+                        )
+                        repaired_tangential_excess = max(
+                            float(
+                                np.abs(
+                                    repaired_tangential_error[1:]
+                                ).max()
+                            )
+                            - args.mpc_tangential_tolerance_mm / 1000.0,
+                            0.0,
+                        )
+                        repaired_monotonic_excess = max(
+                            float(repaired_monotonic_error.max())
+                            - args.mpc_monotonic_tolerance_mm / 1000.0,
+                            0.0,
+                        )
+                        for hard_excess in (
+                            repaired_progress_excess,
+                            repaired_tangential_excess,
+                            repaired_monotonic_excess,
+                        ):
+                            if hard_excess > 0.0:
+                                repaired_score += (
+                                    1.0e6 + 1.0e6 * hard_excess
+                                )
+                        if not repaired_normal_ok:
+                            repaired_score += (
+                                1.0e6
+                                + 1.0e6 * repaired_normal_excess
+                                + 1000.0
+                                * max(
+                                    args.min_planner_contact_fingers
+                                    - int(
+                                        np.count_nonzero(
+                                            repaired_contact_mask
+                                        )
+                                    ),
+                                    0,
+                                )
+                            )
                         repaired_palm_error = float(
                             np.linalg.norm(repaired_points[0] - palm_target)
                         )
