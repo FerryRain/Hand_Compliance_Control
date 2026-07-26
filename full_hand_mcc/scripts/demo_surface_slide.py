@@ -298,6 +298,32 @@ def main() -> None:
         help="Surface distance over which the staged secondary lift ramps in.",
     )
     parser.add_argument(
+        "--palm-terminal-local-offset-mm",
+        type=float,
+        nargs=3,
+        metavar=("NORMAL", "AZIMUTH", "MERIDIAN"),
+        default=(0.0, 0.0, 0.0),
+        help=(
+            "Bounded terminal correction of the non-contact palm input "
+            "point in the local surface basis. This moves the five-point "
+            "target itself; the real palm must still satisfy the unchanged "
+            "--mpc-palm-position-tolerance-mm ball around the corrected "
+            "target."
+        ),
+    )
+    parser.add_argument(
+        "--palm-terminal-local-offset-start-m",
+        type=float,
+        default=1.0,
+        help="Surface progress where the terminal palm-point correction starts.",
+    )
+    parser.add_argument(
+        "--palm-terminal-local-offset-ramp-m",
+        type=float,
+        default=0.02,
+        help="Surface distance used to establish the terminal palm correction.",
+    )
+    parser.add_argument(
         "--finger-gait-amplitude-m",
         type=float,
         default=0.0,
@@ -1127,6 +1153,26 @@ def main() -> None:
     if args.palm_clearance_secondary_ramp_m <= 0.0:
         raise ValueError(
             "--palm-clearance-secondary-ramp-m must be positive"
+        )
+    if args.palm_terminal_local_offset_start_m < 0.0:
+        raise ValueError(
+            "--palm-terminal-local-offset-start-m cannot be negative"
+        )
+    if args.palm_terminal_local_offset_ramp_m <= 0.0:
+        raise ValueError(
+            "--palm-terminal-local-offset-ramp-m must be positive"
+        )
+    if (
+        np.linalg.norm(
+            np.asarray(
+                args.palm_terminal_local_offset_mm,
+                dtype=np.float64,
+            )
+        )
+        > 3.0
+    ):
+        raise ValueError(
+            "--palm-terminal-local-offset-mm must remain inside a 3 mm ball"
         )
 
     CAPSULE_RADIUS = args.object_radius_m
@@ -2992,6 +3038,78 @@ def main() -> None:
                     )
                     * palm_clearance_direction
                 )
+                palm_target_local_normal = (
+                    palm_clearance_direction.copy()
+                )
+                palm_target_local_normal /= max(
+                    float(np.linalg.norm(palm_target_local_normal)),
+                    1.0e-12,
+                )
+                palm_target_local_azimuth = (
+                    transported_contact_frame[:, 1].copy()
+                )
+                palm_target_local_azimuth -= (
+                    palm_target_local_normal
+                    * float(
+                        np.dot(
+                            palm_target_local_normal,
+                            palm_target_local_azimuth,
+                        )
+                    )
+                )
+                palm_target_local_azimuth /= max(
+                    float(np.linalg.norm(palm_target_local_azimuth)),
+                    1.0e-12,
+                )
+                palm_target_local_meridian = np.cross(
+                    palm_target_local_normal,
+                    palm_target_local_azimuth,
+                )
+                palm_target_local_meridian /= max(
+                    float(np.linalg.norm(palm_target_local_meridian)),
+                    1.0e-12,
+                )
+                if (
+                    float(
+                        np.dot(
+                            palm_target_local_meridian,
+                            transported_contact_frame[:, 2],
+                        )
+                    )
+                    < 0.0
+                ):
+                    palm_target_local_meridian *= -1.0
+                terminal_palm_offset_phase = float(
+                    np.clip(
+                        (
+                            desired_distance
+                            - args.palm_terminal_local_offset_start_m
+                        )
+                        / args.palm_terminal_local_offset_ramp_m,
+                        0.0,
+                        1.0,
+                    )
+                )
+                terminal_palm_offset_phase = (
+                    terminal_palm_offset_phase
+                    * terminal_palm_offset_phase
+                    * (3.0 - 2.0 * terminal_palm_offset_phase)
+                )
+                terminal_palm_offset_m = (
+                    np.asarray(
+                        args.palm_terminal_local_offset_mm,
+                        dtype=np.float64,
+                    )
+                    / 1000.0
+                )
+                palm_target += terminal_palm_offset_phase * (
+                    terminal_palm_offset_m[0]
+                    * palm_target_local_normal
+                    + terminal_palm_offset_m[1]
+                    * palm_target_local_azimuth
+                    + terminal_palm_offset_m[2]
+                    * palm_target_local_meridian
+                )
                 desired_arc[0] = (
                     start_arc[0]
                     + float(
@@ -3246,38 +3364,9 @@ def main() -> None:
                 palm_ball_radius_m = (
                     args.mpc_palm_position_tolerance_mm / 1000.0
                 )
-                palm_ball_normal = palm_clearance_direction.copy()
-                palm_ball_normal /= max(
-                    float(np.linalg.norm(palm_ball_normal)),
-                    1.0e-12,
-                )
-                palm_ball_azimuth = transported_contact_frame[:, 1].copy()
-                palm_ball_azimuth -= (
-                    palm_ball_normal
-                    * float(np.dot(palm_ball_normal, palm_ball_azimuth))
-                )
-                palm_ball_azimuth /= max(
-                    float(np.linalg.norm(palm_ball_azimuth)),
-                    1.0e-12,
-                )
-                palm_ball_meridian = np.cross(
-                    palm_ball_normal,
-                    palm_ball_azimuth,
-                )
-                palm_ball_meridian /= max(
-                    float(np.linalg.norm(palm_ball_meridian)),
-                    1.0e-12,
-                )
-                if (
-                    float(
-                        np.dot(
-                            palm_ball_meridian,
-                            transported_contact_frame[:, 2],
-                        )
-                    )
-                    < 0.0
-                ):
-                    palm_ball_meridian *= -1.0
+                palm_ball_normal = palm_target_local_normal
+                palm_ball_azimuth = palm_target_local_azimuth
+                palm_ball_meridian = palm_target_local_meridian
                 palm_ball_offset_fractions = (
                     -0.25 * palm_ball_normal,
                     -0.50 * palm_ball_normal,
@@ -4428,6 +4517,16 @@ def main() -> None:
                 ),
                 palm_surface_frame_terminal_ramp_m=np.asarray(
                     args.palm_surface_frame_terminal_ramp_m
+                ),
+                palm_terminal_local_offset_mm=np.asarray(
+                    args.palm_terminal_local_offset_mm,
+                    dtype=np.float64,
+                ),
+                palm_terminal_local_offset_start_m=np.asarray(
+                    args.palm_terminal_local_offset_start_m
+                ),
+                palm_terminal_local_offset_ramp_m=np.asarray(
+                    args.palm_terminal_local_offset_ramp_m
                 ),
                 finger_gait_amplitude_m=np.asarray(
                     args.finger_gait_amplitude_m
