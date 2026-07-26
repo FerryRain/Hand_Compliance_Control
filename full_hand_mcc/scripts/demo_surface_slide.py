@@ -3372,6 +3372,7 @@ def main() -> None:
                     -0.50 * palm_ball_normal,
                     -0.75 * palm_ball_normal,
                     0.50 * palm_ball_normal,
+                    0.75 * palm_ball_normal,
                     0.50 * palm_ball_azimuth,
                     -0.50 * palm_ball_azimuth,
                     0.50 * palm_ball_meridian,
@@ -3380,6 +3381,20 @@ def main() -> None:
                     + 0.50 * palm_ball_azimuth,
                     -0.40 * palm_ball_normal
                     - 0.50 * palm_ball_azimuth,
+                    0.40 * palm_ball_normal
+                    + 0.50 * palm_ball_azimuth,
+                    0.40 * palm_ball_normal
+                    - 0.50 * palm_ball_azimuth,
+                    0.40 * palm_ball_normal
+                    + 0.50 * palm_ball_meridian,
+                    0.40 * palm_ball_normal
+                    - 0.50 * palm_ball_meridian,
+                    0.50 * palm_ball_normal
+                    + 0.35 * palm_ball_azimuth
+                    + 0.35 * palm_ball_meridian,
+                    0.50 * palm_ball_normal
+                    - 0.35 * palm_ball_azimuth
+                    + 0.35 * palm_ball_meridian,
                 )
                 for offset_fraction in palm_ball_offset_fractions:
                     shifted_palm_target = (
