@@ -474,6 +474,51 @@ def main() -> None:
     )
     parser.add_argument("--mpc-normal-tolerance-mm", type=float, default=3.0)
     parser.add_argument(
+        "--min-planner-contact-fingers",
+        type=int,
+        default=4,
+        help=(
+            "Minimum number of physical fingertip pads that must remain "
+            "inside the nominal MPC contact-standoff band at every planned "
+            "frame."
+        ),
+    )
+    parser.add_argument(
+        "--transient-contact-finger",
+        type=int,
+        choices=(0, 1, 2, 3),
+        default=0,
+        help=(
+            "Fingertip allowed to use the larger transient standoff band "
+            "inside the bounded recovery window: 0=index, 1=middle, "
+            "2=ring, 3=thumb."
+        ),
+    )
+    parser.add_argument(
+        "--transient-contact-start-m",
+        type=float,
+        default=0.0,
+        help="Surface progress where the bounded one-finger swing starts.",
+    )
+    parser.add_argument(
+        "--transient-contact-end-m",
+        type=float,
+        default=0.0,
+        help=(
+            "Surface progress where the swing finger must have recovered. "
+            "A value not greater than the start disables transient contact."
+        ),
+    )
+    parser.add_argument(
+        "--mpc-transient-normal-tolerance-mm",
+        type=float,
+        default=6.0,
+        help=(
+            "Maximum planned standoff error of the one scheduled swing "
+            "finger. All support fingers keep --mpc-normal-tolerance-mm."
+        ),
+    )
+    parser.add_argument(
         "--mpc-palm-position-tolerance-mm",
         type=float,
         default=3.0,
@@ -492,6 +537,33 @@ def main() -> None:
     parser.add_argument("--contact-failure-window", type=int, default=20)
     parser.add_argument("--min-contact-force-n", type=float, default=0.10)
     parser.add_argument("--min-contact-ratio", type=float, default=0.99)
+    parser.add_argument(
+        "--min-runtime-contact-fingers",
+        type=int,
+        default=4,
+        help=(
+            "Minimum simultaneous tactile fingertip contacts during the "
+            "evaluated slide. Use 3 for a tripod-support gait."
+        ),
+    )
+    parser.add_argument(
+        "--max-individual-contact-loss-frames",
+        type=int,
+        default=20,
+        help=(
+            "Maximum consecutive evaluated frames that any one fingertip "
+            "may remain below the tactile contact-force threshold."
+        ),
+    )
+    parser.add_argument(
+        "--final-contact-recovery-frames",
+        type=int,
+        default=20,
+        help=(
+            "Required consecutive four-fingertip contact frames at the end "
+            "of the route, proving that every transient loss recovered."
+        ),
+    )
     parser.add_argument(
         "--min-tip-surface-travel-m",
         type=float,
@@ -770,6 +842,30 @@ def main() -> None:
         raise ValueError("--surface-preload-mm cannot be negative")
     if args.mpc_keyframes < 2:
         raise ValueError("--mpc-keyframes must be at least two")
+    if args.mpc_normal_tolerance_mm <= 0.0:
+        raise ValueError("--mpc-normal-tolerance-mm must be positive")
+    if not 1 <= args.min_planner_contact_fingers <= 4:
+        raise ValueError("--min-planner-contact-fingers must be in [1, 4]")
+    if args.transient_contact_start_m < 0.0:
+        raise ValueError("--transient-contact-start-m cannot be negative")
+    if (
+        args.min_planner_contact_fingers < 4
+        and args.transient_contact_end_m
+        <= args.transient_contact_start_m
+    ):
+        raise ValueError(
+            "Three-support planning requires "
+            "--transient-contact-end-m greater than its start"
+        )
+    if args.transient_contact_end_m > args.axial_travel_m:
+        raise ValueError(
+            "--transient-contact-end-m cannot exceed --axial-travel-m"
+        )
+    if args.mpc_transient_normal_tolerance_mm < args.mpc_normal_tolerance_mm:
+        raise ValueError(
+            "--mpc-transient-normal-tolerance-mm cannot be smaller than "
+            "--mpc-normal-tolerance-mm"
+        )
     if args.mpc_monotonic_tolerance_mm < 0.0:
         raise ValueError("--mpc-monotonic-tolerance-mm cannot be negative")
     if args.mpc_palm_position_tolerance_mm <= 0.0:
@@ -786,6 +882,16 @@ def main() -> None:
         raise ValueError("--contact-search-step-mm must be positive")
     if args.contact_search_limit_rad <= 0.0:
         raise ValueError("--contact-search-limit-rad must be positive")
+    if not 1 <= args.min_runtime_contact_fingers <= 4:
+        raise ValueError("--min-runtime-contact-fingers must be in [1, 4]")
+    if args.contact_failure_window < 0:
+        raise ValueError("--contact-failure-window cannot be negative")
+    if args.max_individual_contact_loss_frames < 0:
+        raise ValueError(
+            "--max-individual-contact-loss-frames cannot be negative"
+        )
+    if args.final_contact_recovery_frames < 1:
+        raise ValueError("--final-contact-recovery-frames must be positive")
     if args.finger_max_release_correction_rad < 0.0:
         raise ValueError(
             "--finger-max-release-correction-rad cannot be negative"
@@ -1030,6 +1136,10 @@ def main() -> None:
             self.contact_frames = np.zeros(4, dtype=np.int64)
             self.evaluated_frames = 0
             self.bad_contact_streak = 0
+            self.contact_loss_streak = np.zeros(4, dtype=np.int64)
+            self.max_contact_loss_streak = np.zeros(4, dtype=np.int64)
+            self.min_simultaneous_contacts = 4
+            self.final_all_contact_streak = 0
             self.contact_settle_streak = 0
             self.contact_calibrated = False
             self.motor_force_recalibrated = False
@@ -1381,11 +1491,16 @@ def main() -> None:
                 if self.last_command_q is not None
                 else live_q.copy()
             )
+            planning_anchor_q = (
+                self.reachable_q.copy()
+                if self.reachable_q is not None
+                else contact_command_q.copy()
+            )
             planning_q = live_q.copy()
             if args.planner_state_quantization_rad > 0.0:
                 quantum = args.planner_state_quantization_rad
-                planning_q = contact_command_q + quantum * np.round(
-                    (live_q - contact_command_q) / quantum
+                planning_q = planning_anchor_q + quantum * np.round(
+                    (live_q - planning_anchor_q) / quantum
                 )
                 planning_q = np.minimum(
                     np.maximum(planning_q, reachability.lower),
@@ -1446,6 +1561,15 @@ def main() -> None:
             finger_q = live_q[ARM_DOF:TOTAL_DOF].reshape(4, 4)
             self.finger_q_min = finger_q.copy()
             self.finger_q_max = finger_q.copy()
+            print(
+                "[PLANNER-STATE] "
+                f"quantization_rad="
+                f"{args.planner_state_quantization_rad:.6f} "
+                f"max_adjustment_rad="
+                f"{float(np.max(np.abs(planning_q - live_q))):.6f} "
+                f"planning_q={planning_q.round(6).tolist()}",
+                flush=True,
+            )
             self._build_axial_plan(center, rotation)
             self._audit_planned_surface_curvature(center, rotation)
             self.contact_calibrated = True
@@ -2251,6 +2375,46 @@ def main() -> None:
             previous_q = start_q.copy()
             previous_delta = np.zeros(TOTAL_DOF, dtype=np.float64)
 
+            def scheduled_tip_normal_tolerances(
+                surface_distance: float,
+            ) -> np.ndarray:
+                tolerances = np.full(
+                    4,
+                    args.mpc_normal_tolerance_mm / 1000.0,
+                    dtype=np.float64,
+                )
+                transient_active = (
+                    args.min_planner_contact_fingers < 4
+                    and args.transient_contact_end_m
+                    > args.transient_contact_start_m
+                    and args.transient_contact_start_m
+                    < surface_distance
+                    < args.transient_contact_end_m
+                )
+                if transient_active:
+                    tolerances[args.transient_contact_finger] = (
+                        args.mpc_transient_normal_tolerance_mm / 1000.0
+                    )
+                return tolerances
+
+            def scheduled_contact_status(
+                tip_normal_error: np.ndarray,
+                surface_distance: float,
+            ) -> tuple[bool, np.ndarray, np.ndarray]:
+                tolerances = scheduled_tip_normal_tolerances(
+                    surface_distance
+                )
+                nominal_contact = (
+                    tip_normal_error
+                    <= args.mpc_normal_tolerance_mm / 1000.0
+                )
+                accepted = bool(
+                    int(np.count_nonzero(nominal_contact))
+                    >= args.min_planner_contact_fingers
+                    and np.all(tip_normal_error <= tolerances)
+                )
+                return accepted, nominal_contact, tolerances
+
             def palm_follow_distance(fingertip_distance: float) -> float:
                 """Integrate a smooth late-route palm velocity schedule."""
 
@@ -2359,6 +2523,9 @@ def main() -> None:
                     args.mpc_progress_tolerance_mm
                     if keyframe == keyframe_count
                     else args.mpc_intermediate_progress_tolerance_mm
+                )
+                tip_normal_tolerances = (
+                    scheduled_tip_normal_tolerances(desired_distance)
                 )
                 minimum_progress = (
                     coarse_progress[keyframe - 1]
@@ -2563,11 +2730,7 @@ def main() -> None:
                         * active_progress_tolerance_mm
                         / 1000.0
                     )
-                    normal_band = (
-                        0.55
-                        * args.mpc_normal_tolerance_mm
-                        / 1000.0
-                    )
+                    normal_band = 0.55 * tip_normal_tolerances
                     progress_violation = np.sign(progress_error) * np.maximum(
                         np.abs(progress_error) - progress_band,
                         0.0,
@@ -2878,11 +3041,14 @@ def main() -> None:
                     and surface_ik_pad_alignment
                     >= planner_pad_alignment
                 )
+                surface_ik_normal_ok, _, _ = scheduled_contact_status(
+                    surface_ik_normal_error[1:],
+                    desired_distance,
+                )
                 if (
                     float(surface_ik_progress_error.max())
                     <= active_progress_tolerance_mm / 1000.0
-                    and float(surface_ik_normal_error[1:].max())
-                    <= args.mpc_normal_tolerance_mm / 1000.0
+                    and surface_ik_normal_ok
                     and float(surface_ik_monotonic_error.max())
                     <= args.mpc_monotonic_tolerance_mm / 1000.0
                     and surface_ik_collision_safe
@@ -2934,13 +3100,16 @@ def main() -> None:
                     and rigid_self_collision_count == 0
                     and rigid_pad_alignment >= planner_pad_alignment
                 )
+                rigid_normal_ok, _, _ = scheduled_contact_status(
+                    rigid_normal_error[1:],
+                    desired_distance,
+                )
                 if (
                     args.finger_gait_amplitude_m <= 0.0
                     and
                     float(rigid_progress_error.max())
                     <= active_progress_tolerance_mm / 1000.0
-                    and float(rigid_normal_error[1:].max())
-                    <= args.mpc_normal_tolerance_mm / 1000.0
+                    and rigid_normal_ok
                     and float(rigid_monotonic_error.max())
                     <= args.mpc_monotonic_tolerance_mm / 1000.0
                     and rigid_collision_safe
@@ -3049,10 +3218,14 @@ def main() -> None:
                             0.0,
                         )
                         + 1000.0
-                        * max(
-                            float(normal_error[1:].max())
-                            - args.mpc_normal_tolerance_mm / 1000.0,
-                            0.0,
+                        * float(
+                            np.max(
+                                np.maximum(
+                                    normal_error[1:]
+                                    - tip_normal_tolerances,
+                                    0.0,
+                                )
+                            )
                         )
                         + 1000.0
                         * max(
@@ -3171,11 +3344,14 @@ def main() -> None:
                     % (2.0 * np.pi)
                     - np.pi
                 ) * CAPSULE_RADIUS
+                preliminary_normal_ok, _, _ = scheduled_contact_status(
+                    normal_error[1:],
+                    desired_distance,
+                )
                 if (
                     float(progress_error.max())
                     > active_progress_tolerance_mm / 1000.0
-                    or float(normal_error[1:].max())
-                    > args.mpc_normal_tolerance_mm / 1000.0
+                    or not preliminary_normal_ok
                     or float(np.abs(tangential_error[1:]).max())
                     > args.mpc_tangential_tolerance_mm / 1000.0
                     or float(preliminary_monotonic_error.max())
@@ -3270,10 +3446,14 @@ def main() -> None:
                                 0.0,
                             )
                             + 1000.0
-                            * max(
-                                float(repaired_normal_error[1:].max())
-                                - args.mpc_normal_tolerance_mm / 1000.0,
-                                0.0,
+                            * float(
+                                np.max(
+                                    np.maximum(
+                                        repaired_normal_error[1:]
+                                        - tip_normal_tolerances,
+                                        0.0,
+                                    )
+                                )
                             )
                             + 1000.0
                             * max(
@@ -3421,16 +3601,26 @@ def main() -> None:
                         f"distance_m={desired_distance:.4f} "
                         f"error_mm={(progress_error * 1000).round(2).tolist()}"
                     )
-                if (
-                    float(normal_error[1:].max())
-                    > args.mpc_normal_tolerance_mm / 1000.0
-                ):
+                (
+                    normal_contact_ok,
+                    nominal_contact_mask,
+                    active_normal_tolerances,
+                ) = scheduled_contact_status(
+                    normal_error[1:],
+                    desired_distance,
+                )
+                if not normal_contact_ok:
                     raise RuntimeError(
-                        "Adaptive surface MPC missed fingertip contact standoff: "
+                        "Adaptive surface MPC violated the scheduled "
+                        "fingertip support set: "
                         f"keyframe={keyframe}/{keyframe_count} "
                         f"distance_m={desired_distance:.4f} "
+                        f"contacts={int(np.count_nonzero(nominal_contact_mask))}/4 "
+                        f"required={args.min_planner_contact_fingers} "
                         f"error_mm="
-                        f"{(normal_error[1:] * 1000).round(2).tolist()}"
+                        f"{(normal_error[1:] * 1000).round(2).tolist()} "
+                        f"tolerance_mm="
+                        f"{(active_normal_tolerances * 1000).round(2).tolist()}"
                     )
                 if (
                     float(np.abs(tangential_error[1:]).max())
@@ -3489,6 +3679,8 @@ def main() -> None:
                     f"progress_mm={(coarse_progress[keyframe] * 1000).round(1).tolist()} "
                     f"tip_normal_error_mm="
                     f"{(normal_error[1:] * 1000).round(2).tolist()} "
+                    f"contacts="
+                    f"{int(np.count_nonzero(nominal_contact_mask))}/4 "
                     f"tip_tangential_error_mm="
                     f"{(np.abs(tangential_error[1:]) * 1000).round(2).tolist()} "
                     f"palm_position_error_mm="
@@ -3510,6 +3702,14 @@ def main() -> None:
             distance_plan = np.zeros(frame_count, dtype=np.float32)
             progress_plan = np.zeros((frame_count, 5), dtype=np.float32)
             normal_error_plan = np.zeros_like(progress_plan)
+            scheduled_contact_mask_plan = np.zeros(
+                (frame_count, 4),
+                dtype=bool,
+            )
+            scheduled_contact_count_plan = np.zeros(
+                frame_count,
+                dtype=np.int8,
+            )
             palm_position_error_plan = np.zeros(
                 frame_count, dtype=np.float32
             )
@@ -3552,6 +3752,34 @@ def main() -> None:
                         )
                     )
                 )
+                (
+                    interpolation_contact_ok,
+                    interpolation_contact_mask,
+                    interpolation_normal_tolerances,
+                ) = scheduled_contact_status(
+                    normal_error_plan[frame, 1:],
+                    desired_distance,
+                )
+                scheduled_contact_mask_plan[frame] = (
+                    interpolation_contact_mask
+                )
+                scheduled_contact_count_plan[frame] = int(
+                    np.count_nonzero(interpolation_contact_mask)
+                )
+                if not interpolation_contact_ok:
+                    raise RuntimeError(
+                        "Adaptive surface MPC interpolation violated the "
+                        "scheduled fingertip support set: "
+                        f"frame={frame + 1}/{frame_count} "
+                        f"distance_m={desired_distance:.4f} "
+                        f"contacts="
+                        f"{scheduled_contact_count_plan[frame]}/4 "
+                        f"required={args.min_planner_contact_fingers} "
+                        f"error_mm="
+                        f"{(normal_error_plan[frame, 1:] * 1000).round(2).tolist()} "
+                        f"tolerance_mm="
+                        f"{(interpolation_normal_tolerances * 1000).round(2).tolist()}"
+                    )
                 palm_target = (
                     (1.0 - blend) * coarse_palm_target[left]
                     + blend * coarse_palm_target[left + 1]
@@ -3621,6 +3849,32 @@ def main() -> None:
                 progress_m=progress_plan,
                 progress_residual_m=residual_plan,
                 normal_error_m=normal_error_plan,
+                scheduled_contact_mask=scheduled_contact_mask_plan,
+                scheduled_contact_count=scheduled_contact_count_plan,
+                min_planner_contact_fingers=np.asarray(
+                    args.min_planner_contact_fingers
+                ),
+                transient_contact_finger=np.asarray(
+                    args.transient_contact_finger
+                ),
+                transient_contact_start_m=np.asarray(
+                    args.transient_contact_start_m
+                ),
+                transient_contact_end_m=np.asarray(
+                    args.transient_contact_end_m
+                ),
+                mpc_transient_normal_tolerance_mm=np.asarray(
+                    args.mpc_transient_normal_tolerance_mm
+                ),
+                min_runtime_contact_fingers=np.asarray(
+                    args.min_runtime_contact_fingers
+                ),
+                max_individual_contact_loss_frames=np.asarray(
+                    args.max_individual_contact_loss_frames
+                ),
+                final_contact_recovery_frames=np.asarray(
+                    args.final_contact_recovery_frames
+                ),
                 axial_distance_m=distance_plan,
                 axial_direction=np.asarray(direction),
                 planner=np.asarray(args.planner),
@@ -3686,6 +3940,8 @@ def main() -> None:
                 f"{float(residual_plan.max() * 1000):.2f} "
                 f"max_tip_normal_error_mm="
                 f"{float(normal_error_plan[:, 1:].max() * 1000):.2f} "
+                f"min_scheduled_contacts="
+                f"{int(scheduled_contact_count_plan.min())}/4 "
                 f"max_palm_position_error_mm="
                 f"{max_palm_position_error * 1000:.2f} "
                 f"min_non_tip_clearance_mm="
@@ -4130,13 +4386,36 @@ def main() -> None:
                 self.finger_q_max = np.maximum(
                     self.finger_q_max, finger_q
                 )
+                simultaneous_contacts = int(np.count_nonzero(tip_contact))
+                self.min_simultaneous_contacts = min(
+                    self.min_simultaneous_contacts,
+                    simultaneous_contacts,
+                )
+                self.contact_loss_streak = np.where(
+                    tip_contact,
+                    0,
+                    self.contact_loss_streak + 1,
+                )
+                self.max_contact_loss_streak = np.maximum(
+                    self.max_contact_loss_streak,
+                    self.contact_loss_streak,
+                )
                 if bool(np.all(tip_contact)):
+                    self.final_all_contact_streak += 1
+                else:
+                    self.final_all_contact_streak = 0
+                if (
+                    simultaneous_contacts
+                    >= args.min_runtime_contact_fingers
+                ):
                     self.bad_contact_streak = 0
                 else:
                     self.bad_contact_streak += 1
                 if self.bad_contact_streak > args.contact_failure_window:
                     raise RuntimeError(
-                        "Continuous fingertip contact validation failed: "
+                        "Minimum simultaneous fingertip support failed: "
+                        f"contacts={simultaneous_contacts}/4 "
+                        f"required={args.min_runtime_contact_fingers} "
                         f"site_standoff_mm="
                         f"{(self.surface_error[1:] * 1000).round(2).tolist()} "
                         f"kinematic_tracking_error_mm="
@@ -4147,6 +4426,20 @@ def main() -> None:
                         f"{self.joint_error[:ARM_DOF].round(3).tolist()} "
                         f"finger_joint_error_rad="
                         f"{self.joint_error[ARM_DOF:].round(3).tolist()}"
+                    )
+                if np.any(
+                    self.contact_loss_streak
+                    > args.max_individual_contact_loss_frames
+                ):
+                    raise RuntimeError(
+                        "A swing fingertip did not recover contact within "
+                        "the allowed window: "
+                        f"current_loss_frames="
+                        f"{self.contact_loss_streak.tolist()} "
+                        f"max_loss_frames="
+                        f"{args.max_individual_contact_loss_frames} "
+                        f"tactile_force_N="
+                        f"{self.tactile_force.round(2).tolist()}"
                     )
             target_t = torch.as_tensor(
                 self.targets[None], device=device, dtype=torch.float32
@@ -4347,6 +4640,26 @@ def main() -> None:
             contact_ratio = (
                 policy.contact_frames / float(policy.evaluated_frames)
             )
+            if (
+                policy.min_simultaneous_contacts
+                < args.min_runtime_contact_fingers
+            ):
+                raise RuntimeError(
+                    "Minimum simultaneous contact count was below the "
+                    f"required {args.min_runtime_contact_fingers}: "
+                    f"observed={policy.min_simultaneous_contacts}"
+                )
+            if (
+                policy.final_all_contact_streak
+                < args.final_contact_recovery_frames
+            ):
+                raise RuntimeError(
+                    "The route ended before all four fingertips recovered "
+                    "stable contact: "
+                    f"final_all_contact_streak="
+                    f"{policy.final_all_contact_streak} "
+                    f"required={args.final_contact_recovery_frames}"
+                )
             if np.any(contact_ratio < args.min_contact_ratio):
                 raise RuntimeError(
                     "Fingertip continuous-contact ratio below required "
@@ -4411,6 +4724,12 @@ def main() -> None:
                 f"duration_s={args.steps * dt:.2f} fps={args.fps:.1f} "
                 f"collision_mode={args.collision_mode} "
                 f"tip_contact_ratio={contact_ratio.round(4).tolist()} "
+                f"min_simultaneous_contacts="
+                f"{policy.min_simultaneous_contacts}/4 "
+                f"max_contact_loss_streak_frames="
+                f"{policy.max_contact_loss_streak.tolist()} "
+                f"final_all_contact_streak_frames="
+                f"{policy.final_all_contact_streak} "
                 f"axial_travel_m={policy.executed_axial_travel:.4f} "
                 f"max_motor_force_correction_rad="
                 f"{policy.max_force_correction_rad:.6f} "
