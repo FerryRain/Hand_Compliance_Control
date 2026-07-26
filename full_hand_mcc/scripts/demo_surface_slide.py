@@ -542,6 +542,17 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--mpc-transient-tangential-tolerance-mm",
+        type=float,
+        default=None,
+        help=(
+            "Optional tangential tolerance for the one scheduled swing "
+            "finger inside its bounded recovery window. Support fingers and "
+            "all fingertips outside the window keep "
+            "--mpc-tangential-tolerance-mm."
+        ),
+    )
+    parser.add_argument(
         "--mpc-transient-progress-tolerance-mm",
         type=float,
         default=4.0,
@@ -898,6 +909,15 @@ def main() -> None:
         raise ValueError(
             "--mpc-transient-normal-tolerance-mm cannot be smaller than "
             "--mpc-normal-tolerance-mm"
+        )
+    if (
+        args.mpc_transient_tangential_tolerance_mm is not None
+        and args.mpc_transient_tangential_tolerance_mm
+        < args.mpc_tangential_tolerance_mm
+    ):
+        raise ValueError(
+            "--mpc-transient-tangential-tolerance-mm cannot be smaller "
+            "than --mpc-tangential-tolerance-mm"
         )
     if (
         args.mpc_transient_progress_tolerance_mm
@@ -2469,6 +2489,30 @@ def main() -> None:
                 )
                 return accepted, nominal_contact, tolerances
 
+            def scheduled_tip_tangential_tolerances(
+                surface_distance: float,
+            ) -> np.ndarray:
+                tolerances = np.full(
+                    4,
+                    args.mpc_tangential_tolerance_mm / 1000.0,
+                    dtype=np.float64,
+                )
+                transient_active = (
+                    args.min_planner_contact_fingers < 4
+                    and args.mpc_transient_tangential_tolerance_mm
+                    is not None
+                    and args.transient_contact_end_m
+                    > args.transient_contact_start_m
+                    and args.transient_contact_start_m
+                    < surface_distance
+                    < args.transient_contact_end_m
+                )
+                if transient_active:
+                    tolerances[args.transient_contact_finger] = (
+                        args.mpc_transient_tangential_tolerance_mm / 1000.0
+                    )
+                return tolerances
+
             def palm_follow_distance(fingertip_distance: float) -> float:
                 """Integrate a smooth late-route palm velocity schedule."""
 
@@ -2590,6 +2634,11 @@ def main() -> None:
                     )
                 tip_normal_tolerances = (
                     scheduled_tip_normal_tolerances(desired_distance)
+                )
+                tip_tangential_tolerances = (
+                    scheduled_tip_tangential_tolerances(
+                        desired_distance
+                    )
                 )
                 minimum_progress = (
                     coarse_progress[keyframe - 1]
@@ -3366,14 +3415,16 @@ def main() -> None:
                             )
                         )
                         + 1000.0
-                        * max(
-                            float(
-                                np.abs(
-                                    candidate_tangential_error[1:]
-                                ).max()
+                        * float(
+                            np.max(
+                                np.maximum(
+                                    np.abs(
+                                        candidate_tangential_error[1:]
+                                    )
+                                    - tip_tangential_tolerances,
+                                    0.0,
+                                )
                             )
-                            - args.mpc_tangential_tolerance_mm / 1000.0,
-                            0.0,
                         )
                         + 8.0 * float(progress_error.max())
                         + 5.0 * float(normal_error[1:].max())
@@ -3410,14 +3461,14 @@ def main() -> None:
                             )
                         )
                     )
-                    tangential_excess = max(
-                        float(
-                            np.abs(
-                                candidate_tangential_error[1:]
-                            ).max()
+                    tangential_excess = float(
+                        np.max(
+                            np.maximum(
+                                np.abs(candidate_tangential_error[1:])
+                                - tip_tangential_tolerances,
+                                0.0,
+                            )
                         )
-                        - args.mpc_tangential_tolerance_mm / 1000.0,
-                        0.0,
                     )
                     monotonic_excess = max(
                         float(monotonic_error.max())
@@ -3548,8 +3599,10 @@ def main() -> None:
                     float(progress_error.max())
                     > active_progress_tolerance_mm / 1000.0
                     or not preliminary_normal_ok
-                    or float(np.abs(tangential_error[1:]).max())
-                    > args.mpc_tangential_tolerance_mm / 1000.0
+                    or np.any(
+                        np.abs(tangential_error[1:])
+                        > tip_tangential_tolerances
+                    )
                     or float(preliminary_monotonic_error.max())
                     > args.mpc_monotonic_tolerance_mm / 1000.0
                     or preliminary_palm_error
@@ -3652,14 +3705,16 @@ def main() -> None:
                                 )
                             )
                             + 1000.0
-                            * max(
-                                float(
-                                    np.abs(
-                                        repaired_tangential_error[1:]
-                                    ).max()
+                            * float(
+                                np.max(
+                                    np.maximum(
+                                        np.abs(
+                                            repaired_tangential_error[1:]
+                                        )
+                                        - tip_tangential_tolerances,
+                                        0.0,
+                                    )
                                 )
-                                - args.mpc_tangential_tolerance_mm / 1000.0,
-                                0.0,
                             )
                             + 8.0 * float(repaired_progress_error.max())
                             + 5.0
@@ -3698,14 +3753,16 @@ def main() -> None:
                                 )
                             )
                         )
-                        repaired_tangential_excess = max(
-                            float(
-                                np.abs(
-                                    repaired_tangential_error[1:]
-                                ).max()
+                        repaired_tangential_excess = float(
+                            np.max(
+                                np.maximum(
+                                    np.abs(
+                                        repaired_tangential_error[1:]
+                                    )
+                                    - tip_tangential_tolerances,
+                                    0.0,
+                                )
                             )
-                            - args.mpc_tangential_tolerance_mm / 1000.0,
-                            0.0,
                         )
                         repaired_monotonic_excess = max(
                             float(repaired_monotonic_error.max())
@@ -3878,16 +3935,18 @@ def main() -> None:
                         f"tolerance_mm="
                         f"{(active_normal_tolerances * 1000).round(2).tolist()}"
                     )
-                if (
-                    float(np.abs(tangential_error[1:]).max())
-                    > args.mpc_tangential_tolerance_mm / 1000.0
+                if np.any(
+                    np.abs(tangential_error[1:])
+                    > tip_tangential_tolerances
                 ):
                     raise RuntimeError(
                         "Adaptive surface MPC missed fingertip tangential "
                         f"gait: keyframe={keyframe}/{keyframe_count} "
                         f"distance_m={desired_distance:.4f} "
                         f"error_mm="
-                        f"{(np.abs(tangential_error[1:]) * 1000).round(2).tolist()}"
+                        f"{(np.abs(tangential_error[1:]) * 1000).round(2).tolist()} "
+                        f"tolerance_mm="
+                        f"{(tip_tangential_tolerances * 1000).round(2).tolist()}"
                     )
                 if args.collision_mode == "full_robot":
                     (
@@ -4121,6 +4180,11 @@ def main() -> None:
                 ),
                 mpc_transient_normal_tolerance_mm=np.asarray(
                     args.mpc_transient_normal_tolerance_mm
+                ),
+                mpc_transient_tangential_tolerance_mm=np.asarray(
+                    np.nan
+                    if args.mpc_transient_tangential_tolerance_mm is None
+                    else args.mpc_transient_tangential_tolerance_mm
                 ),
                 mpc_transient_progress_tolerance_mm=np.asarray(
                     args.mpc_transient_progress_tolerance_mm
