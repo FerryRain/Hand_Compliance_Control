@@ -2925,19 +2925,66 @@ def main() -> None:
                 # feasibility tolerance. A single exact-palm hierarchical IK
                 # seed can sit outside the coupled fingertip workspace even
                 # though a nearby collision-safe palm pose is feasible. Search
-                # several inward normal offsets inside the same hard ball and
-                # use them as local-optimization starts; the final candidate is
-                # still checked against the original palm target and radius.
+                # several deterministic normal/tangent offsets inside the
+                # same hard ball and use them as local-optimization starts.
+                # Tangential seeds are essential when the lower palm must go
+                # around the object rather than move radially through the
+                # fingertip workspace. The final candidate is still checked
+                # against the original palm target and radius.
                 palm_ball_surface_seeds: list[np.ndarray] = []
                 palm_ball_radius_m = (
                     args.mpc_palm_position_tolerance_mm / 1000.0
                 )
-                for inward_fraction in (0.25, 0.50, 0.75):
+                palm_ball_normal = palm_clearance_direction.copy()
+                palm_ball_normal /= max(
+                    float(np.linalg.norm(palm_ball_normal)),
+                    1.0e-12,
+                )
+                palm_ball_azimuth = transported_contact_frame[:, 1].copy()
+                palm_ball_azimuth -= (
+                    palm_ball_normal
+                    * float(np.dot(palm_ball_normal, palm_ball_azimuth))
+                )
+                palm_ball_azimuth /= max(
+                    float(np.linalg.norm(palm_ball_azimuth)),
+                    1.0e-12,
+                )
+                palm_ball_meridian = np.cross(
+                    palm_ball_normal,
+                    palm_ball_azimuth,
+                )
+                palm_ball_meridian /= max(
+                    float(np.linalg.norm(palm_ball_meridian)),
+                    1.0e-12,
+                )
+                if (
+                    float(
+                        np.dot(
+                            palm_ball_meridian,
+                            transported_contact_frame[:, 2],
+                        )
+                    )
+                    < 0.0
+                ):
+                    palm_ball_meridian *= -1.0
+                palm_ball_offset_fractions = (
+                    -0.25 * palm_ball_normal,
+                    -0.50 * palm_ball_normal,
+                    -0.75 * palm_ball_normal,
+                    0.50 * palm_ball_normal,
+                    0.50 * palm_ball_azimuth,
+                    -0.50 * palm_ball_azimuth,
+                    0.50 * palm_ball_meridian,
+                    -0.50 * palm_ball_meridian,
+                    -0.40 * palm_ball_normal
+                    + 0.50 * palm_ball_azimuth,
+                    -0.40 * palm_ball_normal
+                    - 0.50 * palm_ball_azimuth,
+                )
+                for offset_fraction in palm_ball_offset_fractions:
                     shifted_palm_target = (
                         palm_target
-                        - inward_fraction
-                        * palm_ball_radius_m
-                        * palm_clearance_direction
+                        + palm_ball_radius_m * offset_fraction
                     )
                     shifted_palm_body_position = (
                         shifted_palm_target
