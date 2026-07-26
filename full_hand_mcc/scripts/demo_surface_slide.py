@@ -221,6 +221,34 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--finger-meridian-gait-mm",
+        type=float,
+        default=0.0,
+        help=(
+            "Peak asynchronous fingertip lead along the meridian during a "
+            "bounded curvature-transition window. The offset returns to zero "
+            "after the window, so all fingertips retain the same endpoint."
+        ),
+    )
+    parser.add_argument(
+        "--finger-meridian-gait-start-m",
+        type=float,
+        default=0.02,
+    )
+    parser.add_argument(
+        "--finger-meridian-gait-end-m",
+        type=float,
+        default=0.07,
+    )
+    parser.add_argument(
+        "--finger-meridian-gait-scales",
+        type=float,
+        nargs=4,
+        default=(1.0, 0.0, 0.0, 0.0),
+        metavar=("INDEX", "MIDDLE", "RING", "THUMB"),
+        help="Per-fingertip scale for the bounded meridian lead profile.",
+    )
+    parser.add_argument(
         "--runtime-finger-gait-rad",
         type=float,
         default=0.12,
@@ -382,6 +410,16 @@ def main() -> None:
         help="Maximum numerical backtracking allowed between MPC keyframes.",
     )
     parser.add_argument("--mpc-normal-tolerance-mm", type=float, default=3.0)
+    parser.add_argument(
+        "--mpc-palm-position-tolerance-mm",
+        type=float,
+        default=3.0,
+        help=(
+            "Spherical feasibility tolerance for the non-contact palm-root "
+            "MPC point. The optimizer may move inside this ball to preserve "
+            "all four physical fingertip contacts and collision clearance."
+        ),
+    )
     parser.add_argument(
         "--mpc-tangential-tolerance-mm",
         type=float,
@@ -600,6 +638,24 @@ def main() -> None:
         raise ValueError("--palm-late-follow-ramp-m must be positive")
     if args.finger_gait_amplitude_m < 0.0:
         raise ValueError("--finger-gait-amplitude-m cannot be negative")
+    if args.finger_meridian_gait_mm < 0.0:
+        raise ValueError("--finger-meridian-gait-mm cannot be negative")
+    if args.finger_meridian_gait_start_m < 0.0:
+        raise ValueError(
+            "--finger-meridian-gait-start-m cannot be negative"
+        )
+    if (
+        args.finger_meridian_gait_end_m
+        <= args.finger_meridian_gait_start_m
+    ):
+        raise ValueError(
+            "--finger-meridian-gait-end-m must be greater than "
+            "--finger-meridian-gait-start-m"
+        )
+    if any(scale < 0.0 for scale in args.finger_meridian_gait_scales):
+        raise ValueError(
+            "--finger-meridian-gait-scales cannot be negative"
+        )
     if args.runtime_finger_gait_rad < 0.0:
         raise ValueError("--runtime-finger-gait-rad cannot be negative")
     if args.runtime_tip_gait_mm < 0.0:
@@ -626,6 +682,10 @@ def main() -> None:
         raise ValueError("--mpc-keyframes must be at least two")
     if args.mpc_monotonic_tolerance_mm < 0.0:
         raise ValueError("--mpc-monotonic-tolerance-mm cannot be negative")
+    if args.mpc_palm_position_tolerance_mm <= 0.0:
+        raise ValueError(
+            "--mpc-palm-position-tolerance-mm must be positive"
+        )
     if args.palm_path_tolerance_mm < args.ik_tolerance_mm:
         raise ValueError(
             "--palm-path-tolerance-mm must be at least --ik-tolerance-mm"
@@ -1604,6 +1664,18 @@ def main() -> None:
                 finger_gait_amplitude_m=np.asarray(
                     args.finger_gait_amplitude_m
                 ),
+                finger_meridian_gait_mm=np.asarray(
+                    args.finger_meridian_gait_mm
+                ),
+                finger_meridian_gait_start_m=np.asarray(
+                    args.finger_meridian_gait_start_m
+                ),
+                finger_meridian_gait_end_m=np.asarray(
+                    args.finger_meridian_gait_end_m
+                ),
+                finger_meridian_gait_scales=np.asarray(
+                    args.finger_meridian_gait_scales
+                ),
                 object_shape=np.asarray(args.object_shape),
                 object_radius_m=np.asarray(CAPSULE_RADIUS),
                 object_half_height_m=np.asarray(CAPSULE_HALF_HEIGHT),
@@ -1938,6 +2010,13 @@ def main() -> None:
             coarse_progress = np.zeros((keyframe_count + 1, 5), dtype=np.float64)
             coarse_target_progress = np.zeros_like(coarse_progress)
             coarse_normal_error = np.zeros_like(coarse_progress)
+            coarse_palm_target = np.zeros(
+                (keyframe_count + 1, 3), dtype=np.float64
+            )
+            coarse_palm_target[0] = self.kinematic_targets[0]
+            coarse_palm_position_error = np.zeros(
+                keyframe_count + 1, dtype=np.float64
+            )
             coarse_cost = np.zeros(keyframe_count + 1, dtype=np.float64)
             coarse_nfev = np.zeros(keyframe_count + 1, dtype=np.int32)
             planner_pad_alignment = float(
@@ -2091,6 +2170,30 @@ def main() -> None:
                     start_arc[0]
                     + direction
                     * desired_palm_distance
+                )
+                if (
+                    args.finger_meridian_gait_start_m
+                    < desired_distance
+                    < args.finger_meridian_gait_end_m
+                ):
+                    meridian_gait_coordinate = (
+                        desired_distance
+                        - args.finger_meridian_gait_start_m
+                    ) / (
+                        args.finger_meridian_gait_end_m
+                        - args.finger_meridian_gait_start_m
+                    )
+                    meridian_gait_phase = np.sin(
+                        np.pi * meridian_gait_coordinate
+                    )
+                else:
+                    meridian_gait_phase = 0.0
+                desired_arc[1:] += (
+                    direction
+                    * args.finger_meridian_gait_mm
+                    / 1000.0
+                    * meridian_gait_phase
+                    * np.asarray(args.finger_meridian_gait_scales)
                 )
                 gait_phase = np.sin(
                     np.pi * desired_distance / args.axial_travel_m
@@ -2261,6 +2364,7 @@ def main() -> None:
                 coarse_target_progress[keyframe] = direction * (
                     desired_arc - start_arc
                 )
+                coarse_palm_target[keyframe] = palm_target
                 desired_palm_body_position = (
                     palm_target
                     - desired_palm_rotation @ palm_site_offset_local
@@ -2292,12 +2396,12 @@ def main() -> None:
                     # single weighted sum.  Once an error enters the inner
                     # band, smoothness and azimuth drift select the solution.
                     progress_band = (
-                        0.80
+                        0.65
                         * active_progress_tolerance_mm
                         / 1000.0
                     )
                     normal_band = (
-                        0.80
+                        0.55
                         * args.mpc_normal_tolerance_mm
                         / 1000.0
                     )
@@ -2321,6 +2425,23 @@ def main() -> None:
                     palm_orientation_error = R.from_matrix(
                         desired_palm_rotation @ palm_rotation.T
                     ).as_rotvec()
+                    palm_position_error = points[0] - palm_target
+                    palm_position_error_norm = float(
+                        np.linalg.norm(palm_position_error)
+                    )
+                    palm_position_band = (
+                        0.8
+                        * args.mpc_palm_position_tolerance_mm
+                        / 1000.0
+                    )
+                    palm_position_violation = (
+                        palm_position_error
+                        * max(
+                            palm_position_error_norm - palm_position_band,
+                            0.0,
+                        )
+                        / max(palm_position_error_norm, 1.0e-12)
+                    )
                     clearance_violation = np.zeros(1, dtype=np.float64)
                     if args.collision_mode == "full_robot":
                         _, non_tip_clearance, _ = (
@@ -2349,7 +2470,8 @@ def main() -> None:
                             normal_scale * normal_violation
                             + 0.3 * tip_normal_error,
                             monotonic_scale * monotonic_violation,
-                            30.0 * (points[0] - palm_target),
+                            30.0 * palm_position_violation
+                            + 1.0 * palm_position_error,
                             0.02 * palm_orientation_error,
                             0.01
                             * (
@@ -2466,6 +2588,54 @@ def main() -> None:
                     ),
                     upper,
                 )
+                # The palm root is a non-contact MPC point with a spherical
+                # feasibility tolerance. A single exact-palm hierarchical IK
+                # seed can sit outside the coupled fingertip workspace even
+                # though a nearby collision-safe palm pose is feasible. Search
+                # several inward normal offsets inside the same hard ball and
+                # use them as local-optimization starts; the final candidate is
+                # still checked against the original palm target and radius.
+                palm_ball_surface_seeds: list[np.ndarray] = []
+                palm_ball_radius_m = (
+                    args.mpc_palm_position_tolerance_mm / 1000.0
+                )
+                for inward_fraction in (0.25, 0.50, 0.75):
+                    shifted_palm_target = (
+                        palm_target
+                        - inward_fraction
+                        * palm_ball_radius_m
+                        * transported_contact_frame[:, 0]
+                    )
+                    shifted_palm_body_position = (
+                        shifted_palm_target
+                        - desired_palm_rotation @ palm_site_offset_local
+                    )
+                    shifted_arm_result = reachability.solve_palm_pose(
+                        shifted_palm_body_position,
+                        desired_palm_rotation,
+                        previous_q,
+                        position_tolerance=2.5e-4,
+                        orientation_tolerance=1.0e-3,
+                        max_iterations=args.mpc_max_nfev,
+                    )
+                    shifted_surface_points = surface_ik_points.copy()
+                    shifted_surface_points[0] = shifted_palm_target
+                    shifted_finger_result = (
+                        reachability.solve_fingertips_fixed_arm(
+                            shifted_surface_points,
+                            shifted_arm_result.joint_position,
+                            tolerance=2.5e-4,
+                        )
+                    )
+                    palm_ball_surface_seeds.append(
+                        np.minimum(
+                            np.maximum(
+                                shifted_finger_result.joint_position,
+                                lower,
+                            ),
+                            upper,
+                        )
+                    )
                 (
                     surface_ik_clearance,
                     surface_ik_nearest,
@@ -2636,7 +2806,7 @@ def main() -> None:
                         f"{rigid_self_collision_count}",
                         flush=True,
                     )
-                for seed, regularization, progress_scale, normal_scale in (
+                local_seed_specs = [
                     (surface_ik_seed, 0.0001, 32.0, 32.0),
                     (surface_ik_seed, 0.0, 48.0, 48.0),
                     (rigid_arm_seed, 0.0001, 24.0, 24.0),
@@ -2644,7 +2814,17 @@ def main() -> None:
                     (previous_q, 0.0001, 32.0, 20.0),
                     (previous_q, 0.0001, 20.0, 32.0),
                     (previous_q, 0.0, 40.0, 40.0),
-                ):
+                ]
+                local_seed_specs.extend(
+                    (seed, 0.0001, 48.0, 48.0)
+                    for seed in palm_ball_surface_seeds
+                )
+                for (
+                    seed,
+                    regularization,
+                    progress_scale,
+                    normal_scale,
+                ) in local_seed_specs:
                     result = least_squares(
                         lambda q, reg=regularization, ps=progress_scale, ns=normal_scale: residual(
                             q,
@@ -2660,9 +2840,13 @@ def main() -> None:
                         gtol=1.0e-8,
                         x_scale="jac",
                     )
-                    _, _, _, candidate_arc, candidate_aux = contact_state(
-                        result.x
-                    )
+                    (
+                        candidate_points,
+                        _,
+                        _,
+                        candidate_arc,
+                        candidate_aux,
+                    ) = contact_state(result.x)
                     progress_error = np.abs(
                         direction * (candidate_arc - desired_arc)
                     )
@@ -2723,6 +2907,22 @@ def main() -> None:
                         )
                         + 1.0e-3 * float(result.cost)
                     )
+                    candidate_palm_error = float(
+                        np.linalg.norm(candidate_points[0] - palm_target)
+                    )
+                    if (
+                        candidate_palm_error
+                        > args.mpc_palm_position_tolerance_mm / 1000.0
+                    ):
+                        score += (
+                            1.0e6
+                            + 1.0e6
+                            * (
+                                candidate_palm_error
+                                - args.mpc_palm_position_tolerance_mm
+                                / 1000.0
+                            )
+                        )
                     if args.collision_mode == "full_robot":
                         (
                             clearance,
@@ -2835,9 +3035,13 @@ def main() -> None:
                             gtol=1.0e-9,
                             x_scale="jac",
                         )
-                        _, _, _, repaired_arc, repaired_aux = contact_state(
-                            repaired.x
-                        )
+                        (
+                            repaired_points,
+                            _,
+                            _,
+                            repaired_arc,
+                            repaired_aux,
+                        ) = contact_state(repaired.x)
                         repaired_progress_error = np.abs(
                             direction * (repaired_arc - desired_arc)
                         )
@@ -2901,6 +3105,22 @@ def main() -> None:
                             )
                             + 1.0e-3 * float(repaired.cost)
                         )
+                        repaired_palm_error = float(
+                            np.linalg.norm(repaired_points[0] - palm_target)
+                        )
+                        if (
+                            repaired_palm_error
+                            > args.mpc_palm_position_tolerance_mm / 1000.0
+                        ):
+                            repaired_score += (
+                                1.0e6
+                                + 1.0e6
+                                * (
+                                    repaired_palm_error
+                                    - args.mpc_palm_position_tolerance_mm
+                                    / 1000.0
+                                )
+                            )
                         if args.collision_mode == "full_robot":
                             (
                                 clearance,
@@ -2948,7 +3168,27 @@ def main() -> None:
                         normal_error,
                         achieved_arc,
                     ) = min(candidates, key=lambda item: item[0])
-                _, _, _, _, best_auxiliary = contact_state(best.x)
+                (
+                    best_points,
+                    _,
+                    _,
+                    _,
+                    best_auxiliary,
+                ) = contact_state(best.x)
+                best_palm_position_error = float(
+                    np.linalg.norm(best_points[0] - palm_target)
+                )
+                if (
+                    best_palm_position_error
+                    > args.mpc_palm_position_tolerance_mm / 1000.0
+                ):
+                    raise RuntimeError(
+                        "Adaptive surface MPC missed the non-contact palm "
+                        f"feasibility ball: keyframe={keyframe}/"
+                        f"{keyframe_count} error_mm="
+                        f"{best_palm_position_error * 1000:.3f} "
+                        f"limit_mm={args.mpc_palm_position_tolerance_mm:.3f}"
+                    )
                 tangential_error = (
                     (
                         best_auxiliary[:, 0]
@@ -3040,6 +3280,9 @@ def main() -> None:
                     achieved_arc - start_arc
                 )
                 coarse_normal_error[keyframe] = normal_error
+                coarse_palm_position_error[keyframe] = (
+                    best_palm_position_error
+                )
                 coarse_cost[keyframe] = float(best.cost)
                 coarse_nfev[keyframe] = int(best.nfev)
                 previous_delta = q - previous_q
@@ -3053,6 +3296,8 @@ def main() -> None:
                     f"{(normal_error[1:] * 1000).round(2).tolist()} "
                     f"tip_tangential_error_mm="
                     f"{(np.abs(tangential_error[1:]) * 1000).round(2).tolist()} "
+                    f"palm_position_error_mm="
+                    f"{best_palm_position_error * 1000:.2f} "
                     f"nfev={best.nfev}",
                     flush=True,
                 )
@@ -3070,6 +3315,9 @@ def main() -> None:
             distance_plan = np.zeros(frame_count, dtype=np.float32)
             progress_plan = np.zeros((frame_count, 5), dtype=np.float32)
             normal_error_plan = np.zeros_like(progress_plan)
+            palm_position_error_plan = np.zeros(
+                frame_count, dtype=np.float32
+            )
             for frame, coordinate in enumerate(sample_coordinate):
                 left = min(int(np.floor(coordinate)), keyframe_count - 1)
                 blend = coordinate - left
@@ -3109,6 +3357,13 @@ def main() -> None:
                         )
                     )
                 )
+                palm_target = (
+                    (1.0 - blend) * coarse_palm_target[left]
+                    + blend * coarse_palm_target[left + 1]
+                )
+                palm_position_error_plan[frame] = float(
+                    np.linalg.norm(points[0] - palm_target)
+                )
                 distance_plan[frame] = float(np.min(progress[1:]))
 
             final_target_progress = coarse_target_progress[-1]
@@ -3131,6 +3386,19 @@ def main() -> None:
                     "Adaptive surface MPC joint step exceeds bound: "
                     f"observed={max_joint_step:.5f}rad "
                     f"limit={args.max_plan_joint_step_rad:.5f}rad"
+                )
+            max_palm_position_error = float(
+                palm_position_error_plan.max()
+            )
+            if (
+                max_palm_position_error
+                > args.mpc_palm_position_tolerance_mm / 1000.0
+            ):
+                raise RuntimeError(
+                    "Adaptive surface MPC interpolation left the non-contact "
+                    "palm feasibility ball: "
+                    f"error_mm={max_palm_position_error * 1000:.3f} "
+                    f"limit_mm={args.mpc_palm_position_tolerance_mm:.3f}"
                 )
 
             self.plan_surface = surface_plan
@@ -3166,6 +3434,18 @@ def main() -> None:
                 finger_gait_amplitude_m=np.asarray(
                     args.finger_gait_amplitude_m
                 ),
+                finger_meridian_gait_mm=np.asarray(
+                    args.finger_meridian_gait_mm
+                ),
+                finger_meridian_gait_start_m=np.asarray(
+                    args.finger_meridian_gait_start_m
+                ),
+                finger_meridian_gait_end_m=np.asarray(
+                    args.finger_meridian_gait_end_m
+                ),
+                finger_meridian_gait_scales=np.asarray(
+                    args.finger_meridian_gait_scales
+                ),
                 object_shape=np.asarray(args.object_shape),
                 object_radius_m=np.asarray(CAPSULE_RADIUS),
                 object_half_height_m=np.asarray(CAPSULE_HALF_HEIGHT),
@@ -3173,6 +3453,9 @@ def main() -> None:
                 coarse_joint_positions_rad=coarse_q,
                 coarse_progress_m=coarse_progress,
                 coarse_normal_error_m=coarse_normal_error,
+                coarse_palm_target_m=coarse_palm_target,
+                coarse_palm_position_error_m=coarse_palm_position_error,
+                palm_position_error_m=palm_position_error_plan,
                 coarse_cost=coarse_cost,
                 coarse_nfev=coarse_nfev,
                 start_surface_local_m=start_local,
@@ -3189,6 +3472,8 @@ def main() -> None:
                 f"{float(residual_plan.max() * 1000):.2f} "
                 f"max_tip_normal_error_mm="
                 f"{float(normal_error_plan[:, 1:].max() * 1000):.2f} "
+                f"max_palm_position_error_mm="
+                f"{max_palm_position_error * 1000:.2f} "
                 f"min_non_tip_clearance_mm="
                 f"{self.min_planned_non_tip_clearance_m * 1000:.2f} "
                 f"start_z_m={start_local[:, 2].round(4).tolist()} "
