@@ -2378,6 +2378,7 @@ def main() -> None:
                     normal_scale: float,
                     monotonic_scale: float = 150.0,
                     pad_scale: float = 8.0,
+                    palm_scale: float = 30.0,
                 ) -> np.ndarray:
                     points, _, surface_normals, arc, auxiliary = contact_state(q)
                     azimuth = auxiliary[:, 0]
@@ -2449,9 +2450,16 @@ def main() -> None:
                                 q, center, rotation
                             )
                         )
+                        # Aim slightly inside the collision-free set so the
+                        # unconstrained least-squares solver cannot stop a few
+                        # microns below the hard 2 mm acceptance boundary.
+                        # The later coarse and interpolated audits still use
+                        # the exact user-specified hard threshold.
+                        clearance_objective_m = (
+                            args.min_non_tip_clearance_mm + 0.25
+                        ) / 1000.0
                         clearance_violation = np.maximum(
-                            args.min_non_tip_clearance_mm / 1000.0
-                            - non_tip_clearance,
+                            clearance_objective_m - non_tip_clearance,
                             0.0,
                         )
                     pad_alignment = np.einsum(
@@ -2470,7 +2478,7 @@ def main() -> None:
                             normal_scale * normal_violation
                             + 0.3 * tip_normal_error,
                             monotonic_scale * monotonic_violation,
-                            30.0 * palm_position_violation
+                            palm_scale * palm_position_violation
                             + 1.0 * palm_position_error,
                             0.02 * palm_orientation_error,
                             0.01
@@ -2973,14 +2981,25 @@ def main() -> None:
                 )
                 preliminary_monotonic_error[0] = 0.0
                 preliminary_pad_alignment = 1.0
+                preliminary_clearance = np.inf
+                preliminary_self_count = 0
                 if args.collision_mode == "full_robot":
                     (
+                        preliminary_clearance,
                         _,
-                        _,
-                        _,
+                        preliminary_self_count,
                         preliminary_pad_alignment,
                     ) = segment_collision_status(best.x)
-                _, _, _, _, best_auxiliary = contact_state(best.x)
+                (
+                    preliminary_points,
+                    _,
+                    _,
+                    _,
+                    best_auxiliary,
+                ) = contact_state(best.x)
+                preliminary_palm_error = float(
+                    np.linalg.norm(preliminary_points[0] - palm_target)
+                )
                 tangential_error = (
                     (
                         best_auxiliary[:, 0]
@@ -2999,6 +3018,11 @@ def main() -> None:
                     > args.mpc_tangential_tolerance_mm / 1000.0
                     or float(preliminary_monotonic_error.max())
                     > args.mpc_monotonic_tolerance_mm / 1000.0
+                    or preliminary_palm_error
+                    > args.mpc_palm_position_tolerance_mm / 1000.0
+                    or preliminary_clearance
+                    < args.min_non_tip_clearance_mm / 1000.0
+                    or preliminary_self_count > 0
                     or preliminary_pad_alignment < planner_pad_alignment
                 ):
                     # Constraint-repair pass: warm-start from the best
@@ -3011,21 +3035,26 @@ def main() -> None:
                         normal_scale,
                         monotonic_scale,
                         pad_scale,
+                        palm_scale,
                     ) in (
-                        (100.0, 60.0, 450.0, 16.0),
-                        (60.0, 100.0, 700.0, 24.0),
-                        (120.0, 120.0, 1000.0, 36.0),
-                        (180.0, 140.0, 1400.0, 56.0),
+                        (100.0, 60.0, 450.0, 16.0, 60.0),
+                        (60.0, 100.0, 700.0, 24.0, 100.0),
+                        (120.0, 120.0, 1000.0, 36.0, 160.0),
+                        (180.0, 140.0, 1400.0, 56.0, 240.0),
+                        (300.0, 180.0, 1800.0, 80.0, 280.0),
+                        (500.0, 240.0, 2400.0, 100.0, 360.0),
                     ):
                         repaired = least_squares(
                             lambda q, ps=progress_scale, ns=normal_scale,
-                            ms=monotonic_scale, pads=pad_scale: residual(
+                            ms=monotonic_scale, pads=pad_scale,
+                            palms=palm_scale: residual(
                                 q,
                                 joint_regularization=0.0,
                                 progress_scale=ps,
                                 normal_scale=ns,
                                 monotonic_scale=ms,
                                 pad_scale=pads,
+                                palm_scale=palms,
                             ),
                             repair_seed,
                             bounds=(lower, upper),
