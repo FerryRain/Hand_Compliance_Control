@@ -64,7 +64,18 @@ def main() -> None:
     parser.add_argument("--clearance-mm", type=float, default=2.0)
     parser.add_argument("--clearance-lift-m", type=float, default=0.018)
     parser.add_argument("--clearance-ramp-m", type=float, default=0.04)
+    parser.add_argument(
+        "--follow-surface-frame",
+        action="store_true",
+        help=(
+            "Transport the palm with the mean four-fingertip surface frame. "
+            "This preserves pad orientation through curved end caps."
+        ),
+    )
+    parser.add_argument("--surface-frame-gain", type=float, default=1.0)
     parser.add_argument("--clearance-tilt-deg", type=float, default=20.0)
+    parser.add_argument("--tilt-start-m", type=float, default=0.0)
+    parser.add_argument("--tilt-ramp-m", type=float, default=0.04)
     parser.add_argument("--tilt-release-start-m", type=float, default=1.0)
     parser.add_argument("--tilt-release-ramp-m", type=float, default=0.04)
     parser.add_argument("--secondary-lift-m", type=float, default=0.006)
@@ -78,6 +89,12 @@ def main() -> None:
         raise ValueError("--keyframes must be at least two")
     if args.random_starts < 1:
         raise ValueError("--random-starts must be positive")
+    if not 0.0 <= args.surface_frame_gain <= 1.0:
+        raise ValueError("--surface-frame-gain must be in [0, 1]")
+    if args.tilt_start_m < 0.0:
+        raise ValueError("--tilt-start-m cannot be negative")
+    if args.tilt_ramp_m <= 0.0:
+        raise ValueError("--tilt-ramp-m must be positive")
 
     source = np.load(args.seed_grasp)
     q_seed = np.asarray(source["joint_position_rad"], dtype=np.float64)
@@ -138,6 +155,11 @@ def main() -> None:
         half_height,
     )
     initial_contact_frame = _mean_contact_frame(initial_frames)
+    initial_patch_center = np.mean(initial_surface[1:], axis=0)
+    initial_palm_patch_offset = (
+        initial_contact_frame.T
+        @ (initial_points[0] - initial_patch_center)
+    )
 
     def minimum_arm_object_clearance(q: np.ndarray) -> float:
         """Return clearance for the FR3 base/links, excluding hand geoms."""
@@ -164,30 +186,64 @@ def main() -> None:
             )
             / args.secondary_ramp_m
         )
+        tilt_phase = _smoothstep(
+            (distance - args.tilt_start_m) / args.tilt_ramp_m
+        )
         tilt_release_phase = _smoothstep(
             (
                 distance - args.tilt_release_start_m
             )
             / args.tilt_release_ramp_m
         )
+        transported_contact_frame = initial_contact_frame
+        base_rotation = initial_palm_rotation
+        if args.follow_surface_frame:
+            desired_tip_arc = initial_arc[1:] + distance
+            desired_tip_surface, _, desired_tip_frames = (
+                capsule_meridian_targets(
+                    desired_tip_arc,
+                    initial_azimuth[1:],
+                    center,
+                    rotation,
+                    radius,
+                    half_height,
+                )
+            )
+            desired_frames = np.concatenate(
+                (initial_frames[:1], desired_tip_frames),
+                axis=0,
+            )
+            desired_contact_frame = _mean_contact_frame(desired_frames)
+            full_transport = desired_contact_frame @ initial_contact_frame.T
+            frame_transport = R.from_rotvec(
+                args.surface_frame_gain
+                * R.from_matrix(full_transport).as_rotvec()
+            ).as_matrix()
+            transported_contact_frame = (
+                frame_transport @ initial_contact_frame
+            )
+            base_rotation = frame_transport @ initial_palm_rotation
+            site_position = (
+                np.mean(desired_tip_surface, axis=0)
+                + transported_contact_frame @ initial_palm_patch_offset
+            )
+        else:
+            site_position = (
+                initial_points[0] + distance * rotation[:, 2]
+            )
         desired_rotation = (
             R.from_rotvec(
                 -np.deg2rad(args.clearance_tilt_deg)
-                * clearance_phase
+                * tilt_phase
                 * (1.0 - tilt_release_phase)
-                * initial_contact_frame[:, 1]
+                * transported_contact_frame[:, 1]
             ).as_matrix()
-            @ initial_palm_rotation
+            @ base_rotation
         )
-        site_position = (
-            initial_points[0]
-            + distance * rotation[:, 2]
-            + (
-                args.clearance_lift_m * clearance_phase
-                + args.secondary_lift_m * secondary_phase
-            )
-            * initial_contact_frame[:, 0]
-        )
+        site_position += (
+            args.clearance_lift_m * clearance_phase
+            + args.secondary_lift_m * secondary_phase
+        ) * transported_contact_frame[:, 0]
         body_position = site_position - desired_rotation @ palm_site_offset
         return body_position, desired_rotation
 

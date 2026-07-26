@@ -157,6 +157,22 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--palm-clearance-tilt-start-m",
+        type=float,
+        default=0.0,
+        help=(
+            "Surface progress before collision-avoidance palm tilt begins. "
+            "Delaying tilt preserves the calibrated finger-pad pose while "
+            "leaving a highly curved lower end cap."
+        ),
+    )
+    parser.add_argument(
+        "--palm-clearance-tilt-ramp-m",
+        type=float,
+        default=0.04,
+        help="Surface distance over which delayed palm tilt ramps in.",
+    )
+    parser.add_argument(
         "--palm-clearance-tilt-release-start-m",
         type=float,
         default=1.0,
@@ -665,6 +681,14 @@ def main() -> None:
         raise ValueError("--palm-clearance-ramp-m must be positive")
     if args.palm_clearance_tilt_deg < 0.0:
         raise ValueError("--palm-clearance-tilt-deg cannot be negative")
+    if args.palm_clearance_tilt_start_m < 0.0:
+        raise ValueError(
+            "--palm-clearance-tilt-start-m cannot be negative"
+        )
+    if args.palm_clearance_tilt_ramp_m <= 0.0:
+        raise ValueError(
+            "--palm-clearance-tilt-ramp-m must be positive"
+        )
     if args.palm_clearance_tilt_release_start_m < 0.0:
         raise ValueError(
             "--palm-clearance-tilt-release-start-m cannot be negative"
@@ -2161,6 +2185,22 @@ def main() -> None:
                     * clearance_phase
                     * (3.0 - 2.0 * clearance_phase)
                 )
+                tilt_phase = float(
+                    np.clip(
+                        (
+                            desired_distance
+                            - args.palm_clearance_tilt_start_m
+                        )
+                        / args.palm_clearance_tilt_ramp_m,
+                        0.0,
+                        1.0,
+                    )
+                )
+                tilt_phase = (
+                    tilt_phase
+                    * tilt_phase
+                    * (3.0 - 2.0 * tilt_phase)
+                )
                 tilt_release_phase = float(
                     np.clip(
                         (
@@ -2179,7 +2219,7 @@ def main() -> None:
                 )
                 clearance_tilt = R.from_rotvec(
                     -np.deg2rad(args.palm_clearance_tilt_deg)
-                    * clearance_phase
+                    * tilt_phase
                     * (1.0 - tilt_release_phase)
                     * initial_contact_frame[:, 1]
                 ).as_matrix()
@@ -2207,7 +2247,7 @@ def main() -> None:
                         + args.palm_clearance_secondary_lift_m
                         * secondary_clearance_phase
                     )
-                    * initial_contact_frame[:, 0]
+                    * transported_contact_frame[:, 0]
                 )
                 desired_arc[0] = (
                     start_arc[0]
@@ -2242,6 +2282,10 @@ def main() -> None:
                         azimuth - desired_azimuth + np.pi
                     ) % (2.0 * np.pi) - np.pi
                     progress_error = direction * (arc - desired_arc)
+                    # The palm root is a non-contact Cartesian/MCC reference.
+                    # Its projection onto the object meridian is not a
+                    # physical surface-progress constraint.
+                    progress_error[0] = 0.0
                     normal_error = signed_standoff - desired_standoff
                     # Treat tracking bounds as a feasibility region instead
                     # of forcing progress and normal errors to compete in a
@@ -2261,11 +2305,7 @@ def main() -> None:
                         np.abs(progress_error) - progress_band,
                         0.0,
                     )
-                    # The fifth point is the non-contact palm-root trajectory.
-                    # Keep it as an equality-like constraint; otherwise the
-                    # optimizer can spend its tolerance budget on rigid arm
-                    # transport and postpone all finger articulation.
-                    progress_violation[0] = progress_error[0]
+                    progress_violation[0] = 0.0
                     tip_normal_error = normal_error[1:]
                     normal_violation = np.sign(tip_normal_error) * np.maximum(
                         np.abs(tip_normal_error) - normal_band,
@@ -2276,6 +2316,7 @@ def main() -> None:
                         minimum_progress - achieved_progress,
                         0.0,
                     )
+                    monotonic_violation[0] = 0.0
                     _, palm_rotation = reachability.forward_palm_pose(q)
                     palm_orientation_error = R.from_matrix(
                         desired_palm_rotation @ palm_rotation.T
@@ -2480,6 +2521,7 @@ def main() -> None:
                 surface_ik_progress_error = np.abs(
                     direction * (surface_ik_arc - desired_arc)
                 )
+                surface_ik_progress_error[0] = 0.0
                 surface_ik_normal_error = np.abs(
                     surface_ik_aux[:, 1] - desired_standoff
                 )
@@ -2488,6 +2530,7 @@ def main() -> None:
                     - direction * (surface_ik_arc - start_arc),
                     0.0,
                 )
+                surface_ik_monotonic_error[0] = 0.0
                 surface_ik_collision_safe = bool(
                     surface_ik_clearance
                     >= args.min_non_tip_clearance_mm / 1000.0
@@ -2529,6 +2572,7 @@ def main() -> None:
                 rigid_progress_error = np.abs(
                     direction * (rigid_arc - desired_arc)
                 )
+                rigid_progress_error[0] = 0.0
                 rigid_normal_error = np.abs(
                     rigid_aux[:, 1] - desired_standoff
                 )
@@ -2537,6 +2581,7 @@ def main() -> None:
                     - direction * (rigid_arc - start_arc),
                     0.0,
                 )
+                rigid_monotonic_error[0] = 0.0
                 (
                     rigid_clearance,
                     _,
@@ -2621,6 +2666,7 @@ def main() -> None:
                     progress_error = np.abs(
                         direction * (candidate_arc - desired_arc)
                     )
+                    progress_error[0] = 0.0
                     normal_error = np.abs(
                         candidate_aux[:, 1] - desired_standoff
                     )
@@ -2638,6 +2684,7 @@ def main() -> None:
                         - direction * (candidate_arc - start_arc),
                         0.0,
                     )
+                    monotonic_error[0] = 0.0
                     score = (
                         1000.0 * float(monotonic_error.max())
                         +
@@ -2724,6 +2771,7 @@ def main() -> None:
                     minimum_progress - preliminary_progress,
                     0.0,
                 )
+                preliminary_monotonic_error[0] = 0.0
                 preliminary_pad_alignment = 1.0
                 if args.collision_mode == "full_robot":
                     (
@@ -2793,6 +2841,7 @@ def main() -> None:
                         repaired_progress_error = np.abs(
                             direction * (repaired_arc - desired_arc)
                         )
+                        repaired_progress_error[0] = 0.0
                         repaired_normal_error = np.abs(
                             repaired_aux[:, 1] - desired_standoff
                         )
@@ -2810,6 +2859,7 @@ def main() -> None:
                             - direction * (repaired_arc - start_arc),
                             0.0,
                         )
+                        repaired_monotonic_error[0] = 0.0
                         repaired_score = (
                             1000.0
                             * float(repaired_monotonic_error.max())
@@ -2915,6 +2965,7 @@ def main() -> None:
                     minimum_progress - achieved_progress,
                     0.0,
                 )
+                monotonic_error[0] = 0.0
                 if (
                     float(monotonic_error.max())
                     > args.mpc_monotonic_tolerance_mm / 1000.0
@@ -3041,6 +3092,7 @@ def main() -> None:
                 residual_plan[frame] = np.abs(
                     progress - desired_progress
                 )
+                residual_plan[frame, 0] = 0.0
                 progress_plan[frame] = progress
                 normal_error_plan[frame] = np.abs(
                     auxiliary[:, 1]
@@ -3063,6 +3115,7 @@ def main() -> None:
             final_progress_error = np.abs(
                 progress_plan[-1] - final_target_progress
             )
+            final_progress_error[0] = 0.0
             if float(final_progress_error.max()) > (
                 args.mpc_progress_tolerance_mm / 1000.0
             ):
