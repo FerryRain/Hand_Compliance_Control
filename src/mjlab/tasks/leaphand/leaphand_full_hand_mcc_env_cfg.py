@@ -47,14 +47,6 @@ from mjlab.tasks.leaphand.leaphand_mcc_finger_env_cfg import (
     joint_pos,
     mcc_finger_contact_env_cfg,
 )
-from mjlab.tasks.leaphand.leaphand_palm_mcc_env_cfg import (
-    palm_jacobian,
-    palm_jacobian_rot,
-    palm_pos,
-    palm_rot,
-    target_body_pos,
-    target_body_rot,
-)
 
 
 PALM_CONTROL_SITE = "full_hand_palm_contact"
@@ -397,30 +389,6 @@ def full_hand_mcc_env_cfg(
                 ),
                 "qfrc_bias_arm": ObservationTermCfg(
                     func=qfrc_bias_arm_fr3, params={"asset_cfg": robot}
-                ),
-                "palm_jacobian": ObservationTermCfg(
-                    func=palm_jacobian,
-                    params={"asset_cfg": robot, "body_name": "palm_lower"},
-                ),
-                "palm_jacobian_rot": ObservationTermCfg(
-                    func=palm_jacobian_rot,
-                    params={"asset_cfg": robot, "body_name": "palm_lower"},
-                ),
-                "palm_pos": ObservationTermCfg(
-                    func=palm_pos,
-                    params={"asset_cfg": robot, "body_name": "palm_lower"},
-                ),
-                "palm_rot": ObservationTermCfg(
-                    func=palm_rot,
-                    params={"asset_cfg": robot, "body_name": "palm_lower"},
-                ),
-                "target_pos": ObservationTermCfg(
-                    func=target_body_pos,
-                    params={"asset_cfg": robot, "body_name": "target_ball"},
-                ),
-                "target_rot": ObservationTermCfg(
-                    func=target_body_rot,
-                    params={"asset_cfg": robot, "body_name": "target_ball"},
                 ),
             }
         ),

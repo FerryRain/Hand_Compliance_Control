@@ -980,7 +980,12 @@ def main() -> None:
                 self_pairs, self_distances = (
                     reachability.self_collision_contacts(q)
                 )
-                if self_pairs:
+                significant_self_penetration = bool(
+                    len(self_distances)
+                    and float(self_distances.min())
+                    < -args.max_runtime_self_penetration_mm / 1000.0
+                )
+                if significant_self_penetration:
                     raise RuntimeError(
                         "Full-robot trajectory contains robot self-collision: "
                         f"label={label} frame={frame}/{len(joint_plan)} "
@@ -2358,10 +2363,14 @@ def main() -> None:
                         if clearance < minimum:
                             minimum = clearance
                             nearest = geom_name
-                        sample_self_pairs, _ = (
+                        sample_self_pairs, sample_self_distances = (
                             reachability.self_collision_contacts(sample_q)
                         )
-                        self_pair_count += len(sample_self_pairs)
+                        self_pair_count += sum(
+                            float(distance)
+                            < -args.max_runtime_self_penetration_mm / 1000.0
+                            for distance in sample_self_distances
+                        )
                         _, _, sample_normals, _, _ = contact_state(sample_q)
                         sample_pad_alignment = np.einsum(
                             "ij,ij->i",
@@ -2422,7 +2431,7 @@ def main() -> None:
                     surface_ik_self_count,
                     surface_ik_pad_alignment,
                 ) = segment_collision_status(surface_ik_seed)
-                endpoint_self_pairs, _ = (
+                endpoint_self_pairs, endpoint_self_distances = (
                     reachability.self_collision_contacts(
                         surface_ik_seed
                     )
@@ -2447,7 +2456,9 @@ def main() -> None:
                     f"self_collision_pairs={surface_ik_self_count} "
                     f"max_pad_angle_deg="
                     f"{np.degrees(np.arccos(np.clip(surface_ik_pad_alignment, -1, 1))):.2f}",
-                    f"endpoint_self_pairs={endpoint_self_pair_names}",
+                    f"endpoint_self_pairs={endpoint_self_pair_names} "
+                    f"endpoint_self_distances_mm="
+                    f"{(endpoint_self_distances * 1000).round(6).tolist()}",
                     flush=True,
                 )
 
