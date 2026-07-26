@@ -4041,12 +4041,25 @@ def main() -> None:
                     best_palm_position_error
                     > args.mpc_palm_position_tolerance_mm / 1000.0
                 ):
+                    palm_error_vector = best_points[0] - palm_target
+                    palm_error_local = np.asarray(
+                        (
+                            np.dot(palm_error_vector, palm_ball_normal),
+                            np.dot(palm_error_vector, palm_ball_azimuth),
+                            np.dot(palm_error_vector, palm_ball_meridian),
+                        ),
+                        dtype=np.float64,
+                    )
                     raise RuntimeError(
                         "Adaptive surface MPC missed the non-contact palm "
                         f"feasibility ball: keyframe={keyframe}/"
                         f"{keyframe_count} error_mm="
                         f"{best_palm_position_error * 1000:.3f} "
-                        f"limit_mm={args.mpc_palm_position_tolerance_mm:.3f}"
+                        f"limit_mm={args.mpc_palm_position_tolerance_mm:.3f} "
+                        "offset_world_mm="
+                        f"{(palm_error_vector * 1000).round(3).tolist()} "
+                        "offset_normal_azimuth_meridian_mm="
+                        f"{(palm_error_local * 1000).round(3).tolist()}"
                     )
                 tangential_error = (
                     (
