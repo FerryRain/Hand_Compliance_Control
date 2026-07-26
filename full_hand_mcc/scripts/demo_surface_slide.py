@@ -3384,6 +3384,7 @@ def main() -> None:
                 if terminal_palm_offset_phase > 0.0:
                     palm_ball_offset_fractions += (
                         0.75 * palm_ball_normal,
+                        0.90 * palm_ball_normal,
                         0.40 * palm_ball_normal
                         + 0.50 * palm_ball_azimuth,
                         0.40 * palm_ball_normal
@@ -3398,6 +3399,26 @@ def main() -> None:
                         0.50 * palm_ball_normal
                         - 0.35 * palm_ball_azimuth
                         + 0.35 * palm_ball_meridian,
+                        0.75 * palm_ball_normal
+                        + 0.30 * palm_ball_azimuth,
+                        0.75 * palm_ball_normal
+                        - 0.30 * palm_ball_azimuth,
+                        0.75 * palm_ball_normal
+                        + 0.30 * palm_ball_meridian,
+                        0.75 * palm_ball_normal
+                        - 0.30 * palm_ball_meridian,
+                        0.70 * palm_ball_normal
+                        + 0.35 * palm_ball_azimuth
+                        + 0.35 * palm_ball_meridian,
+                        0.70 * palm_ball_normal
+                        + 0.35 * palm_ball_azimuth
+                        - 0.35 * palm_ball_meridian,
+                        0.70 * palm_ball_normal
+                        - 0.35 * palm_ball_azimuth
+                        + 0.35 * palm_ball_meridian,
+                        0.70 * palm_ball_normal
+                        - 0.35 * palm_ball_azimuth
+                        - 0.35 * palm_ball_meridian,
                     )
                 for offset_fraction in palm_ball_offset_fractions:
                     shifted_palm_target = (
