@@ -155,6 +155,29 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--palm-surface-frame-late-gain",
+        type=float,
+        default=None,
+        help=(
+            "Optional late-route surface-frame gain. The planner smoothly "
+            "transitions from --palm-surface-frame-gain to this value, "
+            "allowing the lower-cap branch to be preserved before reducing "
+            "palm rotation near the cylinder."
+        ),
+    )
+    parser.add_argument(
+        "--palm-surface-frame-late-start-m",
+        type=float,
+        default=1.0,
+        help="Surface progress where the late frame-gain transition starts.",
+    )
+    parser.add_argument(
+        "--palm-surface-frame-late-ramp-m",
+        type=float,
+        default=0.04,
+        help="Surface distance used for the smooth late frame-gain transition.",
+    )
+    parser.add_argument(
         "--palm-clearance-lift-m",
         type=float,
         default=0.0,
@@ -949,6 +972,19 @@ def main() -> None:
         )
     if not 0.0 <= args.palm_surface_frame_gain <= 1.0:
         raise ValueError("--palm-surface-frame-gain must be in [0, 1]")
+    if (
+        args.palm_surface_frame_late_gain is not None
+        and not 0.0 <= args.palm_surface_frame_late_gain <= 1.0
+    ):
+        raise ValueError("--palm-surface-frame-late-gain must be in [0, 1]")
+    if args.palm_surface_frame_late_start_m < 0.0:
+        raise ValueError(
+            "--palm-surface-frame-late-start-m cannot be negative"
+        )
+    if args.palm_surface_frame_late_ramp_m <= 0.0:
+        raise ValueError(
+            "--palm-surface-frame-late-ramp-m must be positive"
+        )
     if args.palm_clearance_lift_m < 0.0:
         raise ValueError("--palm-clearance-lift-m cannot be negative")
     if args.palm_clearance_ramp_m <= 0.0:
@@ -2585,8 +2621,35 @@ def main() -> None:
                         desired_contact_frame
                         @ initial_contact_frame.T
                     )
-                    palm_frame_transport = R.from_rotvec(
+                    active_surface_frame_gain = (
                         args.palm_surface_frame_gain
+                    )
+                    if args.palm_surface_frame_late_gain is not None:
+                        late_gain_phase = float(
+                            np.clip(
+                                (
+                                    desired_distance
+                                    - args.palm_surface_frame_late_start_m
+                                )
+                                / args.palm_surface_frame_late_ramp_m,
+                                0.0,
+                                1.0,
+                            )
+                        )
+                        late_gain_phase = (
+                            late_gain_phase
+                            * late_gain_phase
+                            * (3.0 - 2.0 * late_gain_phase)
+                        )
+                        active_surface_frame_gain += (
+                            late_gain_phase
+                            * (
+                                args.palm_surface_frame_late_gain
+                                - args.palm_surface_frame_gain
+                            )
+                        )
+                    palm_frame_transport = R.from_rotvec(
+                        active_surface_frame_gain
                         * R.from_matrix(
                             full_palm_frame_transport
                         ).as_rotvec()
@@ -4082,6 +4145,20 @@ def main() -> None:
                 palm_travel_ratio=np.asarray(args.palm_travel_ratio),
                 palm_clearance_use_local_normal=np.asarray(
                     args.palm_clearance_use_local_normal
+                ),
+                palm_surface_frame_gain=np.asarray(
+                    args.palm_surface_frame_gain
+                ),
+                palm_surface_frame_late_gain=np.asarray(
+                    np.nan
+                    if args.palm_surface_frame_late_gain is None
+                    else args.palm_surface_frame_late_gain
+                ),
+                palm_surface_frame_late_start_m=np.asarray(
+                    args.palm_surface_frame_late_start_m
+                ),
+                palm_surface_frame_late_ramp_m=np.asarray(
+                    args.palm_surface_frame_late_ramp_m
                 ),
                 finger_gait_amplitude_m=np.asarray(
                     args.finger_gait_amplitude_m
