@@ -13,9 +13,18 @@ five points within the configured tolerance.
 from __future__ import annotations
 
 import argparse
+import os
 from dataclasses import asdict
 from pathlib import Path
 from types import SimpleNamespace
+
+# The 23-DoF least-squares planner is highly non-convex near the lower
+# capsule end cap.  Multi-threaded BLAS reductions may perturb a candidate
+# enough to select a different local branch, so keep the small dense planner
+# deterministic.  GPU physics remains on the requested CUDA device.
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
 
 import imageio.v2 as imageio
 import numpy as np
@@ -69,6 +78,24 @@ def main() -> None:
         "--viewer", choices=("native", "viser", "video"), default="native"
     )
     parser.add_argument("--device", default=None)
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Deterministic environment/reset seed for reproducible planning.",
+    )
+    parser.add_argument(
+        "--planner-state-quantization-rad",
+        type=float,
+        default=0.0,
+        help=(
+            "Quantize the GPU-loaded contact state relative to its servo "
+            "command before using it as the non-convex MPC seed. This does "
+            "not alter the measured MCC/contact state; a small value such "
+            "as 0.0005 rad makes repeated CUDA runs select the same planning "
+            "branch."
+        ),
+    )
     parser.add_argument("--axial-travel-m", type=float, default=0.20)
     parser.add_argument(
         "--palm-travel-ratio",
@@ -144,6 +171,15 @@ def main() -> None:
         help=(
             "Surface distance over which --palm-clearance-lift-m is smoothly "
             "introduced; the lift remains active for the rest of the route."
+        ),
+    )
+    parser.add_argument(
+        "--palm-clearance-use-local-normal",
+        action="store_true",
+        help=(
+            "Move the non-contact palm away from the object's surface along "
+            "the palm target's own projected surface normal. This is more "
+            "direct than the mean fingertip-patch normal on curved end caps."
         ),
     )
     parser.add_argument(
@@ -247,6 +283,33 @@ def main() -> None:
         default=(1.0, 0.0, 0.0, 0.0),
         metavar=("INDEX", "MIDDLE", "RING", "THUMB"),
         help="Per-fingertip scale for the bounded meridian lead profile.",
+    )
+    parser.add_argument(
+        "--finger-meridian-correction-mm",
+        type=float,
+        default=0.0,
+        help=(
+            "Peak amplitude of a second, later bounded meridian correction. "
+            "It preserves an already feasible early branch while correcting "
+            "individual fingertips near a later curvature transition."
+        ),
+    )
+    parser.add_argument(
+        "--finger-meridian-correction-start-m",
+        type=float,
+        default=0.034,
+    )
+    parser.add_argument(
+        "--finger-meridian-correction-end-m",
+        type=float,
+        default=0.060,
+    )
+    parser.add_argument(
+        "--finger-meridian-correction-scales",
+        type=float,
+        nargs=4,
+        default=(0.0, 1.0, 0.0, 0.0),
+        metavar=("INDEX", "MIDDLE", "RING", "THUMB"),
     )
     parser.add_argument(
         "--runtime-finger-gait-rad",
@@ -626,6 +689,10 @@ def main() -> None:
     args = parser.parse_args()
     if args.steps <= args.motion_start:
         raise ValueError("--steps must be greater than --motion-start")
+    if args.seed < 0:
+        raise ValueError("--seed cannot be negative")
+    if args.planner_state_quantization_rad < 0.0:
+        raise ValueError("--planner-state-quantization-rad cannot be negative")
     if args.axial_travel_m <= 0.0:
         raise ValueError("--axial-travel-m must be positive")
     if not 0.0 <= args.palm_travel_ratio <= 1.0:
@@ -655,6 +722,29 @@ def main() -> None:
     if any(scale < 0.0 for scale in args.finger_meridian_gait_scales):
         raise ValueError(
             "--finger-meridian-gait-scales cannot be negative"
+        )
+    if args.finger_meridian_correction_mm < 0.0:
+        raise ValueError(
+            "--finger-meridian-correction-mm cannot be negative"
+        )
+    if args.finger_meridian_correction_start_m < 0.0:
+        raise ValueError(
+            "--finger-meridian-correction-start-m cannot be negative"
+        )
+    if (
+        args.finger_meridian_correction_end_m
+        <= args.finger_meridian_correction_start_m
+    ):
+        raise ValueError(
+            "--finger-meridian-correction-end-m must be greater than "
+            "--finger-meridian-correction-start-m"
+        )
+    if any(
+        scale < 0.0
+        for scale in args.finger_meridian_correction_scales
+    ):
+        raise ValueError(
+            "--finger-meridian-correction-scales cannot be negative"
         )
     if args.runtime_finger_gait_rad < 0.0:
         raise ValueError("--runtime-finger-gait-rad cannot be negative")
@@ -792,6 +882,7 @@ def main() -> None:
 
     device = args.device or ("cuda:0" if torch.cuda.is_available() else "cpu")
     env_cfg = full_hand_mcc_env_cfg(num_envs=1, play=True)
+    env_cfg.seed = args.seed
     if args.initial_grasp is not None:
         optimized_grasp = np.load(args.initial_grasp)
         optimized_q = np.asarray(
@@ -1290,6 +1381,24 @@ def main() -> None:
                 if self.last_command_q is not None
                 else live_q.copy()
             )
+            planning_q = live_q.copy()
+            if args.planner_state_quantization_rad > 0.0:
+                quantum = args.planner_state_quantization_rad
+                planning_q = contact_command_q + quantum * np.round(
+                    (live_q - contact_command_q) / quantum
+                )
+                planning_q = np.minimum(
+                    np.maximum(planning_q, reachability.lower),
+                    reachability.upper,
+                )
+            planning_points = reachability.forward_points(planning_q)
+            planning_surface_targets, planning_normals = capsule_project(
+                planning_points,
+                center,
+                rotation,
+                CAPSULE_RADIUS,
+                CAPSULE_HALF_HEIGHT,
+            )
             calibrated_offset = contact_command_q - live_q
             self.contact_servo_offset_q[:ARM_DOF] = (
                 args.arm_servo_load_scale * calibrated_offset[:ARM_DOF]
@@ -1298,10 +1407,10 @@ def main() -> None:
                 args.finger_servo_load_scale
                 * calibrated_offset[ARM_DOF:TOTAL_DOF]
             )
-            self.targets = surface_targets
-            self.kinematic_targets = live_points.copy()
-            self.normals = normals
-            self.reachable_q = live_q.copy()
+            self.targets = planning_surface_targets
+            self.kinematic_targets = planning_points
+            self.normals = planning_normals
+            self.reachable_q = planning_q
             self.last_residual = np.zeros(5)
             self.surface_error = np.linalg.norm(
                 live_points - surface_targets, axis=1
@@ -1352,6 +1461,10 @@ def main() -> None:
             )
             print(
                 "[CONTACT-CALIBRATION] captured collision-consistent "
+                f"planner_quantization_rad="
+                f"{args.planner_state_quantization_rad:.6f} "
+                f"planner_q_adjustment_rad="
+                f"{float(np.max(np.abs(planning_q - live_q))):.6f} "
                 f"site_standoff_mm="
                 f"{(self.surface_error[1:] * 1000).round(2).tolist()} "
                 f"tactile_force_N={self.tactile_force.round(2).tolist()} "
@@ -1659,6 +1772,10 @@ def main() -> None:
                 axial_distance_m=distance_plan,
                 axial_direction=np.asarray(direction),
                 planner=np.asarray(args.planner),
+                seed=np.asarray(args.seed),
+                planner_state_quantization_rad=np.asarray(
+                    args.planner_state_quantization_rad
+                ),
                 surface_preload_mm=np.asarray(args.surface_preload_mm),
                 palm_travel_ratio=np.asarray(args.palm_travel_ratio),
                 finger_gait_amplitude_m=np.asarray(
@@ -1908,6 +2025,10 @@ def main() -> None:
                 normal_error_m=np.zeros_like(residual_plan),
                 axial_distance_m=distance_plan,
                 planner=np.asarray(args.planner),
+                seed=np.asarray(args.seed),
+                planner_state_quantization_rad=np.asarray(
+                    args.planner_state_quantization_rad
+                ),
                 surface_preload_mm=np.asarray(args.surface_preload_mm),
                 max_joint_step_rad=np.asarray(max_joint_step),
                 coarse_joint_positions_rad=coarse_q,
@@ -2195,6 +2316,32 @@ def main() -> None:
                     * meridian_gait_phase
                     * np.asarray(args.finger_meridian_gait_scales)
                 )
+                if (
+                    args.finger_meridian_correction_start_m
+                    < desired_distance
+                    < args.finger_meridian_correction_end_m
+                ):
+                    correction_coordinate = (
+                        desired_distance
+                        - args.finger_meridian_correction_start_m
+                    ) / (
+                        args.finger_meridian_correction_end_m
+                        - args.finger_meridian_correction_start_m
+                    )
+                    correction_phase = np.sin(
+                        np.pi * correction_coordinate
+                    )
+                else:
+                    correction_phase = 0.0
+                desired_arc[1:] += (
+                    direction
+                    * args.finger_meridian_correction_mm
+                    / 1000.0
+                    * correction_phase
+                    * np.asarray(
+                        args.finger_meridian_correction_scales
+                    )
+                )
                 gait_phase = np.sin(
                     np.pi * desired_distance / args.axial_travel_m
                 )
@@ -2343,6 +2490,21 @@ def main() -> None:
                     * secondary_clearance_phase
                     * (3.0 - 2.0 * secondary_clearance_phase)
                 )
+                palm_clearance_direction = (
+                    transported_contact_frame[:, 0]
+                )
+                if args.palm_clearance_use_local_normal:
+                    _, palm_local_normals = capsule_project(
+                        palm_target[None],
+                        center,
+                        rotation,
+                        CAPSULE_RADIUS,
+                        CAPSULE_HALF_HEIGHT,
+                    )
+                    palm_clearance_direction = np.asarray(
+                        palm_local_normals[0],
+                        dtype=np.float64,
+                    )
                 palm_target += (
                     (
                         args.palm_clearance_lift_m
@@ -2350,7 +2512,7 @@ def main() -> None:
                         + args.palm_clearance_secondary_lift_m
                         * secondary_clearance_phase
                     )
-                    * transported_contact_frame[:, 0]
+                    * palm_clearance_direction
                 )
                 desired_arc[0] = (
                     start_arc[0]
@@ -2612,7 +2774,7 @@ def main() -> None:
                         palm_target
                         - inward_fraction
                         * palm_ball_radius_m
-                        * transported_contact_frame[:, 0]
+                        * palm_clearance_direction
                     )
                     shifted_palm_body_position = (
                         shifted_palm_target
@@ -3043,6 +3205,10 @@ def main() -> None:
                         (180.0, 140.0, 1400.0, 56.0, 240.0),
                         (300.0, 180.0, 1800.0, 80.0, 280.0),
                         (500.0, 240.0, 2400.0, 100.0, 360.0),
+                        (500.0, 500.0, 3000.0, 120.0, 420.0),
+                        (700.0, 800.0, 4000.0, 140.0, 500.0),
+                        (800.0, 1200.0, 5000.0, 170.0, 600.0),
+                        (1000.0, 1600.0, 6500.0, 200.0, 750.0),
                     ):
                         repaired = least_squares(
                             lambda q, ps=progress_scale, ns=normal_scale,
@@ -3458,8 +3624,15 @@ def main() -> None:
                 axial_distance_m=distance_plan,
                 axial_direction=np.asarray(direction),
                 planner=np.asarray(args.planner),
+                seed=np.asarray(args.seed),
+                planner_state_quantization_rad=np.asarray(
+                    args.planner_state_quantization_rad
+                ),
                 surface_preload_mm=np.asarray(args.surface_preload_mm),
                 palm_travel_ratio=np.asarray(args.palm_travel_ratio),
+                palm_clearance_use_local_normal=np.asarray(
+                    args.palm_clearance_use_local_normal
+                ),
                 finger_gait_amplitude_m=np.asarray(
                     args.finger_gait_amplitude_m
                 ),
@@ -3474,6 +3647,18 @@ def main() -> None:
                 ),
                 finger_meridian_gait_scales=np.asarray(
                     args.finger_meridian_gait_scales
+                ),
+                finger_meridian_correction_mm=np.asarray(
+                    args.finger_meridian_correction_mm
+                ),
+                finger_meridian_correction_start_m=np.asarray(
+                    args.finger_meridian_correction_start_m
+                ),
+                finger_meridian_correction_end_m=np.asarray(
+                    args.finger_meridian_correction_end_m
+                ),
+                finger_meridian_correction_scales=np.asarray(
+                    args.finger_meridian_correction_scales
                 ),
                 object_shape=np.asarray(args.object_shape),
                 object_radius_m=np.asarray(CAPSULE_RADIUS),
