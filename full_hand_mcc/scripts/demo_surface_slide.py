@@ -519,6 +519,16 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--mpc-transient-progress-tolerance-mm",
+        type=float,
+        default=4.0,
+        help=(
+            "Intermediate meridian-progress tolerance used only inside the "
+            "bounded one-finger recovery window. The ordinary intermediate "
+            "and final tolerances remain unchanged outside it."
+        ),
+    )
+    parser.add_argument(
         "--mpc-palm-position-tolerance-mm",
         type=float,
         default=3.0,
@@ -865,6 +875,14 @@ def main() -> None:
         raise ValueError(
             "--mpc-transient-normal-tolerance-mm cannot be smaller than "
             "--mpc-normal-tolerance-mm"
+        )
+    if (
+        args.mpc_transient_progress_tolerance_mm
+        < args.mpc_intermediate_progress_tolerance_mm
+    ):
+        raise ValueError(
+            "--mpc-transient-progress-tolerance-mm cannot be smaller than "
+            "--mpc-intermediate-progress-tolerance-mm"
         )
     if args.mpc_monotonic_tolerance_mm < 0.0:
         raise ValueError("--mpc-monotonic-tolerance-mm cannot be negative")
@@ -2524,6 +2542,16 @@ def main() -> None:
                     if keyframe == keyframe_count
                     else args.mpc_intermediate_progress_tolerance_mm
                 )
+                if (
+                    keyframe != keyframe_count
+                    and args.min_planner_contact_fingers < 4
+                    and args.transient_contact_start_m
+                    < desired_distance
+                    < args.transient_contact_end_m
+                ):
+                    active_progress_tolerance_mm = (
+                        args.mpc_transient_progress_tolerance_mm
+                    )
                 tip_normal_tolerances = (
                     scheduled_tip_normal_tolerances(desired_distance)
                 )
@@ -3912,6 +3940,9 @@ def main() -> None:
                 ),
                 mpc_transient_normal_tolerance_mm=np.asarray(
                     args.mpc_transient_normal_tolerance_mm
+                ),
+                mpc_transient_progress_tolerance_mm=np.asarray(
+                    args.mpc_transient_progress_tolerance_mm
                 ),
                 min_runtime_contact_fingers=np.asarray(
                     args.min_runtime_contact_fingers
