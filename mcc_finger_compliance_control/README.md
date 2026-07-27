@@ -135,3 +135,34 @@ python mcc_finger_compliance_control/scripts/deploy_dp_inverse.py \
 先做无窗口定量测试时使用 `--viewer headless`。脚本会将逐帧结果保存到模型目录下的 CSV。
 `found_contacts` 表示碰撞几何检测到接触；`loaded_contacts` 表示接触力同时达到
 `|F_3D| >= contact-threshold`，两者不要混淆。
+
+### 4.4 录制 live DP MP4
+
+`--viewer video` 使用离屏 RGB 渲染，不依赖 GLFW/GLX 窗口。相机会跟随
+`robot/palm_lower`，因此大角度轨迹中手不会移出画面：
+
+```bash
+MPLCONFIGDIR=/tmp/matplotlib WARP_CACHE_PATH=/tmp/warp \
+python mcc_finger_compliance_control/scripts/deploy_dp_inverse.py \
+  --file mcc_finger_compliance_control/data/inverted/so3_uniform_v2_255x2500_relaxed999_inverted.h5 \
+  --model mcc_finger_compliance_control/data/models/so3_uniform_v2_palm_geometry_absolute_q_dp_25k/best.pt \
+  --episode-id 108 \
+  --mode live_dp \
+  --viewer video \
+  --video-output mcc_finger_compliance_control/outputs/live_dp_geometry_ep108.mp4 \
+  --video-fps 30 --video-width 960 --video-height 720 \
+  --video-camera-distance 0.45 \
+  --video-camera-azimuth 45 \
+  --video-camera-elevation -10 \
+  --device cuda:0 \
+  --inference-steps 50 \
+  --seed 20260717 \
+  --contact-threshold 0.05 \
+  --finger-impedance \
+  --no-finger-nominal-guard \
+  --chunk-execution \
+  --dp-replan-interval 10 \
+  --max-offset-rate-mm 0.08 \
+  --recovery-offset-rate-mm 0.20 \
+  --force-error-full-scale 1.5
+```

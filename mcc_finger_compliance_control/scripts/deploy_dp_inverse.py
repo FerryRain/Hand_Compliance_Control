@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from typing import Literal
 
 import h5py
+import imageio.v2 as imageio
 import numpy as np
 import torch
 
@@ -441,7 +442,7 @@ def run_inverse(
     data: dict[str, np.ndarray],
     runtime: DPRuntime,
     mode: Literal["teacher_dp", "live_dp"],
-    viewer: Literal["headless", "native", "viser"],
+    viewer: Literal["headless", "native", "viser", "video"],
     device: torch.device,
     max_steps: int,
     max_dp_calls: int,
@@ -450,6 +451,13 @@ def run_inverse(
     chunk_config: DPChunkSchedulerConfig | None,
     contact_guard_config: ContactAwareReplanConfig | None,
     report: Path,
+    video_output: Path | None,
+    video_fps: int,
+    video_width: int,
+    video_height: int,
+    video_camera_distance: float,
+    video_camera_azimuth: float,
+    video_camera_elevation: float,
 ) -> None:
     frames = len(data["q_hand"])
     if max_steps > 0:
@@ -464,7 +472,21 @@ def run_inverse(
         runtime.input_frame,
         runtime.state_schema,
     )
-    env = ManagerBasedRlEnv(cfg=replay_env_cfg(), device=str(device))
+    env_cfg = replay_env_cfg()
+    if viewer == "video":
+        env_cfg.viewer.width = video_width
+        env_cfg.viewer.height = video_height
+        env_cfg.viewer.distance = video_camera_distance
+        env_cfg.viewer.azimuth = video_camera_azimuth
+        env_cfg.viewer.elevation = video_camera_elevation
+        env_cfg.viewer.origin_type = env_cfg.viewer.OriginType.ASSET_BODY
+        env_cfg.viewer.entity_name = "robot"
+        env_cfg.viewer.body_name = "palm_lower"
+    env = ManagerBasedRlEnv(
+        cfg=env_cfg,
+        device=str(device),
+        render_mode="rgb_array" if viewer == "video" else None,
+    )
     wrapped = RslRlVecEnvWrapper(env)
     robot = env.scene["robot"]
 
@@ -960,8 +982,39 @@ def run_inverse(
                 wrapped.step(policy(wrapped.get_observations()))
         elif viewer == "native":
             NativeMujocoViewer(wrapped, policy).run()
-        else:
+        elif viewer == "viser":
             ViserPlayViewer(wrapped, policy).run()
+        else:
+            if video_output is None:
+                raise ValueError("video_output is required for video rendering")
+            video_output.parent.mkdir(parents=True, exist_ok=True)
+            control_dt = float(
+                env_cfg.decimation * env_cfg.sim.mujoco.timestep
+            )
+            next_frame_time = 0.0
+            frames_written = 0
+            with imageio.get_writer(
+                video_output,
+                fps=video_fps,
+                codec="libx264",
+                quality=8,
+                macro_block_size=None,
+            ) as writer:
+                for _ in range(frames):
+                    wrapped.step(policy(wrapped.get_observations()))
+                    sim_time = policy.frame * control_dt
+                    if sim_time + 1.0e-9 >= next_frame_time:
+                        frame = env.render()
+                        if frame is not None:
+                            writer.append_data(
+                                np.asarray(frame, dtype=np.uint8)
+                            )
+                            frames_written += 1
+                        next_frame_time += 1.0 / video_fps
+            print(
+                f"[VIDEO] wrote {frames_written} frames to {video_output}",
+                flush=True,
+            )
     finally:
         write_report(report, policy.rows)
         active = max(1, frames - bootstrap_end)
@@ -998,8 +1051,25 @@ def main() -> None:
         default="offline_teacher",
     )
     parser.add_argument(
-        "--viewer", choices=("headless", "native", "viser"), default="headless"
+        "--viewer",
+        choices=("headless", "native", "viser", "video"),
+        default="headless",
     )
+    parser.add_argument(
+        "--video-output",
+        type=Path,
+        default=None,
+        help=(
+            "MP4 output used by --viewer video. Defaults to "
+            "mcc_finger_compliance_control/outputs/<mode>_episode<ID>.mp4."
+        ),
+    )
+    parser.add_argument("--video-fps", type=int, default=30)
+    parser.add_argument("--video-width", type=int, default=960)
+    parser.add_argument("--video-height", type=int, default=720)
+    parser.add_argument("--video-camera-distance", type=float, default=0.45)
+    parser.add_argument("--video-camera-azimuth", type=float, default=45.0)
+    parser.add_argument("--video-camera-elevation", type=float, default=-10.0)
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--inference-steps", type=int, default=None)
     parser.add_argument("--max-steps", type=int, default=0)
@@ -1145,6 +1215,11 @@ def main() -> None:
     report = args.report or args.model.parent / (
         f"deploy_{args.mode}_episode{args.episode_id}.csv"
     )
+    video_output = args.video_output
+    if args.viewer == "video" and video_output is None:
+        video_output = Path("mcc_finger_compliance_control/outputs") / (
+            f"{args.mode}_episode{args.episode_id}.mp4"
+        )
     print(
         f"[INFO] mode={args.mode} episode={args.episode_id} frames={len(data['q_hand'])} "
         f"device={device} input_frame={runtime.input_frame} "
@@ -1229,6 +1304,13 @@ def main() -> None:
                 else None
             ),
             report,
+            video_output,
+            args.video_fps,
+            args.video_width,
+            args.video_height,
+            args.video_camera_distance,
+            args.video_camera_azimuth,
+            args.video_camera_elevation,
         )
 
 
