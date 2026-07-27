@@ -46,6 +46,11 @@ def main() -> None:
     parser.add_argument("--motion-length", type=int, default=1800)
     parser.add_argument("--angular-speed-min", type=float, default=0.06)
     parser.add_argument("--angular-speed-max", type=float, default=0.12)
+    parser.add_argument(
+        "--initial-orientation-mode",
+        choices=("uniform", "jitter", "fixed"),
+        default="uniform",
+    )
     parser.add_argument("--initial-orientation-jitter-deg", type=float, default=3.0)
     parser.add_argument("--seed", type=int, default=20260716)
     args = parser.parse_args()
@@ -64,25 +69,33 @@ def main() -> None:
     np.random.seed(args.seed)
     target_mocap_idx = int(env.scene["target"].data.indexing.mocap_id)
     nominal_quat = env.sim.data.mocap_quat[:, target_mocap_idx, :].clone()
-    jitter_axis = torch.randn((1, 3), device=device)
-    jitter_axis /= torch.linalg.vector_norm(
-        jitter_axis, dim=-1, keepdim=True
-    ).clamp_min(1.0e-8)
-    jitter_limit = np.deg2rad(args.initial_orientation_jitter_deg)
-    jitter_angle = torch.empty(1, device=device).uniform_(
-        -jitter_limit, jitter_limit
-    )
-    jitter_quat = torch.cat(
-        (
-            torch.cos(jitter_angle / 2).unsqueeze(-1),
-            jitter_axis * torch.sin(jitter_angle / 2).unsqueeze(-1),
-        ),
-        dim=-1,
-    )
-    initial_quat = _wxyz_multiply(nominal_quat, jitter_quat)
-    initial_quat /= torch.linalg.vector_norm(
-        initial_quat, dim=-1, keepdim=True
-    )
+    if args.initial_orientation_mode == "uniform":
+        initial_quat = torch.randn((1, 4), device=device)
+        initial_quat /= torch.linalg.vector_norm(
+            initial_quat, dim=-1, keepdim=True
+        ).clamp_min(1.0e-8)
+    elif args.initial_orientation_mode == "jitter":
+        jitter_axis = torch.randn((1, 3), device=device)
+        jitter_axis /= torch.linalg.vector_norm(
+            jitter_axis, dim=-1, keepdim=True
+        ).clamp_min(1.0e-8)
+        jitter_limit = np.deg2rad(args.initial_orientation_jitter_deg)
+        jitter_angle = torch.empty(1, device=device).uniform_(
+            -jitter_limit, jitter_limit
+        )
+        jitter_quat = torch.cat(
+            (
+                torch.cos(jitter_angle / 2).unsqueeze(-1),
+                jitter_axis * torch.sin(jitter_angle / 2).unsqueeze(-1),
+            ),
+            dim=-1,
+        )
+        initial_quat = _wxyz_multiply(nominal_quat, jitter_quat)
+        initial_quat /= torch.linalg.vector_norm(
+            initial_quat, dim=-1, keepdim=True
+        ).clamp_min(1.0e-8)
+    else:
+        initial_quat = nominal_quat
     env.sim.data.mocap_quat[:, target_mocap_idx, :] = initial_quat
     rotation_axis = torch.randn((1, 3), device=device)
     rotation_axis /= torch.linalg.vector_norm(
@@ -155,7 +168,12 @@ def main() -> None:
             f"speed={float(angular_speed):.4f}rad/s "
             f"axis={rotation_axis[0].cpu().numpy().round(3).tolist()} "
             f"start={args.motion_start} length={args.motion_length} "
-            f"jitter={args.initial_orientation_jitter_deg:.1f}deg"
+            f"initial_orientation={args.initial_orientation_mode}"
+            + (
+                f" jitter=+/-{args.initial_orientation_jitter_deg:.1f}deg"
+                if args.initial_orientation_mode == "jitter"
+                else ""
+            )
         )
     print("[INFO] 3-D fingertip force is measured but NOT fed into the controller")
     print("[INFO] Native: use Ctrl+C for the most conservative shutdown path")

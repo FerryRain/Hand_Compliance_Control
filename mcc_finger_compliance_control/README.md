@@ -27,7 +27,7 @@ python mcc_finger_compliance_control/scripts/run_test.py \
   --motion-length 1800 \
   --angular-speed-min 0.06 \
   --angular-speed-max 0.12 \
-  --initial-orientation-jitter-deg 3 \
+  --initial-orientation-mode uniform \
   --seed 20260716 \
   --print-every 50
 ```

@@ -282,7 +282,7 @@ python mcc_finger_compliance_control/scripts/collect_trajectories.py \
   --motion-length 1800 \
   --angular-speed-min 0.03 \
   --angular-speed-max 0.06 \
-  --initial-orientation-jitter-deg 3 \
+  --initial-orientation-mode uniform \
   --contact-threshold 0.05 \
   --seed 20260715 \
   --filename "${RUN}"
@@ -303,7 +303,7 @@ python mcc_finger_compliance_control/scripts/collect_trajectories.py \
   --motion-length 300 \
   --angular-speed-min 0.03 \
   --angular-speed-max 0.06 \
-  --initial-orientation-jitter-deg 3 \
+  --initial-orientation-mode uniform \
   --seed 42 \
   --filename "${RUN}"
 ```
@@ -314,7 +314,10 @@ python mcc_finger_compliance_control/scripts/collect_trajectories.py \
 
 - 前 350 步包括机械臂 preparation 和手指接触建立，不写入训练数据。
 - 每条记录包含 2150 帧，其中前 1800 帧物体旋转，后 350 帧停止并稳定。
-- 每条轨迹随机初始姿态扰动、旋转轴和角速度。
+- `--initial-orientation-mode uniform` 会在完整 SO(3) 上均匀采样物体初始姿态，
+  不是围绕默认姿态做小扰动；每条轨迹的旋转轴和角速度也独立随机。
+- 只有复现旧实验时才使用 `--initial-orientation-mode jitter`，并通过
+  `--initial-orientation-jitter-deg` 指定默认姿态附近的扰动范围。
 - `max-trajectories` 最好是 `num-envs` 的整数倍。
 - 不要添加 `--online-quality-gate`，否则会退回单环境在线严格淘汰模式。
 - 每次使用新的 `RUN`，避免同名 H5 文件锁冲突。

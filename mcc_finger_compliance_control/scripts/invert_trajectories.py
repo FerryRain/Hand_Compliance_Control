@@ -71,9 +71,12 @@ def _backward_palm_twist(
         if indices.size < 2:
             continue
         linear = (flat_position[indices[1:]] - flat_position[indices[:-1]]) / dt
+        # R maps palm-frame vectors into the object frame.  R_next R_prev^T
+        # is therefore the incremental rotation expressed in object
+        # coordinates (spatial angular velocity), matching the dataset name.
         relative_rotation = (
-            np.swapaxes(flat_rotation[indices[:-1]], -1, -2)
-            @ flat_rotation[indices[1:]]
+            flat_rotation[indices[1:]]
+            @ np.swapaxes(flat_rotation[indices[:-1]], -1, -2)
         )
         angular = R.from_matrix(relative_rotation).as_rotvec() / dt
         flat_twist[indices[1:], :3] = linear.astype(np.float32)
@@ -81,6 +84,37 @@ def _backward_palm_twist(
         # Avoid an artificial zero-velocity impulse at the first recorded frame.
         flat_twist[indices[0]] = flat_twist[indices[1]]
     return twist
+
+
+def _backward_object_angular_velocity(
+    object_pose_world: np.ndarray,
+    episode_id: np.ndarray,
+    dt: float,
+) -> np.ndarray:
+    """Recover object angular velocity in its local frame from pose history.
+
+    This avoids trusting legacy collection files whose commanded local axis
+    was incorrectly labelled as a world-frame angular velocity.
+    """
+    rotation = _pose_to_rt(object_pose_world)[1]
+    angular = np.zeros((*object_pose_world.shape[:-1], 3), dtype=np.float32)
+    flat_episode = episode_id.reshape(-1)
+    flat_rotation = rotation.reshape(-1, 3, 3)
+    flat_angular = angular.reshape(-1, 3)
+    for eid in np.unique(flat_episode):
+        indices = np.flatnonzero(flat_episode == eid)
+        if indices.size < 2:
+            continue
+        # R_prev^T R_next is the incremental rotation expressed in the
+        # object's local/body frame.
+        relative_rotation = (
+            np.swapaxes(flat_rotation[indices[:-1]], -1, -2)
+            @ flat_rotation[indices[1:]]
+        )
+        value = R.from_matrix(relative_rotation).as_rotvec() / dt
+        flat_angular[indices[1:]] = value.astype(np.float32)
+        flat_angular[indices[0]] = flat_angular[indices[1]]
+    return angular
 
 
 def invert(input_path: Path, output_path: Path) -> None:
@@ -115,8 +149,11 @@ def invert(input_path: Path, output_path: Path) -> None:
         force_object = np.einsum("...ij,...fj->...fi", object_r_t, force_world)
         target.create_dataset("fingertip_force_object", data=force_object.astype(np.float32))
 
-        angular_world = np.asarray(source["object_angular_velocity_world"], dtype=np.float64)
-        angular_object = np.einsum("...ij,...j->...i", object_r_t, angular_world)
+        angular_object = _backward_object_angular_velocity(
+            object_pose,
+            episode_id,
+            control_dt,
+        )
         # In object-fixed replay the hand/palm relative angular velocity has the opposite sign.
         target.create_dataset("planned_palm_angular_velocity_object", data=(-angular_object).astype(np.float32))
 
@@ -186,6 +223,9 @@ def invert(input_path: Path, output_path: Path) -> None:
         target.attrs["surface_features"] = "analytic_capsule_from_contact_position"
         target.attrs["contact_normal_source"] = normal_source
         target.attrs["palm_twist"] = "causal_backward_difference_in_object_frame"
+        target.attrs["planned_angular_velocity_source"] = (
+            "causal_object_pose_difference_in_object_frame"
+        )
         target.attrs["capsule_radius"] = CAPSULE_RADIUS
         target.attrs["capsule_half_length"] = CAPSULE_HALF_LENGTH
     print(f"[SUCCESS] inverted trajectory saved to {output_path}")

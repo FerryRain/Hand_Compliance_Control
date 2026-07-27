@@ -20,25 +20,34 @@ from tqdm.auto import tqdm
 
 from dp_dataset import (
     ACTION_DIM,
+    ACTION_REPRESENTATIONS,
     ENV_STATE_DIM,
     ROBOT_STATE_DIM,
-    STATE_DIM,
+    ActionRepresentation,
     FingertipDiffusionDataset,
     compute_normalization,
+    input_frame,
     load_episodes,
     split_episode_ids,
+    state_dimensions,
+    state_fields,
+    state_schema,
 )
 
 
 def build_policy(args: argparse.Namespace, device: torch.device) -> DiffusionPolicy:
     """Build the official LeRobot DiffusionPolicy without image observations."""
+    robot_state_dim = int(getattr(args, "robot_state_dim", ROBOT_STATE_DIM))
+    environment_state_dim = int(
+        getattr(args, "environment_state_dim", ENV_STATE_DIM)
+    )
     config = DiffusionConfig(
         input_features={
             "observation.state": PolicyFeature(
-                type=FeatureType.STATE, shape=(ROBOT_STATE_DIM,)
+                type=FeatureType.STATE, shape=(robot_state_dim,)
             ),
             "observation.environment_state": PolicyFeature(
-                type=FeatureType.ENV, shape=(ENV_STATE_DIM,)
+                type=FeatureType.ENV, shape=(environment_state_dim,)
             ),
         },
         output_features={
@@ -95,7 +104,9 @@ def overfit_metrics(
     policy: DiffusionPolicy,
     dataset: FingertipDiffusionDataset,
     device: torch.device,
+    action_mean: np.ndarray,
     action_scale: np.ndarray,
+    action_representation: ActionRepresentation,
     sample_count: int,
     seed: int,
 ) -> dict[str, float]:
@@ -120,16 +131,27 @@ def overfit_metrics(
         len(indices), global_cond=global_condition, generator=generator
     )
     target = batch["action"]
+    mean = torch.as_tensor(action_mean, device=device).view(1, 1, -1)
     scale = torch.as_tensor(action_scale, device=device).view(1, 1, -1)
     error = (prediction - target) * scale
-    baseline_error = -target * scale
+    target_physical = target * scale + mean
+    current_q = torch.as_tensor(
+        np.stack([dataset.current_q(int(index)) for index in indices]),
+        device=device,
+        dtype=torch.float32,
+    ).unsqueeze(1)
+    if action_representation == "delta_q":
+        hold_action = torch.zeros_like(current_q)
+    else:
+        hold_action = current_q
+    baseline_error = hold_action - target_physical
     return {
         "sample_count": int(len(indices)),
         "sample_mae_rad": float(error.abs().mean()),
         "sample_rmse_rad": float(error.square().mean().sqrt()),
         "sample_final_mae_rad": float(error[:, -1].abs().mean()),
-        "zero_delta_baseline_mae_rad": float(baseline_error.abs().mean()),
-        "zero_delta_baseline_final_mae_rad": float(
+        "hold_current_q_baseline_mae_rad": float(baseline_error.abs().mean()),
+        "hold_current_q_baseline_final_mae_rad": float(
             baseline_error[:, -1].abs().mean()
         ),
     }
@@ -175,8 +197,8 @@ def write_metrics(
         for key, label in (
             ("train_sample_mae_rad", "train generated MAE"),
             ("val_sample_mae_rad", "val generated MAE"),
-            ("train_zero_delta_mae_rad", "train zero-delta baseline"),
-            ("val_zero_delta_mae_rad", "val zero-delta baseline"),
+            ("train_hold_q_mae_rad", "train hold-q baseline"),
+            ("val_hold_q_mae_rad", "val hold-q baseline"),
         ):
             values = [float(record[key]) for record in records]
             if np.isfinite(values).any():
@@ -205,6 +227,15 @@ def main() -> None:
     parser.add_argument("--stride", type=int, default=5)
     parser.add_argument("--obs-horizon", type=int, default=16)
     parser.add_argument("--pred-horizon", type=int, default=32)
+    parser.add_argument(
+        "--action-representation",
+        choices=ACTION_REPRESENTATIONS,
+        default="delta_q",
+        help=(
+            "delta_q predicts q_future-q_current (legacy); absolute_q predicts "
+            "future joint positions directly and avoids integrating DP bias."
+        ),
+    )
     parser.add_argument("--diffusion-steps", type=int, default=100)
     parser.add_argument("--inference-steps", type=int, default=100)
     parser.add_argument("--noise-scheduler", choices=("DDPM", "DDIM"), default="DDPM")
@@ -214,6 +245,21 @@ def main() -> None:
     parser.add_argument("--diffusion-step-embed-dim", type=int, default=128)
     parser.add_argument("--val-ratio", type=float, default=0.1)
     parser.add_argument("--num-workers", type=int, default=4)
+    parser.add_argument(
+        "--contact-dropout-probability",
+        type=float,
+        default=0.10,
+        help=(
+            "Geometry schema only: probability per finger/window of simulating "
+            "a short tactile contact loss."
+        ),
+    )
+    parser.add_argument(
+        "--max-contact-dropout-steps",
+        type=int,
+        default=3,
+        help="Maximum stride-rate samples held during synthetic contact loss.",
+    )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--save-every", type=int, default=10_000)
     parser.add_argument(
@@ -246,13 +292,44 @@ def main() -> None:
         )
 
     episodes = load_episodes(args.file, args.stride)
+    dataset_input_frame = input_frame(args.file)
+    dataset_state_schema = state_schema(args.file)
+    dataset_state_fields = state_fields(args.file)
+    robot_state_dim, environment_state_dim, state_dim = state_dimensions(args.file)
+    args.robot_state_dim = robot_state_dim
+    args.environment_state_dim = environment_state_dim
+    args.state_dim = state_dim
+    args.state_schema = dataset_state_schema
     train_ids, val_ids = split_episode_ids(list(episodes), args.val_ratio, args.seed)
-    normalization = compute_normalization(episodes, train_ids)
+    normalization = compute_normalization(
+        episodes,
+        train_ids,
+        args.action_representation,
+        dataset_state_schema,
+    )
     train_set = FingertipDiffusionDataset(
-        episodes, train_ids, normalization, args.obs_horizon, args.pred_horizon
+        episodes,
+        train_ids,
+        normalization,
+        args.obs_horizon,
+        args.pred_horizon,
+        robot_state_dim,
+        dataset_state_schema,
+        args.contact_dropout_probability,
+        args.max_contact_dropout_steps,
+        args.action_representation,
     )
     val_set = FingertipDiffusionDataset(
-        episodes, val_ids, normalization, args.obs_horizon, args.pred_horizon
+        episodes,
+        val_ids,
+        normalization,
+        args.obs_horizon,
+        args.pred_horizon,
+        robot_state_dim,
+        dataset_state_schema,
+        0.0,
+        args.max_contact_dropout_steps,
+        args.action_representation,
     )
     if not train_set:
         raise ValueError("No training windows for the selected horizons")
@@ -290,10 +367,14 @@ def main() -> None:
                 "normalization": asdict(normalization),
                 "config": vars(args),
                 "architecture": "lerobot_diffusion_conditional_unet1d",
-                "state_dim": STATE_DIM,
-                "robot_state_dim": ROBOT_STATE_DIM,
-                "environment_state_dim": ENV_STATE_DIM,
+                "state_dim": state_dim,
+                "robot_state_dim": robot_state_dim,
+                "environment_state_dim": environment_state_dim,
                 "action_dim": ACTION_DIM,
+                "action_representation": args.action_representation,
+                "input_frame": dataset_input_frame,
+                "state_schema": dataset_state_schema,
+                "state_fields": dataset_state_fields,
                 "train_episode_ids": train_ids,
                 "val_episode_ids": val_ids,
                 "noise_loss": loss,
@@ -331,7 +412,9 @@ def main() -> None:
                 policy,
                 train_set,
                 device,
+                normalization.action_mean,
                 normalization.action_std,
+                args.action_representation,
                 args.eval_samples,
                 args.seed,
             )
@@ -339,7 +422,9 @@ def main() -> None:
                 policy,
                 val_set,
                 device,
+                normalization.action_mean,
                 normalization.action_std,
+                args.action_representation,
                 args.eval_samples,
                 args.seed + 1,
             )
@@ -359,11 +444,11 @@ def main() -> None:
                 "val_sample_final_mae_rad": val_metrics.get(
                     "sample_final_mae_rad", float("nan")
                 ),
-                "train_zero_delta_mae_rad": train_metrics.get(
-                    "zero_delta_baseline_mae_rad", float("nan")
+                "train_hold_q_mae_rad": train_metrics.get(
+                    "hold_current_q_baseline_mae_rad", float("nan")
                 ),
-                "val_zero_delta_mae_rad": val_metrics.get(
-                    "zero_delta_baseline_mae_rad", float("nan")
+                "val_hold_q_mae_rad": val_metrics.get(
+                    "hold_current_q_baseline_mae_rad", float("nan")
                 ),
             }
             metric_records.append(record)
@@ -398,17 +483,26 @@ def main() -> None:
 
     metadata = {
         "source": str(args.file),
+        "input_frame": dataset_input_frame,
+        "state_schema": dataset_state_schema,
+        "action_representation": args.action_representation,
         "architecture": "LeRobot DiffusionPolicy / conditional 1-D U-Net",
         "input": {
             "observation.state": {
-                "q_hand": 16,
-                "fingertip_force_object": 12,
-                "fingertip_contact_normal_object": 12,
+                name: size for name, size in dataset_state_fields[:-1]
             },
-            "observation.environment_state": {"palm_twist_object": 6},
-            "total_dim": STATE_DIM,
+            "observation.environment_state": {
+                dataset_state_fields[-1][0]: dataset_state_fields[-1][1]
+            },
+            "total_dim": state_dim,
         },
-        "output": {"future_q_hand_delta": [args.pred_horizon, ACTION_DIM]},
+        "output": {
+            (
+                "future_q_hand_delta"
+                if args.action_representation == "delta_q"
+                else "future_q_hand_absolute"
+            ): [args.pred_horizon, ACTION_DIM]
+        },
         "train_episodes": len(train_ids),
         "val_episodes": len(val_ids),
         "train_windows": len(train_set),

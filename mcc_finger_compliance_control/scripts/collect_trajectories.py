@@ -58,6 +58,18 @@ def _wxyz_multiply(lhs: torch.Tensor, rhs: torch.Tensor) -> torch.Tensor:
     )
 
 
+def _wxyz_apply(quaternion: torch.Tensor, vector: torch.Tensor) -> torch.Tensor:
+    """Rotate vectors by normalized wxyz quaternions."""
+    quaternion = quaternion / torch.linalg.vector_norm(
+        quaternion, dim=-1, keepdim=True
+    ).clamp_min(1.0e-8)
+    xyz = quaternion[..., 1:]
+    cross = 2.0 * torch.linalg.cross(xyz, vector, dim=-1)
+    return vector + quaternion[..., :1] * cross + torch.linalg.cross(
+        xyz, cross, dim=-1
+    )
+
+
 def _find_local_body_index(env: ManagerBasedRlEnv, suffix: str) -> int:
     names = [body.name or "" for body in env.scene["robot"].data.indexing.bodies]
     for index, name in enumerate(names):
@@ -177,13 +189,22 @@ def main() -> None:
     parser.add_argument("--angular-speed-min", type=float, default=0.35)
     parser.add_argument("--angular-speed-max", type=float, default=0.70)
     parser.add_argument(
+        "--initial-orientation-mode",
+        choices=("uniform", "jitter", "fixed"),
+        default="uniform",
+        help=(
+            "Initial object orientation. 'uniform' samples the full SO(3) "
+            "rotation space; 'jitter' applies the legacy bounded perturbation "
+            "around the environment nominal pose; 'fixed' keeps the nominal pose."
+        ),
+    )
+    parser.add_argument(
         "--initial-orientation-jitter-deg",
         type=float,
         default=10.0,
         help=(
-            "Random rotation about the environment's nominal object orientation. "
-            "This deliberately avoids an unconstrained SO(3) reset that can make "
-            "the fixed pre-grasp geometrically unable to contact all fingertips."
+            "Maximum legacy perturbation around the nominal object orientation; "
+            "used only when --initial-orientation-mode jitter."
         ),
     )
     parser.add_argument(
@@ -240,6 +261,15 @@ def main() -> None:
     total_frames = saved_frames_per_trajectory * collected_target
     print(f"[INFO] task={TASK_ID} device={device} accepted_frames={total_frames} output={output}")
     print("[INFO] controller measured-force input is ZERO; fingertip force is record-only")
+    print(
+        "[INFO] initial object orientation mode="
+        f"{args.initial_orientation_mode}"
+        + (
+            f" jitter=+/-{args.initial_orientation_jitter_deg:.1f}deg"
+            if args.initial_orientation_mode == "jitter"
+            else ""
+        )
+    )
     if args.online_quality_gate:
         print(
             "[INFO] ONLINE strict gate: all 4 complete fingertip geoms need "
@@ -268,25 +298,38 @@ def main() -> None:
             policy.reset()
             initial_pos = env.sim.data.mocap_pos[:, target_mocap_idx, :].clone()
             nominal_quat = env.sim.data.mocap_quat[:, target_mocap_idx, :].clone()
-            jitter_axes = torch.randn((args.num_envs, 3), device=device)
-            jitter_axes /= torch.linalg.vector_norm(
-                jitter_axes, dim=-1, keepdim=True
-            ).clamp_min(1.0e-8)
-            jitter_limit = np.deg2rad(args.initial_orientation_jitter_deg)
-            jitter_angle = torch.empty(args.num_envs, device=device).uniform_(
-                -jitter_limit, jitter_limit
-            )
-            jitter_quat = torch.cat(
-                (
-                    torch.cos(jitter_angle / 2).unsqueeze(-1),
-                    jitter_axes * torch.sin(jitter_angle / 2).unsqueeze(-1),
-                ),
-                dim=-1,
-            )
-            initial_quat = _wxyz_multiply(nominal_quat, jitter_quat)
-            initial_quat /= torch.linalg.vector_norm(
-                initial_quat, dim=-1, keepdim=True
-            )
+            if args.initial_orientation_mode == "uniform":
+                # A normalized isotropic 4-D Gaussian is uniform on S^3.  Since
+                # antipodal unit quaternions describe the same rotation, this is
+                # a Haar-uniform sample over the complete SO(3) rotation space.
+                initial_quat = torch.randn(
+                    (args.num_envs, 4), device=device
+                )
+                initial_quat /= torch.linalg.vector_norm(
+                    initial_quat, dim=-1, keepdim=True
+                ).clamp_min(1.0e-8)
+            elif args.initial_orientation_mode == "jitter":
+                jitter_axes = torch.randn((args.num_envs, 3), device=device)
+                jitter_axes /= torch.linalg.vector_norm(
+                    jitter_axes, dim=-1, keepdim=True
+                ).clamp_min(1.0e-8)
+                jitter_limit = np.deg2rad(args.initial_orientation_jitter_deg)
+                jitter_angle = torch.empty(args.num_envs, device=device).uniform_(
+                    -jitter_limit, jitter_limit
+                )
+                jitter_quat = torch.cat(
+                    (
+                        torch.cos(jitter_angle / 2).unsqueeze(-1),
+                        jitter_axes * torch.sin(jitter_angle / 2).unsqueeze(-1),
+                    ),
+                    dim=-1,
+                )
+                initial_quat = _wxyz_multiply(nominal_quat, jitter_quat)
+                initial_quat /= torch.linalg.vector_norm(
+                    initial_quat, dim=-1, keepdim=True
+                ).clamp_min(1.0e-8)
+            else:
+                initial_quat = nominal_quat
             env.sim.data.mocap_pos[:, target_mocap_idx, :] = initial_pos
             env.sim.data.mocap_quat[:, target_mocap_idx, :] = initial_quat
 
@@ -332,47 +375,29 @@ def main() -> None:
                     (args.num_envs, 4), dtype=torch.bool, device=device
                 )
                 for tip_id, site_name in enumerate(TIP_SITES):
-                    sensor_data = env.scene[f"{site_name}_contact"].data
-                    if sensor_data.force is not None:
-                        slot_magnitude = torch.linalg.vector_norm(
-                            sensor_data.force, dim=-1
-                        )
-                    else:
-                        slot_count = (
-                            sensor_data.found.shape[1]
-                            if sensor_data.found is not None
-                            else 1
-                        )
-                        slot_magnitude = torch.zeros(
-                            (args.num_envs, slot_count), device=device
-                        )
-                    if sensor_data.found is not None:
-                        slot_found = sensor_data.found > 0
-                        slot_magnitude = torch.where(
-                            slot_found,
-                            slot_magnitude,
-                            torch.full_like(slot_magnitude, -1.0),
-                        )
-                        found = torch.any(slot_found, dim=1)
+                    force_data = env.scene[f"{site_name}_contact"].data
+                    geometry_data = env.scene[
+                        f"{site_name}_geometry_contact"
+                    ].data
+                    if force_data.found is not None:
+                        found = torch.any(force_data.found > 0, dim=1)
                     else:
                         found = torch.zeros(
                             args.num_envs, dtype=torch.bool, device=device
                         )
                     contact_found[:, tip_id] = found
-                    strongest_slot = torch.argmax(slot_magnitude, dim=1)
-                    batch_ids = torch.arange(args.num_envs, device=device)
-                    if sensor_data.pos is not None:
-                        selected_pos = sensor_data.pos[batch_ids, strongest_slot]
+                    if geometry_data.pos is not None:
+                        selected_pos = geometry_data.pos[:, 0]
                         contact_pos[:, tip_id] = torch.where(
                             found.unsqueeze(-1), selected_pos, torch.zeros_like(selected_pos)
                         )
-                    if sensor_data.normal is not None:
-                        selected_normal = sensor_data.normal[batch_ids, strongest_slot]
+                    if geometry_data.normal is not None:
+                        selected_normal = geometry_data.normal[:, 0]
                         contact_normal[:, tip_id] = torch.where(
                             found.unsqueeze(-1), selected_normal, torch.zeros_like(selected_normal)
                         )
-                    if sensor_data.dist is not None:
-                        selected_dist = sensor_data.dist[batch_ids, strongest_slot]
+                    if geometry_data.dist is not None:
+                        selected_dist = geometry_data.dist[:, 0]
                         contact_dist[:, tip_id] = torch.where(
                             found, selected_dist, torch.zeros_like(selected_dist)
                         )
@@ -382,6 +407,12 @@ def main() -> None:
                         env.sim.data.mocap_quat[:, target_mocap_idx, :],
                     ),
                     dim=-1,
+                )
+                object_angular_velocity_world = (
+                    _wxyz_apply(obj_pose[:, 3:7], axes)
+                    * speeds.unsqueeze(-1)
+                    if moving
+                    else torch.zeros_like(axes)
                 )
                 debug = policy.last_debug
                 tip_force_magnitude = torch.linalg.vector_norm(tip_force, dim=-1)
@@ -426,7 +457,9 @@ def main() -> None:
                         "tip_x_ik_world": debug["tip_x_ik"],
                         "tip_x_des_palm": debug["tip_x_des_palm"],
                         "tip_x_ref_palm": debug["tip_x_ref_palm"],
-                        "object_angular_velocity_world": axes * speeds.unsqueeze(-1) if moving else torch.zeros_like(axes),
+                        "object_angular_velocity_world": (
+                            object_angular_velocity_world
+                        ),
                         }
                     )
 
@@ -480,6 +513,8 @@ def main() -> None:
                 "strict_four_tip_continuous_contact": args.online_quality_gate,
                 "contact_gate": "full_fingertip_geom_found_and_3d_force_magnitude",
                 "contact_threshold": args.contact_threshold,
+                "initial_orientation_mode": args.initial_orientation_mode,
+                "object_angular_velocity_frame": "world",
                 "initial_orientation_jitter_deg": (
                     args.initial_orientation_jitter_deg
                 ),
