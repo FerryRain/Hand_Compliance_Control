@@ -324,6 +324,31 @@ def main() -> None:
         help="Surface distance used to establish the terminal palm correction.",
     )
     parser.add_argument(
+        "--palm-terminal-second-local-offset-mm",
+        type=float,
+        nargs=3,
+        metavar=("NORMAL", "AZIMUTH", "MERIDIAN"),
+        default=(0.0, 0.0, 0.0),
+        help=(
+            "Additive second-stage correction of the non-contact palm input "
+            "point in the same local surface basis. The first stage must be "
+            "fully established before this stage starts, and their combined "
+            "offset must remain inside the same 3 mm input ball."
+        ),
+    )
+    parser.add_argument(
+        "--palm-terminal-second-local-offset-start-m",
+        type=float,
+        default=1.0,
+        help="Surface progress where the second palm correction starts.",
+    )
+    parser.add_argument(
+        "--palm-terminal-second-local-offset-ramp-m",
+        type=float,
+        default=0.02,
+        help="Surface distance used to establish the second palm correction.",
+    )
+    parser.add_argument(
         "--finger-gait-amplitude-m",
         type=float,
         default=0.0,
@@ -1224,6 +1249,45 @@ def main() -> None:
     ):
         raise ValueError(
             "--palm-terminal-local-offset-mm must remain inside a 3 mm ball"
+        )
+    if args.palm_terminal_second_local_offset_start_m < 0.0:
+        raise ValueError(
+            "--palm-terminal-second-local-offset-start-m cannot be negative"
+        )
+    if args.palm_terminal_second_local_offset_ramp_m <= 0.0:
+        raise ValueError(
+            "--palm-terminal-second-local-offset-ramp-m must be positive"
+        )
+    terminal_palm_offset_mm = np.asarray(
+        args.palm_terminal_local_offset_mm,
+        dtype=np.float64,
+    )
+    terminal_second_palm_offset_mm = np.asarray(
+        args.palm_terminal_second_local_offset_mm,
+        dtype=np.float64,
+    )
+    if np.linalg.norm(terminal_second_palm_offset_mm) > 0.0:
+        first_stage_end_m = (
+            args.palm_terminal_local_offset_start_m
+            + args.palm_terminal_local_offset_ramp_m
+        )
+        if (
+            args.palm_terminal_second_local_offset_start_m
+            < first_stage_end_m
+        ):
+            raise ValueError(
+                "The second terminal palm correction must start after the "
+                "first correction is fully established"
+            )
+    if (
+        np.linalg.norm(
+            terminal_palm_offset_mm + terminal_second_palm_offset_mm
+        )
+        > 3.0
+    ):
+        raise ValueError(
+            "Combined terminal palm corrections must remain inside a 3 mm "
+            "ball"
         )
 
     CAPSULE_RADIUS = args.object_radius_m
@@ -3198,12 +3262,40 @@ def main() -> None:
                     )
                     / 1000.0
                 )
-                palm_target += terminal_palm_offset_phase * (
-                    terminal_palm_offset_m[0]
+                terminal_second_palm_offset_phase = float(
+                    np.clip(
+                        (
+                            desired_distance
+                            - args.palm_terminal_second_local_offset_start_m
+                        )
+                        / args.palm_terminal_second_local_offset_ramp_m,
+                        0.0,
+                        1.0,
+                    )
+                )
+                terminal_second_palm_offset_phase = (
+                    terminal_second_palm_offset_phase
+                    * terminal_second_palm_offset_phase
+                    * (3.0 - 2.0 * terminal_second_palm_offset_phase)
+                )
+                terminal_second_palm_offset_m = (
+                    np.asarray(
+                        args.palm_terminal_second_local_offset_mm,
+                        dtype=np.float64,
+                    )
+                    / 1000.0
+                )
+                combined_terminal_palm_offset_m = (
+                    terminal_palm_offset_phase * terminal_palm_offset_m
+                    + terminal_second_palm_offset_phase
+                    * terminal_second_palm_offset_m
+                )
+                palm_target += (
+                    combined_terminal_palm_offset_m[0]
                     * palm_target_local_normal
-                    + terminal_palm_offset_m[1]
+                    + combined_terminal_palm_offset_m[1]
                     * palm_target_local_azimuth
-                    + terminal_palm_offset_m[2]
+                    + combined_terminal_palm_offset_m[2]
                     * palm_target_local_meridian
                 )
                 desired_arc[0] = (
@@ -4761,6 +4853,16 @@ def main() -> None:
                 ),
                 palm_terminal_local_offset_ramp_m=np.asarray(
                     args.palm_terminal_local_offset_ramp_m
+                ),
+                palm_terminal_second_local_offset_mm=np.asarray(
+                    args.palm_terminal_second_local_offset_mm,
+                    dtype=np.float64,
+                ),
+                palm_terminal_second_local_offset_start_m=np.asarray(
+                    args.palm_terminal_second_local_offset_start_m
+                ),
+                palm_terminal_second_local_offset_ramp_m=np.asarray(
+                    args.palm_terminal_second_local_offset_ramp_m
                 ),
                 finger_gait_amplitude_m=np.asarray(
                     args.finger_gait_amplitude_m
