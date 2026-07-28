@@ -502,6 +502,27 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--finger-meridian-local-phase",
+        type=float,
+        nargs=7,
+        action="append",
+        default=[],
+        metavar=(
+            "AMP_MM",
+            "START_M",
+            "END_M",
+            "INDEX",
+            "MIDDLE",
+            "RING",
+            "THUMB",
+        ),
+        help=(
+            "Repeatable zero-endpoint local meridian plan phase: peak "
+            "amplitude, start/end surface distance, and four signed finger "
+            "scales. This changes explicit plan points, not acceptance bands."
+        ),
+    )
+    parser.add_argument(
         "--runtime-finger-gait-rad",
         type=float,
         default=0.12,
@@ -1174,6 +1195,21 @@ def main() -> None:
             "Terminal tail finger-meridian correction requires an ordered "
             "window inside --axial-travel-m"
         )
+    for local_phase_spec in args.finger_meridian_local_phase:
+        amplitude_mm, start_m, end_m, *_ = local_phase_spec
+        if amplitude_mm < 0.0:
+            raise ValueError(
+                "--finger-meridian-local-phase amplitude cannot be negative"
+            )
+        if (
+            start_m < 0.0
+            or end_m <= start_m
+            or end_m > args.axial_travel_m
+        ):
+            raise ValueError(
+                "--finger-meridian-local-phase requires an ordered window "
+                "inside --axial-travel-m"
+            )
     if args.runtime_finger_gait_rad < 0.0:
         raise ValueError("--runtime-finger-gait-rad cannot be negative")
     if args.runtime_tip_gait_mm < 0.0:
@@ -3289,6 +3325,27 @@ def main() -> None:
                         args.finger_meridian_terminal_tail_correction_scales
                     )
                 )
+                for local_phase_spec in args.finger_meridian_local_phase:
+                    (
+                        local_amplitude_mm,
+                        local_start_m,
+                        local_end_m,
+                        *local_scales,
+                    ) = local_phase_spec
+                    if local_start_m < desired_distance < local_end_m:
+                        local_coordinate = (
+                            desired_distance - local_start_m
+                        ) / (local_end_m - local_start_m)
+                        local_phase = np.sin(np.pi * local_coordinate)
+                    else:
+                        local_phase = 0.0
+                    desired_arc[1:] += (
+                        direction
+                        * local_amplitude_mm
+                        / 1000.0
+                        * local_phase
+                        * np.asarray(local_scales)
+                    )
                 gait_phase = np.sin(
                     np.pi * desired_distance / args.axial_travel_m
                 )
@@ -5298,6 +5355,10 @@ def main() -> None:
                 finger_meridian_terminal_tail_correction_scales=np.asarray(
                     args.finger_meridian_terminal_tail_correction_scales
                 ),
+                finger_meridian_local_phase=np.asarray(
+                    args.finger_meridian_local_phase,
+                    dtype=np.float64,
+                ).reshape((-1, 7)),
                 object_shape=np.asarray(args.object_shape),
                 object_radius_m=np.asarray(CAPSULE_RADIUS),
                 object_half_height_m=np.asarray(CAPSULE_HALF_HEIGHT),
