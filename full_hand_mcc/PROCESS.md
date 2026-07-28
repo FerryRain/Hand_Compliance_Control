@@ -828,3 +828,27 @@ AST、`--help` 和 12/12 回归测试已通过。当前正在准备 v98 GPU 运�
 沿用 v97 的 0.8 mm bounded rephase 与全部固定硬门槛，建议自动细分最小
 步长 0.15 mm、最多插入 96 个关键帧。完整规划成功前不生成交付视频。
 GitHub issue #7 已同步评论 `5108288620`。
+
+### v98 无效运行与 v99 动态索引修复
+
+v98 在首个 157.1 mm 不可行区打印了中点插入，但随后的日志直接进入下一个
+keyframe。源码复核证明外层仍是静态 `for keyframe in range(...)`：
+`np.insert` 虽然增加了数组行，`continue` 却让 Python 取下一个循环索引，
+新增中点没有经过 IK/MPC 或硬约束审核；原目标被移动到下一索引后继续求解，
+未求解行则保留零状态。首次替换还误把不相关的环向规划循环改成 `while`。
+所以 v98 在约 199.5 mm 最终失败前的自动细分记录不具有效性，整次运行只归
+debug，不能用于数值结论或视频交付。
+
+v99 已完成以下修复：
+
+- 环向规划恢复 `for keyframe in range(...)`；
+- adaptive surface MPC 改成 `keyframe = 1` 和动态
+  `while keyframe <= keyframe_count`；
+- 中点插入后 `continue` 保持同一索引，真正求解新行；仅在全部硬约束通过、
+  状态写入粗网格后才 `keyframe += 1`；
+- `test_dynamic_refinement_uses_a_mutable_keyframe_loop` 用 AST 检查 adaptive
+  planner 中不存在 `for keyframe`，存在且仅存在一个引用动态
+  `keyframe_count` 的 `while`，并含接受后的 `keyframe += 1`。
+
+AST 与 13/13 MCC/碰撞/结构回归通过。issue #7 评论 `5108529688` 已记录。
+下一步用 v98 相同 0.15 mm/96 自动细分上限和全部固定硬阈值运行 v99。

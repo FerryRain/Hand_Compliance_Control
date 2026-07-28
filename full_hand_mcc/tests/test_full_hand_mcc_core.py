@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import importlib.util
 from pathlib import Path
 import sys
@@ -29,6 +30,11 @@ assert GEOMETRY_SPEC is not None and GEOMETRY_SPEC.loader is not None
 GEOMETRY = importlib.util.module_from_spec(GEOMETRY_SPEC)
 sys.modules[GEOMETRY_SPEC.name] = GEOMETRY
 GEOMETRY_SPEC.loader.exec_module(GEOMETRY)
+
+DEMO_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "scripts/demo_surface_slide.py"
+)
 
 
 class FullHandMCCCoreTest(unittest.TestCase):
@@ -257,6 +263,44 @@ class SurfaceGeometryTest(unittest.TestCase):
         self.assertGreater(
             float(curvature.max() / curvature.min()),
             6.0,
+        )
+
+
+class AdaptiveMPCSourceStructureTest(unittest.TestCase):
+    def test_dynamic_refinement_uses_a_mutable_keyframe_loop(self) -> None:
+        tree = ast.parse(DEMO_PATH.read_text(encoding="utf-8"))
+        planner = next(
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "_build_adaptive_surface_mpc_plan"
+        )
+        self.assertFalse(
+            any(
+                isinstance(node, ast.For)
+                and isinstance(node.target, ast.Name)
+                and node.target.id == "keyframe"
+                for node in ast.walk(planner)
+            ),
+            "A for-loop skips midpoint rows inserted into the MPC grid",
+        )
+        dynamic_loops = [
+            node
+            for node in ast.walk(planner)
+            if isinstance(node, ast.While)
+            and "keyframe" in ast.dump(node.test)
+            and "keyframe_count" in ast.dump(node.test)
+        ]
+        self.assertEqual(len(dynamic_loops), 1)
+        self.assertTrue(
+            any(
+                isinstance(node, ast.AugAssign)
+                and isinstance(node.target, ast.Name)
+                and node.target.id == "keyframe"
+                and isinstance(node.op, ast.Add)
+                for node in ast.walk(dynamic_loops[0])
+            ),
+            "The mutable MPC keyframe loop must advance after acceptance",
         )
 
 

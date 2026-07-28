@@ -2789,8 +2789,7 @@ def main() -> None:
                 )
                 return surface, points, normals
 
-            keyframe = 1
-            while keyframe <= keyframe_count:
+            for keyframe in range(1, keyframe_count + 1):
                 distance = float(coarse_distance[keyframe])
                 _, desired_points, _ = rotated_targets(distance)
                 result = reachability.solve(desired_points, previous_q)
@@ -3467,7 +3466,8 @@ def main() -> None:
                     0.0,
                 )
 
-            for keyframe in range(1, keyframe_count + 1):
+            keyframe = 1
+            while keyframe <= keyframe_count:
                 desired_distance = float(coarse_distance[keyframe])
                 desired_palm_distance = palm_follow_distance(
                     desired_distance
