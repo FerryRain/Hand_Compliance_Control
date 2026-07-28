@@ -4222,6 +4222,11 @@ def main() -> None:
                         (700.0, 800.0, 4000.0, 140.0, 500.0),
                         (800.0, 1200.0, 5000.0, 170.0, 600.0),
                         (1000.0, 1600.0, 6500.0, 200.0, 750.0),
+                        # In passive-palm mode, preserve the strict fingertip
+                        # recovery endpoint before considering palm accuracy.
+                        # These stages do not change any final threshold.
+                        (1600.0, 1600.0, 7500.0, 240.0, 900.0),
+                        (2400.0, 1800.0, 9000.0, 280.0, 1000.0),
                     ):
                         repaired = least_squares(
                             lambda q, ps=progress_scale, ns=normal_scale,
