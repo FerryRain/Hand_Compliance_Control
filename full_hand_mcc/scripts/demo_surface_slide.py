@@ -74,20 +74,33 @@ def build_mpc_distance_grid(
     local_refine_start_m: float,
     local_refine_end_m: float,
     local_refine_factor: int,
+    local_refine_windows: tuple[tuple[float, float, int], ...] = (),
 ) -> np.ndarray:
-    """Build a deterministic distance grid with optional local refinement."""
+    """Build a deterministic distance grid with repeatable local refinement."""
 
     base_grid = np.linspace(0.0, total_distance_m, base_keyframes + 1)
-    if local_refine_factor == 1:
+    refine_windows = list(local_refine_windows)
+    if local_refine_factor > 1:
+        refine_windows.insert(
+            0,
+            (
+                local_refine_start_m,
+                local_refine_end_m,
+                local_refine_factor,
+            ),
+        )
+    if not refine_windows:
         return base_grid
 
     refined_distance = [0.0]
     for left, right in zip(base_grid[:-1], base_grid[1:]):
-        factor = (
-            local_refine_factor
-            if right > local_refine_start_m
-            and left < local_refine_end_m
-            else 1
+        factor = max(
+            (
+                refine_factor
+                for refine_start, refine_end, refine_factor in refine_windows
+                if right > refine_start and left < refine_end
+            ),
+            default=1,
         )
         refined_distance.extend(
             np.linspace(left, right, factor + 1)[1:].tolist()
@@ -724,6 +737,18 @@ def main() -> None:
             "local refinement window."
         ),
     )
+    parser.add_argument(
+        "--mpc-local-refine-window",
+        type=float,
+        nargs=3,
+        action="append",
+        default=[],
+        metavar=("START_M", "END_M", "FACTOR"),
+        help=(
+            "Additional repeatable local MPC refinement window. FACTOR must "
+            "be an integer >= 2. Overlapping windows use the largest factor."
+        ),
+    )
     parser.add_argument("--mpc-max-nfev", type=int, default=120)
     parser.add_argument("--mpc-progress-tolerance-mm", type=float, default=4.0)
     parser.add_argument(
@@ -1251,6 +1276,32 @@ def main() -> None:
             "Local MPC refinement requires its end to be greater than "
             "its start"
         )
+    mpc_local_refine_windows: list[tuple[float, float, int]] = []
+    for refine_start_m, refine_end_m, refine_factor_raw in (
+        args.mpc_local_refine_window
+    ):
+        refine_factor = int(round(refine_factor_raw))
+        if not np.isclose(refine_factor_raw, refine_factor):
+            raise ValueError(
+                "--mpc-local-refine-window FACTOR must be an integer"
+            )
+        if refine_factor < 2:
+            raise ValueError(
+                "--mpc-local-refine-window FACTOR must be at least two"
+            )
+        if (
+            refine_start_m < 0.0
+            or refine_end_m <= refine_start_m
+            or refine_end_m > args.axial_travel_m
+        ):
+            raise ValueError(
+                "--mpc-local-refine-window requires an ordered window "
+                "inside --axial-travel-m"
+            )
+        mpc_local_refine_windows.append(
+            (refine_start_m, refine_end_m, refine_factor)
+        )
+    args.mpc_local_refine_window = mpc_local_refine_windows
     if args.mpc_normal_tolerance_mm <= 0.0:
         raise ValueError("--mpc-normal-tolerance-mm must be positive")
     if not 1 <= args.min_planner_contact_fingers <= 4:
@@ -2874,6 +2925,7 @@ def main() -> None:
                 args.mpc_local_refine_start_m,
                 args.mpc_local_refine_end_m,
                 args.mpc_local_refine_factor,
+                tuple(args.mpc_local_refine_window),
             )
             keyframe_count = len(coarse_distance) - 1
             if keyframe_count > frame_count:
@@ -2907,7 +2959,8 @@ def main() -> None:
                 f"local_refine_m="
                 f"[{args.mpc_local_refine_start_m:.4f},"
                 f"{args.mpc_local_refine_end_m:.4f}] "
-                f"factor={args.mpc_local_refine_factor}",
+                f"factor={args.mpc_local_refine_factor} "
+                f"extra_windows={args.mpc_local_refine_window}",
                 flush=True,
             )
             planner_pad_alignment = float(
@@ -5226,6 +5279,10 @@ def main() -> None:
                 mpc_local_refine_factor=np.asarray(
                     args.mpc_local_refine_factor
                 ),
+                mpc_local_refine_windows=np.asarray(
+                    args.mpc_local_refine_window,
+                    dtype=np.float64,
+                ).reshape(-1, 3),
                 min_runtime_contact_fingers=np.asarray(
                     args.min_runtime_contact_fingers
                 ),
