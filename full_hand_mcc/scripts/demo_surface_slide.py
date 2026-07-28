@@ -703,6 +703,17 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--transient-progress-recovery-end-m",
+        type=float,
+        default=None,
+        help=(
+            "Optional later endpoint for fingertip meridian-progress phase "
+            "synchronization. Normal/tangential contact still recovers at "
+            "--transient-contact-end-m; the progress band alone continues "
+            "shrinking to its unchanged nominal value at this endpoint."
+        ),
+    )
+    parser.add_argument(
         "--transient-contact-normal-recovery-start-m",
         type=float,
         default=None,
@@ -1136,6 +1147,25 @@ def main() -> None:
         raise ValueError(
             "--transient-contact-recovery-start-m must lie strictly inside "
             "the transient contact window"
+        )
+    if (
+        args.transient_progress_recovery_end_m is not None
+        and (
+            args.transient_progress_recovery_end_m
+            < args.transient_contact_end_m
+            or args.transient_progress_recovery_end_m
+            > args.axial_travel_m
+            or (
+                args.transient_contact_recovery_start_m is not None
+                and args.transient_progress_recovery_end_m
+                <= args.transient_contact_recovery_start_m
+            )
+        )
+    ):
+        raise ValueError(
+            "--transient-progress-recovery-end-m must be at least the "
+            "contact end, greater than the recovery start, and no greater "
+            "than --axial-travel-m"
         )
     if (
         args.transient_contact_normal_recovery_start_m is not None
@@ -2901,6 +2931,50 @@ def main() -> None:
                 )
                 return phase * phase * (3.0 - 2.0 * phase)
 
+            def transient_progress_recovery_end() -> float:
+                if args.transient_progress_recovery_end_m is None:
+                    return args.transient_contact_end_m
+                return args.transient_progress_recovery_end_m
+
+            def transient_progress_active(
+                surface_distance: float,
+            ) -> bool:
+                return bool(
+                    args.min_planner_contact_fingers < 4
+                    and transient_progress_recovery_end()
+                    > args.transient_contact_start_m
+                    and args.transient_contact_start_m
+                    < surface_distance
+                    < transient_progress_recovery_end()
+                )
+
+            def transient_progress_recovery_phase(
+                surface_distance: float,
+            ) -> float:
+                recovery_start_m = (
+                    args.transient_contact_recovery_start_m
+                )
+                if (
+                    not transient_progress_active(surface_distance)
+                    or recovery_start_m is None
+                    or surface_distance <= recovery_start_m
+                ):
+                    return 0.0
+                phase = float(
+                    np.clip(
+                        (
+                            surface_distance - recovery_start_m
+                        )
+                        / (
+                            transient_progress_recovery_end()
+                            - recovery_start_m
+                        ),
+                        0.0,
+                        1.0,
+                    )
+                )
+                return phase * phase * (3.0 - 2.0 * phase)
+
             def scheduled_tip_normal_tolerances(
                 surface_distance: float,
             ) -> np.ndarray:
@@ -3085,11 +3159,11 @@ def main() -> None:
                 )
                 if (
                     keyframe != keyframe_count
-                    and transient_contact_active(desired_distance)
+                    and transient_progress_active(desired_distance)
                 ):
                     active_progress_tolerance_mm = (
                         args.mpc_transient_progress_tolerance_mm
-                        + transient_recovery_phase(desired_distance)
+                        + transient_progress_recovery_phase(desired_distance)
                         * (
                             args.mpc_intermediate_progress_tolerance_mm
                             - args.mpc_transient_progress_tolerance_mm
@@ -4904,6 +4978,11 @@ def main() -> None:
                     np.nan
                     if args.transient_contact_recovery_start_m is None
                     else args.transient_contact_recovery_start_m
+                ),
+                transient_progress_recovery_end_m=np.asarray(
+                    np.nan
+                    if args.transient_progress_recovery_end_m is None
+                    else args.transient_progress_recovery_end_m
                 ),
                 transient_contact_normal_recovery_start_m=np.asarray(
                     np.nan
