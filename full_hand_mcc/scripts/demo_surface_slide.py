@@ -68,6 +68,33 @@ SURFACE_TOTAL_LENGTH = np.pi * CAPSULE_RADIUS + 2.0 * CAPSULE_HALF_HEIGHT
 surface_meridian_curvature = capsule_meridian_curvature
 
 
+def build_mpc_distance_grid(
+    total_distance_m: float,
+    base_keyframes: int,
+    local_refine_start_m: float,
+    local_refine_end_m: float,
+    local_refine_factor: int,
+) -> np.ndarray:
+    """Build a deterministic distance grid with optional local refinement."""
+
+    base_grid = np.linspace(0.0, total_distance_m, base_keyframes + 1)
+    if local_refine_factor == 1:
+        return base_grid
+
+    refined_distance = [0.0]
+    for left, right in zip(base_grid[:-1], base_grid[1:]):
+        factor = (
+            local_refine_factor
+            if right > local_refine_start_m
+            and left < local_refine_end_m
+            else 1
+        )
+        refined_distance.extend(
+            np.linspace(left, right, factor + 1)[1:].tolist()
+        )
+    return np.asarray(refined_distance, dtype=np.float64)
+
+
 def main() -> None:
     global CAPSULE_RADIUS, CAPSULE_HALF_HEIGHT, SURFACE_TOTAL_LENGTH
     global capsule_project, capsule_meridian_coordinates
@@ -591,6 +618,30 @@ def main() -> None:
         ),
     )
     parser.add_argument("--mpc-keyframes", type=int, default=40)
+    parser.add_argument(
+        "--mpc-local-refine-start-m",
+        type=float,
+        default=0.0,
+        help=(
+            "Start surface distance of the optional locally refined MPC "
+            "grid. The refinement is disabled when its factor is one."
+        ),
+    )
+    parser.add_argument(
+        "--mpc-local-refine-end-m",
+        type=float,
+        default=0.0,
+        help="End surface distance of the optional locally refined MPC grid.",
+    )
+    parser.add_argument(
+        "--mpc-local-refine-factor",
+        type=int,
+        default=1,
+        help=(
+            "Subdivision factor for base MPC intervals intersecting the "
+            "local refinement window."
+        ),
+    )
     parser.add_argument("--mpc-max-nfev", type=int, default=120)
     parser.add_argument("--mpc-progress-tolerance-mm", type=float, default=4.0)
     parser.add_argument(
@@ -1038,6 +1089,23 @@ def main() -> None:
         raise ValueError("--surface-preload-mm cannot be negative")
     if args.mpc_keyframes < 2:
         raise ValueError("--mpc-keyframes must be at least two")
+    if args.mpc_local_refine_factor < 1:
+        raise ValueError("--mpc-local-refine-factor must be at least one")
+    if args.mpc_local_refine_start_m < 0.0:
+        raise ValueError("--mpc-local-refine-start-m cannot be negative")
+    if args.mpc_local_refine_end_m > args.axial_travel_m:
+        raise ValueError(
+            "--mpc-local-refine-end-m cannot exceed --axial-travel-m"
+        )
+    if (
+        args.mpc_local_refine_factor > 1
+        and args.mpc_local_refine_end_m
+        <= args.mpc_local_refine_start_m
+    ):
+        raise ValueError(
+            "Local MPC refinement requires its end to be greater than "
+            "its start"
+        )
     if args.mpc_normal_tolerance_mm <= 0.0:
         raise ValueError("--mpc-normal-tolerance-mm must be positive")
     if not 1 <= args.min_planner_contact_fingers <= 4:
@@ -2635,18 +2703,26 @@ def main() -> None:
                 reachability.upper - 1.0e-7,
                 20.0,
             )
-            keyframe_count = min(args.mpc_keyframes, frame_count)
+            base_keyframe_count = min(args.mpc_keyframes, frame_count)
+            coarse_distance = build_mpc_distance_grid(
+                args.axial_travel_m,
+                base_keyframe_count,
+                args.mpc_local_refine_start_m,
+                args.mpc_local_refine_end_m,
+                args.mpc_local_refine_factor,
+            )
+            keyframe_count = len(coarse_distance) - 1
+            if keyframe_count > frame_count:
+                raise RuntimeError(
+                    "Refined MPC keyframe count exceeds runtime frame count: "
+                    f"keyframes={keyframe_count} frames={frame_count}"
+                )
             coarse_q = np.zeros(
                 (keyframe_count + 1, TOTAL_DOF), dtype=np.float64
             )
             coarse_q[0] = np.minimum(
                 np.maximum(self.reachable_q, lower),
                 upper,
-            )
-            coarse_distance = np.linspace(
-                0.0,
-                args.axial_travel_m,
-                keyframe_count + 1,
             )
             coarse_progress = np.zeros((keyframe_count + 1, 5), dtype=np.float64)
             coarse_target_progress = np.zeros_like(coarse_progress)
@@ -2660,6 +2736,16 @@ def main() -> None:
             )
             coarse_cost = np.zeros(keyframe_count + 1, dtype=np.float64)
             coarse_nfev = np.zeros(keyframe_count + 1, dtype=np.int32)
+            print(
+                "[MPC-GRID] "
+                f"base_keyframes={base_keyframe_count} "
+                f"actual_keyframes={keyframe_count} "
+                f"local_refine_m="
+                f"[{args.mpc_local_refine_start_m:.4f},"
+                f"{args.mpc_local_refine_end_m:.4f}] "
+                f"factor={args.mpc_local_refine_factor}",
+                flush=True,
+            )
             planner_pad_alignment = float(
                 np.cos(
                     np.deg2rad(
@@ -4631,9 +4717,9 @@ def main() -> None:
                     flush=True,
                 )
 
-            sample_coordinate = np.linspace(
+            frame_target_distance = np.linspace(
                 0.0,
-                float(keyframe_count),
+                args.axial_travel_m,
                 frame_count + 1,
             )[1:]
             surface_plan = np.zeros((frame_count, 5, 3), dtype=np.float32)
@@ -4655,16 +4741,25 @@ def main() -> None:
             palm_position_error_plan = np.zeros(
                 frame_count, dtype=np.float32
             )
-            for frame, coordinate in enumerate(sample_coordinate):
-                left = min(int(np.floor(coordinate)), keyframe_count - 1)
-                blend = coordinate - left
+            for frame, desired_distance in enumerate(frame_target_distance):
+                left = int(
+                    np.searchsorted(
+                        coarse_distance,
+                        desired_distance,
+                        side="right",
+                    )
+                    - 1
+                )
+                left = min(max(left, 0), keyframe_count - 1)
+                interval = coarse_distance[left + 1] - coarse_distance[left]
+                blend = (
+                    desired_distance - coarse_distance[left]
+                ) / max(interval, 1.0e-12)
+                blend = float(np.clip(blend, 0.0, 1.0))
                 blend = blend * blend * (3.0 - 2.0 * blend)
                 q = (1.0 - blend) * coarse_q[left] + blend * coarse_q[left + 1]
                 points, surface, normals, arc, auxiliary = contact_state(q)
                 progress = direction * (arc - start_arc)
-                desired_distance = args.axial_travel_m * (
-                    (frame + 1) / float(frame_count)
-                )
                 desired_progress = np.full(5, desired_distance)
                 desired_progress[0] = (
                     (1.0 - blend) * coarse_progress[left, 0]
@@ -4832,6 +4927,18 @@ def main() -> None:
                 ),
                 mpc_palm_position_tolerance_mm=np.asarray(
                     args.mpc_palm_position_tolerance_mm
+                ),
+                mpc_base_keyframes=np.asarray(base_keyframe_count),
+                mpc_actual_keyframes=np.asarray(keyframe_count),
+                mpc_coarse_distance_m=coarse_distance,
+                mpc_local_refine_start_m=np.asarray(
+                    args.mpc_local_refine_start_m
+                ),
+                mpc_local_refine_end_m=np.asarray(
+                    args.mpc_local_refine_end_m
+                ),
+                mpc_local_refine_factor=np.asarray(
+                    args.mpc_local_refine_factor
                 ),
                 min_runtime_contact_fingers=np.asarray(
                     args.min_runtime_contact_fingers
