@@ -495,12 +495,42 @@ def main() -> None:
     parser.add_argument("--surface-preload-mm", type=float, default=2.0)
     parser.add_argument("--max-plan-joint-step-rad", type=float, default=0.03)
     parser.add_argument(
+        "--min-arm-clearance-mm",
         "--min-non-tip-clearance-mm",
+        dest="min_arm_clearance_mm",
         type=float,
         default=2.0,
         help=(
-            "Minimum planned distance from the object to every arm, wrist, "
-            "palm, and non-tip finger geometry in full_robot mode."
+            "Minimum planned FR3/object distance in full_robot mode. "
+            "--min-non-tip-clearance-mm remains as a deprecated alias."
+        ),
+    )
+    parser.add_argument(
+        "--max-incidental-hand-penetration-mm",
+        type=float,
+        default=1.0,
+        help=(
+            "Maximum planned/runtime penetration for allowed palm, finger-"
+            "link, or finger-back object contact. These contacts never count "
+            "as fingertip-pad support."
+        ),
+    )
+    parser.add_argument(
+        "--max-incidental-hand-contact-force-n",
+        type=float,
+        default=24.0,
+        help=(
+            "Maximum instantaneous force magnitude on any allowed non-tip "
+            "LEAP Hand contact geometry."
+        ),
+    )
+    parser.add_argument(
+        "--max-incidental-hand-total-force-n",
+        type=float,
+        default=36.0,
+        help=(
+            "Maximum sum of strongest per-geometry forces across all allowed "
+            "non-tip LEAP Hand contacts."
         ),
     )
     parser.add_argument(
@@ -1081,8 +1111,28 @@ def main() -> None:
         raise ValueError(
             "--max-runtime-self-penetration-mm cannot be negative"
         )
-    if args.min_non_tip_clearance_mm < 0.0:
-        raise ValueError("--min-non-tip-clearance-mm cannot be negative")
+    if args.min_arm_clearance_mm < 0.0:
+        raise ValueError("--min-arm-clearance-mm cannot be negative")
+    if args.max_incidental_hand_penetration_mm < 0.0:
+        raise ValueError(
+            "--max-incidental-hand-penetration-mm cannot be negative"
+        )
+    if args.max_incidental_hand_contact_force_n <= 0.0:
+        raise ValueError(
+            "--max-incidental-hand-contact-force-n must be positive"
+        )
+    if args.max_incidental_hand_total_force_n <= 0.0:
+        raise ValueError(
+            "--max-incidental-hand-total-force-n must be positive"
+        )
+    if (
+        args.max_incidental_hand_total_force_n
+        < args.max_incidental_hand_contact_force_n
+    ):
+        raise ValueError(
+            "--max-incidental-hand-total-force-n cannot be smaller than "
+            "--max-incidental-hand-contact-force-n"
+        )
     if not 0.0 < args.max_pad_angle_deg < 90.0:
         raise ValueError("--max-pad-angle-deg must be in (0, 90)")
     if not 0.0 <= args.planner_pad_angle_margin_deg < args.max_pad_angle_deg:
@@ -1341,7 +1391,14 @@ def main() -> None:
             self.max_runtime_self_penetration_m = 0.0
             self.runtime_self_near_contact_frames = 0
             self.arm_collision_frames = 0
-            self.non_tip_hand_collision_frames = 0
+            self.incidental_hand_contact_frames = 0
+            self.incidental_hand_contact_streak = 0
+            self.max_incidental_hand_contact_streak = 0
+            self.max_incidental_hand_contact_force_n = 0.0
+            self.max_incidental_hand_total_force_n = 0.0
+            self.max_incidental_hand_penetration_m = 0.0
+            self.incidental_hand_contact_evaluated_frames = 0
+            self.min_tip_contacts_during_incidental_contact = 4
             self.contact_frames = np.zeros(4, dtype=np.int64)
             self.evaluated_frames = 0
             self.bad_contact_streak = 0
@@ -1369,8 +1426,10 @@ def main() -> None:
             self.executed_axial_travel = 0.0
             self.object_final_center: np.ndarray | None = None
             self.object_retreat_center: np.ndarray | None = None
-            self.min_planned_non_tip_clearance_m = np.inf
-            self.nearest_planned_non_tip_geom = ""
+            self.min_planned_arm_clearance_m = np.inf
+            self.nearest_planned_arm_geom = ""
+            self.min_planned_hand_clearance_m = np.inf
+            self.nearest_planned_hand_geom = ""
             self.min_planned_pad_alignment = 1.0
             self.min_runtime_pad_alignment = 1.0
             self.planned_curvature_min_inv_m = 0.0
@@ -1434,24 +1493,30 @@ def main() -> None:
         ) -> None:
             if args.collision_mode != "full_robot":
                 return
-            minimum = np.inf
-            nearest = ""
-            minimum_frame = -1
+            minimum_arm = np.inf
+            nearest_arm = ""
+            minimum_arm_frame = -1
+            minimum_hand = np.inf
+            nearest_hand = ""
+            minimum_hand_frame = -1
             minimum_pad_alignment = 1.0
             minimum_pad_frame = -1
             minimum_pad_finger = -1
             for frame, q in enumerate(joint_plan):
-                clearance, geom_name = (
-                    reachability.minimum_non_tip_clearance(
-                        q,
-                        center,
-                        rotation,
-                    )
+                arm_clearance, arm_geom_name = (
+                    reachability.minimum_arm_clearance(q, center, rotation)
                 )
-                if clearance < minimum:
-                    minimum = clearance
-                    nearest = geom_name
-                    minimum_frame = frame
+                if arm_clearance < minimum_arm:
+                    minimum_arm = arm_clearance
+                    nearest_arm = arm_geom_name
+                    minimum_arm_frame = frame
+                hand_clearance, hand_geom_name = (
+                    reachability.minimum_hand_clearance(q, center, rotation)
+                )
+                if hand_clearance < minimum_hand:
+                    minimum_hand = hand_clearance
+                    nearest_hand = hand_geom_name
+                    minimum_hand_frame = frame
                 points = reachability.forward_points(q)
                 _, surface_normals = capsule_project(
                     points,
@@ -1486,14 +1551,28 @@ def main() -> None:
                         f"pairs={len(self_pairs)} deepest_mm="
                         f"{self_distances.min() * 1000:.3f}"
                     )
-            required = args.min_non_tip_clearance_mm / 1000.0
-            if minimum < required:
+            required_arm = args.min_arm_clearance_mm / 1000.0
+            if minimum_arm < required_arm:
                 raise RuntimeError(
-                    "Full-robot trajectory violates planned collision "
-                    f"clearance: label={label} frame={minimum_frame}/"
-                    f"{len(joint_plan)} clearance_mm={minimum * 1000:.3f} "
-                    f"required_mm={args.min_non_tip_clearance_mm:.3f} "
-                    f"nearest={nearest}"
+                    "Full-robot trajectory violates strict FR3/object "
+                    f"clearance: label={label} frame={minimum_arm_frame}/"
+                    f"{len(joint_plan)} clearance_mm="
+                    f"{minimum_arm * 1000:.3f} "
+                    f"required_mm={args.min_arm_clearance_mm:.3f} "
+                    f"nearest={nearest_arm}"
+                )
+            allowed_hand_penetration = (
+                args.max_incidental_hand_penetration_mm / 1000.0
+            )
+            if minimum_hand < -allowed_hand_penetration:
+                raise RuntimeError(
+                    "Full-robot trajectory exceeds allowed incidental "
+                    f"LEAP Hand/object penetration: label={label} "
+                    f"frame={minimum_hand_frame}/{len(joint_plan)} "
+                    f"penetration_mm={-minimum_hand * 1000:.3f} "
+                    "allowed_mm="
+                    f"{args.max_incidental_hand_penetration_mm:.3f} "
+                    f"nearest={nearest_hand}"
                 )
             required_pad_alignment = float(
                 np.cos(np.deg2rad(args.max_pad_angle_deg))
@@ -1508,15 +1587,23 @@ def main() -> None:
                     f"{np.degrees(np.arccos(np.clip(minimum_pad_alignment, -1, 1))):.2f} "
                     f"limit_deg={args.max_pad_angle_deg:.2f}"
                 )
-            self.min_planned_non_tip_clearance_m = float(minimum)
-            self.nearest_planned_non_tip_geom = nearest
+            self.min_planned_arm_clearance_m = float(minimum_arm)
+            self.nearest_planned_arm_geom = nearest_arm
+            self.min_planned_hand_clearance_m = float(minimum_hand)
+            self.nearest_planned_hand_geom = nearest_hand
             self.min_planned_pad_alignment = minimum_pad_alignment
             print(
                 "[FULL-ROBOT-PLAN-CLEARANCE] "
                 f"label={label} frames={len(joint_plan)} "
-                f"minimum_mm={minimum * 1000:.3f} "
-                f"required_mm={args.min_non_tip_clearance_mm:.3f} "
-                f"frame={minimum_frame} nearest={nearest} "
+                f"minimum_arm_mm={minimum_arm * 1000:.3f} "
+                f"required_arm_mm={args.min_arm_clearance_mm:.3f} "
+                f"arm_frame={minimum_arm_frame} "
+                f"nearest_arm={nearest_arm} "
+                f"minimum_hand_mm={minimum_hand * 1000:.3f} "
+                "allowed_hand_penetration_mm="
+                f"{args.max_incidental_hand_penetration_mm:.3f} "
+                f"hand_frame={minimum_hand_frame} "
+                f"nearest_hand={nearest_hand} "
                 f"max_pad_angle_deg="
                 f"{np.degrees(np.arccos(np.clip(minimum_pad_alignment, -1, 1))):.2f} "
                 f"pad_frame={minimum_pad_frame} "
@@ -1553,31 +1640,39 @@ def main() -> None:
                 dtype=np.float64,
             )
             if args.collision_mode == "full_robot":
-                initial_clearance, initial_nearest_geom = (
-                    reachability.minimum_non_tip_clearance(
-                        q,
-                        retreat_center,
-                        rotation,
+                initial_arm_clearance, initial_arm_nearest = (
+                    reachability.minimum_arm_clearance(
+                        q, retreat_center, rotation
                     )
                 )
-                final_clearance, final_nearest_geom = (
-                    reachability.minimum_non_tip_clearance(
-                        q,
-                        center,
-                        rotation,
+                final_arm_clearance, final_arm_nearest = (
+                    reachability.minimum_arm_clearance(q, center, rotation)
+                )
+                initial_hand_clearance, initial_hand_nearest = (
+                    reachability.minimum_hand_clearance(
+                        q, retreat_center, rotation
                     )
+                )
+                final_hand_clearance, final_hand_nearest = (
+                    reachability.minimum_hand_clearance(q, center, rotation)
                 )
                 print(
                     "[FULL-ROBOT-INITIAL-STATE] "
                     f"live_q={q.round(5).tolist()} "
                     f"retreat_center={retreat_center.round(5).tolist()} "
                     f"final_center={center.round(5).tolist()} "
-                    f"cpu_retreat_clearance_mm="
-                    f"{initial_clearance * 1000:.3f} "
-                    f"cpu_retreat_nearest={initial_nearest_geom} "
-                    f"cpu_final_clearance_mm="
-                    f"{final_clearance * 1000:.3f} "
-                    f"cpu_final_nearest={final_nearest_geom}",
+                    f"cpu_retreat_arm_clearance_mm="
+                    f"{initial_arm_clearance * 1000:.3f} "
+                    f"cpu_retreat_arm_nearest={initial_arm_nearest} "
+                    f"cpu_final_arm_clearance_mm="
+                    f"{final_arm_clearance * 1000:.3f} "
+                    f"cpu_final_arm_nearest={final_arm_nearest} "
+                    f"cpu_retreat_hand_clearance_mm="
+                    f"{initial_hand_clearance * 1000:.3f} "
+                    f"cpu_retreat_hand_nearest={initial_hand_nearest} "
+                    f"cpu_final_hand_clearance_mm="
+                    f"{final_hand_clearance * 1000:.3f} "
+                    f"cpu_final_hand_nearest={final_hand_nearest}",
                     flush=True,
                 )
             self.object_final_center = center.copy()
@@ -3199,22 +3294,41 @@ def main() -> None:
                     )
                     clearance_violation = np.zeros(1, dtype=np.float64)
                     if args.collision_mode == "full_robot":
-                        _, non_tip_clearance, _ = (
-                            reachability.geometry_clearances(
+                        (
+                            _,
+                            arm_clearance,
+                            _,
+                            hand_clearance,
+                            _,
+                        ) = (
+                            reachability.geometry_group_clearances(
                                 q, center, rotation
                             )
                         )
-                        # Aim slightly inside the collision-free set so the
-                        # unconstrained least-squares solver cannot stop a few
-                        # microns below the hard 2 mm acceptance boundary.
-                        # The later coarse and interpolated audits still use
-                        # the exact user-specified hard threshold.
-                        clearance_objective_m = (
-                            args.min_non_tip_clearance_mm + 0.25
+                        # Aim slightly inside both feasible sets. FR3 stays
+                        # outside the object. LEAP Hand contact is allowed,
+                        # but the solver is penalized before it reaches the
+                        # configured incidental penetration limit.
+                        arm_clearance_objective_m = (
+                            args.min_arm_clearance_mm + 0.25
                         ) / 1000.0
-                        clearance_violation = np.maximum(
-                            clearance_objective_m - non_tip_clearance,
+                        hand_penetration_objective_m = max(
+                            args.max_incidental_hand_penetration_mm - 0.25,
                             0.0,
+                        ) / 1000.0
+                        clearance_violation = np.concatenate(
+                            (
+                                np.maximum(
+                                    arm_clearance_objective_m
+                                    - arm_clearance,
+                                    0.0,
+                                ),
+                                np.maximum(
+                                    -hand_penetration_objective_m
+                                    - hand_clearance,
+                                    0.0,
+                                ),
+                            )
                         )
                     pad_alignment = np.einsum(
                         "ij,ij->i",
@@ -3256,17 +3370,19 @@ def main() -> None:
 
                 def segment_collision_status(
                     candidate_q: np.ndarray,
-                ) -> tuple[float, str, int, float]:
+                ) -> tuple[float, str, float, str, int, float]:
                     """Audit collision and pad angle through a keyframe."""
 
                     if args.collision_mode != "full_robot":
-                        return np.inf, "", 0, 1.0
+                        return np.inf, "", np.inf, "", 0, 1.0
                     sample_count = max(
                         4,
                         int(np.ceil(frame_count / keyframe_count)),
                     )
-                    minimum = np.inf
-                    nearest = ""
+                    minimum_arm = np.inf
+                    nearest_arm = ""
+                    minimum_hand = np.inf
+                    nearest_hand = ""
                     self_pair_count = 0
                     minimum_pad_alignment = 1.0
                     for fraction in np.linspace(
@@ -3278,16 +3394,26 @@ def main() -> None:
                             (1.0 - fraction) * previous_q
                             + fraction * candidate_q
                         )
-                        clearance, geom_name = (
-                            reachability.minimum_non_tip_clearance(
+                        arm_clearance, arm_geom_name = (
+                            reachability.minimum_arm_clearance(
                                 sample_q,
                                 center,
                                 rotation,
                             )
                         )
-                        if clearance < minimum:
-                            minimum = clearance
-                            nearest = geom_name
+                        if arm_clearance < minimum_arm:
+                            minimum_arm = arm_clearance
+                            nearest_arm = arm_geom_name
+                        hand_clearance, hand_geom_name = (
+                            reachability.minimum_hand_clearance(
+                                sample_q,
+                                center,
+                                rotation,
+                            )
+                        )
+                        if hand_clearance < minimum_hand:
+                            minimum_hand = hand_clearance
+                            nearest_hand = hand_geom_name
                         sample_self_pairs, sample_self_distances = (
                             reachability.self_collision_contacts(sample_q)
                         )
@@ -3307,8 +3433,10 @@ def main() -> None:
                             float(sample_pad_alignment.min()),
                         )
                     return (
-                        minimum,
-                        nearest,
+                        minimum_arm,
+                        nearest_arm,
+                        minimum_hand,
+                        nearest_hand,
                         self_pair_count,
                         minimum_pad_alignment,
                     )
@@ -3456,8 +3584,10 @@ def main() -> None:
                         )
                     )
                 (
-                    surface_ik_clearance,
-                    surface_ik_nearest,
+                    surface_ik_arm_clearance,
+                    surface_ik_arm_nearest,
+                    surface_ik_hand_clearance,
+                    surface_ik_hand_nearest,
                     surface_ik_self_count,
                     surface_ik_pad_alignment,
                 ) = segment_collision_status(surface_ik_seed)
@@ -3480,9 +3610,12 @@ def main() -> None:
                     f"{(surface_ik_result.residual_m * 1000).round(2).tolist()} "
                     f"max_arm_step_rad="
                     f"{float(np.max(np.abs(surface_ik_seed[:ARM_DOF] - previous_q[:ARM_DOF]))):.5f} "
-                    f"non_tip_clearance_mm="
-                    f"{surface_ik_clearance * 1000:.2f} "
-                    f"nearest={surface_ik_nearest or 'none'} "
+                    f"arm_clearance_mm="
+                    f"{surface_ik_arm_clearance * 1000:.2f} "
+                    f"nearest_arm={surface_ik_arm_nearest or 'none'} "
+                    f"hand_clearance_mm="
+                    f"{surface_ik_hand_clearance * 1000:.2f} "
+                    f"nearest_hand={surface_ik_hand_nearest or 'none'} "
                     f"self_collision_pairs={surface_ik_self_count} "
                     f"max_pad_angle_deg="
                     f"{np.degrees(np.arccos(np.clip(surface_ik_pad_alignment, -1, 1))):.2f}",
@@ -3521,8 +3654,10 @@ def main() -> None:
                 )
                 surface_ik_monotonic_error[0] = 0.0
                 surface_ik_collision_safe = bool(
-                    surface_ik_clearance
-                    >= args.min_non_tip_clearance_mm / 1000.0
+                    surface_ik_arm_clearance
+                    >= args.min_arm_clearance_mm / 1000.0
+                    and surface_ik_hand_clearance
+                    >= -args.max_incidental_hand_penetration_mm / 1000.0
                     and surface_ik_self_count == 0
                     and surface_ik_pad_alignment
                     >= planner_pad_alignment
@@ -3575,14 +3710,18 @@ def main() -> None:
                 )
                 rigid_monotonic_error[0] = 0.0
                 (
-                    rigid_clearance,
+                    rigid_arm_clearance,
+                    _,
+                    rigid_hand_clearance,
                     _,
                     rigid_self_collision_count,
                     rigid_pad_alignment,
                 ) = segment_collision_status(rigid_arm_seed)
                 rigid_collision_safe = bool(
-                    rigid_clearance
-                    >= args.min_non_tip_clearance_mm / 1000.0
+                    rigid_arm_clearance
+                    >= args.min_arm_clearance_mm / 1000.0
+                    and rigid_hand_clearance
+                    >= -args.max_incidental_hand_penetration_mm / 1000.0
                     and rigid_self_collision_count == 0
                     and rigid_pad_alignment >= planner_pad_alignment
                 )
@@ -3625,8 +3764,10 @@ def main() -> None:
                         f"{rigid_arm_result.position_error_m * 1000:.2f} "
                         f"palm_rot_error_rad="
                         f"{rigid_arm_result.orientation_error_rad:.4f} "
-                        f"non_tip_clearance_mm="
-                        f"{rigid_clearance * 1000:.2f} "
+                        f"arm_clearance_mm="
+                        f"{rigid_arm_clearance * 1000:.2f} "
+                        f"hand_clearance_mm="
+                        f"{rigid_hand_clearance * 1000:.2f} "
                         f"self_collision_pairs="
                         f"{rigid_self_collision_count}",
                         flush=True,
@@ -3814,18 +3955,33 @@ def main() -> None:
                         )
                     if args.collision_mode == "full_robot":
                         (
-                            clearance,
+                            arm_clearance,
+                            _,
+                            hand_clearance,
                             _,
                             candidate_self_count,
                             candidate_pad_alignment,
                         ) = segment_collision_status(result.x)
-                        clearance_violation = max(
-                            args.min_non_tip_clearance_mm / 1000.0
-                            - clearance,
+                        arm_clearance_violation = max(
+                            args.min_arm_clearance_mm / 1000.0
+                            - arm_clearance,
                             0.0,
                         )
-                        if clearance_violation > 0.0:
-                            score += 1.0e6 + 1.0e6 * clearance_violation
+                        hand_penetration_violation = max(
+                            -args.max_incidental_hand_penetration_mm
+                            / 1000.0
+                            - hand_clearance,
+                            0.0,
+                        )
+                        for collision_violation in (
+                            arm_clearance_violation,
+                            hand_penetration_violation,
+                        ):
+                            if collision_violation > 0.0:
+                                score += (
+                                    1.0e6
+                                    + 1.0e6 * collision_violation
+                                )
                         if candidate_self_count:
                             score += 1.0e6 + candidate_self_count
                         if candidate_pad_alignment < planner_pad_alignment:
@@ -3862,11 +4018,14 @@ def main() -> None:
                 )
                 preliminary_monotonic_error[0] = 0.0
                 preliminary_pad_alignment = 1.0
-                preliminary_clearance = np.inf
+                preliminary_arm_clearance = np.inf
+                preliminary_hand_clearance = np.inf
                 preliminary_self_count = 0
                 if args.collision_mode == "full_robot":
                     (
-                        preliminary_clearance,
+                        preliminary_arm_clearance,
+                        _,
+                        preliminary_hand_clearance,
                         _,
                         preliminary_self_count,
                         preliminary_pad_alignment,
@@ -3906,8 +4065,10 @@ def main() -> None:
                     > args.mpc_monotonic_tolerance_mm / 1000.0
                     or preliminary_palm_error
                     > args.mpc_palm_position_tolerance_mm / 1000.0
-                    or preliminary_clearance
-                    < args.min_non_tip_clearance_mm / 1000.0
+                    or preliminary_arm_clearance
+                    < args.min_arm_clearance_mm / 1000.0
+                    or preliminary_hand_clearance
+                    < -args.max_incidental_hand_penetration_mm / 1000.0
                     or preliminary_self_count > 0
                     or preliminary_pad_alignment < planner_pad_alignment
                 ):
@@ -4110,21 +4271,33 @@ def main() -> None:
                             )
                         if args.collision_mode == "full_robot":
                             (
-                                clearance,
+                                arm_clearance,
+                                _,
+                                hand_clearance,
                                 _,
                                 repaired_self_count,
                                 repaired_pad_alignment,
                             ) = segment_collision_status(repaired.x)
-                            clearance_violation = max(
-                                args.min_non_tip_clearance_mm / 1000.0
-                                - clearance,
+                            arm_clearance_violation = max(
+                                args.min_arm_clearance_mm / 1000.0
+                                - arm_clearance,
                                 0.0,
                             )
-                            if clearance_violation > 0.0:
-                                repaired_score += (
-                                    1.0e6
-                                    + 1.0e6 * clearance_violation
-                                )
+                            hand_penetration_violation = max(
+                                -args.max_incidental_hand_penetration_mm
+                                / 1000.0
+                                - hand_clearance,
+                                0.0,
+                            )
+                            for collision_violation in (
+                                arm_clearance_violation,
+                                hand_penetration_violation,
+                            ):
+                                if collision_violation > 0.0:
+                                    repaired_score += (
+                                        1.0e6
+                                        + 1.0e6 * collision_violation
+                                    )
                             if repaired_self_count:
                                 repaired_score += (
                                     1.0e6 + repaired_self_count
@@ -4262,24 +4435,33 @@ def main() -> None:
                     )
                 if args.collision_mode == "full_robot":
                     (
-                        best_clearance,
-                        best_nearest,
+                        best_arm_clearance,
+                        best_arm_nearest,
+                        best_hand_clearance,
+                        best_hand_nearest,
                         best_self_count,
                         best_pad_alignment,
                     ) = segment_collision_status(best.x)
                     if (
-                        best_clearance
-                        < args.min_non_tip_clearance_mm / 1000.0
+                        best_arm_clearance
+                        < args.min_arm_clearance_mm / 1000.0
+                        or best_hand_clearance
+                        < -args.max_incidental_hand_penetration_mm / 1000.0
                         or best_self_count
                         or best_pad_alignment < planner_pad_alignment
                     ):
                         raise RuntimeError(
-                            "Adaptive surface MPC has no collision-free "
+                            "Adaptive surface MPC has no contact-policy-safe "
                             f"candidate at keyframe={keyframe}/"
-                            f"{keyframe_count}: clearance_mm="
-                            f"{best_clearance * 1000:.3f} "
-                            f"required_mm={args.min_non_tip_clearance_mm:.3f} "
-                            f"nearest={best_nearest} "
+                            f"{keyframe_count}: arm_clearance_mm="
+                            f"{best_arm_clearance * 1000:.3f} "
+                            f"required_arm_mm={args.min_arm_clearance_mm:.3f} "
+                            f"nearest_arm={best_arm_nearest} "
+                            f"hand_clearance_mm="
+                            f"{best_hand_clearance * 1000:.3f} "
+                            "allowed_hand_penetration_mm="
+                            f"{args.max_incidental_hand_penetration_mm:.3f} "
+                            f"nearest_hand={best_hand_nearest} "
                             f"self_collision_pairs={best_self_count} "
                             f"max_pad_angle_deg="
                             f"{np.degrees(np.arccos(np.clip(best_pad_alignment, -1, 1))):.2f} "
@@ -4520,6 +4702,18 @@ def main() -> None:
                 final_contact_recovery_frames=np.asarray(
                     args.final_contact_recovery_frames
                 ),
+                min_arm_clearance_mm=np.asarray(
+                    args.min_arm_clearance_mm
+                ),
+                max_incidental_hand_penetration_mm=np.asarray(
+                    args.max_incidental_hand_penetration_mm
+                ),
+                max_incidental_hand_contact_force_n=np.asarray(
+                    args.max_incidental_hand_contact_force_n
+                ),
+                max_incidental_hand_total_force_n=np.asarray(
+                    args.max_incidental_hand_total_force_n
+                ),
                 axial_distance_m=distance_plan,
                 axial_direction=np.asarray(direction),
                 planner=np.asarray(args.planner),
@@ -4624,8 +4818,10 @@ def main() -> None:
                 f"{int(scheduled_contact_count_plan.min())}/4 "
                 f"max_palm_position_error_mm="
                 f"{max_palm_position_error * 1000:.2f} "
-                f"min_non_tip_clearance_mm="
-                f"{self.min_planned_non_tip_clearance_m * 1000:.2f} "
+                f"min_arm_clearance_mm="
+                f"{self.min_planned_arm_clearance_m * 1000:.2f} "
+                f"min_hand_clearance_mm="
+                f"{self.min_planned_hand_clearance_m * 1000:.2f} "
                 f"start_z_m={start_local[:, 2].round(4).tolist()} "
                 f"end_z_m={end_local[:, 2].round(4).tolist()} "
                 f"saved={args.plan_output.resolve()}",
@@ -4790,6 +4986,7 @@ def main() -> None:
                         )
                 else:
                     self.contact_distance_m[finger] = np.nan
+            incidental_hand_contact_active = False
             if args.collision_mode == "full_robot":
                 arm_guard = env.scene["arm_object_collision"].data
                 if (
@@ -4809,26 +5006,114 @@ def main() -> None:
                         f"{arm_guard.found[0].detach().cpu().numpy().tolist()} "
                         f"dist_mm={guard_distance_mm.round(3).tolist()}"
                     )
-                non_tip_guard = env.scene[
-                    "non_tip_hand_object_collision"
+                hand_depth = env.scene[
+                    "incidental_hand_object_contact_depth"
                 ].data
-                if (
-                    non_tip_guard.found is not None
-                    and bool(torch.any(non_tip_guard.found[0] > 0).item())
-                ):
-                    self.non_tip_hand_collision_frames += 1
-                    guard_distance_mm = (
-                        non_tip_guard.dist[0].detach().cpu().numpy() * 1000.0
-                        if non_tip_guard.dist is not None
-                        else np.asarray([])
+                hand_force = env.scene[
+                    "incidental_hand_object_contact_force"
+                ].data
+                depth_found = (
+                    hand_depth.found is not None
+                    and bool(torch.any(hand_depth.found[0] > 0).item())
+                )
+                force_found = (
+                    hand_force.found is not None
+                    and bool(torch.any(hand_force.found[0] > 0).item())
+                )
+                incidental_hand_contact_active = depth_found or force_found
+                if incidental_hand_contact_active:
+                    self.incidental_hand_contact_frames += 1
+                    self.incidental_hand_contact_streak += 1
+                    self.max_incidental_hand_contact_streak = max(
+                        self.max_incidental_hand_contact_streak,
+                        self.incidental_hand_contact_streak,
                     )
-                    raise RuntimeError(
-                        "Non-tip hand/object collision guard triggered: "
-                        "palm, MCP, PIP, or DIP geometry touched the target. "
-                        f"contact_slots="
-                        f"{non_tip_guard.found[0].detach().cpu().numpy().tolist()} "
-                        f"dist_mm={guard_distance_mm.round(3).tolist()}"
+                    deepest_penetration_m = 0.0
+                    hand_distance_mm = np.asarray([])
+                    if hand_depth.dist is not None:
+                        hand_distance = (
+                            hand_depth.dist[0].detach().cpu().numpy()
+                        )
+                        hand_distance_mm = hand_distance * 1000.0
+                        if hand_depth.found is not None:
+                            depth_mask = (
+                                hand_depth.found[0]
+                                .detach()
+                                .cpu()
+                                .numpy()
+                                > 0
+                            )
+                            if bool(np.any(depth_mask)):
+                                deepest_penetration_m = max(
+                                    -float(np.min(hand_distance[depth_mask])),
+                                    0.0,
+                                )
+                    max_force_n = 0.0
+                    total_force_n = 0.0
+                    force_magnitudes = np.asarray([])
+                    if hand_force.force is not None:
+                        force_vectors = (
+                            hand_force.force[0].detach().cpu().numpy()
+                        )
+                        force_magnitudes = np.linalg.norm(
+                            force_vectors,
+                            axis=-1,
+                        )
+                        if hand_force.found is not None:
+                            force_mask = (
+                                hand_force.found[0]
+                                .detach()
+                                .cpu()
+                                .numpy()
+                                > 0
+                            )
+                            active_forces = force_magnitudes[force_mask]
+                            if active_forces.size:
+                                max_force_n = float(active_forces.max())
+                                total_force_n = float(active_forces.sum())
+                    self.max_incidental_hand_penetration_m = max(
+                        self.max_incidental_hand_penetration_m,
+                        deepest_penetration_m,
                     )
+                    self.max_incidental_hand_contact_force_n = max(
+                        self.max_incidental_hand_contact_force_n,
+                        max_force_n,
+                    )
+                    self.max_incidental_hand_total_force_n = max(
+                        self.max_incidental_hand_total_force_n,
+                        total_force_n,
+                    )
+                    if (
+                        deepest_penetration_m * 1000.0
+                        > args.max_incidental_hand_penetration_mm
+                    ):
+                        raise RuntimeError(
+                            "Allowed LEAP Hand/object contact exceeded the "
+                            "penetration limit: deepest_mm="
+                            f"{deepest_penetration_m * 1000:.3f} "
+                            f"limit_mm="
+                            f"{args.max_incidental_hand_penetration_mm:.3f} "
+                            f"dist_mm={hand_distance_mm.round(3).tolist()}"
+                        )
+                    if (
+                        max_force_n
+                        > args.max_incidental_hand_contact_force_n
+                        or total_force_n
+                        > args.max_incidental_hand_total_force_n
+                    ):
+                        raise RuntimeError(
+                            "Allowed LEAP Hand/object contact force became "
+                            "too large: max_per_geom_N="
+                            f"{max_force_n:.3f} limit_per_geom_N="
+                            f"{args.max_incidental_hand_contact_force_n:.3f} "
+                            f"total_N={total_force_n:.3f} "
+                            "limit_total_N="
+                            f"{args.max_incidental_hand_total_force_n:.3f} "
+                            f"per_geom_N="
+                            f"{force_magnitudes.round(3).tolist()}"
+                        )
+                else:
+                    self.incidental_hand_contact_streak = 0
             if (
                 not self.contact_calibrated
                 and self.step
@@ -5071,6 +5356,28 @@ def main() -> None:
                     self.min_simultaneous_contacts,
                     simultaneous_contacts,
                 )
+                if incidental_hand_contact_active:
+                    self.incidental_hand_contact_evaluated_frames += 1
+                    self.min_tip_contacts_during_incidental_contact = min(
+                        self.min_tip_contacts_during_incidental_contact,
+                        simultaneous_contacts,
+                    )
+                    if (
+                        simultaneous_contacts
+                        < args.min_runtime_contact_fingers
+                    ):
+                        raise RuntimeError(
+                            "Incidental palm/finger-link contact displaced "
+                            "required fingertip-pad support: contacts="
+                            f"{simultaneous_contacts}/4 required="
+                            f"{args.min_runtime_contact_fingers} "
+                            f"tactile_force_N="
+                            f"{self.tactile_force.round(2).tolist()} "
+                            "incidental_max_force_N="
+                            f"{self.max_incidental_hand_contact_force_n:.3f} "
+                            "incidental_total_force_N="
+                            f"{self.max_incidental_hand_total_force_n:.3f}"
+                        )
                 self.contact_loss_streak = np.where(
                     tip_contact,
                     0,
@@ -5388,16 +5695,11 @@ def main() -> None:
                 )
             if (
                 args.collision_mode == "full_robot"
-                and (
-                    policy.arm_collision_frames > 0
-                    or policy.non_tip_hand_collision_frames > 0
-                )
+                and policy.arm_collision_frames > 0
             ):
                 raise RuntimeError(
-                    "Non-fingertip collision was observed: "
-                    f"arm_frames={policy.arm_collision_frames} "
-                    "non_tip_hand_frames="
-                    f"{policy.non_tip_hand_collision_frames}"
+                    "Strict FR3/object collision was observed: "
+                    f"arm_frames={policy.arm_collision_frames}"
                 )
             print(
                 f"[VIDEO] saved={args.output.resolve()} frames={frames_written} "
@@ -5428,8 +5730,20 @@ def main() -> None:
                 f"per_finger_joint_excursion_rad="
                 f"{per_finger_joint_excursion.round(4).tolist()} "
                 f"arm_collision_frames={policy.arm_collision_frames} "
-                "non_tip_hand_collision_frames="
-                f"{policy.non_tip_hand_collision_frames} "
+                "incidental_hand_contact_frames="
+                f"{policy.incidental_hand_contact_frames} "
+                "max_incidental_hand_contact_streak_frames="
+                f"{policy.max_incidental_hand_contact_streak} "
+                "max_incidental_hand_contact_force_N="
+                f"{policy.max_incidental_hand_contact_force_n:.3f} "
+                "max_incidental_hand_total_force_N="
+                f"{policy.max_incidental_hand_total_force_n:.3f} "
+                "max_incidental_hand_penetration_mm="
+                f"{policy.max_incidental_hand_penetration_m * 1000:.3f} "
+                "incidental_hand_contact_evaluated_frames="
+                f"{policy.incidental_hand_contact_evaluated_frames} "
+                "min_tip_contacts_during_incidental_contact="
+                f"{policy.min_tip_contacts_during_incidental_contact}/4 "
                 f"max_runtime_pad_angle_deg="
                 f"{np.degrees(np.arccos(np.clip(policy.min_runtime_pad_alignment, -1, 1))):.2f} "
                 f"planned_curvature_inv_m="

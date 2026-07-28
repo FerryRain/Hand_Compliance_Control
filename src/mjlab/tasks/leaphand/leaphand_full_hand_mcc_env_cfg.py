@@ -14,6 +14,7 @@ See ``full_hand_mcc/scripts/demo_surface_slide.py``.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import NamedTuple, cast
 
@@ -36,6 +37,7 @@ from mjlab.tasks.leaphand.full_hand_mcc_core import (
 )
 from mjlab.tasks.leaphand.leaphand_mcc_finger_env_cfg import (
     DEFAULT_PREGRASP_Q,
+    MCC_NON_TIP_HAND_GEOM_PATTERN,
     MCC_TIP_BODY_NAMES,
     MCC_TIP_GEOM_NAMES,
     MCC_TIP_SITE_LOCAL_POSITIONS,
@@ -60,6 +62,10 @@ ARM_DOF = 7
 HAND_DOF = 16
 TOTAL_DOF = ARM_DOF + HAND_DOF
 ARM_JOINT_NAMES = tuple(f"fr3v2_joint{i}" for i in range(1, ARM_DOF + 1))
+ARM_COLLISION_GEOM_PATTERN = re.compile(
+    r"^(?:base_collision|link[1-6]_collision|"
+    r"fr3v2_link[0-7]_collision)$"
+)
 FR3_HOME_Q = np.asarray(
     (0.0, 0.0, 0.0, -1.57079, 0.0, 1.57079, -0.7853),
     dtype=np.float32,
@@ -542,20 +548,58 @@ class FivePointReachabilitySolver:
         )
         if np.any(self.tip_body_ids < 0):
             raise ValueError("One or more fingertip bodies are missing")
+        named_robot_geom_ids = [
+            geom_id
+            for geom_id in range(self.model.ngeom)
+            if geom_id != self.collision_target_geom_id
+            and (self.model.geom(geom_id).name or "")
+        ]
         self.non_tip_geom_ids = np.asarray(
             [
                 geom_id
-                for geom_id in range(self.model.ngeom)
-                if geom_id != self.collision_target_geom_id
-                and (
-                    self.model.geom(geom_id).name or ""
-                ) not in fingertip_geoms
-                and (
-                    self.model.geom(geom_id).name or ""
+                for geom_id in named_robot_geom_ids
+                if (self.model.geom(geom_id).name or "")
+                not in fingertip_geoms
+            ],
+            dtype=np.int32,
+        )
+        self.arm_geom_ids = np.asarray(
+            [
+                geom_id
+                for geom_id in self.non_tip_geom_ids
+                if ARM_COLLISION_GEOM_PATTERN.fullmatch(
+                    self.model.geom(int(geom_id)).name or ""
                 )
             ],
             dtype=np.int32,
         )
+        arm_geom_id_set = set(int(geom_id) for geom_id in self.arm_geom_ids)
+        self.hand_non_tip_geom_ids = np.asarray(
+            [
+                geom_id
+                for geom_id in self.non_tip_geom_ids
+                if int(geom_id) not in arm_geom_id_set
+            ],
+            dtype=np.int32,
+        )
+        if not len(self.arm_geom_ids):
+            raise ValueError("No FR3 collision geoms were found")
+        if not len(self.hand_non_tip_geom_ids):
+            raise ValueError("No non-tip LEAP Hand collision geoms were found")
+        uncovered_hand_geoms = [
+            self.model.geom(int(geom_id)).name or ""
+            for geom_id in self.hand_non_tip_geom_ids
+            if re.fullmatch(
+                MCC_NON_TIP_HAND_GEOM_PATTERN,
+                self.model.geom(int(geom_id)).name or "",
+            )
+            is None
+        ]
+        if uncovered_hand_geoms:
+            raise ValueError(
+                "Runtime incidental-contact sensors do not cover LEAP Hand "
+                f"geoms: {uncovered_hand_geoms}"
+            )
 
         joint_names = ARM_JOINT_NAMES + HAND_QPOS_NAMES
         self.qpos_indices: list[int] = []
@@ -625,7 +669,68 @@ class FivePointReachabilitySolver:
         object_rotation: np.ndarray,
         distance_limit: float = 1.0,
     ) -> tuple[float, str]:
-        """Return signed clearance from the capsule to any non-tip robot geom."""
+        """Return legacy clearance to any non-tip robot geom.
+
+        New full-hand planning should use :meth:`minimum_arm_clearance` for
+        strict FR3 avoidance and :meth:`minimum_hand_clearance` only to bound
+        allowed incidental LEAP Hand penetration.
+        """
+
+        return self._minimum_clearance(
+            self.non_tip_geom_ids,
+            joint_position,
+            object_center,
+            object_rotation,
+            distance_limit,
+        )
+
+    def minimum_arm_clearance(
+        self,
+        joint_position: np.ndarray,
+        object_center: np.ndarray,
+        object_rotation: np.ndarray,
+        distance_limit: float = 1.0,
+    ) -> tuple[float, str]:
+        """Return signed FR3/object clearance; FR3 contact is forbidden."""
+
+        return self._minimum_clearance(
+            self.arm_geom_ids,
+            joint_position,
+            object_center,
+            object_rotation,
+            distance_limit,
+        )
+
+    def minimum_hand_clearance(
+        self,
+        joint_position: np.ndarray,
+        object_center: np.ndarray,
+        object_rotation: np.ndarray,
+        distance_limit: float = 1.0,
+    ) -> tuple[float, str]:
+        """Return signed non-tip LEAP Hand/object clearance.
+
+        A negative value is allowed up to the configured incidental-contact
+        penetration limit; it is not an FR3 collision.
+        """
+
+        return self._minimum_clearance(
+            self.hand_non_tip_geom_ids,
+            joint_position,
+            object_center,
+            object_rotation,
+            distance_limit,
+        )
+
+    def _minimum_clearance(
+        self,
+        geom_ids: np.ndarray,
+        joint_position: np.ndarray,
+        object_center: np.ndarray,
+        object_rotation: np.ndarray,
+        distance_limit: float,
+    ) -> tuple[float, str]:
+        """Return the closest signed distance for an explicit geometry set."""
 
         center = np.asarray(object_center, dtype=np.float64).reshape(3)
         rotation = np.asarray(object_rotation, dtype=np.float64).reshape(3, 3)
@@ -637,7 +742,7 @@ class FivePointReachabilitySolver:
         self.forward_points(joint_position)
         best_distance = float(distance_limit)
         best_name = ""
-        for geom_id in self.non_tip_geom_ids:
+        for geom_id in geom_ids:
             distance = float(
                 mujoco.mj_geomDistance(
                     self.model,
@@ -652,6 +757,62 @@ class FivePointReachabilitySolver:
                 best_distance = distance
                 best_name = self.model.geom(int(geom_id)).name or ""
         return best_distance, best_name
+
+    def geometry_group_clearances(
+        self,
+        joint_position: np.ndarray,
+        object_center: np.ndarray,
+        object_rotation: np.ndarray,
+        distance_limit: float = 1.0,
+    ) -> tuple[
+        np.ndarray,
+        np.ndarray,
+        tuple[str, ...],
+        np.ndarray,
+        tuple[str, ...],
+    ]:
+        """Return signed tip, FR3, and incidental-hand object distances."""
+
+        center = np.asarray(object_center, dtype=np.float64).reshape(3)
+        rotation = np.asarray(object_rotation, dtype=np.float64).reshape(3, 3)
+        quat_xyzw = R.from_matrix(rotation).as_quat()
+        self.data.mocap_pos[self.collision_target_mocap_id] = center
+        self.data.mocap_quat[self.collision_target_mocap_id] = np.roll(
+            quat_xyzw, 1
+        )
+        self.forward_points(joint_position)
+
+        def distances(geom_ids: np.ndarray) -> np.ndarray:
+            return np.asarray(
+                [
+                    mujoco.mj_geomDistance(
+                        self.model,
+                        self.data,
+                        int(geom_id),
+                        self.collision_target_geom_id,
+                        distance_limit,
+                        None,
+                    )
+                    for geom_id in geom_ids
+                ],
+                dtype=np.float64,
+            )
+
+        arm_names = tuple(
+            self.model.geom(int(geom_id)).name or ""
+            for geom_id in self.arm_geom_ids
+        )
+        hand_names = tuple(
+            self.model.geom(int(geom_id)).name or ""
+            for geom_id in self.hand_non_tip_geom_ids
+        )
+        return (
+            distances(self.tip_geom_ids),
+            distances(self.arm_geom_ids),
+            arm_names,
+            distances(self.hand_non_tip_geom_ids),
+            hand_names,
+        )
 
     def geometry_clearances(
         self,

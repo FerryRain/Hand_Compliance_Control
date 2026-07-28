@@ -45,6 +45,13 @@ MCC_TIP_GEOM_NAMES = (
     r"fingertip_3_geom",
     r"thumb_fingertip_geom",
 )
+MCC_NON_TIP_HAND_GEOM_PATTERN = (
+    r"^(?:palm_lower_collision|"
+    r"mcp_joint(?:_[23])?_geom|"
+    r"pip(?:_[234])?_geom|"
+    r"dip(?:_[23])?_geom|"
+    r"thumb_(?:pip|dip)_geom)$"
+)
 MCC_TIP_SITE_LOCAL_POSITIONS = (
     (-0.0106151, -0.0326103, 0.0141088),
     (-0.0106151, -0.0326103, 0.0144487),
@@ -221,20 +228,32 @@ def _tip_sensor_cfgs() -> tuple[ContactSensorCfg, ...]:
             entity="target",
         ),
         fields=("found", "force", "dist", "pos", "normal"),
-        reduce="none",
+        reduce="mindist",
         num_slots=1,
     )
-    non_tip_hand_object_guard = ContactSensorCfg(
-        name="non_tip_hand_object_collision",
+    incidental_hand_primary = ContactMatch(
+        mode="geom",
+        pattern=MCC_NON_TIP_HAND_GEOM_PATTERN,
+        entity="robot",
+    )
+    incidental_hand_secondary = ContactMatch(
+        mode="body",
+        pattern=r"^target_ball$",
+        entity="target",
+    )
+    incidental_hand_depth = ContactSensorCfg(
+        name="incidental_hand_object_contact_depth",
+        primary=incidental_hand_primary,
+        secondary=incidental_hand_secondary,
+        fields=("found", "force", "dist", "pos", "normal"),
+        reduce="mindist",
+        num_slots=1,
+    )
+    incidental_hand_force = ContactSensorCfg(
+        name="incidental_hand_object_contact_force",
         primary=ContactMatch(
             mode="geom",
-            pattern=(
-                r"^(?:palm_lower_collision|"
-                r"mcp_joint(?:_[23])?_geom|"
-                r"pip(?:_[234])?_geom|"
-                r"dip(?:_[23])?_geom|"
-                r"thumb_(?:pip|dip)_geom)$"
-            ),
+            pattern=MCC_NON_TIP_HAND_GEOM_PATTERN,
             entity="robot",
         ),
         secondary=ContactMatch(
@@ -243,10 +262,15 @@ def _tip_sensor_cfgs() -> tuple[ContactSensorCfg, ...]:
             entity="target",
         ),
         fields=("found", "force", "dist", "pos", "normal"),
-        reduce="none",
+        reduce="maxforce",
         num_slots=1,
     )
-    return (*tip_sensors, arm_object_guard, non_tip_hand_object_guard)
+    return (
+        *tip_sensors,
+        arm_object_guard,
+        incidental_hand_depth,
+        incidental_hand_force,
+    )
 
 
 def fingertip_force_3d_world(env: ManagerBasedRlEnv) -> torch.Tensor:
