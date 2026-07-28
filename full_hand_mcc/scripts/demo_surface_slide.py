@@ -4978,14 +4978,84 @@ def main() -> None:
                         normal_error,
                         achieved_arc,
                     ) = min(candidates, key=lambda item: item[0])
+                (
+                    pre_rephase_points,
+                    _,
+                    _,
+                    _,
+                    pre_rephase_auxiliary,
+                ) = contact_state(best.x)
+                pre_rephase_tangential_error = (
+                    (
+                        pre_rephase_auxiliary[:, 0]
+                        - desired_azimuth
+                        + np.pi
+                    )
+                    % (2.0 * np.pi)
+                    - np.pi
+                ) * CAPSULE_RADIUS
+                pre_rephase_progress = direction * (
+                    achieved_arc - start_arc
+                )
+                pre_rephase_monotonic_error = np.maximum(
+                    minimum_progress - pre_rephase_progress,
+                    0.0,
+                )
+                pre_rephase_monotonic_error[0] = 0.0
+                pre_rephase_normal_ok, _, _ = scheduled_contact_status(
+                    normal_error[1:],
+                    desired_distance,
+                )
+                pre_rephase_palm_error = float(
+                    np.linalg.norm(
+                        pre_rephase_points[0] - palm_target
+                    )
+                )
+                pre_rephase_collision_ok = True
+                if args.collision_mode == "full_robot":
+                    (
+                        pre_rephase_arm_clearance,
+                        _,
+                        pre_rephase_hand_clearance,
+                        _,
+                        pre_rephase_self_count,
+                        pre_rephase_pad_alignment,
+                    ) = segment_collision_status(best.x)
+                    pre_rephase_collision_ok = bool(
+                        pre_rephase_arm_clearance
+                        >= args.min_arm_clearance_mm / 1000.0
+                        and pre_rephase_hand_clearance
+                        >= -args.max_incidental_hand_penetration_mm
+                        / 1000.0
+                        and pre_rephase_self_count == 0
+                        and pre_rephase_pad_alignment
+                        >= planner_pad_alignment
+                    )
+                auto_rephase_needed = bool(
+                    float(progress_error.max())
+                    > active_progress_tolerance_mm / 1000.0
+                    or not pre_rephase_normal_ok
+                    or np.any(
+                        np.abs(pre_rephase_tangential_error[1:])
+                        > tip_tangential_tolerances
+                    )
+                    or float(pre_rephase_monotonic_error.max())
+                    > args.mpc_monotonic_tolerance_mm / 1000.0
+                    or pre_rephase_palm_error
+                    > palm_tracking_limit_m
+                    or float(
+                        np.max(np.abs(best.x - previous_q))
+                    )
+                    > args.max_plan_joint_step_rad
+                    or not pre_rephase_collision_ok
+                )
                 if (
                     auto_rephase_limit_m > 0.0
-                    and float(progress_error.max())
-                    > active_progress_tolerance_mm / 1000.0
+                    and auto_rephase_needed
                 ):
                     # Failure-triggered bounded joint rephasing.  The
                     # ordinary and repair passes keep the nominal fingertip
-                    # targets fixed.  Only if both miss the hard progress
+                    # targets fixed.  Only if both leave any hard feasibility
                     # band do we shoot a small set of coupled, continuous
                     # per-finger target phases.  Every trial is still checked
                     # against contact, tangent, monotonicity, joint-step,
@@ -5006,6 +5076,15 @@ def main() -> None:
                         )
                         / 1000.0
                     )
+                    if (
+                        float(progress_error.max())
+                        <= active_progress_tolerance_mm / 1000.0
+                    ):
+                        # A normal/tangent/collision/pad-angle/joint-step
+                        # failure may be relieved by any finger's phase, so
+                        # do not restrict the coupled search to the current
+                        # progress-active subset.
+                        near_progress_limit[:] = True
                     if not np.any(near_progress_limit):
                         near_progress_limit[
                             int(np.argmax(progress_error[1:]))
