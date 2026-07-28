@@ -5043,10 +5043,6 @@ def main() -> None:
                     > args.mpc_monotonic_tolerance_mm / 1000.0
                     or pre_rephase_palm_error
                     > palm_tracking_limit_m
-                    or float(
-                        np.max(np.abs(best.x - previous_q))
-                    )
-                    > args.max_plan_joint_step_rad
                     or not pre_rephase_collision_ok
                 )
                 if (
@@ -5058,8 +5054,8 @@ def main() -> None:
                     # targets fixed.  Only if both leave any hard feasibility
                     # band do we shoot a small set of coupled, continuous
                     # per-finger target phases.  Every trial is still checked
-                    # against contact, tangent, monotonicity, joint-step,
-                    # FR3, incidental-hand, self-collision, and pad-angle
+                    # against contact, tangent, monotonicity, FR3,
+                    # incidental-hand, self-collision, and pad-angle
                     # constraints before it can replace the nominal result.
                     nominal_desired_arc = desired_arc.copy()
                     starting_rephase_offset_m = (
@@ -5080,8 +5076,8 @@ def main() -> None:
                         float(progress_error.max())
                         <= active_progress_tolerance_mm / 1000.0
                     ):
-                        # A normal/tangent/collision/pad-angle/joint-step
-                        # failure may be relieved by any finger's phase, so
+                        # A normal/tangent/collision/pad-angle failure may be
+                        # relieved by any finger's phase, so
                         # do not restrict the coupled search to the current
                         # progress-active subset.
                         near_progress_limit[:] = True
@@ -5281,14 +5277,6 @@ def main() -> None:
                                         / 1000.0
                                         and rephased_palm_error
                                         <= palm_tracking_limit_m
-                                        and float(
-                                            np.max(
-                                                np.abs(
-                                                    rephased.x - previous_q
-                                                )
-                                            )
-                                        )
-                                        <= args.max_plan_joint_step_rad
                                         and rephased_collision_ok
                                     )
                                     if not rephased_hard_ok:
