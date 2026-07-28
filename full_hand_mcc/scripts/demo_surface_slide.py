@@ -306,9 +306,9 @@ def main() -> None:
         help=(
             "Bounded terminal correction of the non-contact palm input "
             "point in the local surface basis. This moves the five-point "
-            "target itself; the real palm must still satisfy the unchanged "
-            "--mpc-palm-position-tolerance-mm ball around the corrected "
-            "target."
+            "target itself. In ordinary mode the real palm must still satisfy "
+            "--mpc-palm-position-tolerance-mm; in --palm-guide-only mode the "
+            "target is only a weak directional reference."
         ),
     )
     parser.add_argument(
@@ -704,6 +704,26 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--palm-guide-only",
+        action="store_true",
+        help=(
+            "Treat the non-contact palm-root target as a weak directional "
+            "guide instead of a fingertip-like hard position target. Four "
+            "fingertip constraints, joint limits, FR3 clearance, and hand "
+            "contact limits remain hard."
+        ),
+    )
+    parser.add_argument(
+        "--palm-guide-max-drift-mm",
+        type=float,
+        default=30.0,
+        help=(
+            "Safety-only maximum palm-root drift from the directional guide "
+            "when --palm-guide-only is active. The measured drift is always "
+            "recorded and does not replace fingertip acceptance."
+        ),
+    )
+    parser.add_argument(
         "--mpc-tangential-tolerance-mm",
         type=float,
         default=2.0,
@@ -1089,6 +1109,8 @@ def main() -> None:
         raise ValueError(
             "--mpc-palm-position-tolerance-mm must be positive"
         )
+    if args.palm_guide_max_drift_mm <= 0.0:
+        raise ValueError("--palm-guide-max-drift-mm must be positive")
     if args.palm_path_tolerance_mm < args.ik_tolerance_mm:
         raise ValueError(
             "--palm-path-tolerance-mm must be at least --ik-tolerance-mm"
@@ -2570,6 +2592,11 @@ def main() -> None:
 
             assert self.kinematic_targets is not None
             assert self.reachable_q is not None
+            palm_tracking_limit_m = (
+                args.palm_guide_max_drift_mm
+                if args.palm_guide_only
+                else args.mpc_palm_position_tolerance_mm
+            ) / 1000.0
             if args.axial_travel_m > available - 1.0e-6:
                 raise RuntimeError(
                     "Requested adaptive-MPC travel exceeds the capsule surface: "
@@ -3372,19 +3399,28 @@ def main() -> None:
                     palm_position_error_norm = float(
                         np.linalg.norm(palm_position_error)
                     )
-                    palm_position_band = (
-                        0.8
-                        * args.mpc_palm_position_tolerance_mm
-                        / 1000.0
-                    )
-                    palm_position_violation = (
-                        palm_position_error
-                        * max(
-                            palm_position_error_norm - palm_position_band,
-                            0.0,
+                    if args.palm_guide_only:
+                        # The FR3/MCC palm motion is passive with respect to
+                        # the four hard fingertip tasks. Keep only a weak
+                        # Cartesian guide so it moves in the requested broad
+                        # direction; do not let palm precision displace a tip.
+                        palm_position_violation = np.zeros(3, dtype=np.float64)
+                        palm_guide_error = 0.25 * palm_position_error
+                    else:
+                        palm_position_band = (
+                            0.8
+                            * args.mpc_palm_position_tolerance_mm
+                            / 1000.0
                         )
-                        / max(palm_position_error_norm, 1.0e-12)
-                    )
+                        palm_position_violation = (
+                            palm_position_error
+                            * max(
+                                palm_position_error_norm - palm_position_band,
+                                0.0,
+                            )
+                            / max(palm_position_error_norm, 1.0e-12)
+                        )
+                        palm_guide_error = palm_position_error
                     clearance_violation = np.zeros(1, dtype=np.float64)
                     if args.collision_mode == "full_robot":
                         (
@@ -3440,7 +3476,7 @@ def main() -> None:
                             + 0.3 * tip_normal_error,
                             monotonic_scale * monotonic_violation,
                             palm_scale * palm_position_violation
-                            + 1.0 * palm_position_error,
+                            + palm_guide_error,
                             0.02 * palm_orientation_error,
                             0.01
                             * (
@@ -4035,15 +4071,14 @@ def main() -> None:
                     )
                     if (
                         candidate_palm_error
-                        > args.mpc_palm_position_tolerance_mm / 1000.0
+                        > palm_tracking_limit_m
                     ):
                         score += (
                             1.0e6
                             + 1.0e6
                             * (
                                 candidate_palm_error
-                                - args.mpc_palm_position_tolerance_mm
-                                / 1000.0
+                                - palm_tracking_limit_m
                             )
                         )
                     if args.collision_mode == "full_robot":
@@ -4157,7 +4192,7 @@ def main() -> None:
                     or float(preliminary_monotonic_error.max())
                     > args.mpc_monotonic_tolerance_mm / 1000.0
                     or preliminary_palm_error
-                    > args.mpc_palm_position_tolerance_mm / 1000.0
+                    > palm_tracking_limit_m
                     or preliminary_arm_clearance
                     < args.min_arm_clearance_mm / 1000.0
                     or preliminary_hand_clearance
@@ -4351,15 +4386,14 @@ def main() -> None:
                         )
                         if (
                             repaired_palm_error
-                            > args.mpc_palm_position_tolerance_mm / 1000.0
+                            > palm_tracking_limit_m
                         ):
                             repaired_score += (
                                 1.0e6
                                 + 1.0e6
                                 * (
                                     repaired_palm_error
-                                    - args.mpc_palm_position_tolerance_mm
-                                    / 1000.0
+                                    - palm_tracking_limit_m
                                 )
                             )
                         if args.collision_mode == "full_robot":
@@ -4433,7 +4467,7 @@ def main() -> None:
                 )
                 if (
                     best_palm_position_error
-                    > args.mpc_palm_position_tolerance_mm / 1000.0
+                    > palm_tracking_limit_m
                 ):
                     palm_error_vector = best_points[0] - palm_target
                     palm_error_local = np.asarray(
@@ -4445,11 +4479,12 @@ def main() -> None:
                         dtype=np.float64,
                     )
                     raise RuntimeError(
-                        "Adaptive surface MPC missed the non-contact palm "
-                        f"feasibility ball: keyframe={keyframe}/"
+                        "Adaptive surface MPC exceeded the non-contact palm "
+                        f"{'guide drift guard' if args.palm_guide_only else 'feasibility ball'}: "
+                        f"keyframe={keyframe}/"
                         f"{keyframe_count} error_mm="
                         f"{best_palm_position_error * 1000:.3f} "
-                        f"limit_mm={args.mpc_palm_position_tolerance_mm:.3f} "
+                        f"limit_mm={palm_tracking_limit_m * 1000:.3f} "
                         "offset_world_mm="
                         f"{(palm_error_vector * 1000).round(3).tolist()} "
                         "offset_normal_azimuth_meridian_mm="
@@ -4717,13 +4752,13 @@ def main() -> None:
             )
             if (
                 max_palm_position_error
-                > args.mpc_palm_position_tolerance_mm / 1000.0
+                > palm_tracking_limit_m
             ):
                 raise RuntimeError(
-                    "Adaptive surface MPC interpolation left the non-contact "
-                    "palm feasibility ball: "
+                    "Adaptive surface MPC interpolation exceeded the "
+                    f"non-contact palm {'guide drift guard' if args.palm_guide_only else 'feasibility ball'}: "
                     f"error_mm={max_palm_position_error * 1000:.3f} "
-                    f"limit_mm={args.mpc_palm_position_tolerance_mm:.3f}"
+                    f"limit_mm={palm_tracking_limit_m * 1000:.3f}"
                 )
 
             self.plan_surface = surface_plan
@@ -4785,6 +4820,13 @@ def main() -> None:
                 ),
                 mpc_transient_progress_tolerance_mm=np.asarray(
                     args.mpc_transient_progress_tolerance_mm
+                ),
+                palm_guide_only=np.asarray(args.palm_guide_only),
+                palm_guide_max_drift_mm=np.asarray(
+                    args.palm_guide_max_drift_mm
+                ),
+                mpc_palm_position_tolerance_mm=np.asarray(
+                    args.mpc_palm_position_tolerance_mm
                 ),
                 min_runtime_contact_fingers=np.asarray(
                     args.min_runtime_contact_fingers
