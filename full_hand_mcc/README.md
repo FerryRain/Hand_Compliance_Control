@@ -1,4 +1,4 @@
-# Full-hand MCC surface-sliding demo
+# FR3 + LEAP full-hand MCC surface-sliding demo
 
 This directory contains the Windows/CUDA MJLab demo for full-hand Minimalist
 Compliance Control (MCC). The five jointly planned points are:
@@ -9,12 +9,26 @@ Compliance Control (MCC). The five jointly planned points are:
 4. ring fingertip;
 5. thumb fingertip.
 
-The xArm6 follows a joint-limit-aware surface trajectory and uses calibrated
-six-axis external-load feedback. All 16 LEAP Hand motor-load channels provide
-four independent fingertip force estimates. Final validation uses
-`full_robot` collision mode: arm, wrist, palm, non-tip finger links, and tips
-all collide with the object, while dedicated sensors reject every non-tip
-object contact.
+The Franka FR3 follows a joint-limit-aware surface trajectory and uses
+calibrated seven-axis external-load feedback. All 16 LEAP Hand motor-load
+channels provide four independent fingertip force estimates. FR3 links must
+never contact the object. Every LEAP Hand part may make bounded incidental
+contact, but only the four physical fingertip pads count toward the contact
+objective; incidental hand contact may not displace the required three- or
+four-tip support.
+
+## Current Windows environment
+
+For the current project, continue the already validated runtime:
+
+```powershell
+.\.venv\Scripts\python.exe
+```
+
+The user explicitly deferred migration to the `handcomp` Conda environment
+until the demo is complete. Do not change environments during the current
+planning/dynamic acceptance sequence. A separate manual `handcomp` setup
+checklist will be provided after completion.
 
 ## Full-robot 200 mm collision baseline
 
@@ -143,7 +157,7 @@ From the repository root:
   --min-tip-relative-travel-m 0 `
   --min-finger-joint-excursion-rad 0 `
   --plan-output full_hand_mcc\outputs\pad_frame_fixed_end_to_end_200mm_plan.npz `
-  --output full_hand_mcc\outputs\full_hand_mcc_end_to_end_200mm.mp4
+  --output full_hand_mcc\outputs\debug\10_legacy_surface_methods\full_hand_mcc_end_to_end_200mm.mp4
 ```
 
 The first run solves the 40-keyframe MPC. To replay the exact reviewed path,
@@ -177,7 +191,7 @@ Run the variable-curvature transition case:
   --arm-mcc-correction-rad 0.001 `
   --camera-azimuth-deg 100 --camera-distance-m 0.78 `
   --plan-output full_hand_mcc\outputs\capsule_cap_transition_plan.npz `
-  --output full_hand_mcc\outputs\capsule_cap_transition.mp4
+  --output full_hand_mcc\outputs\debug\10_legacy_surface_methods\capsule_cap_transition.mp4
 ```
 
 Run the accepted 280 mm bottom-to-top case:
@@ -219,12 +233,15 @@ Run the accepted 280 mm bottom-to-top case:
   --camera-azimuth-deg 100 --camera-distance-m 1.05 `
   --camera-elevation-deg -5 `
   --plan-output full_hand_mcc\outputs\capsule_100x170_bottom_to_top_plan.npz `
-  --output full_hand_mcc\outputs\capsule_100x170_bottom_to_top.mp4
+  --output full_hand_mcc\outputs\debug\10_legacy_surface_methods\capsule_100x170_bottom_to_top_rerun.mp4
 ```
 
 The first run solves 113 MPC keyframes. Reuse the accepted plan on later
 replays with
 `--reuse-plan full_hand_mcc\outputs\capsule_100x170_bottom_to_top_plan.npz`.
+The reviewed reference video is stored at
+`full_hand_mcc\outputs\reference\accepted_xarm6\capsule_100x170_bottom_to_top_280mm.mp4`;
+reruns remain in the debug directory unless they pass a fresh audit.
 To search another collision-free arm branch while preserving the same
 four-finger/object grasp, use
 `full_hand_mcc\scripts\search_long_route_arm_branch.py`.

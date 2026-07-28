@@ -881,7 +881,8 @@ def main() -> None:
         "--output",
         type=Path,
         default=Path(
-            "full_hand_mcc/outputs/"
+            "full_hand_mcc/outputs/debug/"
+            "10_legacy_surface_methods/"
             "thick_object_slow_surface_slide.mp4"
         ),
     )
