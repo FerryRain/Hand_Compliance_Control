@@ -3460,7 +3460,43 @@ def main() -> None:
                 )
                 if auto_rephase_limit_m > 0.0:
                     decay_m = args.mpc_auto_rephase_decay_mm / 1000.0
-                    if keyframe > 1 and decay_m > 0.0:
+                    decay_allowed = True
+                    if keyframe > 1:
+                        previous_progress_error = np.abs(
+                            coarse_progress[keyframe - 1, 1:]
+                            - coarse_target_progress[keyframe - 1, 1:]
+                        )
+                        previous_progress_tolerance_mm = (
+                            args.mpc_intermediate_progress_tolerance_mm
+                        )
+                        previous_distance = float(
+                            coarse_distance[keyframe - 1]
+                        )
+                        if transient_progress_active(previous_distance):
+                            previous_progress_tolerance_mm = (
+                                args.mpc_transient_progress_tolerance_mm
+                                + transient_progress_recovery_phase(
+                                    previous_distance
+                                )
+                                * (
+                                    args.mpc_intermediate_progress_tolerance_mm
+                                    - args.mpc_transient_progress_tolerance_mm
+                                )
+                            )
+                        decay_allowed = bool(
+                            float(previous_progress_error.max())
+                            <= max(
+                                previous_progress_tolerance_mm
+                                - args.mpc_auto_rephase_margin_mm,
+                                0.0,
+                            )
+                            / 1000.0
+                        )
+                    if (
+                        keyframe > 1
+                        and decay_m > 0.0
+                        and decay_allowed
+                    ):
                         auto_rephase_offset_m -= (
                             np.sign(auto_rephase_offset_m)
                             * np.minimum(
