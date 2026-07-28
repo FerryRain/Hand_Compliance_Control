@@ -749,6 +749,40 @@ def main() -> None:
             "be an integer >= 2. Overlapping windows use the largest factor."
         ),
     )
+    parser.add_argument(
+        "--mpc-auto-rephase-max-mm",
+        type=float,
+        default=0.0,
+        help=(
+            "Maximum per-fingertip meridian target offset available to the "
+            "failure-triggered bounded joint-rephasing shooting pass. Zero "
+            "disables the pass; all ordinary hard constraints remain active."
+        ),
+    )
+    parser.add_argument(
+        "--mpc-auto-rephase-step-mm",
+        type=float,
+        default=0.05,
+        help="Smallest target-offset increment tried by automatic rephasing.",
+    )
+    parser.add_argument(
+        "--mpc-auto-rephase-decay-mm",
+        type=float,
+        default=0.02,
+        help=(
+            "Maximum offset removed per accepted keyframe so an automatic "
+            "rephase returns continuously to the nominal fingertip route."
+        ),
+    )
+    parser.add_argument(
+        "--mpc-auto-rephase-margin-mm",
+        type=float,
+        default=0.5,
+        help=(
+            "Include fingertips this far inside the progress limit in a "
+            "coupled rephasing trial when another fingertip violates it."
+        ),
+    )
     parser.add_argument("--mpc-max-nfev", type=int, default=120)
     parser.add_argument("--mpc-progress-tolerance-mm", type=float, default=4.0)
     parser.add_argument(
@@ -1302,6 +1336,23 @@ def main() -> None:
             (refine_start_m, refine_end_m, refine_factor)
         )
     args.mpc_local_refine_window = mpc_local_refine_windows
+    if args.mpc_auto_rephase_max_mm < 0.0:
+        raise ValueError("--mpc-auto-rephase-max-mm cannot be negative")
+    if args.mpc_auto_rephase_step_mm <= 0.0:
+        raise ValueError("--mpc-auto-rephase-step-mm must be positive")
+    if args.mpc_auto_rephase_decay_mm < 0.0:
+        raise ValueError("--mpc-auto-rephase-decay-mm cannot be negative")
+    if args.mpc_auto_rephase_margin_mm < 0.0:
+        raise ValueError("--mpc-auto-rephase-margin-mm cannot be negative")
+    if (
+        args.mpc_auto_rephase_max_mm > 0.0
+        and args.mpc_auto_rephase_step_mm
+        > args.mpc_auto_rephase_max_mm
+    ):
+        raise ValueError(
+            "--mpc-auto-rephase-step-mm cannot exceed "
+            "--mpc-auto-rephase-max-mm"
+        )
     if args.mpc_normal_tolerance_mm <= 0.0:
         raise ValueError("--mpc-normal-tolerance-mm must be positive")
     if not 1 <= args.min_planner_contact_fingers <= 4:
@@ -2942,6 +2993,10 @@ def main() -> None:
             )
             coarse_progress = np.zeros((keyframe_count + 1, 5), dtype=np.float64)
             coarse_target_progress = np.zeros_like(coarse_progress)
+            coarse_auto_rephase_offset_m = np.zeros(
+                (keyframe_count + 1, 4),
+                dtype=np.float64,
+            )
             coarse_normal_error = np.zeros_like(coarse_progress)
             coarse_palm_target = np.zeros(
                 (keyframe_count + 1, 3), dtype=np.float64
@@ -3073,6 +3128,7 @@ def main() -> None:
             )
             previous_q = start_q.copy()
             previous_delta = np.zeros(TOTAL_DOF, dtype=np.float64)
+            auto_rephase_offset_m = np.zeros(4, dtype=np.float64)
 
             def transient_contact_active(
                 surface_distance: float,
@@ -3398,6 +3454,48 @@ def main() -> None:
                         / 1000.0
                         * local_phase
                         * np.asarray(local_scales)
+                    )
+                auto_rephase_limit_m = (
+                    args.mpc_auto_rephase_max_mm / 1000.0
+                )
+                if auto_rephase_limit_m > 0.0:
+                    decay_m = args.mpc_auto_rephase_decay_mm / 1000.0
+                    if keyframe > 1 and decay_m > 0.0:
+                        auto_rephase_offset_m -= (
+                            np.sign(auto_rephase_offset_m)
+                            * np.minimum(
+                                np.abs(auto_rephase_offset_m),
+                                decay_m,
+                            )
+                        )
+                    # Every automatically introduced asynchronous offset
+                    # must return continuously to zero before the common
+                    # route endpoint.  The 20 mm terminal envelope is a
+                    # target constraint, not an acceptance-band relaxation.
+                    terminal_rephase_coordinate = np.clip(
+                        (
+                            args.axial_travel_m - desired_distance
+                        )
+                        / min(0.020, args.axial_travel_m),
+                        0.0,
+                        1.0,
+                    )
+                    terminal_rephase_envelope = (
+                        terminal_rephase_coordinate
+                        * terminal_rephase_coordinate
+                        * (3.0 - 2.0 * terminal_rephase_coordinate)
+                    )
+                    auto_rephase_limit_m *= terminal_rephase_envelope
+                    auto_rephase_offset_m = np.clip(
+                        auto_rephase_offset_m,
+                        -auto_rephase_limit_m,
+                        auto_rephase_limit_m,
+                    )
+                    desired_arc[1:] += (
+                        direction * auto_rephase_offset_m
+                    )
+                    coarse_auto_rephase_offset_m[keyframe] = (
+                        auto_rephase_offset_m
                     )
                 gait_phase = np.sin(
                     np.pi * desired_distance / args.axial_travel_m
@@ -4880,6 +4978,298 @@ def main() -> None:
                         normal_error,
                         achieved_arc,
                     ) = min(candidates, key=lambda item: item[0])
+                if (
+                    auto_rephase_limit_m > 0.0
+                    and float(progress_error.max())
+                    > active_progress_tolerance_mm / 1000.0
+                ):
+                    # Failure-triggered bounded joint rephasing.  The
+                    # ordinary and repair passes keep the nominal fingertip
+                    # targets fixed.  Only if both miss the hard progress
+                    # band do we shoot a small set of coupled, continuous
+                    # per-finger target phases.  Every trial is still checked
+                    # against contact, tangent, monotonicity, joint-step,
+                    # FR3, incidental-hand, self-collision, and pad-angle
+                    # constraints before it can replace the nominal result.
+                    nominal_desired_arc = desired_arc.copy()
+                    starting_rephase_offset_m = (
+                        auto_rephase_offset_m.copy()
+                    )
+                    progress_limit_m = (
+                        active_progress_tolerance_mm / 1000.0
+                    )
+                    near_progress_limit = (
+                        progress_error[1:]
+                        >= (
+                            active_progress_tolerance_mm
+                            - args.mpc_auto_rephase_margin_mm
+                        )
+                        / 1000.0
+                    )
+                    if not np.any(near_progress_limit):
+                        near_progress_limit[
+                            int(np.argmax(progress_error[1:]))
+                        ] = True
+                    rephase_patterns: list[np.ndarray] = []
+                    for finger_index in np.flatnonzero(
+                        near_progress_limit
+                    ):
+                        unit_pattern = np.zeros(4, dtype=np.float64)
+                        unit_pattern[finger_index] = 1.0
+                        rephase_patterns.append(unit_pattern)
+                    rephase_patterns.append(
+                        near_progress_limit.astype(np.float64)
+                    )
+                    weighted_pattern = np.maximum(
+                        progress_error[1:]
+                        - (
+                            active_progress_tolerance_mm
+                            - args.mpc_auto_rephase_margin_mm
+                        )
+                        / 1000.0,
+                        0.0,
+                    )
+                    if float(weighted_pattern.max()) > 0.0:
+                        rephase_patterns.append(
+                            weighted_pattern
+                            / float(weighted_pattern.max())
+                        )
+                    if near_progress_limit[0] or near_progress_limit[1]:
+                        # Measured v89-v92 response showed that the leading
+                        # two fingers often need this coupled ratio.
+                        rephase_patterns.append(
+                            np.asarray((1.0, 2.0 / 3.0, 0.0, 0.0))
+                        )
+                    unique_patterns: list[np.ndarray] = []
+                    seen_patterns: set[tuple[float, ...]] = set()
+                    for pattern in rephase_patterns:
+                        pattern_key = tuple(np.round(pattern, 6))
+                        if pattern_key in seen_patterns:
+                            continue
+                        seen_patterns.add(pattern_key)
+                        unique_patterns.append(pattern)
+
+                    step_m = args.mpc_auto_rephase_step_mm / 1000.0
+                    amplitude_candidates_m: list[float] = []
+                    trial_amplitude_m = step_m
+                    while (
+                        trial_amplitude_m
+                        < auto_rephase_limit_m - 1.0e-12
+                    ):
+                        amplitude_candidates_m.append(
+                            trial_amplitude_m
+                        )
+                        trial_amplitude_m *= 2.0
+                    amplitude_candidates_m.append(
+                        auto_rephase_limit_m
+                    )
+                    accepted_rephase_candidates = []
+                    for trial_amplitude_m in amplitude_candidates_m:
+                        for pattern in unique_patterns:
+                            for trial_sign in (1.0, -1.0):
+                                trial_rephase_offset_m = np.clip(
+                                    starting_rephase_offset_m
+                                    + trial_sign
+                                    * trial_amplitude_m
+                                    * pattern,
+                                    -auto_rephase_limit_m,
+                                    auto_rephase_limit_m,
+                                )
+                                if np.allclose(
+                                    trial_rephase_offset_m,
+                                    starting_rephase_offset_m,
+                                    atol=1.0e-12,
+                                    rtol=0.0,
+                                ):
+                                    continue
+                                desired_arc[:] = nominal_desired_arc
+                                desired_arc[1:] += (
+                                    direction
+                                    * (
+                                        trial_rephase_offset_m
+                                        - starting_rephase_offset_m
+                                    )
+                                )
+                                for rephase_seed in (
+                                    best.x,
+                                    previous_q,
+                                ):
+                                    rephased = least_squares(
+                                        lambda q: residual(
+                                            q,
+                                            joint_regularization=0.0,
+                                            progress_scale=2400.0,
+                                            normal_scale=1800.0,
+                                            monotonic_scale=9000.0,
+                                            pad_scale=280.0,
+                                            palm_scale=1000.0,
+                                        ),
+                                        rephase_seed,
+                                        bounds=(lower, upper),
+                                        max_nfev=args.mpc_max_nfev,
+                                        xtol=1.0e-9,
+                                        ftol=1.0e-9,
+                                        gtol=1.0e-9,
+                                        x_scale="jac",
+                                    )
+                                    (
+                                        rephased_points,
+                                        _,
+                                        _,
+                                        rephased_arc,
+                                        rephased_aux,
+                                    ) = contact_state(rephased.x)
+                                    rephased_progress_error = np.abs(
+                                        direction
+                                        * (rephased_arc - desired_arc)
+                                    )
+                                    rephased_progress_error[0] = 0.0
+                                    rephased_normal_error = np.abs(
+                                        rephased_aux[:, 1]
+                                        - desired_standoff
+                                    )
+                                    rephased_tangential_error = (
+                                        (
+                                            rephased_aux[:, 0]
+                                            - desired_azimuth
+                                            + np.pi
+                                        )
+                                        % (2.0 * np.pi)
+                                        - np.pi
+                                    ) * CAPSULE_RADIUS
+                                    rephased_progress = direction * (
+                                        rephased_arc - start_arc
+                                    )
+                                    rephased_monotonic_error = np.maximum(
+                                        minimum_progress
+                                        - rephased_progress,
+                                        0.0,
+                                    )
+                                    rephased_monotonic_error[0] = 0.0
+                                    (
+                                        rephased_normal_ok,
+                                        _,
+                                        _,
+                                    ) = scheduled_contact_status(
+                                        rephased_normal_error[1:],
+                                        desired_distance,
+                                    )
+                                    rephased_palm_error = float(
+                                        np.linalg.norm(
+                                            rephased_points[0]
+                                            - palm_target
+                                        )
+                                    )
+                                    rephased_collision_ok = True
+                                    if args.collision_mode == "full_robot":
+                                        (
+                                            rephased_arm_clearance,
+                                            _,
+                                            rephased_hand_clearance,
+                                            _,
+                                            rephased_self_count,
+                                            rephased_pad_alignment,
+                                        ) = segment_collision_status(
+                                            rephased.x
+                                        )
+                                        rephased_collision_ok = bool(
+                                            rephased_arm_clearance
+                                            >= args.min_arm_clearance_mm
+                                            / 1000.0
+                                            and rephased_hand_clearance
+                                            >= -args.max_incidental_hand_penetration_mm
+                                            / 1000.0
+                                            and rephased_self_count == 0
+                                            and rephased_pad_alignment
+                                            >= planner_pad_alignment
+                                        )
+                                    rephased_hard_ok = bool(
+                                        float(
+                                            rephased_progress_error.max()
+                                        )
+                                        <= progress_limit_m
+                                        and rephased_normal_ok
+                                        and np.all(
+                                            np.abs(
+                                                rephased_tangential_error[1:]
+                                            )
+                                            <= tip_tangential_tolerances
+                                        )
+                                        and float(
+                                            rephased_monotonic_error.max()
+                                        )
+                                        <= args.mpc_monotonic_tolerance_mm
+                                        / 1000.0
+                                        and rephased_palm_error
+                                        <= palm_tracking_limit_m
+                                        and float(
+                                            np.max(
+                                                np.abs(
+                                                    rephased.x - previous_q
+                                                )
+                                            )
+                                        )
+                                        <= args.max_plan_joint_step_rad
+                                        and rephased_collision_ok
+                                    )
+                                    if not rephased_hard_ok:
+                                        continue
+                                    accepted_rephase_candidates.append(
+                                        (
+                                            float(
+                                                np.linalg.norm(
+                                                    trial_rephase_offset_m
+                                                    - starting_rephase_offset_m
+                                                )
+                                            ),
+                                            float(
+                                                rephased_progress_error.max()
+                                            ),
+                                            float(rephased.cost),
+                                            rephased,
+                                            rephased_progress_error,
+                                            rephased_normal_error,
+                                            rephased_arc,
+                                            trial_rephase_offset_m.copy(),
+                                            desired_arc.copy(),
+                                        )
+                                    )
+                        if accepted_rephase_candidates:
+                            break
+                    if accepted_rephase_candidates:
+                        (
+                            _,
+                            _,
+                            _,
+                            best,
+                            progress_error,
+                            normal_error,
+                            achieved_arc,
+                            auto_rephase_offset_m,
+                            accepted_desired_arc,
+                        ) = min(
+                            accepted_rephase_candidates,
+                            key=lambda item: item[:3],
+                        )
+                        desired_arc[:] = accepted_desired_arc
+                        coarse_target_progress[keyframe] = direction * (
+                            desired_arc - start_arc
+                        )
+                        coarse_auto_rephase_offset_m[keyframe] = (
+                            auto_rephase_offset_m
+                        )
+                        print(
+                            "[AUTO-REPHASE] "
+                            f"keyframe={keyframe}/{keyframe_count} "
+                            f"distance_m={desired_distance:.4f} "
+                            "offset_mm="
+                            f"{(auto_rephase_offset_m * 1000).round(3).tolist()} "
+                            "progress_error_mm="
+                            f"{(progress_error * 1000).round(2).tolist()}",
+                            flush=True,
+                        )
+                    else:
+                        desired_arc[:] = nominal_desired_arc
                 (
                     best_points,
                     _,
@@ -5270,6 +5660,9 @@ def main() -> None:
                 mpc_base_keyframes=np.asarray(base_keyframe_count),
                 mpc_actual_keyframes=np.asarray(keyframe_count),
                 mpc_coarse_distance_m=coarse_distance,
+                mpc_coarse_auto_rephase_offset_m=(
+                    coarse_auto_rephase_offset_m
+                ),
                 mpc_local_refine_start_m=np.asarray(
                     args.mpc_local_refine_start_m
                 ),
@@ -5283,6 +5676,18 @@ def main() -> None:
                     args.mpc_local_refine_window,
                     dtype=np.float64,
                 ).reshape(-1, 3),
+                mpc_auto_rephase_max_mm=np.asarray(
+                    args.mpc_auto_rephase_max_mm
+                ),
+                mpc_auto_rephase_step_mm=np.asarray(
+                    args.mpc_auto_rephase_step_mm
+                ),
+                mpc_auto_rephase_decay_mm=np.asarray(
+                    args.mpc_auto_rephase_decay_mm
+                ),
+                mpc_auto_rephase_margin_mm=np.asarray(
+                    args.mpc_auto_rephase_margin_mm
+                ),
                 min_runtime_contact_fingers=np.asarray(
                     args.min_runtime_contact_fingers
                 ),
