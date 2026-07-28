@@ -472,6 +472,36 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--finger-meridian-terminal-tail-correction-mm",
+        type=float,
+        default=0.0,
+        help=(
+            "Peak amplitude of a second zero-endpoint meridian target phase "
+            "used to correct only the tail of terminal fingertip recovery."
+        ),
+    )
+    parser.add_argument(
+        "--finger-meridian-terminal-tail-correction-start-m",
+        type=float,
+        default=0.0,
+    )
+    parser.add_argument(
+        "--finger-meridian-terminal-tail-correction-end-m",
+        type=float,
+        default=0.0,
+    )
+    parser.add_argument(
+        "--finger-meridian-terminal-tail-correction-scales",
+        type=float,
+        nargs=4,
+        default=(0.0, 0.0, 0.0, 0.0),
+        metavar=("INDEX", "MIDDLE", "RING", "THUMB"),
+        help=(
+            "Signed per-fingertip scales for the terminal tail meridian "
+            "target phase."
+        ),
+    )
+    parser.add_argument(
         "--runtime-finger-gait-rad",
         type=float,
         default=0.12,
@@ -1123,6 +1153,25 @@ def main() -> None:
     ):
         raise ValueError(
             "Terminal finger-meridian correction requires an ordered "
+            "window inside --axial-travel-m"
+        )
+    if args.finger_meridian_terminal_tail_correction_mm < 0.0:
+        raise ValueError(
+            "--finger-meridian-terminal-tail-correction-mm cannot be "
+            "negative"
+        )
+    if (
+        args.finger_meridian_terminal_tail_correction_mm > 0.0
+        and (
+            args.finger_meridian_terminal_tail_correction_start_m < 0.0
+            or args.finger_meridian_terminal_tail_correction_end_m
+            <= args.finger_meridian_terminal_tail_correction_start_m
+            or args.finger_meridian_terminal_tail_correction_end_m
+            > args.axial_travel_m
+        )
+    ):
+        raise ValueError(
+            "Terminal tail finger-meridian correction requires an ordered "
             "window inside --axial-travel-m"
         )
     if args.runtime_finger_gait_rad < 0.0:
@@ -3214,6 +3263,32 @@ def main() -> None:
                         args.finger_meridian_terminal_correction_scales
                     )
                 )
+                if (
+                    args.finger_meridian_terminal_tail_correction_start_m
+                    < desired_distance
+                    < args.finger_meridian_terminal_tail_correction_end_m
+                ):
+                    terminal_tail_coordinate = (
+                        desired_distance
+                        - args.finger_meridian_terminal_tail_correction_start_m
+                    ) / (
+                        args.finger_meridian_terminal_tail_correction_end_m
+                        - args.finger_meridian_terminal_tail_correction_start_m
+                    )
+                    terminal_tail_phase = np.sin(
+                        np.pi * terminal_tail_coordinate
+                    )
+                else:
+                    terminal_tail_phase = 0.0
+                desired_arc[1:] += (
+                    direction
+                    * args.finger_meridian_terminal_tail_correction_mm
+                    / 1000.0
+                    * terminal_tail_phase
+                    * np.asarray(
+                        args.finger_meridian_terminal_tail_correction_scales
+                    )
+                )
                 gait_phase = np.sin(
                     np.pi * desired_distance / args.axial_travel_m
                 )
@@ -5210,6 +5285,18 @@ def main() -> None:
                 ),
                 finger_meridian_terminal_correction_scales=np.asarray(
                     args.finger_meridian_terminal_correction_scales
+                ),
+                finger_meridian_terminal_tail_correction_mm=np.asarray(
+                    args.finger_meridian_terminal_tail_correction_mm
+                ),
+                finger_meridian_terminal_tail_correction_start_m=np.asarray(
+                    args.finger_meridian_terminal_tail_correction_start_m
+                ),
+                finger_meridian_terminal_tail_correction_end_m=np.asarray(
+                    args.finger_meridian_terminal_tail_correction_end_m
+                ),
+                finger_meridian_terminal_tail_correction_scales=np.asarray(
+                    args.finger_meridian_terminal_tail_correction_scales
                 ),
                 object_shape=np.asarray(args.object_shape),
                 object_radius_m=np.asarray(CAPSULE_RADIUS),
