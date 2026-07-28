@@ -783,6 +783,25 @@ def main() -> None:
             "coupled rephasing trial when another fingertip violates it."
         ),
     )
+    parser.add_argument(
+        "--mpc-auto-refine-min-step-mm",
+        type=float,
+        default=0.0,
+        help=(
+            "Failure-triggered midpoint shooting refinement stops before a "
+            "new interval would be shorter than this value. Zero disables "
+            "automatic refinement."
+        ),
+    )
+    parser.add_argument(
+        "--mpc-auto-refine-max-insertions",
+        type=int,
+        default=0,
+        help=(
+            "Maximum midpoint shooting keyframes inserted after hard "
+            "feasibility failures. Zero disables automatic refinement."
+        ),
+    )
     parser.add_argument("--mpc-max-nfev", type=int, default=120)
     parser.add_argument("--mpc-progress-tolerance-mm", type=float, default=4.0)
     parser.add_argument(
@@ -1352,6 +1371,21 @@ def main() -> None:
         raise ValueError(
             "--mpc-auto-rephase-step-mm cannot exceed "
             "--mpc-auto-rephase-max-mm"
+        )
+    if args.mpc_auto_refine_min_step_mm < 0.0:
+        raise ValueError("--mpc-auto-refine-min-step-mm cannot be negative")
+    if args.mpc_auto_refine_max_insertions < 0:
+        raise ValueError(
+            "--mpc-auto-refine-max-insertions cannot be negative"
+        )
+    if (
+        (args.mpc_auto_refine_min_step_mm > 0.0)
+        != (args.mpc_auto_refine_max_insertions > 0)
+    ):
+        raise ValueError(
+            "Automatic MPC refinement requires both "
+            "--mpc-auto-refine-min-step-mm and "
+            "--mpc-auto-refine-max-insertions, or neither"
         )
     if args.mpc_normal_tolerance_mm <= 0.0:
         raise ValueError("--mpc-normal-tolerance-mm must be positive")
@@ -2755,7 +2789,8 @@ def main() -> None:
                 )
                 return surface, points, normals
 
-            for keyframe in range(1, keyframe_count + 1):
+            keyframe = 1
+            while keyframe <= keyframe_count:
                 distance = float(coarse_distance[keyframe])
                 _, desired_points, _ = rotated_targets(distance)
                 result = reachability.solve(desired_points, previous_q)
@@ -3007,6 +3042,8 @@ def main() -> None:
             )
             coarse_cost = np.zeros(keyframe_count + 1, dtype=np.float64)
             coarse_nfev = np.zeros(keyframe_count + 1, dtype=np.int32)
+            auto_refine_inserted_distance_m: list[float] = []
+            auto_refine_inserted_reason: list[str] = []
             print(
                 "[MPC-GRID] "
                 f"base_keyframes={base_keyframe_count} "
@@ -3015,7 +3052,10 @@ def main() -> None:
                 f"[{args.mpc_local_refine_start_m:.4f},"
                 f"{args.mpc_local_refine_end_m:.4f}] "
                 f"factor={args.mpc_local_refine_factor} "
-                f"extra_windows={args.mpc_local_refine_window}",
+                f"extra_windows={args.mpc_local_refine_window} "
+                "auto_refine="
+                f"{args.mpc_auto_refine_min_step_mm:.3f}mm/"
+                f"{args.mpc_auto_refine_max_insertions}",
                 flush=True,
             )
             planner_pad_alignment = float(
@@ -3129,6 +3169,116 @@ def main() -> None:
             previous_q = start_q.copy()
             previous_delta = np.zeros(TOTAL_DOF, dtype=np.float64)
             auto_rephase_offset_m = np.zeros(4, dtype=np.float64)
+
+            def insert_auto_refinement(
+                *,
+                keyframe: int,
+                desired_distance: float,
+                reason: str,
+            ) -> bool:
+                """Insert a bounded midpoint shooting state after a failure."""
+
+                nonlocal coarse_distance
+                nonlocal coarse_q
+                nonlocal coarse_progress
+                nonlocal coarse_target_progress
+                nonlocal coarse_auto_rephase_offset_m
+                nonlocal coarse_normal_error
+                nonlocal coarse_palm_target
+                nonlocal coarse_palm_position_error
+                nonlocal coarse_cost
+                nonlocal coarse_nfev
+                nonlocal keyframe_count
+                nonlocal auto_rephase_offset_m
+
+                if (
+                    args.mpc_auto_refine_min_step_mm <= 0.0
+                    or args.mpc_auto_refine_max_insertions <= 0
+                    or len(auto_refine_inserted_distance_m)
+                    >= args.mpc_auto_refine_max_insertions
+                    or keyframe_count >= frame_count
+                ):
+                    return False
+                left_distance = float(coarse_distance[keyframe - 1])
+                interval_m = desired_distance - left_distance
+                midpoint_m = left_distance + 0.5 * interval_m
+                minimum_step_m = (
+                    args.mpc_auto_refine_min_step_mm / 1000.0
+                )
+                if (
+                    interval_m <= 0.0
+                    or midpoint_m - left_distance
+                    < minimum_step_m - 1.0e-12
+                ):
+                    return False
+
+                coarse_distance = np.insert(
+                    coarse_distance,
+                    keyframe,
+                    midpoint_m,
+                )
+                coarse_q = np.insert(
+                    coarse_q,
+                    keyframe,
+                    np.zeros_like(coarse_q[0]),
+                    axis=0,
+                )
+                coarse_progress = np.insert(
+                    coarse_progress,
+                    keyframe,
+                    np.zeros_like(coarse_progress[0]),
+                    axis=0,
+                )
+                coarse_target_progress = np.insert(
+                    coarse_target_progress,
+                    keyframe,
+                    np.zeros_like(coarse_target_progress[0]),
+                    axis=0,
+                )
+                coarse_auto_rephase_offset_m = np.insert(
+                    coarse_auto_rephase_offset_m,
+                    keyframe,
+                    np.zeros_like(coarse_auto_rephase_offset_m[0]),
+                    axis=0,
+                )
+                coarse_normal_error = np.insert(
+                    coarse_normal_error,
+                    keyframe,
+                    np.zeros_like(coarse_normal_error[0]),
+                    axis=0,
+                )
+                coarse_palm_target = np.insert(
+                    coarse_palm_target,
+                    keyframe,
+                    np.zeros_like(coarse_palm_target[0]),
+                    axis=0,
+                )
+                coarse_palm_position_error = np.insert(
+                    coarse_palm_position_error,
+                    keyframe,
+                    0.0,
+                )
+                coarse_cost = np.insert(coarse_cost, keyframe, 0.0)
+                coarse_nfev = np.insert(coarse_nfev, keyframe, 0)
+                keyframe_count += 1
+                auto_rephase_offset_m = (
+                    coarse_auto_rephase_offset_m[keyframe - 1].copy()
+                )
+                auto_refine_inserted_distance_m.append(midpoint_m)
+                auto_refine_inserted_reason.append(reason)
+                print(
+                    "[AUTO-REFINE] "
+                    f"reason={reason} keyframe={keyframe}/{keyframe_count} "
+                    f"interval_m=[{left_distance:.6f},"
+                    f"{desired_distance:.6f}] "
+                    f"inserted_m={midpoint_m:.6f} "
+                    f"new_step_mm={(midpoint_m - left_distance) * 1000:.3f} "
+                    f"insertions="
+                    f"{len(auto_refine_inserted_distance_m)}/"
+                    f"{args.mpc_auto_refine_max_insertions}",
+                    flush=True,
+                )
+                return True
 
             def transient_contact_active(
                 surface_distance: float,
@@ -5387,6 +5537,12 @@ def main() -> None:
                     best_palm_position_error
                     > palm_tracking_limit_m
                 ):
+                    if insert_auto_refinement(
+                        keyframe=keyframe,
+                        desired_distance=desired_distance,
+                        reason="palm_drift",
+                    ):
+                        continue
                     palm_error_vector = best_points[0] - palm_target
                     palm_error_local = np.asarray(
                         (
@@ -5429,6 +5585,12 @@ def main() -> None:
                     float(monotonic_error.max())
                     > args.mpc_monotonic_tolerance_mm / 1000.0
                 ):
+                    if insert_auto_refinement(
+                        keyframe=keyframe,
+                        desired_distance=desired_distance,
+                        reason="monotonic_progress",
+                    ):
+                        continue
                     raise RuntimeError(
                         "Adaptive surface MPC violated monotonic progress: "
                         f"keyframe={keyframe}/{keyframe_count} "
@@ -5439,6 +5601,12 @@ def main() -> None:
                     float(progress_error.max())
                     > active_progress_tolerance_mm / 1000.0
                 ):
+                    if insert_auto_refinement(
+                        keyframe=keyframe,
+                        desired_distance=desired_distance,
+                        reason="longitudinal_progress",
+                    ):
+                        continue
                     raise RuntimeError(
                         "Adaptive surface MPC missed longitudinal progress: "
                         f"keyframe={keyframe}/{keyframe_count} "
@@ -5454,6 +5622,12 @@ def main() -> None:
                     desired_distance,
                 )
                 if not normal_contact_ok:
+                    if insert_auto_refinement(
+                        keyframe=keyframe,
+                        desired_distance=desired_distance,
+                        reason="fingertip_support",
+                    ):
+                        continue
                     raise RuntimeError(
                         "Adaptive surface MPC violated the scheduled "
                         "fingertip support set: "
@@ -5470,6 +5644,12 @@ def main() -> None:
                     np.abs(tangential_error[1:])
                     > tip_tangential_tolerances
                 ):
+                    if insert_auto_refinement(
+                        keyframe=keyframe,
+                        desired_distance=desired_distance,
+                        reason="tangential_gait",
+                    ):
+                        continue
                     raise RuntimeError(
                         "Adaptive surface MPC missed fingertip tangential "
                         f"gait: keyframe={keyframe}/{keyframe_count} "
@@ -5496,6 +5676,12 @@ def main() -> None:
                         or best_self_count
                         or best_pad_alignment < planner_pad_alignment
                     ):
+                        if insert_auto_refinement(
+                            keyframe=keyframe,
+                            desired_distance=desired_distance,
+                            reason="contact_policy",
+                        ):
+                            continue
                         raise RuntimeError(
                             "Adaptive surface MPC has no contact-policy-safe "
                             f"candidate at keyframe={keyframe}/"
@@ -5543,6 +5729,7 @@ def main() -> None:
                     f"nfev={best.nfev}",
                     flush=True,
                 )
+                keyframe += 1
 
             frame_target_distance = np.linspace(
                 0.0,
@@ -5790,6 +5977,20 @@ def main() -> None:
                 ),
                 mpc_auto_rephase_margin_mm=np.asarray(
                     args.mpc_auto_rephase_margin_mm
+                ),
+                mpc_auto_refine_min_step_mm=np.asarray(
+                    args.mpc_auto_refine_min_step_mm
+                ),
+                mpc_auto_refine_max_insertions=np.asarray(
+                    args.mpc_auto_refine_max_insertions
+                ),
+                mpc_auto_refine_inserted_distance_m=np.asarray(
+                    auto_refine_inserted_distance_m,
+                    dtype=np.float64,
+                ),
+                mpc_auto_refine_inserted_reason=np.asarray(
+                    auto_refine_inserted_reason,
+                    dtype=np.str_,
                 ),
                 min_runtime_contact_fingers=np.asarray(
                     args.min_runtime_contact_fingers
