@@ -319,6 +319,8 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
         for required_term in (
             "bridge_result = SimpleNamespace",
             "x=previous_q.copy()",
+            "bridge_interval_short",
+            "mpc_auto_refine_min_step_mm",
             "bridge_progress_error",
             "bridge_normal_ok",
             "bridge_tangential_error",

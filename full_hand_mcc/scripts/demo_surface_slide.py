@@ -5343,6 +5343,20 @@ def main() -> None:
                     # different branch.  Project only the signed progress
                     # outside a 0.05 mm inner band into the target phase; no
                     # joint state or physical hard limit is relaxed.
+                    bridge_interval_m = (
+                        desired_distance
+                        - float(coarse_distance[keyframe - 1])
+                    )
+                    bridge_interval_limit_m = max(
+                        0.25 / 1000.0,
+                        2.0
+                        * args.mpc_auto_refine_min_step_mm
+                        / 1000.0,
+                    )
+                    bridge_interval_short = bool(
+                        bridge_interval_m
+                        <= bridge_interval_limit_m + 1.0e-12
+                    )
                     (
                         bridge_points,
                         _,
@@ -5438,7 +5452,8 @@ def main() -> None:
                         and np.all(previous_q <= upper + 1.0e-12)
                     )
                     bridge_hard_ok = bool(
-                        float(bridge_progress_error.max())
+                        bridge_interval_short
+                        and float(bridge_progress_error.max())
                         <= progress_limit_m
                         and bridge_normal_ok
                         and np.all(
