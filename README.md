@@ -5,6 +5,10 @@ Franka FR3 supplies palm-root force feedback and the 16 LEAP Hand motors
 supply four independent fingertip feedback channels. Five-point trajectories
 (palm root plus four physical fingertip pads) are planned under the assembled
 FR3 + LEAP URDF/MJCF constraints.
+The active acceptance policy permits short bounded pauses or fingertip release,
+but requires majority fingertip contact over most of the route, per-finger
+contact ratios, and stable four-tip recovery at the end. FR3/object contact
+remains forbidden.
 
 ## Current Windows environment
 

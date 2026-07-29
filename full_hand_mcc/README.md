@@ -15,13 +15,16 @@ channels provide four independent fingertip force estimates. FR3 links must
 never contact the object. Every LEAP Hand part may make bounded incidental
 contact, but only the four physical fingertip pads count toward the contact
 objective. Brief fingertip release and brief no-motion intervals are allowed;
-by default, one planned no-motion bridge may span at most `1.5 mm`, while all
-such bridges together may cover at most `2%` of the requested route. The full
-route must spend at least 80% of evaluated motion frames with three
-or more physical pad contacts, average at least `3.0/4` simultaneous contacts,
-meet the configured per-finger contact ratio, and finish with stable `4/4`
-contact. FR3 zero-contact and bounded LEAP incidental-contact limits remain
-hard constraints.
+by default, static recovery alone may span at most `1.5 mm`, while a combined
+static/moving recovery episode may span at most `3.0 mm`. A relaxed moving
+recovery must contain real joint motion and majority fingertip forward motion;
+it cannot pass by holding the previous pose. Static recovery may cover at most
+`2%` and all recovery intervals at most `3%` of the requested route. The full
+route must spend at least 80% of evaluated motion frames with three or more
+physical pad contacts, average at least `3.0/4` simultaneous contacts, meet the
+configured per-finger contact ratio, and finish with stable `4/4` contact.
+Recovery is forbidden in the final `20 mm`. FR3 zero-contact and bounded LEAP
+incidental-contact limits remain hard constraints.
 
 Use `--viewer headless` for the first full physical audit. It executes the
 same planning, dynamics, contact, travel, collision, force, and final-recovery

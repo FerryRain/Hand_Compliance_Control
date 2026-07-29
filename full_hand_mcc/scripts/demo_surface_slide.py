@@ -827,6 +827,62 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--mpc-recovery-bridge-max-span-mm",
+        type=float,
+        default=3.00,
+        help=(
+            "Maximum consecutive route distance occupied by static or relaxed "
+            "moving recovery. A strict moving state must then be recovered."
+        ),
+    )
+    parser.add_argument(
+        "--mpc-recovery-bridge-max-total-ratio",
+        type=float,
+        default=0.03,
+        help=(
+            "Maximum fraction of the full route occupied by bounded recovery "
+            "intervals, including both static and genuinely moving recovery."
+        ),
+    )
+    parser.add_argument(
+        "--mpc-recovery-bridge-progress-tolerance-mm",
+        type=float,
+        default=6.00,
+        help=(
+            "Temporary longitudinal tolerance used only by a bounded moving "
+            "recovery bridge. Ordinary and terminal tolerances stay strict."
+        ),
+    )
+    parser.add_argument(
+        "--mpc-recovery-bridge-normal-tolerance-mm",
+        type=float,
+        default=6.50,
+        help=(
+            "Temporary all-finger surface-distance bound during a bounded "
+            "recovery bridge; nominal contact is still measured by the "
+            "ordinary normal tolerance."
+        ),
+    )
+    parser.add_argument(
+        "--mpc-recovery-bridge-min-contact-fingers",
+        type=int,
+        default=2,
+        help=(
+            "Minimum nominal fingertip contacts allowed only inside a bounded "
+            "recovery bridge. Route-level and terminal contact checks remain "
+            "stricter."
+        ),
+    )
+    parser.add_argument(
+        "--mpc-recovery-bridge-terminal-margin-mm",
+        type=float,
+        default=20.0,
+        help=(
+            "Final route distance in which recovery bridges are forbidden so "
+            "the plan must finish on the ordinary four-fingertip branch."
+        ),
+    )
+    parser.add_argument(
         "--mpc-auto-rephase-step-mm",
         type=float,
         default=0.05,
@@ -1492,6 +1548,32 @@ def main() -> None:
     if args.mpc_static_bridge_progress_tolerance_mm <= 0.0:
         raise ValueError(
             "--mpc-static-bridge-progress-tolerance-mm must be positive"
+        )
+    if args.mpc_recovery_bridge_max_span_mm <= 0.0:
+        raise ValueError("--mpc-recovery-bridge-max-span-mm must be positive")
+    if not 0.0 <= args.mpc_recovery_bridge_max_total_ratio <= 1.0:
+        raise ValueError(
+            "--mpc-recovery-bridge-max-total-ratio must lie in [0, 1]"
+        )
+    if args.mpc_recovery_bridge_progress_tolerance_mm <= 0.0:
+        raise ValueError(
+            "--mpc-recovery-bridge-progress-tolerance-mm must be positive"
+        )
+    if (
+        args.mpc_recovery_bridge_normal_tolerance_mm
+        < args.mpc_normal_tolerance_mm
+    ):
+        raise ValueError(
+            "--mpc-recovery-bridge-normal-tolerance-mm cannot be below "
+            "--mpc-normal-tolerance-mm"
+        )
+    if not 1 <= args.mpc_recovery_bridge_min_contact_fingers <= 4:
+        raise ValueError(
+            "--mpc-recovery-bridge-min-contact-fingers must be in [1, 4]"
+        )
+    if args.mpc_recovery_bridge_terminal_margin_mm < 0.0:
+        raise ValueError(
+            "--mpc-recovery-bridge-terminal-margin-mm cannot be negative"
         )
     if args.mpc_auto_rephase_step_mm <= 0.0:
         raise ValueError("--mpc-auto-rephase-step-mm must be positive")
@@ -3192,6 +3274,14 @@ def main() -> None:
                 keyframe_count + 1,
                 dtype=np.float64,
             )
+            coarse_recovery_bridge = np.zeros(
+                keyframe_count + 1,
+                dtype=np.bool_,
+            )
+            coarse_recovery_bridge_dwell_m = np.zeros(
+                keyframe_count + 1,
+                dtype=np.float64,
+            )
             coarse_normal_error = np.zeros_like(coarse_progress)
             coarse_palm_target = np.zeros(
                 (keyframe_count + 1, 3), dtype=np.float64
@@ -3330,6 +3420,7 @@ def main() -> None:
             previous_delta = np.zeros(TOTAL_DOF, dtype=np.float64)
             auto_rephase_offset_m = np.zeros(4, dtype=np.float64)
             static_bridge_total_m = 0.0
+            recovery_bridge_total_m = 0.0
 
             def insert_auto_refinement(
                 *,
@@ -3347,6 +3438,8 @@ def main() -> None:
                 nonlocal coarse_feasibility_bridge
                 nonlocal coarse_static_feasibility_bridge
                 nonlocal coarse_static_bridge_dwell_m
+                nonlocal coarse_recovery_bridge
+                nonlocal coarse_recovery_bridge_dwell_m
                 nonlocal coarse_normal_error
                 nonlocal coarse_palm_target
                 nonlocal coarse_palm_position_error
@@ -3417,6 +3510,16 @@ def main() -> None:
                 )
                 coarse_static_bridge_dwell_m = np.insert(
                     coarse_static_bridge_dwell_m,
+                    keyframe,
+                    0.0,
+                )
+                coarse_recovery_bridge = np.insert(
+                    coarse_recovery_bridge,
+                    keyframe,
+                    False,
+                )
+                coarse_recovery_bridge_dwell_m = np.insert(
+                    coarse_recovery_bridge_dwell_m,
                     keyframe,
                     0.0,
                 )
@@ -3591,6 +3694,27 @@ def main() -> None:
                 )
                 return accepted, nominal_contact, tolerances
 
+            def recovery_contact_status(
+                tip_normal_error: np.ndarray,
+            ) -> tuple[bool, np.ndarray, np.ndarray]:
+                """Audit a short recovery without redefining nominal contact."""
+
+                nominal_contact = (
+                    tip_normal_error
+                    <= args.mpc_normal_tolerance_mm / 1000.0
+                )
+                tolerances = np.full(
+                    4,
+                    args.mpc_recovery_bridge_normal_tolerance_mm / 1000.0,
+                    dtype=np.float64,
+                )
+                accepted = bool(
+                    int(np.count_nonzero(nominal_contact))
+                    >= args.mpc_recovery_bridge_min_contact_fingers
+                    and np.all(tip_normal_error <= tolerances)
+                )
+                return accepted, nominal_contact, tolerances
+
             def scheduled_tip_tangential_tolerances(
                 surface_distance: float,
             ) -> np.ndarray:
@@ -3650,7 +3774,9 @@ def main() -> None:
             while keyframe <= keyframe_count:
                 feasibility_bridge_selected = False
                 static_feasibility_bridge_selected = False
+                recovery_bridge_selected = False
                 selected_static_bridge_dwell_m = 0.0
+                selected_recovery_bridge_dwell_m = 0.0
                 bridge_tip_motion_m = np.zeros(4, dtype=np.float64)
                 bridge_joint_motion_rad = 0.0
                 desired_distance = float(coarse_distance[keyframe])
@@ -5604,6 +5730,11 @@ def main() -> None:
                         bridge_normal_error[1:],
                         desired_distance,
                     )
+                    bridge_recovery_normal_ok, _, _ = (
+                        recovery_contact_status(
+                            bridge_normal_error[1:]
+                        )
+                    )
                     bridge_palm_error = float(
                         np.linalg.norm(
                             bridge_points[0] - palm_target
@@ -5640,6 +5771,33 @@ def main() -> None:
                     proposed_static_bridge_total_m = (
                         static_bridge_total_m + bridge_interval_m
                     )
+                    proposed_recovery_bridge_dwell_m = (
+                        float(
+                            coarse_recovery_bridge_dwell_m[keyframe - 1]
+                        )
+                        + bridge_interval_m
+                    )
+                    proposed_recovery_bridge_total_m = (
+                        recovery_bridge_total_m + bridge_interval_m
+                    )
+                    recovery_bridge_budget_ok = bool(
+                        proposed_recovery_bridge_dwell_m
+                        <= args.mpc_recovery_bridge_max_span_mm / 1000.0
+                        + 1.0e-12
+                        and proposed_recovery_bridge_total_m
+                        <= (
+                            args.mpc_recovery_bridge_max_total_ratio
+                            * args.axial_travel_m
+                        )
+                        + 1.0e-12
+                        and desired_distance
+                        <= (
+                            args.axial_travel_m
+                            - args.mpc_recovery_bridge_terminal_margin_mm
+                            / 1000.0
+                        )
+                        + 1.0e-12
+                    )
                     static_bridge_progress_limit_m = max(
                         progress_limit_m,
                         args.mpc_static_bridge_progress_tolerance_mm / 1000.0,
@@ -5648,7 +5806,7 @@ def main() -> None:
                         bridge_interval_short
                         and float(bridge_progress_error.max())
                         <= static_bridge_progress_limit_m
-                        and bridge_normal_ok
+                        and bridge_recovery_normal_ok
                         and np.all(
                             np.abs(bridge_tangential_error[1:])
                             <= tip_tangential_tolerances
@@ -5667,6 +5825,7 @@ def main() -> None:
                             * args.axial_travel_m
                         )
                         + 1.0e-12
+                        and recovery_bridge_budget_ok
                     )
                     static_bridge_candidate = None
                     if bridge_hard_ok:
@@ -5953,6 +6112,13 @@ def main() -> None:
                             moving_bridge_normal_error[1:],
                             desired_distance,
                         )
+                        (
+                            moving_bridge_recovery_normal_ok,
+                            _,
+                            _,
+                        ) = recovery_contact_status(
+                            moving_bridge_normal_error[1:]
+                        )
                         moving_bridge_palm_error = float(
                             np.linalg.norm(
                                 moving_bridge_points[0] - palm_target
@@ -6042,6 +6208,35 @@ def main() -> None:
                             and moving_bridge_joint_limits_ok
                             and moving_bridge_motion_ok
                         )
+                        moving_recovery_progress_limit_m = max(
+                            progress_limit_m,
+                            args.mpc_recovery_bridge_progress_tolerance_mm
+                            / 1000.0,
+                        )
+                        moving_recovery_hard_ok = bool(
+                            not moving_bridge_hard_ok
+                            and float(
+                                moving_bridge_progress_error.max()
+                            )
+                            <= moving_recovery_progress_limit_m
+                            and moving_bridge_recovery_normal_ok
+                            and np.all(
+                                np.abs(
+                                    moving_bridge_tangential_error[1:]
+                                )
+                                <= tip_tangential_tolerances
+                            )
+                            and float(
+                                moving_bridge_monotonic_error.max()
+                            )
+                            <= args.mpc_monotonic_tolerance_mm / 1000.0
+                            and moving_bridge_palm_error
+                            <= palm_tracking_limit_m
+                            and moving_bridge_collision_ok
+                            and moving_bridge_joint_limits_ok
+                            and moving_bridge_motion_ok
+                            and recovery_bridge_budget_ok
+                        )
                         if moving_bridge_hard_ok:
                             accepted_rephase_candidates.append(
                                 (
@@ -6074,6 +6269,40 @@ def main() -> None:
                                     )
                                 )
                             )
+                        elif moving_recovery_hard_ok:
+                            accepted_rephase_candidates.append(
+                                (
+                                    float(
+                                        np.linalg.norm(
+                                            bridge_rephase_offset_m
+                                            - starting_rephase_offset_m
+                                        )
+                                    ),
+                                    float(
+                                        moving_bridge_progress_error.max()
+                                    ),
+                                    float(moving_bridge.cost),
+                                    moving_bridge,
+                                    moving_bridge_progress_error,
+                                    moving_bridge_normal_error,
+                                    moving_bridge_arc,
+                                    bridge_rephase_offset_m.copy(),
+                                    bridge_desired_arc.copy(),
+                                )
+                            )
+                            feasibility_bridge_selected = True
+                            recovery_bridge_selected = True
+                            selected_recovery_bridge_dwell_m = (
+                                proposed_recovery_bridge_dwell_m
+                            )
+                            bridge_tip_motion_m = moving_tip_motion_m.copy()
+                            bridge_joint_motion_rad = float(
+                                np.max(
+                                    np.abs(
+                                        moving_bridge.x - previous_q
+                                    )
+                                )
+                            )
                         elif static_bridge_candidate is not None:
                             accepted_rephase_candidates.append(
                                 static_bridge_candidate
@@ -6082,6 +6311,10 @@ def main() -> None:
                             static_feasibility_bridge_selected = True
                             selected_static_bridge_dwell_m = (
                                 proposed_static_bridge_dwell_m
+                            )
+                            recovery_bridge_selected = True
+                            selected_recovery_bridge_dwell_m = (
+                                proposed_recovery_bridge_dwell_m
                             )
                         desired_arc[:] = nominal_desired_arc
                     if accepted_rephase_candidates:
@@ -6108,6 +6341,8 @@ def main() -> None:
                         )
                         if static_feasibility_bridge_selected:
                             event_name = "STATIC-FEASIBILITY-BRIDGE"
+                        elif recovery_bridge_selected:
+                            event_name = "MOVING-RECOVERY-BRIDGE"
                         elif feasibility_bridge_selected:
                             event_name = "MOVING-FEASIBILITY-BRIDGE"
                         else:
@@ -6211,8 +6446,12 @@ def main() -> None:
                         f"{(monotonic_error * 1000).round(2).tolist()}"
                     )
                 accepted_progress_limit_m = (
-                    args.mpc_static_bridge_progress_tolerance_mm / 1000.0
-                    if static_feasibility_bridge_selected
+                    max(
+                        args.mpc_static_bridge_progress_tolerance_mm,
+                        args.mpc_recovery_bridge_progress_tolerance_mm,
+                    )
+                    / 1000.0
+                    if recovery_bridge_selected
                     else active_progress_tolerance_mm / 1000.0
                 )
                 if float(progress_error.max()) > accepted_progress_limit_m:
@@ -6228,14 +6467,27 @@ def main() -> None:
                         f"distance_m={desired_distance:.4f} "
                         f"error_mm={(progress_error * 1000).round(2).tolist()}"
                     )
-                (
-                    normal_contact_ok,
-                    nominal_contact_mask,
-                    active_normal_tolerances,
-                ) = scheduled_contact_status(
-                    normal_error[1:],
-                    desired_distance,
-                )
+                if recovery_bridge_selected:
+                    (
+                        normal_contact_ok,
+                        nominal_contact_mask,
+                        active_normal_tolerances,
+                    ) = recovery_contact_status(normal_error[1:])
+                    required_contact_fingers = (
+                        args.mpc_recovery_bridge_min_contact_fingers
+                    )
+                else:
+                    (
+                        normal_contact_ok,
+                        nominal_contact_mask,
+                        active_normal_tolerances,
+                    ) = scheduled_contact_status(
+                        normal_error[1:],
+                        desired_distance,
+                    )
+                    required_contact_fingers = (
+                        args.min_planner_contact_fingers
+                    )
                 if not normal_contact_ok:
                     if insert_auto_refinement(
                         keyframe=keyframe,
@@ -6249,7 +6501,7 @@ def main() -> None:
                         f"keyframe={keyframe}/{keyframe_count} "
                         f"distance_m={desired_distance:.4f} "
                         f"contacts={int(np.count_nonzero(nominal_contact_mask))}/4 "
-                        f"required={args.min_planner_contact_fingers} "
+                        f"required={required_contact_fingers} "
                         f"error_mm="
                         f"{(normal_error[1:] * 1000).round(2).tolist()} "
                         f"tolerance_mm="
@@ -6327,8 +6579,21 @@ def main() -> None:
                     if static_feasibility_bridge_selected
                     else 0.0
                 )
+                coarse_recovery_bridge[keyframe] = (
+                    recovery_bridge_selected
+                )
+                coarse_recovery_bridge_dwell_m[keyframe] = (
+                    selected_recovery_bridge_dwell_m
+                    if recovery_bridge_selected
+                    else 0.0
+                )
                 if static_feasibility_bridge_selected:
                     static_bridge_total_m += (
+                        desired_distance
+                        - float(coarse_distance[keyframe - 1])
+                    )
+                if recovery_bridge_selected:
+                    recovery_bridge_total_m += (
                         desired_distance
                         - float(coarse_distance[keyframe - 1])
                     )
@@ -6383,6 +6648,10 @@ def main() -> None:
                 frame_count,
                 dtype=np.int8,
             )
+            recovery_bridge_mask_plan = np.zeros(
+                frame_count,
+                dtype=np.bool_,
+            )
             palm_position_error_plan = np.zeros(
                 frame_count, dtype=np.float32
             )
@@ -6434,14 +6703,35 @@ def main() -> None:
                         )
                     )
                 )
-                (
-                    interpolation_contact_ok,
-                    interpolation_contact_mask,
-                    interpolation_normal_tolerances,
-                ) = scheduled_contact_status(
-                    normal_error_plan[frame, 1:],
-                    desired_distance,
+                interpolation_recovery_bridge = bool(
+                    coarse_recovery_bridge[left + 1]
                 )
+                recovery_bridge_mask_plan[frame] = (
+                    interpolation_recovery_bridge
+                )
+                if interpolation_recovery_bridge:
+                    (
+                        interpolation_contact_ok,
+                        interpolation_contact_mask,
+                        interpolation_normal_tolerances,
+                    ) = recovery_contact_status(
+                        normal_error_plan[frame, 1:]
+                    )
+                    interpolation_required_contacts = (
+                        args.mpc_recovery_bridge_min_contact_fingers
+                    )
+                else:
+                    (
+                        interpolation_contact_ok,
+                        interpolation_contact_mask,
+                        interpolation_normal_tolerances,
+                    ) = scheduled_contact_status(
+                        normal_error_plan[frame, 1:],
+                        desired_distance,
+                    )
+                    interpolation_required_contacts = (
+                        args.min_planner_contact_fingers
+                    )
                 scheduled_contact_mask_plan[frame] = (
                     interpolation_contact_mask
                 )
@@ -6456,7 +6746,7 @@ def main() -> None:
                         f"distance_m={desired_distance:.4f} "
                         f"contacts="
                         f"{scheduled_contact_count_plan[frame]}/4 "
-                        f"required={args.min_planner_contact_fingers} "
+                        f"required={interpolation_required_contacts} "
                         f"error_mm="
                         f"{(normal_error_plan[frame, 1:] * 1000).round(2).tolist()} "
                         f"tolerance_mm="
@@ -6470,6 +6760,63 @@ def main() -> None:
                     np.linalg.norm(points[0] - palm_target)
                 )
                 distance_plan[frame] = float(np.min(progress[1:]))
+
+            planned_contact_ratio = np.mean(
+                scheduled_contact_mask_plan,
+                axis=0,
+            )
+            planned_majority_contact_ratio = float(
+                np.mean(
+                    scheduled_contact_count_plan
+                    >= args.min_runtime_contact_fingers
+                )
+            )
+            planned_average_contact_fingers = float(
+                np.mean(scheduled_contact_count_plan)
+            )
+            if (
+                planned_majority_contact_ratio
+                < args.min_majority_contact_ratio
+            ):
+                raise RuntimeError(
+                    "Adaptive surface MPC planned majority-contact ratio "
+                    "below the route-level requirement: "
+                    f"observed={planned_majority_contact_ratio:.4f} "
+                    f"required={args.min_majority_contact_ratio:.4f}"
+                )
+            if (
+                planned_average_contact_fingers
+                < args.min_average_contact_fingers
+            ):
+                raise RuntimeError(
+                    "Adaptive surface MPC planned average contact count "
+                    "below the route-level requirement: "
+                    f"observed={planned_average_contact_fingers:.4f} "
+                    f"required={args.min_average_contact_fingers:.4f}"
+                )
+            if np.any(planned_contact_ratio < args.min_contact_ratio):
+                raise RuntimeError(
+                    "Adaptive surface MPC planned per-finger contact ratio "
+                    "below the route-level requirement: "
+                    f"observed={planned_contact_ratio.round(4).tolist()} "
+                    f"required={args.min_contact_ratio:.4f}"
+                )
+            terminal_contact_frames = min(
+                args.final_contact_recovery_frames,
+                frame_count,
+            )
+            if (
+                terminal_contact_frames < args.final_contact_recovery_frames
+                or not np.all(
+                    scheduled_contact_count_plan[-terminal_contact_frames:]
+                    == 4
+                )
+            ):
+                raise RuntimeError(
+                    "Adaptive surface MPC did not restore four-fingertip "
+                    "terminal contact: "
+                    f"required_frames={args.final_contact_recovery_frames}"
+                )
 
             final_target_progress = coarse_target_progress[-1]
             final_progress_error = np.abs(
@@ -6533,6 +6880,14 @@ def main() -> None:
                 normal_error_m=normal_error_plan,
                 scheduled_contact_mask=scheduled_contact_mask_plan,
                 scheduled_contact_count=scheduled_contact_count_plan,
+                recovery_bridge_mask=recovery_bridge_mask_plan,
+                planned_contact_ratio=planned_contact_ratio,
+                planned_majority_contact_ratio=np.asarray(
+                    planned_majority_contact_ratio
+                ),
+                planned_average_contact_fingers=np.asarray(
+                    planned_average_contact_fingers
+                ),
                 min_planner_contact_fingers=np.asarray(
                     args.min_planner_contact_fingers
                 ),
@@ -6593,6 +6948,10 @@ def main() -> None:
                 mpc_coarse_static_bridge_dwell_m=(
                     coarse_static_bridge_dwell_m
                 ),
+                mpc_coarse_recovery_bridge=coarse_recovery_bridge,
+                mpc_coarse_recovery_bridge_dwell_m=(
+                    coarse_recovery_bridge_dwell_m
+                ),
                 mpc_local_refine_start_m=np.asarray(
                     args.mpc_local_refine_start_m
                 ),
@@ -6631,6 +6990,27 @@ def main() -> None:
                     args.mpc_static_bridge_progress_tolerance_mm
                 ),
                 mpc_static_bridge_total_m=np.asarray(static_bridge_total_m),
+                mpc_recovery_bridge_max_span_mm=np.asarray(
+                    args.mpc_recovery_bridge_max_span_mm
+                ),
+                mpc_recovery_bridge_max_total_ratio=np.asarray(
+                    args.mpc_recovery_bridge_max_total_ratio
+                ),
+                mpc_recovery_bridge_progress_tolerance_mm=np.asarray(
+                    args.mpc_recovery_bridge_progress_tolerance_mm
+                ),
+                mpc_recovery_bridge_normal_tolerance_mm=np.asarray(
+                    args.mpc_recovery_bridge_normal_tolerance_mm
+                ),
+                mpc_recovery_bridge_min_contact_fingers=np.asarray(
+                    args.mpc_recovery_bridge_min_contact_fingers
+                ),
+                mpc_recovery_bridge_terminal_margin_mm=np.asarray(
+                    args.mpc_recovery_bridge_terminal_margin_mm
+                ),
+                mpc_recovery_bridge_total_m=np.asarray(
+                    recovery_bridge_total_m
+                ),
                 mpc_auto_rephase_step_mm=np.asarray(
                     args.mpc_auto_rephase_step_mm
                 ),
@@ -6815,6 +7195,13 @@ def main() -> None:
                 f"{float(normal_error_plan[:, 1:].max() * 1000):.2f} "
                 f"min_scheduled_contacts="
                 f"{int(scheduled_contact_count_plan.min())}/4 "
+                f"planned_majority_contact_ratio="
+                f"{planned_majority_contact_ratio:.4f} "
+                f"planned_average_contacts="
+                f"{planned_average_contact_fingers:.3f}/4 "
+                f"recovery_frames="
+                f"{int(np.count_nonzero(recovery_bridge_mask_plan))}/"
+                f"{frame_count} "
                 f"max_palm_position_error_mm="
                 f"{max_palm_position_error * 1000:.2f} "
                 f"min_arm_clearance_mm="

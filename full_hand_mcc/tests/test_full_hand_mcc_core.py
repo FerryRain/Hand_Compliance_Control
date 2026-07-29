@@ -357,6 +357,37 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
         ):
             self.assertIn(required_term, source)
 
+    def test_recovery_bridge_is_moving_bounded_and_auditable(self) -> None:
+        source = DEMO_PATH.read_text(encoding="utf-8")
+        for required_term in (
+            "MOVING-RECOVERY-BRIDGE",
+            "moving_recovery_hard_ok",
+            "moving_bridge_motion_ok",
+            "moving_tip_motion_m",
+            "moving_bridge_collision_ok",
+            "moving_bridge_joint_limits_ok",
+            "moving_bridge_monotonic_error",
+            "moving_bridge_palm_error",
+            "recovery_bridge_budget_ok",
+            "mpc_recovery_bridge_max_span_mm",
+            "mpc_recovery_bridge_max_total_ratio",
+            "mpc_recovery_bridge_progress_tolerance_mm",
+            "mpc_recovery_bridge_normal_tolerance_mm",
+            "mpc_recovery_bridge_min_contact_fingers",
+            "mpc_recovery_bridge_terminal_margin_mm",
+            "coarse_recovery_bridge",
+            "coarse_recovery_bridge_dwell_m",
+            "recovery_bridge_total_m",
+            "recovery_bridge_mask_plan",
+            "mpc_coarse_recovery_bridge",
+            "mpc_coarse_recovery_bridge_dwell_m",
+            "mpc_recovery_bridge_total_m",
+            "planned_majority_contact_ratio",
+            "planned_average_contact_fingers",
+            "planned_contact_ratio",
+        ):
+            self.assertIn(required_term, source)
+
     def test_runtime_contact_acceptance_is_aggregate_and_bounded(self) -> None:
         source = DEMO_PATH.read_text(encoding="utf-8")
         for required_term in (
