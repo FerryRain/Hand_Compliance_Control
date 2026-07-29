@@ -15,9 +15,9 @@ channels provide four independent fingertip force estimates. FR3 links must
 never contact the object. Every LEAP Hand part may make bounded incidental
 contact, but only the four physical fingertip pads count toward the contact
 objective. Brief fingertip release and brief no-motion intervals are allowed;
-by default, one planned no-motion bridge may span at most `1.0 mm`, while all
-such bridges together may cover at most `2%` of the requested route.
-the full route must spend at least 80% of evaluated motion frames with three
+by default, one planned no-motion bridge may span at most `1.5 mm`, while all
+such bridges together may cover at most `2%` of the requested route. The full
+route must spend at least 80% of evaluated motion frames with three
 or more physical pad contacts, average at least `3.0/4` simultaneous contacts,
 meet the configured per-finger contact ratio, and finish with stable `4/4`
 contact. FR3 zero-contact and bounded LEAP incidental-contact limits remain

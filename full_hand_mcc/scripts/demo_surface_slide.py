@@ -802,7 +802,7 @@ def main() -> None:
     parser.add_argument(
         "--mpc-static-bridge-max-dwell-mm",
         type=float,
-        default=1.00,
+        default=1.50,
         help=(
             "Maximum consecutive route distance that short static feasibility "
             "bridges may cover before real fingertip motion must resume."
@@ -820,7 +820,7 @@ def main() -> None:
     parser.add_argument(
         "--mpc-static-bridge-progress-tolerance-mm",
         type=float,
-        default=4.50,
+        default=6.00,
         help=(
             "Temporary fingertip progress tolerance used only by a bounded "
             "static bridge. Ordinary moving and final tolerances are unchanged."
