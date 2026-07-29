@@ -760,6 +760,16 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--mpc-feasibility-bridge-max-mm",
+        type=float,
+        default=None,
+        help=(
+            "Optional phase bound used only by the short-interval predecessor "
+            "feasibility bridge. The ordinary non-convex rephase search keeps "
+            "--mpc-auto-rephase-max-mm, preserving its validated branch."
+        ),
+    )
+    parser.add_argument(
         "--mpc-auto-rephase-step-mm",
         type=float,
         default=0.05,
@@ -1357,6 +1367,14 @@ def main() -> None:
     args.mpc_local_refine_window = mpc_local_refine_windows
     if args.mpc_auto_rephase_max_mm < 0.0:
         raise ValueError("--mpc-auto-rephase-max-mm cannot be negative")
+    if args.mpc_feasibility_bridge_max_mm is None:
+        args.mpc_feasibility_bridge_max_mm = (
+            args.mpc_auto_rephase_max_mm
+        )
+    if args.mpc_feasibility_bridge_max_mm < 0.0:
+        raise ValueError(
+            "--mpc-feasibility-bridge-max-mm cannot be negative"
+        )
     if args.mpc_auto_rephase_step_mm <= 0.0:
         raise ValueError("--mpc-auto-rephase-step-mm must be positive")
     if args.mpc_auto_rephase_decay_mm < 0.0:
@@ -5383,8 +5401,16 @@ def main() -> None:
                     bridge_rephase_offset_m = np.clip(
                         starting_rephase_offset_m
                         + bridge_offset_delta_m,
-                        -auto_rephase_limit_m,
-                        auto_rephase_limit_m,
+                        -(
+                            args.mpc_feasibility_bridge_max_mm
+                            / 1000.0
+                            * terminal_rephase_envelope
+                        ),
+                        (
+                            args.mpc_feasibility_bridge_max_mm
+                            / 1000.0
+                            * terminal_rephase_envelope
+                        ),
                     )
                     bridge_desired_arc = nominal_desired_arc.copy()
                     bridge_desired_arc[1:] += (
@@ -6151,6 +6177,9 @@ def main() -> None:
                 ).reshape(-1, 3),
                 mpc_auto_rephase_max_mm=np.asarray(
                     args.mpc_auto_rephase_max_mm
+                ),
+                mpc_feasibility_bridge_max_mm=np.asarray(
+                    args.mpc_feasibility_bridge_max_mm
                 ),
                 mpc_auto_rephase_step_mm=np.asarray(
                     args.mpc_auto_rephase_step_mm

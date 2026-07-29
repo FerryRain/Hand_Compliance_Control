@@ -321,6 +321,7 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             "x=previous_q.copy()",
             "bridge_interval_short",
             "mpc_auto_refine_min_step_mm",
+            "mpc_feasibility_bridge_max_mm",
             "bridge_progress_error",
             "bridge_normal_ok",
             "bridge_tangential_error",
