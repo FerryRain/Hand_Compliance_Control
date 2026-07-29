@@ -1,10 +1,14 @@
 # Hand Compliance Control
 
-The active project is the Windows/CUDA `full_hand_mcc/` implementation:
-Franka FR3 supplies palm-root force feedback and the 16 LEAP Hand motors
-supply four independent fingertip feedback channels. Five-point trajectories
-(palm root plus four physical fingertip pads) are planned under the assembled
-FR3 + LEAP URDF/MJCF constraints.
+The research proposal is
+[`PROPOSAL.md`](PROPOSAL.md): scalable inverse demonstration generation,
+a wrist-conditioned finger Diffusion Policy, and wrist-only ER-GPIS active
+exploration. The Windows/CUDA `full_hand_mcc/` implementation is the explicit
+whole-hand optimization **Baseline 2**, not the online architecture of the
+main method. Franka FR3 supplies palm-root force feedback and the 16 LEAP Hand
+motors supply four independent fingertip feedback channels. Five-point
+trajectories (palm root plus four physical fingertip pads) are planned under
+the assembled FR3 + LEAP URDF/MJCF constraints.
 The active acceptance policy permits short bounded pauses or fingertip release,
 but requires majority fingertip contact over most of the route, per-finger
 contact ratios, and stable four-tip recovery at the end. FR3/object contact
@@ -26,14 +30,14 @@ complete; at that point the user will receive a separate manual setup checklist.
 
 ## Project index
 
-- `full_hand_mcc/`: active FR3 + LEAP full-hand MCC, five-point planning,
-  collision/contact auditing, GPU simulation, and video delivery.
+- `full_hand_mcc/`: Baseline 2 FR3 + LEAP full-hand MCC, explicit five-point
+  optimization, collision/contact auditing, GPU simulation, and video delivery.
 - `palm_compliance_control/`: palm/arm MCC reference implementation.
 - `mcc_finger_compliance_control/`: motor-force fingertip MCC reference.
 - `finger_compliance_control/`: earlier finger compliance reference.
 - `minimalist_compliance_control/`: upstream/minimal MCC reference.
 
-Start with [`PROCESS.md`](PROCESS.md), then read
+Start with [`PROPOSAL.md`](PROPOSAL.md) and [`PROCESS.md`](PROCESS.md), then read
 [`full_hand_mcc/PROCESS.md`](full_hand_mcc/PROCESS.md) before continuing a
 development session. Full-hand commands and acceptance rules are documented in
 [`full_hand_mcc/README.md`](full_hand_mcc/README.md).

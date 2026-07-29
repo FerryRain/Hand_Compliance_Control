@@ -5,6 +5,12 @@
 > session 后可以从“当前正在做”继续。每次上下文压缩/摘要恢复后必须重新读
 > 根 `PROCESS.md`、本文档和 #7 最新评论，再执行任何代码或仿真命令。
 
+> **研究定位（2026-07-29，后续 session 必须先读）：** 本目录不是 proposal
+> 的主方法，而是 [`../PROPOSAL.md`](../PROPOSAL.md) 中“十一、方案二”的
+> Explicit Whole-Hand Optimization Baseline。现有 FR3/LEAP MCC 是 Baseline 2
+> 的底层执行控制器。主方法将采用逆向示范生成、wrist-conditioned finger DP
+> 和 wrist-only ER-GPIS；不得把本目录的在线多指联合优化写成核心 contribution。
+
 ## 固定验收要求
 
 - 默认机器人必须是 Franka FR3（7 DoF）+ LEAP Hand（16 DoF），总计 23 DoF。
@@ -43,8 +49,10 @@
 
 ## 相关 issue
 
+- [#8 主方法：逆向示范 + finger DP + wrist-only ER-GPIS](https://github.com/FerryRain/Hand_Compliance_Control/issues/8)
+  —— 主研究路线；本目录只能作为 teacher/oracle 与显式优化对照为其服务。
 - [#7 FR3 迁移与滑到顶部](https://github.com/FerryRain/Hand_Compliance_Control/issues/7)
-  —— 当前实现与验收。
+  —— 本目录 Baseline 2 的当前实现与验收。
 - [#4 多物体和大曲率泛化](https://github.com/FerryRain/Hand_Compliance_Control/issues/4)
   —— FR3 主 demo 通过后继续。
 - [#1 硬件力矩符号](https://github.com/FerryRain/Hand_Compliance_Control/issues/1)
@@ -1127,3 +1135,24 @@ v106 改为显式恢复状态：
 CLI 与完整 `17/17` 回归通过。issue #7 评论 `5117379121` 已记录 v105 根因
 和 v106 设计。下一步提交后运行 v106 headless；未完成 0.48 m 规划与 4700
 步动力学数值验收前不生成视频。
+
+#### v106 headless 结果与研究定位更新（2026-07-29）
+
+v106 未生成视频或成功计划文件。它保持既有可行前驱并推进到旧瓶颈：
+
+- 268.208 mm 仍由严格 MPC 以 `4/4` 指腹接触通过；
+- 268.364–269.610 mm 使用静态桥，FR3 规划净距约 81.5 mm、自碰撞为零、
+  LEAP 附带压入小于 1 mm；
+- 269.766 mm 的四指纵向误差仍为
+  `[2.08,5.50,4.76,5.42] mm`，未进入预期的 moving recovery，按规则退出。
+
+这说明 v106 的 moving recovery 仍被某个未输出的硬条件拒绝；不能继续增加
+静止预算。恢复前应先输出每项拒绝原因，再依据“多数手指、短时失联/停顿可接受”
+的统计语义修正真实移动条件。
+
+同日用户提供正式 proposal，重新界定了本目录的研究角色：当前显式五点/MPC
+求解及 MCC 只属于 Baseline 2 的底层控制器。后续优先级不再默认是无限调优
+在线联合优化；项目主线应先建立 forward generation → inverse transform →
+physics replay → automatic filtering，再训练 wrist-conditioned finger DP。
+Baseline 2 后续需拆分为充分收敛的 Optimization Oracle 和 50/100/200 ms
+Optimization-Time-Capped 版本，并记录性能—求解时间权衡。

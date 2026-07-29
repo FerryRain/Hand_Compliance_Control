@@ -1,4 +1,11 @@
-# FR3 + LEAP full-hand MCC surface-sliding demo
+# FR3 + LEAP explicit whole-hand optimization baseline
+
+Research scope: this directory implements Baseline 2 from
+[`../PROPOSAL.md`](../PROPOSAL.md). Its MCC is the low-level controller for an
+explicit wrist/fingertip optimization oracle and future time-capped variants;
+it is not the proposed main method's online controller. The main method will
+use inverse demonstrations, a wrist-conditioned finger Diffusion Policy, and
+wrist-only ER-GPIS planning.
 
 This directory contains the Windows/CUDA MJLab demo for full-hand Minimalist
 Compliance Control (MCC). The five jointly planned points are:

@@ -5,6 +5,11 @@
 > 提交本文档；不要只在任务结束时补写。任何上下文压缩/摘要恢复发生后，也必须
 > 重新读取根与子项目两份 PROCESS，不能只依赖压缩摘要继续。
 
+> 研究主线首先以 [`PROPOSAL.md`](PROPOSAL.md) 为准：核心贡献是“可规模化
+> 逆向示范生成 + wrist-conditioned finger DP + wrist-only ER-GPIS”。
+> `full_hand_mcc/` 的显式腕部/多指联合优化属于 Baseline 2；当前 MCC 是该
+> baseline 的底层控制器，不是主方法的在线高维规划器。
+
 ## 用户要求（必须保留在文档头部）
 
 1. 以后只在 `main` 更新，不再切换或创建 Codex 功能分支。
@@ -44,6 +49,12 @@
 14. 视频必须按阶段保存：冒烟/探针、历史方法调试、FR3 规划调试、已审核参考和
     FR3 完整交付分别放入固定子目录。失败或未审核视频不得进入交付目录，已有视频
     也要按同一规则重新分类。
+15. 2026-07-29 项目研究定位以根目录 `PROPOSAL.md` 为准。主贡献改为可规模化
+    逆向示范生成、以 wrist motion/触觉为条件的 finger Diffusion Policy，以及
+    wrist-only ER-GPIS 主动探索。在线主方法不求解高维全手非线性优化；
+    `full_hand_mcc/` 是“方案二 / Explicit Whole-Hand Optimization Baseline”，
+    当前工作只实现其底层 MCC、Oracle 和后续 time-capped 对照，并可作为逆向
+    示范候选轨迹/teacher 的来源。
 
 ## 仓库状态
 
@@ -57,7 +68,7 @@
 
 | 子目录 | 作用 | 状态 | 详细进程 |
 | --- | --- | --- | --- |
-| `full_hand_mcc/` | FR3 + LEAP 全手 MCC、五点规划、碰撞审核、视频 | 迁移进行中 | [`full_hand_mcc/PROCESS.md`](full_hand_mcc/PROCESS.md) |
+| `full_hand_mcc/` | Baseline 2 的 FR3 + LEAP 全手 MCC、五点显式优化、碰撞审核、视频 | 基线迁移进行中 | [`full_hand_mcc/PROCESS.md`](full_hand_mcc/PROCESS.md) |
 | `palm_compliance_control/` | 原始掌部/机械臂 MCC 参考 | 已有参考实现 | README/源码 |
 | `mcc_finger_compliance_control/` | 手指 MCC 参考 | 已有参考实现 | README/源码 |
 | `finger_compliance_control/` | 手指顺应控制参考 | 已有参考实现 | README/源码 |
@@ -65,8 +76,10 @@
 
 ## GitHub issue 索引
 
+- [#8 主方法：逆向示范生成 + wrist-conditioned finger DP + wrist-only ER-GPIS](https://github.com/FerryRain/Hand_Compliance_Control/issues/8)
+  —— Proposal 主线与 Phase 1–5 的实现/实验追踪；优先级高于继续扩展在线联合优化。
 - [#7 FR3 full-hand MCC：迁移机械臂并滑到物体顶部](https://github.com/FerryRain/Hand_Compliance_Control/issues/7)
-  —— 当前主任务。
+  —— Baseline 2 的底层 MCC、Optimization Oracle 和 time-capped 对照。
 - [#4 多物体/曲率泛化](https://github.com/FerryRain/Hand_Compliance_Control/issues/4)
   —— 未完成，FR3 单物体验收后继续。
 - [#1 硬件力矩符号与五接触接口](https://github.com/FerryRain/Hand_Compliance_Control/issues/1)
