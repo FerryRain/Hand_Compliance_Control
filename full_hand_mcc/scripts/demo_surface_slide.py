@@ -802,7 +802,7 @@ def main() -> None:
     parser.add_argument(
         "--mpc-static-bridge-max-dwell-mm",
         type=float,
-        default=0.50,
+        default=1.00,
         help=(
             "Maximum consecutive route distance that short static feasibility "
             "bridges may cover before real fingertip motion must resume."
