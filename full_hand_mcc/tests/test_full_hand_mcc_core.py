@@ -303,6 +303,35 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             "The mutable MPC keyframe loop must advance after acceptance",
         )
 
+    def test_predecessor_bridge_rechecks_every_hard_constraint(self) -> None:
+        tree = ast.parse(DEMO_PATH.read_text(encoding="utf-8"))
+        planner = next(
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "_build_adaptive_surface_mpc_plan"
+        )
+        source = ast.get_source_segment(
+            DEMO_PATH.read_text(encoding="utf-8"),
+            planner,
+        )
+        self.assertIsNotNone(source)
+        for required_term in (
+            "bridge_result = SimpleNamespace",
+            "x=previous_q.copy()",
+            "bridge_progress_error",
+            "bridge_normal_ok",
+            "bridge_tangential_error",
+            "bridge_monotonic_error",
+            "bridge_palm_error",
+            "bridge_collision_ok",
+            "bridge_joint_limits_ok",
+            "coarse_feasibility_bridge",
+            "mpc_coarse_feasibility_bridge",
+            "FEASIBILITY-BRIDGE",
+        ):
+            self.assertIn(required_term, source)
+
 
 if __name__ == "__main__":
     unittest.main()

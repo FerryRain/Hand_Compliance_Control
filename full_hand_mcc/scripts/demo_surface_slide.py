@@ -3031,6 +3031,10 @@ def main() -> None:
                 (keyframe_count + 1, 4),
                 dtype=np.float64,
             )
+            coarse_feasibility_bridge = np.zeros(
+                keyframe_count + 1,
+                dtype=np.bool_,
+            )
             coarse_normal_error = np.zeros_like(coarse_progress)
             coarse_palm_target = np.zeros(
                 (keyframe_count + 1, 3), dtype=np.float64
@@ -3182,6 +3186,7 @@ def main() -> None:
                 nonlocal coarse_progress
                 nonlocal coarse_target_progress
                 nonlocal coarse_auto_rephase_offset_m
+                nonlocal coarse_feasibility_bridge
                 nonlocal coarse_normal_error
                 nonlocal coarse_palm_target
                 nonlocal coarse_palm_position_error
@@ -3239,6 +3244,11 @@ def main() -> None:
                     keyframe,
                     np.zeros_like(coarse_auto_rephase_offset_m[0]),
                     axis=0,
+                )
+                coarse_feasibility_bridge = np.insert(
+                    coarse_feasibility_bridge,
+                    keyframe,
+                    False,
                 )
                 coarse_normal_error = np.insert(
                     coarse_normal_error,
@@ -3468,6 +3478,7 @@ def main() -> None:
 
             keyframe = 1
             while keyframe <= keyframe_count:
+                feasibility_bridge_selected = False
                 desired_distance = float(coarse_distance[keyframe])
                 desired_palm_distance = palm_follow_distance(
                     desired_distance
@@ -5325,7 +5336,153 @@ def main() -> None:
                         auto_rephase_limit_m
                     )
                     accepted_rephase_candidates = []
-                    for trial_amplitude_m in amplitude_candidates_m:
+                    # Before launching another non-convex least-squares solve,
+                    # audit the last accepted URDF state itself.  Across a
+                    # very short shooting interval it can remain physically
+                    # feasible even when the optimizer immediately jumps to a
+                    # different branch.  Project only the signed progress
+                    # outside a 0.05 mm inner band into the target phase; no
+                    # joint state or physical hard limit is relaxed.
+                    (
+                        bridge_points,
+                        _,
+                        _,
+                        bridge_arc,
+                        bridge_aux,
+                    ) = contact_state(previous_q)
+                    bridge_signed_progress_error = direction * (
+                        bridge_arc - desired_arc
+                    )
+                    bridge_signed_progress_error[0] = 0.0
+                    bridge_inner_progress_limit_m = max(
+                        progress_limit_m - 0.05 / 1000.0,
+                        0.0,
+                    )
+                    bridge_offset_delta_m = (
+                        bridge_signed_progress_error[1:]
+                        - np.clip(
+                            bridge_signed_progress_error[1:],
+                            -bridge_inner_progress_limit_m,
+                            bridge_inner_progress_limit_m,
+                        )
+                    )
+                    bridge_rephase_offset_m = np.clip(
+                        starting_rephase_offset_m
+                        + bridge_offset_delta_m,
+                        -auto_rephase_limit_m,
+                        auto_rephase_limit_m,
+                    )
+                    bridge_desired_arc = nominal_desired_arc.copy()
+                    bridge_desired_arc[1:] += (
+                        direction
+                        * (
+                            bridge_rephase_offset_m
+                            - starting_rephase_offset_m
+                        )
+                    )
+                    bridge_progress_error = np.abs(
+                        direction * (bridge_arc - bridge_desired_arc)
+                    )
+                    bridge_progress_error[0] = 0.0
+                    bridge_normal_error = np.abs(
+                        bridge_aux[:, 1] - desired_standoff
+                    )
+                    bridge_tangential_error = (
+                        (
+                            bridge_aux[:, 0]
+                            - desired_azimuth
+                            + np.pi
+                        )
+                        % (2.0 * np.pi)
+                        - np.pi
+                    ) * CAPSULE_RADIUS
+                    bridge_progress = direction * (
+                        bridge_arc - start_arc
+                    )
+                    bridge_monotonic_error = np.maximum(
+                        minimum_progress - bridge_progress,
+                        0.0,
+                    )
+                    bridge_monotonic_error[0] = 0.0
+                    bridge_normal_ok, _, _ = scheduled_contact_status(
+                        bridge_normal_error[1:],
+                        desired_distance,
+                    )
+                    bridge_palm_error = float(
+                        np.linalg.norm(
+                            bridge_points[0] - palm_target
+                        )
+                    )
+                    bridge_collision_ok = True
+                    if args.collision_mode == "full_robot":
+                        (
+                            bridge_arm_clearance,
+                            _,
+                            bridge_hand_clearance,
+                            _,
+                            bridge_self_count,
+                            bridge_pad_alignment,
+                        ) = segment_collision_status(previous_q)
+                        bridge_collision_ok = bool(
+                            bridge_arm_clearance
+                            >= args.min_arm_clearance_mm / 1000.0
+                            and bridge_hand_clearance
+                            >= -args.max_incidental_hand_penetration_mm
+                            / 1000.0
+                            and bridge_self_count == 0
+                            and bridge_pad_alignment
+                            >= planner_pad_alignment
+                        )
+                    bridge_joint_limits_ok = bool(
+                        np.all(previous_q >= lower - 1.0e-12)
+                        and np.all(previous_q <= upper + 1.0e-12)
+                    )
+                    bridge_hard_ok = bool(
+                        float(bridge_progress_error.max())
+                        <= progress_limit_m
+                        and bridge_normal_ok
+                        and np.all(
+                            np.abs(bridge_tangential_error[1:])
+                            <= tip_tangential_tolerances
+                        )
+                        and float(bridge_monotonic_error.max())
+                        <= args.mpc_monotonic_tolerance_mm / 1000.0
+                        and bridge_palm_error <= palm_tracking_limit_m
+                        and bridge_collision_ok
+                        and bridge_joint_limits_ok
+                    )
+                    if bridge_hard_ok:
+                        bridge_result = SimpleNamespace(
+                            x=previous_q.copy(),
+                            cost=0.0,
+                            nfev=0,
+                        )
+                        accepted_rephase_candidates.append(
+                            (
+                                float(
+                                    np.linalg.norm(
+                                        bridge_rephase_offset_m
+                                        - starting_rephase_offset_m
+                                    )
+                                ),
+                                float(bridge_progress_error.max()),
+                                0.0,
+                                bridge_result,
+                                bridge_progress_error,
+                                bridge_normal_error,
+                                bridge_arc,
+                                bridge_rephase_offset_m.copy(),
+                                bridge_desired_arc.copy(),
+                            )
+                        )
+                        feasibility_bridge_selected = True
+                    else:
+                        desired_arc[:] = nominal_desired_arc
+                    for trial_amplitude_m in (
+                        ()
+                        if feasibility_bridge_selected
+                        else amplitude_candidates_m
+                    ):
                         for pattern in unique_patterns:
                             for trial_sign in (1.0, -1.0):
                                 trial_rephase_offset_m = np.clip(
@@ -5511,8 +5668,13 @@ def main() -> None:
                         coarse_auto_rephase_offset_m[keyframe] = (
                             auto_rephase_offset_m
                         )
+                        event_name = (
+                            "FEASIBILITY-BRIDGE"
+                            if feasibility_bridge_selected
+                            else "AUTO-REPHASE"
+                        )
                         print(
-                            "[AUTO-REPHASE] "
+                            f"[{event_name}] "
                             f"keyframe={keyframe}/{keyframe_count} "
                             f"distance_m={desired_distance:.4f} "
                             "offset_mm="
@@ -5701,6 +5863,9 @@ def main() -> None:
                             f"{args.max_pad_angle_deg - args.planner_pad_angle_margin_deg:.2f}"
                         )
                 q = best.x
+                coarse_feasibility_bridge[keyframe] = (
+                    feasibility_bridge_selected
+                )
                 coarse_q[keyframe] = q
                 coarse_progress[keyframe] = direction * (
                     achieved_arc - start_arc
@@ -5952,6 +6117,9 @@ def main() -> None:
                 mpc_coarse_distance_m=coarse_distance,
                 mpc_coarse_auto_rephase_offset_m=(
                     coarse_auto_rephase_offset_m
+                ),
+                mpc_coarse_feasibility_bridge=(
+                    coarse_feasibility_bridge
                 ),
                 mpc_local_refine_start_m=np.asarray(
                     args.mpc_local_refine_start_m
