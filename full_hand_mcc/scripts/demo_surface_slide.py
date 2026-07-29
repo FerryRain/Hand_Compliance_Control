@@ -115,7 +115,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--variant", choices=MCC_VARIANTS, default="hybrid_force_position")
     parser.add_argument(
-        "--viewer", choices=("native", "viser", "video"), default="native"
+        "--viewer",
+        choices=("native", "viser", "headless", "video"),
+        default="native",
     )
     parser.add_argument("--device", default=None)
     parser.add_argument(
@@ -770,6 +772,24 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--mpc-feasibility-bridge-trust-radius-rad",
+        type=float,
+        default=0.05,
+        help=(
+            "Per-joint trust radius for a moving short-interval feasibility "
+            "bridge centred on the last accepted URDF state."
+        ),
+    )
+    parser.add_argument(
+        "--mpc-feasibility-bridge-min-progress-ratio",
+        type=float,
+        default=0.10,
+        help=(
+            "Minimum fraction of the short shooting interval that at least "
+            "three fingertips must physically advance for a moving bridge."
+        ),
+    )
+    parser.add_argument(
         "--mpc-auto-rephase-step-mm",
         type=float,
         default=0.05,
@@ -1374,6 +1394,18 @@ def main() -> None:
     if args.mpc_feasibility_bridge_max_mm < 0.0:
         raise ValueError(
             "--mpc-feasibility-bridge-max-mm cannot be negative"
+        )
+    if args.mpc_feasibility_bridge_trust_radius_rad <= 0.0:
+        raise ValueError(
+            "--mpc-feasibility-bridge-trust-radius-rad must be positive"
+        )
+    if not (
+        0.0
+        <= args.mpc_feasibility_bridge_min_progress_ratio
+        <= 1.0
+    ):
+        raise ValueError(
+            "--mpc-feasibility-bridge-min-progress-ratio must lie in [0, 1]"
         )
     if args.mpc_auto_rephase_step_mm <= 0.0:
         raise ValueError("--mpc-auto-rephase-step-mm must be positive")
@@ -3053,6 +3085,10 @@ def main() -> None:
                 keyframe_count + 1,
                 dtype=np.bool_,
             )
+            coarse_static_feasibility_bridge = np.zeros(
+                keyframe_count + 1,
+                dtype=np.bool_,
+            )
             coarse_normal_error = np.zeros_like(coarse_progress)
             coarse_palm_target = np.zeros(
                 (keyframe_count + 1, 3), dtype=np.float64
@@ -3205,6 +3241,7 @@ def main() -> None:
                 nonlocal coarse_target_progress
                 nonlocal coarse_auto_rephase_offset_m
                 nonlocal coarse_feasibility_bridge
+                nonlocal coarse_static_feasibility_bridge
                 nonlocal coarse_normal_error
                 nonlocal coarse_palm_target
                 nonlocal coarse_palm_position_error
@@ -3265,6 +3302,11 @@ def main() -> None:
                 )
                 coarse_feasibility_bridge = np.insert(
                     coarse_feasibility_bridge,
+                    keyframe,
+                    False,
+                )
+                coarse_static_feasibility_bridge = np.insert(
+                    coarse_static_feasibility_bridge,
                     keyframe,
                     False,
                 )
@@ -3497,6 +3539,9 @@ def main() -> None:
             keyframe = 1
             while keyframe <= keyframe_count:
                 feasibility_bridge_selected = False
+                static_feasibility_bridge_selected = False
+                bridge_tip_motion_m = np.zeros(4, dtype=np.float64)
+                bridge_joint_motion_rad = 0.0
                 desired_distance = float(coarse_distance[keyframe])
                 desired_palm_distance = palm_follow_distance(
                     desired_distance
@@ -5492,38 +5537,36 @@ def main() -> None:
                         and bridge_collision_ok
                         and bridge_joint_limits_ok
                     )
-                    if bridge_hard_ok:
+                    static_bridge_candidate = None
+                    if (
+                        bridge_hard_ok
+                        and not bool(
+                            coarse_static_feasibility_bridge[keyframe - 1]
+                        )
+                    ):
                         bridge_result = SimpleNamespace(
                             x=previous_q.copy(),
                             cost=0.0,
                             nfev=0,
                         )
-                        accepted_rephase_candidates.append(
-                            (
-                                float(
-                                    np.linalg.norm(
-                                        bridge_rephase_offset_m
-                                        - starting_rephase_offset_m
-                                    )
+                        static_bridge_candidate = (
+                            float(
+                                np.linalg.norm(
+                                    bridge_rephase_offset_m
+                                    - starting_rephase_offset_m
                                 ),
-                                float(bridge_progress_error.max()),
-                                0.0,
-                                bridge_result,
-                                bridge_progress_error,
-                                bridge_normal_error,
-                                bridge_arc,
-                                bridge_rephase_offset_m.copy(),
-                                bridge_desired_arc.copy(),
-                            )
+                            ),
+                            float(bridge_progress_error.max()),
+                            0.0,
+                            bridge_result,
+                            bridge_progress_error,
+                            bridge_normal_error,
+                            bridge_arc,
+                            bridge_rephase_offset_m.copy(),
+                            bridge_desired_arc.copy(),
                         )
-                        feasibility_bridge_selected = True
-                    else:
-                        desired_arc[:] = nominal_desired_arc
-                    for trial_amplitude_m in (
-                        ()
-                        if feasibility_bridge_selected
-                        else amplitude_candidates_m
-                    ):
+                    desired_arc[:] = nominal_desired_arc
+                    for trial_amplitude_m in amplitude_candidates_m:
                         for pattern in unique_patterns:
                             for trial_sign in (1.0, -1.0):
                                 trial_rephase_offset_m = np.clip(
@@ -5687,6 +5730,215 @@ def main() -> None:
                                     )
                         if accepted_rephase_candidates:
                             break
+                    if (
+                        not accepted_rephase_candidates
+                        and bridge_interval_short
+                    ):
+                        # The expanded short-step phase range must first be
+                        # used by a genuinely moving, locally bounded solve.
+                        # This preserves the continuous predecessor branch
+                        # without accumulating zero-motion planning pauses.
+                        desired_arc[:] = bridge_desired_arc
+                        bridge_trust_radius = (
+                            args.mpc_feasibility_bridge_trust_radius_rad
+                        )
+                        bridge_lower = np.maximum(
+                            lower,
+                            previous_q - bridge_trust_radius,
+                        )
+                        bridge_upper = np.minimum(
+                            upper,
+                            previous_q + bridge_trust_radius,
+                        )
+                        moving_bridge = least_squares(
+                            lambda q: residual(
+                                q,
+                                joint_regularization=0.0,
+                                progress_scale=3200.0,
+                                normal_scale=2400.0,
+                                monotonic_scale=12000.0,
+                                pad_scale=360.0,
+                                palm_scale=1200.0,
+                            ),
+                            np.minimum(
+                                np.maximum(previous_q, bridge_lower),
+                                bridge_upper,
+                            ),
+                            bounds=(bridge_lower, bridge_upper),
+                            max_nfev=args.mpc_max_nfev,
+                            xtol=1.0e-10,
+                            ftol=1.0e-10,
+                            gtol=1.0e-10,
+                            x_scale="jac",
+                        )
+                        (
+                            moving_bridge_points,
+                            _,
+                            _,
+                            moving_bridge_arc,
+                            moving_bridge_aux,
+                        ) = contact_state(moving_bridge.x)
+                        moving_bridge_progress_error = np.abs(
+                            direction
+                            * (moving_bridge_arc - bridge_desired_arc)
+                        )
+                        moving_bridge_progress_error[0] = 0.0
+                        moving_bridge_normal_error = np.abs(
+                            moving_bridge_aux[:, 1] - desired_standoff
+                        )
+                        moving_bridge_tangential_error = (
+                            (
+                                moving_bridge_aux[:, 0]
+                                - desired_azimuth
+                                + np.pi
+                            )
+                            % (2.0 * np.pi)
+                            - np.pi
+                        ) * CAPSULE_RADIUS
+                        moving_bridge_progress = direction * (
+                            moving_bridge_arc - start_arc
+                        )
+                        moving_bridge_monotonic_error = np.maximum(
+                            minimum_progress - moving_bridge_progress,
+                            0.0,
+                        )
+                        moving_bridge_monotonic_error[0] = 0.0
+                        (
+                            moving_bridge_normal_ok,
+                            _,
+                            _,
+                        ) = scheduled_contact_status(
+                            moving_bridge_normal_error[1:],
+                            desired_distance,
+                        )
+                        moving_bridge_palm_error = float(
+                            np.linalg.norm(
+                                moving_bridge_points[0] - palm_target
+                            )
+                        )
+                        moving_bridge_collision_ok = True
+                        if args.collision_mode == "full_robot":
+                            (
+                                moving_bridge_arm_clearance,
+                                _,
+                                moving_bridge_hand_clearance,
+                                _,
+                                moving_bridge_self_count,
+                                moving_bridge_pad_alignment,
+                            ) = segment_collision_status(moving_bridge.x)
+                            moving_bridge_collision_ok = bool(
+                                moving_bridge_arm_clearance
+                                >= args.min_arm_clearance_mm / 1000.0
+                                and moving_bridge_hand_clearance
+                                >= -args.max_incidental_hand_penetration_mm
+                                / 1000.0
+                                and moving_bridge_self_count == 0
+                                and moving_bridge_pad_alignment
+                                >= planner_pad_alignment
+                            )
+                        moving_bridge_joint_limits_ok = bool(
+                            np.all(moving_bridge.x >= lower - 1.0e-12)
+                            and np.all(moving_bridge.x <= upper + 1.0e-12)
+                        )
+                        moving_tip_motion_m = direction * (
+                            moving_bridge_arc[1:] - bridge_arc[1:]
+                        )
+                        minimum_bridge_motion_m = (
+                            args.mpc_feasibility_bridge_min_progress_ratio
+                            * bridge_interval_m
+                        )
+                        bridge_active_fingers = (
+                            np.abs(bridge_offset_delta_m) > 1.0e-12
+                        )
+                        moving_bridge_motion_ok = bool(
+                            float(
+                                np.max(
+                                    np.abs(
+                                        moving_bridge.x - previous_q
+                                    )
+                                )
+                            )
+                            > 1.0e-6
+                            and int(
+                                np.count_nonzero(
+                                    moving_tip_motion_m
+                                    >= minimum_bridge_motion_m
+                                    - 1.0e-12
+                                )
+                            )
+                            >= args.min_planner_contact_fingers
+                            and (
+                                not np.any(bridge_active_fingers)
+                                or np.all(
+                                    moving_tip_motion_m[
+                                        bridge_active_fingers
+                                    ]
+                                    >= minimum_bridge_motion_m
+                                    - 1.0e-12
+                                )
+                            )
+                        )
+                        moving_bridge_hard_ok = bool(
+                            float(
+                                moving_bridge_progress_error.max()
+                            )
+                            <= progress_limit_m
+                            and moving_bridge_normal_ok
+                            and np.all(
+                                np.abs(
+                                    moving_bridge_tangential_error[1:]
+                                )
+                                <= tip_tangential_tolerances
+                            )
+                            and float(
+                                moving_bridge_monotonic_error.max()
+                            )
+                            <= args.mpc_monotonic_tolerance_mm / 1000.0
+                            and moving_bridge_palm_error
+                            <= palm_tracking_limit_m
+                            and moving_bridge_collision_ok
+                            and moving_bridge_joint_limits_ok
+                            and moving_bridge_motion_ok
+                        )
+                        if moving_bridge_hard_ok:
+                            accepted_rephase_candidates.append(
+                                (
+                                    float(
+                                        np.linalg.norm(
+                                            bridge_rephase_offset_m
+                                            - starting_rephase_offset_m
+                                        )
+                                    ),
+                                    float(
+                                        moving_bridge_progress_error.max()
+                                    ),
+                                    float(moving_bridge.cost),
+                                    moving_bridge,
+                                    moving_bridge_progress_error,
+                                    moving_bridge_normal_error,
+                                    moving_bridge_arc,
+                                    bridge_rephase_offset_m.copy(),
+                                    bridge_desired_arc.copy(),
+                                )
+                            )
+                            feasibility_bridge_selected = True
+                            bridge_tip_motion_m = (
+                                moving_tip_motion_m.copy()
+                            )
+                            bridge_joint_motion_rad = float(
+                                np.max(
+                                    np.abs(
+                                        moving_bridge.x - previous_q
+                                    )
+                                )
+                            )
+                        elif static_bridge_candidate is not None:
+                            accepted_rephase_candidates.append(
+                                static_bridge_candidate
+                            )
+                            feasibility_bridge_selected = True
+                            static_feasibility_bridge_selected = True
+                        desired_arc[:] = nominal_desired_arc
                     if accepted_rephase_candidates:
                         (
                             _,
@@ -5709,10 +5961,22 @@ def main() -> None:
                         coarse_auto_rephase_offset_m[keyframe] = (
                             auto_rephase_offset_m
                         )
-                        event_name = (
-                            "FEASIBILITY-BRIDGE"
-                            if feasibility_bridge_selected
-                            else "AUTO-REPHASE"
+                        if static_feasibility_bridge_selected:
+                            event_name = "STATIC-FEASIBILITY-BRIDGE"
+                        elif feasibility_bridge_selected:
+                            event_name = "MOVING-FEASIBILITY-BRIDGE"
+                        else:
+                            event_name = "AUTO-REPHASE"
+                        bridge_motion_summary = (
+                            " tip_motion_mm="
+                            f"{(bridge_tip_motion_m * 1000).round(3).tolist()} "
+                            "max_joint_motion_rad="
+                            f"{bridge_joint_motion_rad:.6f}"
+                            if (
+                                feasibility_bridge_selected
+                                and not static_feasibility_bridge_selected
+                            )
+                            else ""
                         )
                         print(
                             f"[{event_name}] "
@@ -5721,7 +5985,8 @@ def main() -> None:
                             "offset_mm="
                             f"{(auto_rephase_offset_m * 1000).round(3).tolist()} "
                             "progress_error_mm="
-                            f"{(progress_error * 1000).round(2).tolist()}",
+                            f"{(progress_error * 1000).round(2).tolist()}"
+                            f"{bridge_motion_summary}",
                             flush=True,
                         )
                     else:
@@ -5906,6 +6171,9 @@ def main() -> None:
                 q = best.x
                 coarse_feasibility_bridge[keyframe] = (
                     feasibility_bridge_selected
+                )
+                coarse_static_feasibility_bridge[keyframe] = (
+                    static_feasibility_bridge_selected
                 )
                 coarse_q[keyframe] = q
                 coarse_progress[keyframe] = direction * (
@@ -6162,6 +6430,9 @@ def main() -> None:
                 mpc_coarse_feasibility_bridge=(
                     coarse_feasibility_bridge
                 ),
+                mpc_coarse_static_feasibility_bridge=(
+                    coarse_static_feasibility_bridge
+                ),
                 mpc_local_refine_start_m=np.asarray(
                     args.mpc_local_refine_start_m
                 ),
@@ -6180,6 +6451,12 @@ def main() -> None:
                 ),
                 mpc_feasibility_bridge_max_mm=np.asarray(
                     args.mpc_feasibility_bridge_max_mm
+                ),
+                mpc_feasibility_bridge_trust_radius_rad=np.asarray(
+                    args.mpc_feasibility_bridge_trust_radius_rad
+                ),
+                mpc_feasibility_bridge_min_progress_ratio=np.asarray(
+                    args.mpc_feasibility_bridge_min_progress_ratio
                 ),
                 mpc_auto_rephase_step_mm=np.asarray(
                     args.mpc_auto_rephase_step_mm
@@ -7141,27 +7418,34 @@ def main() -> None:
         elif args.viewer == "viser":
             ViserPlayViewer(wrapped, policy).run()
         else:
-            args.output.parent.mkdir(parents=True, exist_ok=True)
             obs, _ = wrapped.reset()
-            next_frame_time = 0.0
             frames_written = 0
-            with imageio.get_writer(
-                args.output,
-                fps=args.fps,
-                codec="libx264",
-                quality=8,
-                macro_block_size=None,
-            ) as writer:
+            if args.viewer == "headless":
                 for step in range(args.steps):
                     action = policy(obs)
                     obs, _, _, _ = wrapped.step(action)
-                    sim_time = (step + 1) * dt
-                    if sim_time + 1.0e-9 >= next_frame_time:
-                        frame = env.render()
-                        if frame is not None:
-                            writer.append_data(np.asarray(frame, dtype=np.uint8))
-                            frames_written += 1
-                        next_frame_time += 1.0 / args.fps
+            else:
+                args.output.parent.mkdir(parents=True, exist_ok=True)
+                next_frame_time = 0.0
+                with imageio.get_writer(
+                    args.output,
+                    fps=args.fps,
+                    codec="libx264",
+                    quality=8,
+                    macro_block_size=None,
+                ) as writer:
+                    for step in range(args.steps):
+                        action = policy(obs)
+                        obs, _, _, _ = wrapped.step(action)
+                        sim_time = (step + 1) * dt
+                        if sim_time + 1.0e-9 >= next_frame_time:
+                            frame = env.render()
+                            if frame is not None:
+                                writer.append_data(
+                                    np.asarray(frame, dtype=np.uint8)
+                                )
+                                frames_written += 1
+                            next_frame_time += 1.0 / args.fps
             if policy.evaluated_frames <= 0:
                 raise RuntimeError("No sliding frames were evaluated for contact")
             if (
@@ -7250,8 +7534,13 @@ def main() -> None:
                     "Strict FR3/object collision was observed: "
                     f"arm_frames={policy.arm_collision_frames}"
                 )
+            run_summary = (
+                f"saved={args.output.resolve()} frames={frames_written}"
+                if args.viewer == "video"
+                else "rendered=false frames=0"
+            )
             print(
-                f"[VIDEO] saved={args.output.resolve()} frames={frames_written} "
+                f"[{args.viewer.upper()}] {run_summary} "
                 f"duration_s={args.steps * dt:.2f} fps={args.fps:.1f} "
                 f"collision_mode={args.collision_mode} "
                 f"tip_contact_ratio={contact_ratio.round(4).tolist()} "

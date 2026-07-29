@@ -303,7 +303,9 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             "The mutable MPC keyframe loop must advance after acceptance",
         )
 
-    def test_predecessor_bridge_rechecks_every_hard_constraint(self) -> None:
+    def test_moving_bridge_rechecks_constraints_and_blocks_static_streaks(
+        self,
+    ) -> None:
         tree = ast.parse(DEMO_PATH.read_text(encoding="utf-8"))
         planner = next(
             node
@@ -317,6 +319,14 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
         )
         self.assertIsNotNone(source)
         for required_term in (
+            "moving_bridge = least_squares",
+            "bridge_lower",
+            "bridge_upper",
+            "moving_bridge_motion_ok",
+            "moving_tip_motion_m",
+            "bridge_active_fingers",
+            "mpc_feasibility_bridge_trust_radius_rad",
+            "mpc_feasibility_bridge_min_progress_ratio",
             "bridge_result = SimpleNamespace",
             "x=previous_q.copy()",
             "bridge_interval_short",
@@ -330,10 +340,42 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             "bridge_collision_ok",
             "bridge_joint_limits_ok",
             "coarse_feasibility_bridge",
+            "coarse_static_feasibility_bridge",
             "mpc_coarse_feasibility_bridge",
-            "FEASIBILITY-BRIDGE",
+            "mpc_coarse_static_feasibility_bridge",
+            "STATIC-FEASIBILITY-BRIDGE",
+            "MOVING-FEASIBILITY-BRIDGE",
         ):
             self.assertIn(required_term, source)
+        self.assertIn("and not bool(", source)
+
+    def test_headless_execution_does_not_render_or_encode(self) -> None:
+        source_text = DEMO_PATH.read_text(encoding="utf-8")
+        tree = ast.parse(source_text)
+        main = next(
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "main"
+        )
+        headless_branch = next(
+            node
+            for node in ast.walk(main)
+            if isinstance(node, ast.If)
+            and ast.unparse(node.test) == "args.viewer == 'headless'"
+        )
+        branch_source = ast.get_source_segment(
+            source_text,
+            headless_branch,
+        )
+        self.assertIsNotNone(branch_source)
+        self.assertIn("wrapped.step(action)", branch_source)
+        headless_body_source = "\n".join(
+            ast.get_source_segment(source_text, node) or ""
+            for node in headless_branch.body
+        )
+        self.assertNotIn("env.render", headless_body_source)
+        self.assertNotIn("imageio.get_writer", headless_body_source)
 
 
 if __name__ == "__main__":
