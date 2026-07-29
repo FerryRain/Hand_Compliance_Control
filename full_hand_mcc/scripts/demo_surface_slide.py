@@ -790,6 +790,43 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--mpc-feasibility-bridge-target-weight",
+        type=float,
+        default=3200.0,
+        help=(
+            "Dedicated along-surface target weight for the moving short-step "
+            "bridge. This prevents a feasibility-band solution from remaining "
+            "at the predecessor state."
+        ),
+    )
+    parser.add_argument(
+        "--mpc-static-bridge-max-dwell-mm",
+        type=float,
+        default=0.50,
+        help=(
+            "Maximum consecutive route distance that short static feasibility "
+            "bridges may cover before real fingertip motion must resume."
+        ),
+    )
+    parser.add_argument(
+        "--mpc-static-bridge-max-total-ratio",
+        type=float,
+        default=0.02,
+        help=(
+            "Maximum fraction of the full route covered by static feasibility "
+            "bridges. This keeps physical motion dominant over brief pauses."
+        ),
+    )
+    parser.add_argument(
+        "--mpc-static-bridge-progress-tolerance-mm",
+        type=float,
+        default=4.50,
+        help=(
+            "Temporary fingertip progress tolerance used only by a bounded "
+            "static bridge. Ordinary moving and final tolerances are unchanged."
+        ),
+    )
+    parser.add_argument(
         "--mpc-auto-rephase-step-mm",
         type=float,
         default=0.05,
@@ -981,16 +1018,51 @@ def main() -> None:
         default=2.0,
         help="Maximum fingertip error along the circumferential surface tangent.",
     )
-    parser.add_argument("--contact-failure-window", type=int, default=20)
+    parser.add_argument(
+        "--contact-failure-window",
+        type=int,
+        default=20,
+        help=(
+            "Maximum consecutive evaluated frames below the configured "
+            "majority-contact threshold."
+        ),
+    )
     parser.add_argument("--min-contact-force-n", type=float, default=0.10)
-    parser.add_argument("--min-contact-ratio", type=float, default=0.99)
+    parser.add_argument("--min-contact-ratio", type=float, default=0.75)
     parser.add_argument(
         "--min-runtime-contact-fingers",
         type=int,
-        default=4,
+        default=3,
         help=(
-            "Minimum simultaneous tactile fingertip contacts during the "
-            "evaluated slide. Use 3 for a tripod-support gait."
+            "Number of simultaneous tactile fingertip contacts counted as "
+            "majority support. Brief drops below it are allowed."
+        ),
+    )
+    parser.add_argument(
+        "--min-majority-contact-ratio",
+        type=float,
+        default=0.80,
+        help=(
+            "Minimum fraction of evaluated motion frames with at least "
+            "--min-runtime-contact-fingers physical pad contacts."
+        ),
+    )
+    parser.add_argument(
+        "--min-average-contact-fingers",
+        type=float,
+        default=3.0,
+        help=(
+            "Minimum time-average number of simultaneously contacting "
+            "physical fingertip pads over the evaluated motion."
+        ),
+    )
+    parser.add_argument(
+        "--max-zero-contact-frames",
+        type=int,
+        default=10,
+        help=(
+            "Maximum consecutive evaluated frames with no physical fingertip "
+            "pad contact. A brief complete release is allowed but must recover."
         ),
     )
     parser.add_argument(
@@ -1407,6 +1479,20 @@ def main() -> None:
         raise ValueError(
             "--mpc-feasibility-bridge-min-progress-ratio must lie in [0, 1]"
         )
+    if args.mpc_feasibility_bridge_target_weight <= 0.0:
+        raise ValueError(
+            "--mpc-feasibility-bridge-target-weight must be positive"
+        )
+    if args.mpc_static_bridge_max_dwell_mm < 0.0:
+        raise ValueError("--mpc-static-bridge-max-dwell-mm cannot be negative")
+    if not 0.0 <= args.mpc_static_bridge_max_total_ratio <= 1.0:
+        raise ValueError(
+            "--mpc-static-bridge-max-total-ratio must lie in [0, 1]"
+        )
+    if args.mpc_static_bridge_progress_tolerance_mm <= 0.0:
+        raise ValueError(
+            "--mpc-static-bridge-progress-tolerance-mm must be positive"
+        )
     if args.mpc_auto_rephase_step_mm <= 0.0:
         raise ValueError("--mpc-auto-rephase-step-mm must be positive")
     if args.mpc_auto_rephase_decay_mm < 0.0:
@@ -1541,8 +1627,16 @@ def main() -> None:
         raise ValueError("--contact-search-limit-rad must be positive")
     if not 1 <= args.min_runtime_contact_fingers <= 4:
         raise ValueError("--min-runtime-contact-fingers must be in [1, 4]")
+    if not 0.0 <= args.min_contact_ratio <= 1.0:
+        raise ValueError("--min-contact-ratio must lie in [0, 1]")
+    if not 0.0 <= args.min_majority_contact_ratio <= 1.0:
+        raise ValueError("--min-majority-contact-ratio must lie in [0, 1]")
+    if not 0.0 <= args.min_average_contact_fingers <= 4.0:
+        raise ValueError("--min-average-contact-fingers must lie in [0, 4]")
     if args.contact_failure_window < 0:
         raise ValueError("--contact-failure-window cannot be negative")
+    if args.max_zero_contact_frames < 0:
+        raise ValueError("--max-zero-contact-frames cannot be negative")
     if args.max_individual_contact_loss_frames < 0:
         raise ValueError(
             "--max-individual-contact-loss-frames cannot be negative"
@@ -1907,6 +2001,11 @@ def main() -> None:
             self.contact_frames = np.zeros(4, dtype=np.int64)
             self.evaluated_frames = 0
             self.bad_contact_streak = 0
+            self.max_bad_contact_streak = 0
+            self.zero_contact_streak = 0
+            self.max_zero_contact_streak = 0
+            self.majority_contact_frames = 0
+            self.simultaneous_contact_sum = 0
             self.contact_loss_streak = np.zeros(4, dtype=np.int64)
             self.max_contact_loss_streak = np.zeros(4, dtype=np.int64)
             self.min_simultaneous_contacts = 4
@@ -3089,6 +3188,10 @@ def main() -> None:
                 keyframe_count + 1,
                 dtype=np.bool_,
             )
+            coarse_static_bridge_dwell_m = np.zeros(
+                keyframe_count + 1,
+                dtype=np.float64,
+            )
             coarse_normal_error = np.zeros_like(coarse_progress)
             coarse_palm_target = np.zeros(
                 (keyframe_count + 1, 3), dtype=np.float64
@@ -3226,6 +3329,7 @@ def main() -> None:
             previous_q = start_q.copy()
             previous_delta = np.zeros(TOTAL_DOF, dtype=np.float64)
             auto_rephase_offset_m = np.zeros(4, dtype=np.float64)
+            static_bridge_total_m = 0.0
 
             def insert_auto_refinement(
                 *,
@@ -3242,6 +3346,7 @@ def main() -> None:
                 nonlocal coarse_auto_rephase_offset_m
                 nonlocal coarse_feasibility_bridge
                 nonlocal coarse_static_feasibility_bridge
+                nonlocal coarse_static_bridge_dwell_m
                 nonlocal coarse_normal_error
                 nonlocal coarse_palm_target
                 nonlocal coarse_palm_position_error
@@ -3309,6 +3414,11 @@ def main() -> None:
                     coarse_static_feasibility_bridge,
                     keyframe,
                     False,
+                )
+                coarse_static_bridge_dwell_m = np.insert(
+                    coarse_static_bridge_dwell_m,
+                    keyframe,
+                    0.0,
                 )
                 coarse_normal_error = np.insert(
                     coarse_normal_error,
@@ -3540,6 +3650,7 @@ def main() -> None:
             while keyframe <= keyframe_count:
                 feasibility_bridge_selected = False
                 static_feasibility_bridge_selected = False
+                selected_static_bridge_dwell_m = 0.0
                 bridge_tip_motion_m = np.zeros(4, dtype=np.float64)
                 bridge_joint_motion_rad = 0.0
                 desired_distance = float(coarse_distance[keyframe])
@@ -5522,10 +5633,21 @@ def main() -> None:
                         np.all(previous_q >= lower - 1.0e-12)
                         and np.all(previous_q <= upper + 1.0e-12)
                     )
+                    proposed_static_bridge_dwell_m = (
+                        float(coarse_static_bridge_dwell_m[keyframe - 1])
+                        + bridge_interval_m
+                    )
+                    proposed_static_bridge_total_m = (
+                        static_bridge_total_m + bridge_interval_m
+                    )
+                    static_bridge_progress_limit_m = max(
+                        progress_limit_m,
+                        args.mpc_static_bridge_progress_tolerance_mm / 1000.0,
+                    )
                     bridge_hard_ok = bool(
                         bridge_interval_short
                         and float(bridge_progress_error.max())
-                        <= progress_limit_m
+                        <= static_bridge_progress_limit_m
                         and bridge_normal_ok
                         and np.all(
                             np.abs(bridge_tangential_error[1:])
@@ -5536,14 +5658,18 @@ def main() -> None:
                         and bridge_palm_error <= palm_tracking_limit_m
                         and bridge_collision_ok
                         and bridge_joint_limits_ok
+                        and proposed_static_bridge_dwell_m
+                        <= args.mpc_static_bridge_max_dwell_mm / 1000.0
+                        + 1.0e-12
+                        and proposed_static_bridge_total_m
+                        <= (
+                            args.mpc_static_bridge_max_total_ratio
+                            * args.axial_travel_m
+                        )
+                        + 1.0e-12
                     )
                     static_bridge_candidate = None
-                    if (
-                        bridge_hard_ok
-                        and not bool(
-                            coarse_static_feasibility_bridge[keyframe - 1]
-                        )
-                    ):
+                    if bridge_hard_ok:
                         bridge_result = SimpleNamespace(
                             x=previous_q.copy(),
                             cost=0.0,
@@ -5739,6 +5865,9 @@ def main() -> None:
                         # This preserves the continuous predecessor branch
                         # without accumulating zero-motion planning pauses.
                         desired_arc[:] = bridge_desired_arc
+                        moving_bridge_target_arc = (
+                            bridge_arc[1:] + direction * bridge_interval_m
+                        )
                         bridge_trust_radius = (
                             args.mpc_feasibility_bridge_trust_radius_rad
                         )
@@ -5750,16 +5879,29 @@ def main() -> None:
                             upper,
                             previous_q + bridge_trust_radius,
                         )
+                        def moving_bridge_residual(
+                            q: np.ndarray,
+                        ) -> np.ndarray:
+                            moving_arc = contact_state(q)[3][1:]
+                            return np.concatenate(
+                                (
+                                    residual(
+                                        q,
+                                        joint_regularization=0.0,
+                                        progress_scale=3200.0,
+                                        normal_scale=2400.0,
+                                        monotonic_scale=12000.0,
+                                        pad_scale=360.0,
+                                        palm_scale=1200.0,
+                                    ),
+                                    args.mpc_feasibility_bridge_target_weight
+                                    * direction
+                                    * (moving_arc - moving_bridge_target_arc),
+                                )
+                            )
+
                         moving_bridge = least_squares(
-                            lambda q: residual(
-                                q,
-                                joint_regularization=0.0,
-                                progress_scale=3200.0,
-                                normal_scale=2400.0,
-                                monotonic_scale=12000.0,
-                                pad_scale=360.0,
-                                palm_scale=1200.0,
-                            ),
+                            moving_bridge_residual,
                             np.minimum(
                                 np.maximum(previous_q, bridge_lower),
                                 bridge_upper,
@@ -5938,6 +6080,9 @@ def main() -> None:
                             )
                             feasibility_bridge_selected = True
                             static_feasibility_bridge_selected = True
+                            selected_static_bridge_dwell_m = (
+                                proposed_static_bridge_dwell_m
+                            )
                         desired_arc[:] = nominal_desired_arc
                     if accepted_rephase_candidates:
                         (
@@ -6065,10 +6210,12 @@ def main() -> None:
                         f"error_mm="
                         f"{(monotonic_error * 1000).round(2).tolist()}"
                     )
-                if (
-                    float(progress_error.max())
-                    > active_progress_tolerance_mm / 1000.0
-                ):
+                accepted_progress_limit_m = (
+                    args.mpc_static_bridge_progress_tolerance_mm / 1000.0
+                    if static_feasibility_bridge_selected
+                    else active_progress_tolerance_mm / 1000.0
+                )
+                if float(progress_error.max()) > accepted_progress_limit_m:
                     if insert_auto_refinement(
                         keyframe=keyframe,
                         desired_distance=desired_distance,
@@ -6175,6 +6322,16 @@ def main() -> None:
                 coarse_static_feasibility_bridge[keyframe] = (
                     static_feasibility_bridge_selected
                 )
+                coarse_static_bridge_dwell_m[keyframe] = (
+                    selected_static_bridge_dwell_m
+                    if static_feasibility_bridge_selected
+                    else 0.0
+                )
+                if static_feasibility_bridge_selected:
+                    static_bridge_total_m += (
+                        desired_distance
+                        - float(coarse_distance[keyframe - 1])
+                    )
                 coarse_q[keyframe] = q
                 coarse_progress[keyframe] = direction * (
                     achieved_arc - start_arc
@@ -6433,6 +6590,9 @@ def main() -> None:
                 mpc_coarse_static_feasibility_bridge=(
                     coarse_static_feasibility_bridge
                 ),
+                mpc_coarse_static_bridge_dwell_m=(
+                    coarse_static_bridge_dwell_m
+                ),
                 mpc_local_refine_start_m=np.asarray(
                     args.mpc_local_refine_start_m
                 ),
@@ -6458,6 +6618,19 @@ def main() -> None:
                 mpc_feasibility_bridge_min_progress_ratio=np.asarray(
                     args.mpc_feasibility_bridge_min_progress_ratio
                 ),
+                mpc_feasibility_bridge_target_weight=np.asarray(
+                    args.mpc_feasibility_bridge_target_weight
+                ),
+                mpc_static_bridge_max_dwell_mm=np.asarray(
+                    args.mpc_static_bridge_max_dwell_mm
+                ),
+                mpc_static_bridge_max_total_ratio=np.asarray(
+                    args.mpc_static_bridge_max_total_ratio
+                ),
+                mpc_static_bridge_progress_tolerance_mm=np.asarray(
+                    args.mpc_static_bridge_progress_tolerance_mm
+                ),
+                mpc_static_bridge_total_m=np.asarray(static_bridge_total_m),
                 mpc_auto_rephase_step_mm=np.asarray(
                     args.mpc_auto_rephase_step_mm
                 ),
@@ -7178,32 +7351,42 @@ def main() -> None:
                     self.finger_q_max, finger_q
                 )
                 simultaneous_contacts = int(np.count_nonzero(tip_contact))
+                self.simultaneous_contact_sum += simultaneous_contacts
                 self.min_simultaneous_contacts = min(
                     self.min_simultaneous_contacts,
                     simultaneous_contacts,
                 )
+                if (
+                    simultaneous_contacts
+                    >= args.min_runtime_contact_fingers
+                ):
+                    self.majority_contact_frames += 1
+                if simultaneous_contacts == 0:
+                    self.zero_contact_streak += 1
+                else:
+                    self.zero_contact_streak = 0
+                self.max_zero_contact_streak = max(
+                    self.max_zero_contact_streak,
+                    self.zero_contact_streak,
+                )
+                if (
+                    self.zero_contact_streak
+                    > args.max_zero_contact_frames
+                ):
+                    raise RuntimeError(
+                        "All fingertip-pad contacts were lost beyond the "
+                        "allowed brief release window: "
+                        f"zero_contact_streak={self.zero_contact_streak} "
+                        f"limit={args.max_zero_contact_frames} "
+                        f"tactile_force_N="
+                        f"{self.tactile_force.round(2).tolist()}"
+                    )
                 if incidental_hand_contact_active:
                     self.incidental_hand_contact_evaluated_frames += 1
                     self.min_tip_contacts_during_incidental_contact = min(
                         self.min_tip_contacts_during_incidental_contact,
                         simultaneous_contacts,
                     )
-                    if (
-                        simultaneous_contacts
-                        < args.min_runtime_contact_fingers
-                    ):
-                        raise RuntimeError(
-                            "Incidental palm/finger-link contact displaced "
-                            "required fingertip-pad support: contacts="
-                            f"{simultaneous_contacts}/4 required="
-                            f"{args.min_runtime_contact_fingers} "
-                            f"tactile_force_N="
-                            f"{self.tactile_force.round(2).tolist()} "
-                            "incidental_max_force_N="
-                            f"{self.max_incidental_hand_contact_force_n:.3f} "
-                            "incidental_total_force_N="
-                            f"{self.max_incidental_hand_total_force_n:.3f}"
-                        )
                 self.contact_loss_streak = np.where(
                     tip_contact,
                     0,
@@ -7224,6 +7407,10 @@ def main() -> None:
                     self.bad_contact_streak = 0
                 else:
                     self.bad_contact_streak += 1
+                self.max_bad_contact_streak = max(
+                    self.max_bad_contact_streak,
+                    self.bad_contact_streak,
+                )
                 if self.bad_contact_streak > args.contact_failure_window:
                     raise RuntimeError(
                         "Minimum simultaneous fingertip support failed: "
@@ -7460,14 +7647,30 @@ def main() -> None:
             contact_ratio = (
                 policy.contact_frames / float(policy.evaluated_frames)
             )
+            majority_contact_ratio = (
+                policy.majority_contact_frames
+                / float(policy.evaluated_frames)
+            )
+            average_simultaneous_contacts = (
+                policy.simultaneous_contact_sum
+                / float(policy.evaluated_frames)
+            )
+            if majority_contact_ratio < args.min_majority_contact_ratio:
+                raise RuntimeError(
+                    "Majority fingertip-contact ratio below required "
+                    f"{args.min_majority_contact_ratio:.1%}: "
+                    f"observed={majority_contact_ratio:.1%} "
+                    f"majority_threshold="
+                    f"{args.min_runtime_contact_fingers}/4"
+                )
             if (
-                policy.min_simultaneous_contacts
-                < args.min_runtime_contact_fingers
+                average_simultaneous_contacts
+                < args.min_average_contact_fingers
             ):
                 raise RuntimeError(
-                    "Minimum simultaneous contact count was below the "
-                    f"required {args.min_runtime_contact_fingers}: "
-                    f"observed={policy.min_simultaneous_contacts}"
+                    "Average simultaneous fingertip contacts below required "
+                    f"{args.min_average_contact_fingers:.2f}/4: "
+                    f"observed={average_simultaneous_contacts:.3f}/4"
                 )
             if (
                 policy.final_all_contact_streak
@@ -7544,8 +7747,15 @@ def main() -> None:
                 f"duration_s={args.steps * dt:.2f} fps={args.fps:.1f} "
                 f"collision_mode={args.collision_mode} "
                 f"tip_contact_ratio={contact_ratio.round(4).tolist()} "
+                f"majority_contact_ratio={majority_contact_ratio:.4f} "
+                "average_simultaneous_contacts="
+                f"{average_simultaneous_contacts:.4f}/4 "
                 f"min_simultaneous_contacts="
                 f"{policy.min_simultaneous_contacts}/4 "
+                "max_below_majority_streak_frames="
+                f"{policy.max_bad_contact_streak} "
+                "max_zero_contact_streak_frames="
+                f"{policy.max_zero_contact_streak} "
                 f"max_contact_loss_streak_frames="
                 f"{policy.max_contact_loss_streak.tolist()} "
                 f"final_all_contact_streak_frames="

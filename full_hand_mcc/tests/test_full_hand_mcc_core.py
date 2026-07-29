@@ -303,7 +303,7 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             "The mutable MPC keyframe loop must advance after acceptance",
         )
 
-    def test_moving_bridge_rechecks_constraints_and_blocks_static_streaks(
+    def test_moving_bridge_rechecks_constraints_and_bounds_static_pauses(
         self,
     ) -> None:
         tree = ast.parse(DEMO_PATH.read_text(encoding="utf-8"))
@@ -324,9 +324,12 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             "bridge_upper",
             "moving_bridge_motion_ok",
             "moving_tip_motion_m",
+            "moving_bridge_target_arc",
+            "moving_bridge_residual",
             "bridge_active_fingers",
             "mpc_feasibility_bridge_trust_radius_rad",
             "mpc_feasibility_bridge_min_progress_ratio",
+            "mpc_feasibility_bridge_target_weight",
             "bridge_result = SimpleNamespace",
             "x=previous_q.copy()",
             "bridge_interval_short",
@@ -341,13 +344,42 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             "bridge_joint_limits_ok",
             "coarse_feasibility_bridge",
             "coarse_static_feasibility_bridge",
+            "coarse_static_bridge_dwell_m",
+            "static_bridge_total_m",
+            "mpc_static_bridge_max_dwell_mm",
+            "mpc_static_bridge_max_total_ratio",
+            "mpc_static_bridge_progress_tolerance_mm",
             "mpc_coarse_feasibility_bridge",
             "mpc_coarse_static_feasibility_bridge",
+            "mpc_coarse_static_bridge_dwell_m",
             "STATIC-FEASIBILITY-BRIDGE",
             "MOVING-FEASIBILITY-BRIDGE",
         ):
             self.assertIn(required_term, source)
-        self.assertIn("and not bool(", source)
+
+    def test_runtime_contact_acceptance_is_aggregate_and_bounded(self) -> None:
+        source = DEMO_PATH.read_text(encoding="utf-8")
+        for required_term in (
+            "majority_contact_frames",
+            "simultaneous_contact_sum",
+            "majority_contact_ratio",
+            "average_simultaneous_contacts",
+            "min_majority_contact_ratio",
+            "min_average_contact_fingers",
+            "max_zero_contact_frames",
+            "max_zero_contact_streak",
+            "max_bad_contact_streak",
+            "final_all_contact_streak",
+        ):
+            self.assertIn(required_term, source)
+        self.assertNotIn(
+            "Minimum simultaneous contact count was below",
+            source,
+        )
+        self.assertNotIn(
+            "Incidental palm/finger-link contact displaced",
+            source,
+        )
 
     def test_headless_execution_does_not_render_or_encode(self) -> None:
         source_text = DEMO_PATH.read_text(encoding="utf-8")

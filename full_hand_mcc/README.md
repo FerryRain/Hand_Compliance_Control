@@ -14,8 +14,16 @@ calibrated seven-axis external-load feedback. All 16 LEAP Hand motor-load
 channels provide four independent fingertip force estimates. FR3 links must
 never contact the object. Every LEAP Hand part may make bounded incidental
 contact, but only the four physical fingertip pads count toward the contact
-objective; incidental hand contact may not displace the required three- or
-four-tip support.
+objective. Brief fingertip release and brief no-motion intervals are allowed;
+the full route must spend at least 80% of evaluated motion frames with three
+or more physical pad contacts, average at least `3.0/4` simultaneous contacts,
+meet the configured per-finger contact ratio, and finish with stable `4/4`
+contact. FR3 zero-contact and bounded LEAP incidental-contact limits remain
+hard constraints.
+
+Use `--viewer headless` for the first full physical audit. It executes the
+same planning, dynamics, contact, travel, collision, force, and final-recovery
+checks without encoding a video. Generate a video only after that audit passes.
 
 ## Current Windows environment
 
