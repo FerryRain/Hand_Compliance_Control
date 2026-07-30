@@ -10,12 +10,17 @@
 > Explicit Whole-Hand Optimization Baseline。现有 FR3/LEAP MCC 是 Baseline 2
 > 的底层执行控制器。主方法将采用逆向示范生成、wrist-conditioned finger DP
 > 和 wrist-only ER-GPIS；不得把本目录的在线多指联合优化写成核心 contribution。
+> 具体低层控制边界以 [`../CONTROL_STRATEGIES.md`](../CONTROL_STRATEGIES.md)
+> 为准：本目录 Baseline 2 应实现 Wrist MCC + 4 个真实 fingertip force 驱动的
+> 法向 Cartesian admittance；不得继续把舵机电流/16 电机负载作为默认指尖力源。
 
 ## 固定验收要求
 
 - 默认机器人必须是 Franka FR3（7 DoF）+ LEAP Hand（16 DoF），总计 23 DoF。
-- 掌根采用机械臂负载残差反馈的 MCC；四指分别用对应 4 个电机的负载残差估计
-  指尖力并反馈。
+- Wrist MCC 优先使用可靠的 wrist F/T 或机械臂外力估计。Baseline 2 的四指
+  分别直接使用对应的真实 fingertip force，并通过法向虚拟质量–阻尼–刚度
+  admittance 修正规划的 Cartesian fingertip target，再经 IK/Jacobian 执行。
+  手指电机负载只作执行器诊断/安全观测，不再作为默认接触力估计。
 - 输入五点为掌根 + 四指尖；实际关节状态通过真实 MJCF/URDF 关节限制和同时
   IK 可达性检查。2026-07-28 用户澄清：四个物理指尖表面目标是硬约束；掌根点
   只作机械臂/手掌姿态的软引导，不要求接触物体，也不再要求 3 mm 硬跟踪。
@@ -1156,3 +1161,23 @@ v106 未生成视频或成功计划文件。它保持既有可行前驱并推进
 physics replay → automatic filtering，再训练 wrist-conditioned finger DP。
 Baseline 2 后续需拆分为充分收敛的 Optimization Oracle 和 50/100/200 ms
 Optimization-Time-Capped 版本，并记录性能—求解时间权衡。
+
+#### 两版底层控制策略澄清（2026-07-30）
+
+用户明确 MCC 的关键是外力驱动的虚拟质量–阻尼–刚度参考积分，不是电流本身。
+原仓库只有在缺少力传感器时才以平滑后的 motor torque 减 bias，再经 Jacobian
+估计 site wrench。当前项目已有真实 fingertip force，因此：
+
+- 主方法使用 Wrist MCC + Finger DP；真实指尖力进入 DP 观测、contact recovery
+  和 hard safety guard，不在 DP 输出上再叠加 Finger MCC；
+- 本目录 Baseline 2 使用 Wrist MCC + 4 个 Finger MCC；每个 Finger MCC 只对
+  规划 fingertip trajectory 的局部法向分量做 real-force Cartesian admittance
+  修正，然后经 IK/Jacobian 执行；
+- 第一版不使用完整三维各向同性 compliance，避免切向摩擦破坏上层探索轨迹；
+- Finger MCC 目标带宽约 50–100 Hz，Wrist MCC 约 10–30 Hz 且增益更小，避免
+  局部手指和整体腕部同时过度退让；
+- 手指舵机电流/电机负载不再作为两版默认 fingertip force 来源，只保留为执行器
+  诊断和安全信息。
+
+详细控制律、力符号校准、限幅/anti-windup 和两版公平对比见根目录
+`CONTROL_STRATEGIES.md`。本次仅更新研究/控制边界，尚未修改现有仿真控制代码。

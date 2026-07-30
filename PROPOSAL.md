@@ -1,7 +1,8 @@
 # Research proposal: inverse demonstrations for whole-hand tactile exploration
 
 This document is the persistent research-level scope for the repository. Read it
-before `PROCESS.md` and the process document of the active subproject.
+with [`CONTROL_STRATEGIES.md`](CONTROL_STRATEGIES.md) before `PROCESS.md` and
+the process document of the active subproject.
 
 ## Central claim
 
@@ -35,6 +36,18 @@ The decomposition is:
 
 There is no whole-hand nonlinear optimizer in the high-frequency main-method
 control loop.
+
+The two low-level variants are defined precisely in
+[`CONTROL_STRATEGIES.md`](CONTROL_STRATEGIES.md):
+
+- main method: Wrist MCC + fingertip-force-conditioned Finger DP, with no
+  additional Finger MCC;
+- Baseline 2: Wrist MCC + four normal-direction, real-fingertip-force-based
+  Cartesian admittance controllers.
+
+MCC means external-force-driven virtual mass–damping–stiffness reference
+integration. Motor current is only one possible wrench-estimation source and
+is not part of the definition.
 
 ## Contributions
 
@@ -151,6 +164,11 @@ The finger DP executes a safe projection of its predicted position increments.
 The safety projection enforces joint position/velocity, maximum contact force,
 self-collision, and single-step action bounds.
 
+The main method must not add a full Finger MCC correction on top of DP output.
+Real fingertip force is a DP observation and a safety/recovery signal. Stacking
+another force controller would change the learned action semantics and create
+training/deployment distribution shift.
+
 The runtime state machine must include:
 
 - Normal Exploration: enough contacts and safe forces.
@@ -167,6 +185,14 @@ required contact support before active exploration resumes.
 baseline receives wrist and fingertip targets and explicitly solves wrist pose,
 finger joints, and slack under fingertip tracking, reachability,
 manipulability, joint-limit, collision, and smoothness terms.
+
+Its four Finger MCC loops directly consume measured fingertip forces. Each loop
+projects force onto the local surface normal, integrates a scalar
+mass–damping–stiffness admittance offset, corrects only the normal component of
+the planned Cartesian fingertip target, and sends the result through finger
+IK/Jacobian control. It does not reconstruct fingertip force from hand motor
+current. Finger loops run faster than the lower-gain wrist loop to reduce
+closed-loop conflict.
 
 Two variants are required:
 

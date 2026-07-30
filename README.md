@@ -9,6 +9,8 @@ main method. Franka FR3 supplies palm-root force feedback and the 16 LEAP Hand
 motors supply four independent fingertip feedback channels. Five-point
 trajectories (palm root plus four physical fingertip pads) are planned under
 the assembled FR3 + LEAP URDF/MJCF constraints.
+The two low-level control variants and their sensor semantics are fixed in
+[`CONTROL_STRATEGIES.md`](CONTROL_STRATEGIES.md).
 The active acceptance policy permits short bounded pauses or fingertip release,
 but requires majority fingertip contact over most of the route, per-finger
 contact ratios, and stable four-tip recovery at the end. FR3/object contact
@@ -37,7 +39,9 @@ complete; at that point the user will receive a separate manual setup checklist.
 - `finger_compliance_control/`: earlier finger compliance reference.
 - `minimalist_compliance_control/`: upstream/minimal MCC reference.
 
-Start with [`PROPOSAL.md`](PROPOSAL.md) and [`PROCESS.md`](PROCESS.md), then read
+Start with [`PROPOSAL.md`](PROPOSAL.md),
+[`CONTROL_STRATEGIES.md`](CONTROL_STRATEGIES.md), and
+[`PROCESS.md`](PROCESS.md), then read
 [`full_hand_mcc/PROCESS.md`](full_hand_mcc/PROCESS.md) before continuing a
 development session. Full-hand commands and acceptance rules are documented in
 [`full_hand_mcc/README.md`](full_hand_mcc/README.md).

@@ -9,6 +9,9 @@
 > 逆向示范生成 + wrist-conditioned finger DP + wrist-only ER-GPIS”。
 > `full_hand_mcc/` 的显式腕部/多指联合优化属于 Baseline 2；当前 MCC 是该
 > baseline 的底层控制器，不是主方法的在线高维规划器。
+> 两版底层闭环以 [`CONTROL_STRATEGIES.md`](CONTROL_STRATEGIES.md) 为准：
+> 主方法为 Wrist MCC + Finger DP（不叠加 Finger MCC）；Baseline 2 为
+> Wrist MCC + 4 个直接读取真实指尖力的法向 Cartesian admittance。
 
 ## 用户要求（必须保留在文档头部）
 
@@ -17,8 +20,11 @@
    具体问题、实现和用法。
 3. 仓库根目录和子项目目录都要有 process 文档，记录已完成、未完成、正在做、
    遇到的问题、失败方法、下一步和相关 issue，便于其他 session 快速续接。
-4. `full_hand_mcc` 使用 Franka FR3 + LEAP Hand：机械臂关节负载作为掌根 MCC
-   反馈，16 个手指电机负载作为四个指尖 MCC 反馈。
+4. 两版均使用 Franka FR3 + LEAP Hand。Wrist MCC 优先使用可靠的 wrist F/T
+   或机械臂外力估计。主方法把四个真实 fingertip force 作为 Finger DP 观测，
+   不额外叠加 Finger MCC；Baseline 2 的四个 Finger MCC 直接使用对应真实
+   fingertip force 做法向 Cartesian admittance。16 个手指电机负载仅保留为
+   执行器诊断/安全信息，不再作为默认的指尖接触力估计来源。
 5. 测试输入为掌根与四个指尖共五点；实际关节状态必须满足真实 URDF/MJCF
    关节约束和同时可达性。2026-07-28 用户进一步澄清：四个物理指尖表面目标是
    硬约束；掌根点只作为机械臂/手掌姿态的软引导，不要求接触物体，也不再要求
@@ -55,6 +61,10 @@
     `full_hand_mcc/` 是“方案二 / Explicit Whole-Hand Optimization Baseline”，
     当前工作只实现其底层 MCC、Oracle 和后续 time-capped 对照，并可作为逆向
     示范候选轨迹/teacher 的来源。
+16. 2026-07-30 两版底层控制策略以 `CONTROL_STRATEGIES.md` 为准。MCC 的定义
+    是外力驱动的虚拟质量–阻尼–刚度参考积分，不等同于电流估力。方案一由 Finger
+    DP 独占手指动作，真实指尖力只进入 DP/安全状态机；方案二才使用四个基于真实
+    指尖法向力的 Finger MCC，并与较低带宽/较小增益的 Wrist MCC 做带宽分离。
 
 ## 仓库状态
 

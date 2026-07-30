@@ -6,6 +6,11 @@ explicit wrist/fingertip optimization oracle and future time-capped variants;
 it is not the proposed main method's online controller. The main method will
 use inverse demonstrations, a wrist-conditioned finger Diffusion Policy, and
 wrist-only ER-GPIS planning.
+The authoritative low-level sensor and control split is documented in
+[`../CONTROL_STRATEGIES.md`](../CONTROL_STRATEGIES.md): this Baseline uses
+four real-fingertip-force, normal-direction Cartesian admittance loops plus
+Wrist MCC. The main method uses Finger DP and must not stack Finger MCC on the
+DP output.
 
 This directory contains the Windows/CUDA MJLab demo for full-hand Minimalist
 Compliance Control (MCC). The five jointly planned points are:
