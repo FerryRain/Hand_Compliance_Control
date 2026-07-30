@@ -1311,4 +1311,5 @@ self penetration、tip penetration 和 incidental LEAP contact 全为 0，
 
 当前短程 smoke 已验证纠偏后的 Baseline 2 底层数据流、带宽分离和安全判据；
 完整 0.48 m 规划/4700-step 动力学、顶部曲面和多物体泛化仍未完成，不能把
-本次短程结果或旧 v1–v106 视频当作最终交付。
+本次短程结果或旧 v1–v106 视频当作最终交付。实现、回归和本文档已由
+`192ae9c` 提交并推送 `main`；issue #7 对应评论为 `5128133855`。
