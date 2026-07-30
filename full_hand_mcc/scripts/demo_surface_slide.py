@@ -1084,6 +1084,24 @@ def main() -> None:
         ),
     )
     parser.add_argument("--min-contact-force-n", type=float, default=0.10)
+    parser.add_argument(
+        "--max-tip-contact-force-n",
+        type=float,
+        default=25.0,
+        help=(
+            "Hard per-fingertip filtered normal-force limit after contact "
+            "calibration. Exceeding it aborts the run."
+        ),
+    )
+    parser.add_argument(
+        "--max-tip-raw-force-n",
+        type=float,
+        default=40.0,
+        help=(
+            "Emergency cutoff for an unfiltered 3-D fingertip force sample. "
+            "Raw peaks below this cutoff are still reported."
+        ),
+    )
     parser.add_argument("--min-contact-ratio", type=float, default=0.75)
     parser.add_argument(
         "--min-runtime-contact-fingers",
@@ -1242,7 +1260,16 @@ def main() -> None:
         ),
     )
     parser.add_argument("--contact-search-limit-rad", type=float, default=0.30)
-    parser.add_argument("--finger-force-n", type=float, default=12.0)
+    parser.add_argument("--finger-force-n", type=float, default=3.0)
+    parser.add_argument(
+        "--finger-max-calibrated-force-n",
+        type=float,
+        default=12.0,
+        help=(
+            "Maximum per-finger loaded direct-force operating setpoint "
+            "captured immediately before surface motion."
+        ),
+    )
     parser.add_argument(
         "--finger-admittance-mass-kg",
         type=float,
@@ -1252,13 +1279,13 @@ def main() -> None:
     parser.add_argument(
         "--finger-admittance-damping-n-s-m",
         type=float,
-        default=14.0,
+        default=18.0,
         help="Virtual damping of each fingertip normal admittance loop.",
     )
     parser.add_argument(
         "--finger-admittance-stiffness-n-m",
         type=float,
-        default=800.0,
+        default=1000.0,
         help="Virtual stiffness of each fingertip normal admittance loop.",
     )
     parser.add_argument("--finger-force-gain", type=float, default=1.0)
@@ -1268,17 +1295,17 @@ def main() -> None:
     parser.add_argument(
         "--finger-max-normal-offset-mm",
         type=float,
-        default=4.0,
+        default=3.0,
     )
     parser.add_argument(
         "--finger-max-normal-speed-mm-s",
         type=float,
-        default=25.0,
+        default=10.0,
     )
     parser.add_argument(
         "--finger-max-normal-acceleration-m-s2",
         type=float,
-        default=0.5,
+        default=0.2,
     )
     # Accepted only so archived experiment commands remain parseable.  These
     # static displacement parameters are not part of Baseline-2 admittance.
@@ -1309,18 +1336,20 @@ def main() -> None:
         help=argparse.SUPPRESS,
     )
     parser.add_argument("--palm-force-n", type=float, default=0.0)
-    parser.add_argument("--arm-mcc-correction-rad", type=float, default=0.012)
+    parser.add_argument("--arm-mcc-correction-rad", type=float, default=0.003)
     parser.add_argument("--wrist-update-decimation", type=int, default=4)
     parser.add_argument("--wrist-damping-ratio", type=float, default=1.0)
+    parser.add_argument("--wrist-max-force-error-n", type=float, default=5.0)
+    parser.add_argument("--wrist-max-torque-error-nm", type=float, default=0.8)
     parser.add_argument(
         "--wrist-max-translation-offset-mm",
         type=float,
-        default=12.0,
+        default=3.0,
     )
     parser.add_argument(
         "--wrist-max-rotation-offset-rad",
         type=float,
-        default=0.06,
+        default=0.03,
     )
     parser.add_argument(
         "--arm-trajectory-tracking-gain",
@@ -1799,6 +1828,21 @@ def main() -> None:
         args.finger_max_normal_acceleration_m_s2,
     ) <= 0.0:
         raise ValueError("Fingertip admittance gains and limits must be positive")
+    if args.finger_max_calibrated_force_n < args.finger_force_n:
+        raise ValueError(
+            "--finger-max-calibrated-force-n must be at least "
+            "--finger-force-n"
+        )
+    if args.max_tip_contact_force_n < args.finger_max_calibrated_force_n:
+        raise ValueError(
+            "--max-tip-contact-force-n must be at least "
+            "--finger-max-calibrated-force-n"
+        )
+    if args.max_tip_raw_force_n < args.max_tip_contact_force_n:
+        raise ValueError(
+            "--max-tip-raw-force-n must be at least "
+            "--max-tip-contact-force-n"
+        )
     if not 0.0 <= args.finger_force_filter_alpha <= 1.0:
         raise ValueError("--finger-force-filter-alpha must lie in [0, 1]")
     if not (
@@ -1815,6 +1859,8 @@ def main() -> None:
         raise ValueError("--wrist-update-decimation must be positive")
     if min(
         args.wrist_damping_ratio,
+        args.wrist_max_force_error_n,
+        args.wrist_max_torque_error_nm,
         args.wrist_max_translation_offset_mm,
         args.wrist_max_rotation_offset_rad,
     ) <= 0.0:
@@ -2099,6 +2145,9 @@ def main() -> None:
         finger_virtual_damping=args.finger_admittance_damping_n_s_m,
         finger_virtual_stiffness=args.finger_admittance_stiffness_n_m,
         finger_force_gain=args.finger_force_gain,
+        finger_max_calibrated_force=(
+            args.finger_max_calibrated_force_n
+        ),
         finger_force_filter_alpha=args.finger_force_filter_alpha,
         finger_contact_on_force=args.finger_contact_on_force_n,
         finger_contact_off_force=args.finger_contact_off_force_n,
@@ -2113,6 +2162,8 @@ def main() -> None:
         arm_mcc_correction_limit=args.arm_mcc_correction_rad,
         wrist_update_decimation=args.wrist_update_decimation,
         wrist_damping_ratio=args.wrist_damping_ratio,
+        wrist_max_force_error_n=args.wrist_max_force_error_n,
+        wrist_max_torque_error_nm=args.wrist_max_torque_error_nm,
         wrist_max_translation_offset_m=(
             args.wrist_max_translation_offset_mm / 1000.0
         ),
@@ -2149,6 +2200,8 @@ def main() -> None:
             self.surface_error = np.full(5, np.inf)
             self.joint_error = np.full(TOTAL_DOF, np.inf)
             self.tactile_force = np.zeros(4)
+            self.max_tactile_force = np.zeros(4)
+            self.max_filtered_normal_force = np.zeros(4)
             self.contact_distance_m = np.full(4, np.nan)
             self.actual_contact_points = np.full((4, 3), np.nan)
             self.contact_start_arc = np.full(4, np.nan)
@@ -4223,6 +4276,7 @@ def main() -> None:
                         palm_frame_transport @ initial_palm_rotation
                     )
                 else:
+                    transported_contact_frame = initial_contact_frame
                     desired_palm_rotation = initial_palm_rotation
                 desired_patch_center = np.mean(
                     desired_surface[1:],
@@ -7444,6 +7498,21 @@ def main() -> None:
                 .cpu()
                 .numpy()
             )
+            if self.contact_calibrated:
+                self.max_tactile_force = np.maximum(
+                    self.max_tactile_force, self.tactile_force
+                )
+                if bool(
+                    np.any(
+                        self.tactile_force
+                        > args.max_tip_raw_force_n
+                    )
+                ):
+                    raise RuntimeError(
+                        "Raw fingertip force exceeded emergency limit "
+                        f"{args.max_tip_raw_force_n:.2f}N: "
+                        f"{self.tactile_force.round(3).tolist()}"
+                    )
             for finger, site_name in enumerate(MCC_TIP_NAMES):
                 sensor_data = env.scene[f"{site_name}_contact"].data
                 if (
@@ -7680,7 +7749,7 @@ def main() -> None:
                 settled_direct_normal_force = controller.last_debug[
                     "tip_normal_force_signed_raw"
                 ][0].detach().cpu().numpy()
-                controller.fingers.calibrate_fingertip_force_sign(
+                controller.fingers.calibrate_fingertip_force_setpoint(
                     settled_direct_normal_force
                 )
                 controller.calibrate_arm_force_setpoint(obs["palm"])
@@ -7982,6 +8051,27 @@ def main() -> None:
                 kinematic_points=kinematic_target_t,
             )
             if self.contact_calibrated:
+                filtered_normal_force = (
+                    controller.last_debug["tip_normal_force_filtered"][0]
+                    .detach()
+                    .cpu()
+                    .numpy()
+                )
+                self.max_filtered_normal_force = np.maximum(
+                    self.max_filtered_normal_force,
+                    np.abs(filtered_normal_force),
+                )
+                if bool(
+                    np.any(
+                        np.abs(filtered_normal_force)
+                        > args.max_tip_contact_force_n
+                    )
+                ):
+                    raise RuntimeError(
+                        "Filtered fingertip normal force exceeded hard limit "
+                        f"{args.max_tip_contact_force_n:.2f}N: "
+                        f"{filtered_normal_force.round(3).tolist()}"
+                    )
                 force_correction = controller.last_debug[
                     "finger_force_joint_correction"
                 ]
@@ -8022,6 +8112,7 @@ def main() -> None:
                     )
                     * 1000.0
                 )
+                wrist_wrench_error = debug["arm_wrench_error"][0]
                 print(
                     f"[FULL-HAND-MCC] step={self.step:05d} variant={args.variant} "
                     f"reachable_err_mm={(self.last_residual * 1000).round(2).tolist()} "
@@ -8047,6 +8138,8 @@ def main() -> None:
                     f"{finger_offset_mm.cpu().numpy().round(3).tolist()} "
                     f"wrist_admittance_offset_mm="
                     f"{float(wrist_offset_mm):.3f} "
+                    f"wrist_wrench_error="
+                    f"{wrist_wrench_error.cpu().numpy().round(2).tolist()} "
                     f"axial_travel_m={self.executed_axial_travel:.4f} "
                     f"plan_frame={self.plan_index}",
                     flush=True,
@@ -8264,6 +8357,10 @@ def main() -> None:
                 f"{policy.max_arm_force_correction_rad:.6f} "
                 f"max_contact_penetration_mm="
                 f"{max_penetration_mm.round(3).tolist()} "
+                f"max_raw_tip_force_N="
+                f"{policy.max_tactile_force.round(3).tolist()} "
+                f"max_filtered_tip_normal_force_N="
+                f"{policy.max_filtered_normal_force.round(3).tolist()} "
                 f"max_runtime_self_penetration_mm="
                 f"{policy.max_runtime_self_penetration_m * 1000:.6f} "
                 f"runtime_self_near_contact_frames="

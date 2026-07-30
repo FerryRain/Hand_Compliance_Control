@@ -60,6 +60,17 @@ fingertip trajectories. The low-level controller is:
   stays under the upper trajectory planner;
 - force filtering, contact hysteresis, acceleration/speed/offset limits, and
   saturation anti-windup are active in both loops.
+- after stable four-pad contact and immediately before motion, the calibrated
+  direct normal force of each finger becomes that finger's loaded operating
+  setpoint, bounded by `--finger-force-n` and
+  `--finger-max-calibrated-force-n` (defaults 3–12 N). This makes the
+  admittance start from a measured zero-error grasp instead of imposing one
+  identical force on four different finger geometries.
+- the physical audit has two force guards: filtered normal force has a hard
+  per-finger limit (`--max-tip-contact-force-n`, default 25 N), while an
+  unfiltered 3-D sample has a separate emergency cutoff
+  (`--max-tip-raw-force-n`, default 40 N). Both filtered and raw peaks are
+  reported, so a short contact impulse is not silently discarded.
 
 For one fingertip, with outward normal \(n_i\), inward offset \(x_i\), and
 direct measured normal force \(f_i=n_i^\top f_{tip,i}\):
@@ -79,10 +90,19 @@ static displacement, and applied proportional joint corrections at the wrist.
 That path is now removed from primary control. Its motor-to-tip estimate remains
 visible only as `tip_force_from_motors_diagnostic`.
 
-Current verification status: 22 numerical/structure regression tests pass.
+Current verification status: 23 numerical/structure regression tests pass,
+and a 5 mm/750-step GPU headless smoke passes the aggregate contact, collision,
+force, penetration, self-collision, pad-angle, and terminal-recovery audits.
+That smoke achieved contact ratios `[0.9975,1.0,1.0,0.99]`, an average
+`3.9875/4` contacts, and 65 final all-contact frames. Its maximum filtered
+normal forces were `[13.156,8.862,20.480,8.028] N`; maximum raw 3-D samples
+were `[13.432,10.960,26.134,9.719] N`, below the separate 40 N emergency
+cutoff. FR3/object contact, self-penetration, fingertip penetration, and
+incidental hand contact were all zero.
 The earlier v1–v106 GPU results predate this correction, so they remain useful
 planner/collision evidence but are not final validation of the corrected
-Baseline-2 low-level controller. A new headless physical audit is required.
+Baseline-2 low-level controller. The complete 0.48 m headless physical audit
+is still required before a delivery video can be generated.
 
 ## Current Windows environment
 
@@ -230,12 +250,12 @@ bottleneck, which must be fixed before a delivery recording:
   --axial-travel-m 0.48 --axial-direction 1 `
   --palm-guide-only `
   --object-retreat-azimuth-deg -90 `
-  --finger-force-n 12 `
+  --finger-force-n 3 `
   --finger-admittance-mass-kg 0.08 `
-  --finger-admittance-damping-n-s-m 14 `
-  --finger-admittance-stiffness-n-m 800 `
-  --finger-max-normal-offset-mm 4 `
-  --arm-mcc-correction-rad 0.012 `
+  --finger-admittance-damping-n-s-m 18 `
+  --finger-admittance-stiffness-n-m 1000 `
+  --finger-max-normal-offset-mm 3 `
+  --arm-mcc-correction-rad 0.003 `
   --wrist-update-decimation 4 `
   --motion-start 350 --steps 4700
 ```

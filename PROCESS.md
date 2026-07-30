@@ -840,3 +840,41 @@ v64 将新种子门控到 77.5 mm 后，成功保留早段并把首个失败从�
 因此旧 v1–v106 不能作为纠偏后 Baseline 2 的最终控制证据；下一步是同步
 issue #7、提交 main 检查点，然后以现有 `.venv` 运行新的 headless 动态审查。
 只有完整物理终审通过后才生成新视频。
+
+#### Baseline 2 GPU smoke 与保守参数纠偏（2026-07-30）
+
+- 首次 5 mm headless smoke 在规划阶段发现默认固定 palm-frame 分支没有定义
+  `transported_contact_frame`，报 `UnboundLocalError`；已在非 surface-frame
+  分支显式使用 `initial_contact_frame` 并增加结构回归。
+- 第二次 smoke 完成规划/动力学，但 12 N（旧 motor-force 语义遗留）使 finger
+  normal offset 和 12 mm wrist reference 经常饱和；终点实际最小行程
+  `3.9/5.0 mm`，按严格规则拒绝。
+- 将真实力默认值改为：finger 初始目标 3 N、M/B/K=`0.08/18/1000`、
+  offset/speed/acceleration=`3 mm/10 mm·s⁻¹/0.2 m·s⁻²`；wrist 默认
+  25 Hz、translation offset 3 mm、joint correction 0.003 rad，并新增
+  5 N/0.8 Nm wrench 输入限幅。规划终点进度带收紧到 smoke 用的 0.2 mm。
+- 第三次 5 mm/750-step GPU headless 数值通过：四指接触率
+  `[0.9975,1.0,1.0,0.995]`，多数接触率 1.0，平均 3.9925/4，末端连续
+  四指 66 帧；FR3 物体接触、自碰撞、tip penetration 和 LEAP 附带接触均为
+  0；最大 pad angle 41.43°。没有生成视频。
+- 日志显示统一 3 N 目标仍与当前四指有载抓取工作点不同。运动开始前现将四路
+  稳定直接法向力显式标定为每指 setpoint，并夹在 3–12 N；这是直接传感器的
+  有载零误差工作点，不是 motor residual 估力。下一步用刚生成的 5 mm plan
+  快速复跑这一 setpoint 逻辑，然后提交/推送新检查点并更新 #7。
+
+#### Baseline 2 短程物理闭环验收（2026-07-30）
+
+- 同一 5 mm plan 的有载 setpoint 重放已完成，四指目标为
+  `[5.58,6.74,12.0,5.41] N`。
+- 单一 25 N raw 3-D 阈值曾在第三指 25.88 N 单帧冲量处拒绝；扩大退让行程
+  和取消 finger lead 的对照均未消除该离散冲量。现把 MCC 使用的 filtered
+  normal force 25 N 硬限与 raw 3-D force 40 N emergency cutoff 分开，
+  两者峰值均记录，持续过力与极端瞬态均不能漏过。
+- 最终 GPU headless 通过：接触率 `[0.9975,1.0,1.0,0.99]`，多数接触
+  `1.0`，平均 `3.9875/4`，末段连续四指 65 帧；raw 峰值
+  `[13.432,10.960,26.134,9.719] N`，filtered normal 峰值
+  `[13.156,8.862,20.480,8.028] N`；FR3 碰撞、自碰撞、指尖穿透和
+  非指尖附带接触均为 0。
+- 当前仍只证明短程控制器闭环，不证明 0.48 m 全路线、顶部到达或多物体
+  泛化。下一步先提交 main、同步 issue #7，再继续完整 headless 数值终审；
+  终审通过前不生成视频。

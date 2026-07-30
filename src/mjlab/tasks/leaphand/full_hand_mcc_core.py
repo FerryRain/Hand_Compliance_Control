@@ -106,16 +106,16 @@ class FingertipAdmittanceGains:
 
     dt: float = 0.01
     virtual_mass: float = 0.08
-    virtual_damping: float = 14.0
-    virtual_stiffness: float = 800.0
+    virtual_damping: float = 18.0
+    virtual_stiffness: float = 1000.0
     force_gain: float = 1.0
-    desired_force: float = 1.0
+    desired_force: float = 3.0
     force_filter_alpha: float = 0.25
     contact_on_force: float = 0.15
     contact_off_force: float = 0.08
-    max_normal_offset: float = 0.004
-    max_normal_speed: float = 0.025
-    max_normal_acceleration: float = 0.5
+    max_normal_offset: float = 0.003
+    max_normal_speed: float = 0.010
+    max_normal_acceleration: float = 0.2
 
 
 @dataclass(frozen=True)
@@ -299,19 +299,21 @@ class WristAdmittanceGains:
     """Six-dimensional wrist reference dynamics for Baseline 2."""
 
     dt: float = 0.04
-    translation_mass: float = 1.5
-    rotation_inertia: tuple[float, float, float] = (0.15, 0.15, 0.15)
-    normal_stiffness: float = 25.0
-    tangent_stiffness: float = 180.0
-    rotation_stiffness: float = 25.0
+    translation_mass: float = 3.0
+    rotation_inertia: tuple[float, float, float] = (0.30, 0.30, 0.30)
+    normal_stiffness: float = 400.0
+    tangent_stiffness: float = 800.0
+    rotation_stiffness: float = 80.0
     damping_ratio: float = 1.0
-    wrench_filter_alpha: float = 0.2
-    max_translation_offset: float = 0.012
-    max_rotation_offset: float = 0.06
-    max_translation_speed: float = 0.04
-    max_rotation_speed: float = 0.25
-    max_translation_acceleration: float = 0.5
-    max_rotation_acceleration: float = 2.0
+    wrench_filter_alpha: float = 0.10
+    max_force_error: float = 5.0
+    max_torque_error: float = 0.8
+    max_translation_offset: float = 0.003
+    max_rotation_offset: float = 0.03
+    max_translation_speed: float = 0.010
+    max_rotation_speed: float = 0.10
+    max_translation_acceleration: float = 0.10
+    max_rotation_acceleration: float = 0.5
 
 
 @dataclass(frozen=True)
@@ -396,6 +398,8 @@ class WristCartesianAdmittance:
             g.tangent_stiffness,
             g.rotation_stiffness,
             g.damping_ratio,
+            g.max_force_error,
+            g.max_torque_error,
         ) <= 0.0:
             raise ValueError("Wrist admittance gains must be positive")
 
@@ -407,6 +411,12 @@ class WristCartesianAdmittance:
             self._filtered_wrench[:] = (
                 alpha * wrench + (1.0 - alpha) * self._filtered_wrench
             )
+        self._filtered_wrench[:, :3] = _clip_vector_norm(
+            self._filtered_wrench[:, :3], g.max_force_error
+        )
+        self._filtered_wrench[:, 3:] = _clip_vector_norm(
+            self._filtered_wrench[:, 3:], g.max_torque_error
+        )
 
         offset_t = self._offset[:, :3]
         velocity_t = self._velocity[:, :3]

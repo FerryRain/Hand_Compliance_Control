@@ -1240,3 +1240,75 @@ Optimization-Time-Capped 版本，并记录性能—求解时间权衡。
    符号、reference offset 和接触恢复方向；
 3. 再跑完整 headless 0.48 m 规划/4700 步动力学；失败只保存日志/诊断；
 4. 数值全部通过后才生成候选视频并逐帧审核。
+
+#### 真实力 GPU smoke：默认分支修复与保守整定（2026-07-30）
+
+第一次 5 mm、650-step headless smoke 在四指接触后进入三帧 MPC 时触发：
+
+```text
+UnboundLocalError: local variable 'transported_contact_frame'
+referenced before assignment
+```
+
+根因是未启用 `--palm-follow-surface-frame` 时只设置了
+`desired_palm_rotation`，后续 clearance/local-offset 代码却无条件使用
+`transported_contact_frame`。固定 palm-frame 分支现显式设置为
+`initial_contact_frame`，新增源码结构回归；测试从 22 增至 23 项并通过。
+
+第二次 smoke 已完成 3 个 keyframe/300 个插值帧规划和完整动力学，没有控制器
+异常，但按终点规则拒绝：规划在 4 mm 普通容差内只保证最小 `3.9/5.0 mm`
+实际行程。日志也显示旧 demo 的统一 `12 N` 目标直接移植到真实力后不合理：
+多指 `finger_normal_admittance_offset_m` 频繁顶到 ±4 mm，wrist reference
+顶到 12 mm。
+
+保守整定后第三次 smoke 把 MPC 终点进度带收紧为 0.2 mm，并使用：
+
+- Finger：100 Hz，目标 3 N，M/B/K=`0.08 kg / 18 N·s/m / 1000 N/m`，
+  normal offset/speed/acceleration 上限=`3 mm / 10 mm/s / 0.2 m/s²`；
+- Wrist：25 Hz，translation reference 上限 3 mm，joint correction
+  上限 0.003 rad；wrench control input 限为 5 N/0.8 Nm；
+- motor-derived tip force 继续只输出诊断，不参与控制。
+
+该 5 mm/750-step GPU headless 已通过并输出成功摘要：
+
+- tip contact ratio=`[0.9975,1.0,1.0,0.995]`；
+- majority ratio=`1.0`，average contacts=`3.9925/4`，最少瞬时 `3/4`；
+- 最长单指失联=`[1,0,0,1]` 帧，末端连续 `4/4=66` 帧；
+- FR3/object contact=`0`，self penetration=`0`，tip penetration 全 0；
+- incidental LEAP contact=`0`，max runtime pad angle=`41.43°`；
+- 没有渲染或 MP4。
+
+运行日志同时表明当前碰撞可行抓取在运动前的稳定直接法向力约为
+`[5.59,6.74,14.30,5.41] N`，统一 3 N 会让前三指持续向外饱和。现把
+settled calibration 明确定义为每指的有载 admittance setpoint，夹在
+`[3,12] N`，因此预计 setpoint 为约 `[5.59,6.74,12.0,5.41] N`。
+这使用四路真实 sensor force；3 N 是下限，12 N 是安全上限。下一步复用
+`_smoke_baseline2_direct_force_seed42_v2.npz` 快速重放确认 offset 不再无谓
+饱和，然后再提交 main 并同步 issue #7。
+
+#### 有载 setpoint 重放与指尖力两级审计（2026-07-30）
+
+复用同一 400 帧、5 mm 已验证计划重放后，新的四路有载直接力 setpoint 为
+`[5.58,6.74,12.0,5.41] N`。首次增加单一 25 N 原始三维力硬阈值时，
+第三指在一个 10 ms 接触采样中出现 `25.88 N` 瞬态，运行按规则失败；
+把 normal offset 从 3 mm 增至 5 mm 不能改变该瞬态，去掉额外 finger
+joint lead 反而在 settle 阶段出现 `25.12 N`，说明该判据混淆了 MuJoCo
+单帧三维接触冲量与 Finger MCC 实际使用的滤波法向力。两次失败均未生成视频。
+
+现采用不隐藏原始峰值的两级安全审计：
+
+- MCC 闭环使用的滤波法向力超过 25 N 立即失败；
+- 任一未滤波三维力样本超过 40 N 作为独立 emergency cutoff 立即失败；
+- 每指 raw/filtered 最大值全部写入最终摘要。
+
+同一 GPU headless 重放随后通过：接触率
+`[0.9975,1.0,1.0,0.99]`，多数接触率 `1.0`，平均 `3.9875/4`，
+最少 `3/4`，单指最长失联 `[1,0,0,1]` 帧，末端连续四指 65 帧；
+最大 raw 3-D 力为 `[13.432,10.960,26.134,9.719] N`，最大 filtered
+normal 力为 `[13.156,8.862,20.480,8.028] N`。FR3/object contact、
+self penetration、tip penetration 和 incidental LEAP contact 全为 0，
+最大 pad angle `41.44°`，执行行程 5 mm。没有生成视频。
+
+当前短程 smoke 已验证纠偏后的 Baseline 2 底层数据流、带宽分离和安全判据；
+完整 0.48 m 规划/4700-step 动力学、顶部曲面和多物体泛化仍未完成，不能把
+本次短程结果或旧 v1–v106 视频当作最终交付。

@@ -1361,12 +1361,12 @@ class FingertipForceFingerMCCController:
         admittance_gains = FingertipAdmittanceGains(
             dt=self.control_dt,
             virtual_mass=float(kwargs.get("finger_virtual_mass", 0.08)),
-            virtual_damping=float(kwargs.get("finger_virtual_damping", 14.0)),
+            virtual_damping=float(kwargs.get("finger_virtual_damping", 18.0)),
             virtual_stiffness=float(
-                kwargs.get("finger_virtual_stiffness", 800.0)
+                kwargs.get("finger_virtual_stiffness", 1000.0)
             ),
             force_gain=float(kwargs.get("finger_force_gain", 1.0)),
-            desired_force=float(kwargs.get("finger_desired_force", 1.0)),
+            desired_force=float(kwargs.get("finger_desired_force", 3.0)),
             force_filter_alpha=float(
                 kwargs.get("finger_force_filter_alpha", 0.25)
             ),
@@ -1377,11 +1377,11 @@ class FingertipForceFingerMCCController:
                 kwargs.get("finger_contact_off_force", 0.08)
             ),
             max_normal_offset=float(
-                kwargs.get("finger_max_normal_offset_m", 0.004)
+                kwargs.get("finger_max_normal_offset_m", 0.003)
             ),
-            max_normal_speed=float(kwargs.get("max_tip_speed", 0.025)),
+            max_normal_speed=float(kwargs.get("max_tip_speed", 0.010)),
             max_normal_acceleration=float(
-                kwargs.get("finger_max_normal_acceleration", 0.5)
+                kwargs.get("finger_max_normal_acceleration", 0.2)
             ),
         )
         self.admittance = FingertipNormalAdmittance(admittance_gains)
@@ -1390,6 +1390,20 @@ class FingertipForceFingerMCCController:
             admittance_gains.desired_force,
             dtype=np.float64,
         )
+        self.minimum_fingertip_force_setpoint = float(
+            admittance_gains.desired_force
+        )
+        self.maximum_fingertip_force_setpoint = float(
+            kwargs.get("finger_max_calibrated_force", 12.0)
+        )
+        if (
+            self.maximum_fingertip_force_setpoint
+            < self.minimum_fingertip_force_setpoint
+        ):
+            raise ValueError(
+                "finger_max_calibrated_force must be at least "
+                "finger_desired_force"
+            )
         self.fingertip_force_sign = np.ones(4, dtype=np.float64)
         self.prev_action = torch.zeros((num_envs, 16), device=device)
         self.prev_action_initialized = False
@@ -1416,9 +1430,17 @@ class FingertipForceFingerMCCController:
     def calibrate_fingertip_force_setpoint(
         self, signed_normal_force: np.ndarray
     ) -> None:
-        """Compatibility wrapper for the old calibration entry point."""
+        """Capture a bounded loaded force target after calibrating signs."""
 
         self.calibrate_fingertip_force_sign(signed_normal_force)
+        baseline = np.abs(
+            np.asarray(signed_normal_force, dtype=np.float64).reshape(4)
+        )
+        self.fingertip_force_setpoint = np.clip(
+            baseline,
+            self.minimum_fingertip_force_setpoint,
+            self.maximum_fingertip_force_setpoint,
+        )
 
     def calibrate_motor_force_setpoint(
         self, force_magnitude: np.ndarray
@@ -1796,35 +1818,41 @@ class FullHandMCCController:
         control_dt = float(kwargs.get("control_dt", 0.01))
         wrist_gains = WristAdmittanceGains(
             dt=control_dt * self.wrist_update_decimation,
-            translation_mass=float(kwargs.get("mass_trans", 1.5)),
+            translation_mass=float(kwargs.get("mass_trans", 3.0)),
             rotation_inertia=tuple(
                 float(value)
                 for value in kwargs.get(
-                    "inertia_diag", (0.15, 0.15, 0.15)
+                    "inertia_diag", (0.30, 0.30, 0.30)
                 )
             ),
-            normal_stiffness=float(kwargs.get("K_force", 25.0)),
-            tangent_stiffness=float(kwargs.get("K_position", 180.0)),
-            rotation_stiffness=float(kwargs.get("K_rot", 25.0)),
+            normal_stiffness=float(kwargs.get("K_force", 400.0)),
+            tangent_stiffness=float(kwargs.get("K_position", 800.0)),
+            rotation_stiffness=float(kwargs.get("K_rot", 80.0)),
             damping_ratio=float(kwargs.get("wrist_damping_ratio", 1.0)),
-            wrench_filter_alpha=float(kwargs.get("alpha_tau", 0.2)),
+            wrench_filter_alpha=float(kwargs.get("alpha_tau", 0.10)),
+            max_force_error=float(
+                kwargs.get("wrist_max_force_error_n", 5.0)
+            ),
+            max_torque_error=float(
+                kwargs.get("wrist_max_torque_error_nm", 0.8)
+            ),
             max_translation_offset=float(
-                kwargs.get("wrist_max_translation_offset_m", 0.012)
+                kwargs.get("wrist_max_translation_offset_m", 0.003)
             ),
             max_rotation_offset=float(
-                kwargs.get("wrist_max_rotation_offset_rad", 0.06)
+                kwargs.get("wrist_max_rotation_offset_rad", 0.03)
             ),
             max_translation_speed=float(
-                kwargs.get("wrist_max_translation_speed_m_s", 0.04)
+                kwargs.get("wrist_max_translation_speed_m_s", 0.010)
             ),
             max_rotation_speed=float(
-                kwargs.get("wrist_max_rotation_speed_rad_s", 0.25)
+                kwargs.get("wrist_max_rotation_speed_rad_s", 0.10)
             ),
             max_translation_acceleration=float(
-                kwargs.get("wrist_max_translation_acceleration", 0.5)
+                kwargs.get("wrist_max_translation_acceleration", 0.10)
             ),
             max_rotation_acceleration=float(
-                kwargs.get("wrist_max_rotation_acceleration", 2.0)
+                kwargs.get("wrist_max_rotation_acceleration", 0.5)
             ),
         )
         self.wrist_admittance = WristCartesianAdmittance(wrist_gains)
@@ -2116,15 +2144,15 @@ class FullHandMCCControlCfg(RslRlOnPolicyRunnerCfg):
     prep_duration_s: float = 1.5
 
     # Palm MCC.
-    mass_trans: float = 1.5
-    inertia_diag: tuple[float, float, float] = (0.15, 0.15, 0.15)
-    K_force: float = 25.0
-    K_position: float = 180.0
-    K_rot: float = 25.0
+    mass_trans: float = 3.0
+    inertia_diag: tuple[float, float, float] = (0.30, 0.30, 0.30)
+    K_force: float = 400.0
+    K_position: float = 800.0
+    K_rot: float = 80.0
     palm_desired_force: float = 3.0
     contact_threshold: float = 0.4
     alpha_normal: float = 0.2
-    alpha_tau: float = 0.2
+    alpha_tau: float = 0.10
     Kf_vel: float = 0.008
     Kif_vel: float = 0.001
     force_int_max_n: float = 4.0
@@ -2135,18 +2163,19 @@ class FullHandMCCControlCfg(RslRlOnPolicyRunnerCfg):
 
     # Baseline-2 fingertip admittance. Direct fingertip forces are primary;
     # motor loads are retained only as diagnostics.
-    finger_desired_force: float = 1.0
+    finger_desired_force: float = 3.0
     finger_virtual_mass: float = 0.08
-    finger_virtual_damping: float = 14.0
-    finger_virtual_stiffness: float = 800.0
+    finger_virtual_damping: float = 18.0
+    finger_virtual_stiffness: float = 1000.0
     finger_force_gain: float = 1.0
+    finger_max_calibrated_force: float = 12.0
     finger_force_filter_alpha: float = 0.25
     finger_contact_on_force: float = 0.15
     finger_contact_off_force: float = 0.08
-    finger_max_normal_offset_m: float = 0.004
-    finger_max_normal_acceleration: float = 0.5
+    finger_max_normal_offset_m: float = 0.003
+    finger_max_normal_acceleration: float = 0.2
     force_regularization: float = 1.0e-3
-    max_tip_speed: float = 0.025
+    max_tip_speed: float = 0.010
     mink_damping: float = 0.1
     mink_num_iter: int = 3
     action_rate_limit: float = 0.18
@@ -2154,18 +2183,20 @@ class FullHandMCCControlCfg(RslRlOnPolicyRunnerCfg):
     # Baseline-2 wrist admittance. The default 4x decimation gives 25 Hz at
     # the 100 Hz controller rate, slower than the fingertip loops.
     arm_trust_region: float = 0.08
-    arm_mcc_correction_limit: float = 0.012
+    arm_mcc_correction_limit: float = 0.003
     wrist_update_decimation: int = 4
     wrist_wrench_force_regularization: float = 1.0e-3
     wrist_wrench_torque_regularization: float = 1.0e-2
     wrist_ik_damping: float = 2.0e-3
     wrist_damping_ratio: float = 1.0
-    wrist_max_translation_offset_m: float = 0.012
-    wrist_max_rotation_offset_rad: float = 0.06
-    wrist_max_translation_speed_m_s: float = 0.04
-    wrist_max_rotation_speed_rad_s: float = 0.25
-    wrist_max_translation_acceleration: float = 0.5
-    wrist_max_rotation_acceleration: float = 2.0
+    wrist_max_force_error_n: float = 5.0
+    wrist_max_torque_error_nm: float = 0.8
+    wrist_max_translation_offset_m: float = 0.003
+    wrist_max_rotation_offset_rad: float = 0.03
+    wrist_max_translation_speed_m_s: float = 0.010
+    wrist_max_rotation_speed_rad_s: float = 0.10
+    wrist_max_translation_acceleration: float = 0.10
+    wrist_max_rotation_acceleration: float = 0.5
 
     finger_mcc_tracking_radius: float = 0.15
     pregrasp_q: tuple[float, ...] = DEFAULT_PREGRASP_Q

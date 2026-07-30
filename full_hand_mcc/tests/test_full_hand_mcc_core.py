@@ -244,6 +244,10 @@ class BaselineTwoAdmittanceTest(unittest.TestCase):
         wrench = np.asarray([[0.0, 0.0, 8.0, 0.0, 0.0, 0.0]])
         first = controller.step(wrench, normal)
         self.assertGreater(float(first.reference_offset[0, 2]), 0.0)
+        self.assertLessEqual(
+            float(np.linalg.norm(first.filtered_wrench_error[0, :3])),
+            controller.gains.max_force_error + 1.0e-12,
+        )
         result = first
         for _ in range(1000):
             result = controller.step(wrench, normal)
@@ -255,6 +259,18 @@ class BaselineTwoAdmittanceTest(unittest.TestCase):
             float(np.linalg.norm(result.reference_velocity[0, :3])),
             controller.gains.max_translation_speed + 1.0e-12,
         )
+        torque_result = controller.step(
+            np.asarray([[0.0, 0.0, 0.0, 8.0, 8.0, 8.0]]),
+            normal,
+        )
+        self.assertLessEqual(
+            float(
+                np.linalg.norm(
+                    torque_result.filtered_wrench_error[0, 3:]
+                )
+            ),
+            controller.gains.max_torque_error + 1.0e-12,
+        )
 
     def test_adapter_uses_direct_forces_and_separate_wrist_loop(self) -> None:
         source = ADAPTER_PATH.read_text(encoding="utf-8")
@@ -264,6 +280,10 @@ class BaselineTwoAdmittanceTest(unittest.TestCase):
         self.assertIn("direct_forces_local_batch", source)
         self.assertIn("FingertipNormalAdmittance", source)
         self.assertIn("WristCartesianAdmittance", source)
+        self.assertIn("--max-tip-contact-force-n", demo_source)
+        self.assertIn("--max-tip-raw-force-n", demo_source)
+        self.assertIn("max_tactile_force", demo_source)
+        self.assertIn("max_filtered_normal_force", demo_source)
         self.assertIn("tip_force_from_motors_diagnostic", source)
         self.assertIn(
             "12 + ARM_DOF : 12 + TOTAL_DOF",
@@ -272,6 +292,10 @@ class BaselineTwoAdmittanceTest(unittest.TestCase):
         self.assertIn("tip_normal_force_signed_raw", demo_source)
         self.assertIn(
             "calibrate_fingertip_force_sign",
+            demo_source,
+        )
+        self.assertIn(
+            "calibrate_fingertip_force_setpoint",
             demo_source,
         )
         self.assertNotIn('["tip_force_from_motors"]', demo_source)
@@ -535,6 +559,17 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             "planned_contact_ratio",
         ):
             self.assertIn(required_term, source)
+
+    def test_fixed_palm_frame_path_defines_transport_frame(self) -> None:
+        source = DEMO_PATH.read_text(encoding="utf-8")
+        self.assertIn(
+            "else:\n"
+            "                    transported_contact_frame = "
+            "initial_contact_frame\n"
+            "                    desired_palm_rotation = "
+            "initial_palm_rotation",
+            source,
+        )
 
     def test_runtime_contact_acceptance_is_aggregate_and_bounded(self) -> None:
         source = DEMO_PATH.read_text(encoding="utf-8")
