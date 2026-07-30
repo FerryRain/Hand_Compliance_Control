@@ -6,7 +6,9 @@ a wrist-conditioned finger Diffusion Policy, and wrist-only ER-GPIS active
 exploration. The Windows/CUDA `full_hand_mcc/` implementation is the explicit
 whole-hand optimization **Baseline 2**, not the online architecture of the
 main method. Franka FR3 supplies palm-root force feedback and the 16 LEAP Hand
-motors supply four independent fingertip feedback channels. Five-point
+motors execute the commands, while four physical fingertip contact sensors
+provide the four independent finger-force feedback channels. Motor loads are
+diagnostic/safety signals, not the Baseline-2 contact-force source. Five-point
 trajectories (palm root plus four physical fingertip pads) are planned under
 the assembled FR3 + LEAP URDF/MJCF constraints.
 The two low-level control variants and their sensor semantics are fixed in
@@ -45,6 +47,19 @@ Start with [`PROPOSAL.md`](PROPOSAL.md),
 [`full_hand_mcc/PROCESS.md`](full_hand_mcc/PROCESS.md) before continuing a
 development session. Full-hand commands and acceptance rules are documented in
 [`full_hand_mcc/README.md`](full_hand_mcc/README.md).
+
+Quick entry-point check:
+
+```powershell
+.\.venv\Scripts\python.exe -B `
+  full_hand_mcc\scripts\demo_surface_slide.py --help
+```
+
+Physical runs start with `--viewer headless`; a video is generated only after
+the same plan/controller passes the complete numerical audit. The current
+Baseline-2 controller uses a 100 Hz direct-force fingertip admittance loop and
+a 25 Hz wrist admittance loop by default. See the subproject README for the
+active controller parameters and experiment command.
 
 ## Video outputs
 

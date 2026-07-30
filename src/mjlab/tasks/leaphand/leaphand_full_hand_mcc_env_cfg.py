@@ -2,9 +2,9 @@
 
 Architecture:
 
-* contact 0 (palm root): existing arm-torque MCC controller;
-* contacts 1..4 (fingertips): 16 motor-torque residuals -> four Cartesian
-  force estimates -> MCC references -> constrained multi-site IK;
+* contact 0 (palm root): FR3 wrench estimate -> Cartesian wrist admittance;
+* contacts 1..4 (fingertips): four direct fingertip force measurements ->
+  independent normal Cartesian admittance references -> constrained IK;
 * all five input points are checked by :class:`FivePointReachabilitySolver`
   against the actual MuJoCo/URDF kinematic chain and joint limits.
 
@@ -30,10 +30,12 @@ from mjlab.managers.observation_manager import ObservationGroupCfg, ObservationT
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.rl import RslRlOnPolicyRunnerCfg
 from mjlab.tasks.leaphand.full_hand_mcc_core import (
-    FullHandMCCCore,
-    FullHandMCCGains,
+    FingertipAdmittanceGains,
+    FingertipNormalAdmittance,
     MCC_VARIANTS,
     MCCVariant,
+    WristAdmittanceGains,
+    WristCartesianAdmittance,
 )
 from mjlab.tasks.leaphand.leaphand_mcc_finger_env_cfg import (
     DEFAULT_PREGRASP_Q,
@@ -1222,8 +1224,8 @@ class FivePointReachabilitySolver:
         )
 
 
-class MotorForceFingerMCCController:
-    """Four fingertip MCC driven by all 16 measured motor torque residuals."""
+class FingertipForceFingerMCCController:
+    """Four normal admittance loops driven by direct fingertip forces."""
 
     def __init__(
         self,
@@ -1239,28 +1241,9 @@ class MotorForceFingerMCCController:
         self.mink_damping = float(kwargs.get("mink_damping", 0.1))
         self.mink_num_iter = int(kwargs.get("mink_num_iter", 3))
         self.action_rate_limit = float(kwargs.get("action_rate_limit", 0.18))
-        self.motor_force_gain = float(kwargs.get("motor_force_gain", 0.015))
         self.force_regularization = float(kwargs.get("force_regularization", 1.0e-3))
         self.nominal_tracking_radius = float(
             kwargs.get("finger_mcc_tracking_radius", 0.15)
-        )
-        self.force_closure_gain = float(
-            kwargs.get("finger_force_closure_gain", 0.02)
-        )
-        self.max_release_correction = float(
-            kwargs.get("finger_max_release_correction", 0.01)
-        )
-        self.normal_preload_m = float(
-            kwargs.get("finger_normal_preload_m", 0.0015)
-        )
-        self.normal_preload_scales = np.asarray(
-            kwargs.get("finger_normal_preload_scales", np.ones(4)),
-            dtype=np.float64,
-        ).reshape(4)
-        if np.any(self.normal_preload_scales < 0.0):
-            raise ValueError("finger normal preload scales cannot be negative")
-        self.normal_compliance_m_per_n = float(
-            kwargs.get("finger_normal_compliance_m_per_n", 0.00035)
         )
         self.pregrasp_q = np.asarray(
             kwargs.get("pregrasp_q", DEFAULT_PREGRASP_Q), dtype=np.float64
@@ -1341,45 +1324,108 @@ class MotorForceFingerMCCController:
             ],
             dtype=np.int32,
         )
+        self.world_dof_indices = np.asarray(
+            [
+                int(
+                    self.world_model.jnt_dofadr[
+                        mujoco.mj_name2id(
+                            self.world_model,
+                            mujoco.mjtObj.mjOBJ_JOINT,
+                            name,
+                        )
+                    ]
+                )
+                for name in world_joint_names
+            ],
+            dtype=np.int32,
+        )
         self.world_palm_id = mujoco.mj_name2id(
             self.world_model, mujoco.mjtObj.mjOBJ_BODY, "palm_lower"
         )
+        self.world_tip_ids = np.asarray(
+            [
+                mujoco.mj_name2id(
+                    self.world_model,
+                    mujoco.mjtObj.mjOBJ_SITE,
+                    name,
+                )
+                for name in MCC_TIP_NAMES
+            ],
+            dtype=np.int32,
+        )
+        if np.any(self.world_tip_ids < 0):
+            raise ValueError("One or more world-model fingertip sites are missing")
         self.fixed_to_attached_palm_rotation = (
             FIXED_TO_ATTACHED_PALM_ROTATION.copy()
         )
-        gains = FullHandMCCGains(
+        admittance_gains = FingertipAdmittanceGains(
             dt=self.control_dt,
-            desired_palm_force=float(kwargs.get("palm_desired_force", 3.0)),
-            desired_fingertip_force=float(kwargs.get("finger_desired_force", 1.0)),
-            tangent_kp=float(kwargs.get("finger_tangent_kp", 18.0)),
-            force_kp=float(kwargs.get("finger_force_kp", 0.004)),
-            force_ki=float(kwargs.get("finger_force_ki", 0.001)),
-            max_reference_speed=float(kwargs.get("max_tip_speed", 0.04)),
+            virtual_mass=float(kwargs.get("finger_virtual_mass", 0.08)),
+            virtual_damping=float(kwargs.get("finger_virtual_damping", 14.0)),
+            virtual_stiffness=float(
+                kwargs.get("finger_virtual_stiffness", 800.0)
+            ),
+            force_gain=float(kwargs.get("finger_force_gain", 1.0)),
+            desired_force=float(kwargs.get("finger_desired_force", 1.0)),
+            force_filter_alpha=float(
+                kwargs.get("finger_force_filter_alpha", 0.25)
+            ),
+            contact_on_force=float(
+                kwargs.get("finger_contact_on_force", 0.15)
+            ),
+            contact_off_force=float(
+                kwargs.get("finger_contact_off_force", 0.08)
+            ),
+            max_normal_offset=float(
+                kwargs.get("finger_max_normal_offset_m", 0.004)
+            ),
+            max_normal_speed=float(kwargs.get("max_tip_speed", 0.025)),
+            max_normal_acceleration=float(
+                kwargs.get("finger_max_normal_acceleration", 0.5)
+            ),
         )
-        self.core = FullHandMCCCore(variant=variant, gains=gains)
-        self.motor_force_setpoint = np.full(
+        self.admittance = FingertipNormalAdmittance(admittance_gains)
+        self.fingertip_force_setpoint = np.full(
             4,
-            self.core.gains.desired_fingertip_force,
+            admittance_gains.desired_force,
             dtype=np.float64,
         )
+        self.fingertip_force_sign = np.ones(4, dtype=np.float64)
         self.prev_action = torch.zeros((num_envs, 16), device=device)
         self.prev_action_initialized = False
         self.last_debug: dict[str, torch.Tensor] = {}
 
     def reset(self) -> None:
-        self.core.reset()
+        self.admittance.reset()
         self.prev_action.zero_()
         self.prev_action_initialized = False
+
+    def calibrate_fingertip_force_sign(
+        self, signed_normal_force: np.ndarray
+    ) -> None:
+        """Calibrate direct-sensor signs without changing the force targets."""
+
+        baseline = np.asarray(signed_normal_force, dtype=np.float64).reshape(4)
+        if not np.all(np.isfinite(baseline)):
+            raise ValueError("fingertip force baseline must be finite")
+        reliable = np.abs(baseline) >= 0.05
+        self.fingertip_force_sign[reliable] = np.where(
+            baseline[reliable] >= 0.0, 1.0, -1.0
+        )
+
+    def calibrate_fingertip_force_setpoint(
+        self, signed_normal_force: np.ndarray
+    ) -> None:
+        """Compatibility wrapper for the old calibration entry point."""
+
+        self.calibrate_fingertip_force_sign(signed_normal_force)
 
     def calibrate_motor_force_setpoint(
         self, force_magnitude: np.ndarray
     ) -> None:
-        """Use true-contact motor residuals as per-finger load references."""
+        """Compatibility wrapper; direct fingertip force is now authoritative."""
 
-        baseline = np.asarray(force_magnitude, dtype=np.float64).reshape(4)
-        if not np.all(np.isfinite(baseline)):
-            raise ValueError("motor force baseline must be finite")
-        self.motor_force_setpoint = np.maximum(baseline, 0.1)
+        self.calibrate_fingertip_force_sign(force_magnitude)
 
     def _set_hand_q(self, q_hand: np.ndarray) -> None:
         self.data.qpos[:] = 0.0
@@ -1387,15 +1433,38 @@ class MotorForceFingerMCCController:
         self.data.qvel[:] = 0.0
         mujoco.mj_forward(self.model, self.data)
 
-    def _world_palm_pose(self, q_full: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    def _world_kinematics(
+        self,
+        q_full: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """Return palm pose, tip rotations, and the world-frame arm Jacobian."""
+
         self.world_data.qpos[:] = 0.0
         self.world_data.qpos[self.world_qpos_indices] = q_full
         self.world_data.qvel[:] = 0.0
         mujoco.mj_forward(self.world_model, self.world_data)
+        jacp = np.zeros((3, self.world_model.nv), dtype=np.float64)
+        jacr = np.zeros((3, self.world_model.nv), dtype=np.float64)
+        mujoco.mj_jacBody(
+            self.world_model,
+            self.world_data,
+            jacp,
+            jacr,
+            self.world_palm_id,
+        )
+        arm_dofs = self.world_dof_indices[:ARM_DOF]
         return (
             self.world_data.xpos[self.world_palm_id].copy(),
             self.world_data.xmat[self.world_palm_id].reshape(3, 3).copy(),
+            self.world_data.site_xmat[self.world_tip_ids]
+            .reshape(4, 3, 3)
+            .copy(),
+            np.vstack((jacp[:, arm_dofs], jacr[:, arm_dofs])),
         )
+
+    def _world_palm_pose(self, q_full: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        position, rotation, _, _ = self._world_kinematics(q_full)
+        return position, rotation
 
     def _tip_positions_and_jacobians(self) -> tuple[np.ndarray, list[np.ndarray]]:
         positions = self.data.site_xpos[self.tip_ids].copy()
@@ -1407,7 +1476,7 @@ class MotorForceFingerMCCController:
             jacobians.append(jacp[:, self.hand_dof_indices].copy())
         return positions, jacobians
 
-    def _motor_torque_to_tip_forces(
+    def _motor_torque_to_tip_forces_diagnostic(
         self,
         jacobians: list[np.ndarray],
         external_motor_torque: np.ndarray,
@@ -1433,6 +1502,17 @@ class MotorForceFingerMCCController:
         tip_normals_world: torch.Tensor,
         nominal_hand_q: torch.Tensor | None = None,
     ) -> torch.Tensor:
+        # Baseline 2 assigns palm/wrist motion to the wrist loop.  These
+        # arguments stay in the signature for the five-point controller API.
+        del palm_target_world, palm_normal_world
+        direct_force_tip_local_batch = (
+            finger_obs[:, :12]
+            .detach()
+            .cpu()
+            .numpy()
+            .astype(np.float64)
+            .reshape(-1, 4, 3)
+        )
         q_full_batch = (
             finger_obs[:, 12 : 12 + TOTAL_DOF]
             .detach()
@@ -1459,8 +1539,6 @@ class MotorForceFingerMCCController:
         )
         targets_world = tip_targets_world.detach().cpu().numpy().astype(np.float64)
         normals_world = tip_normals_world.detach().cpu().numpy().astype(np.float64)
-        palm_target_np = palm_target_world.detach().cpu().numpy().astype(np.float64)
-        palm_normal_np = palm_normal_world.detach().cpu().numpy().astype(np.float64)
         nominal_hand_np = (
             nominal_hand_q.detach().cpu().numpy().astype(np.float64)
             if nominal_hand_q is not None
@@ -1468,80 +1546,77 @@ class MotorForceFingerMCCController:
         )
         batch = q_full_batch.shape[0]
 
-        palm_actual_local_batch = np.broadcast_to(
-            (
-                self.fixed_to_attached_palm_rotation.T
-                @ np.asarray(
-                    PALM_CONTROL_OFFSET_LOCAL,
-                    dtype=np.float64,
-                )
-            ),
-            (batch, 1, 3),
-        ).copy()
-        palm_desired_local_batch = np.zeros((batch, 1, 3))
-        palm_normals_local_batch = np.zeros((batch, 1, 3))
-        palm_force_local_batch = np.zeros((batch, 1, 3))
-        actual_local_batch = np.zeros((batch, 4, 3))
         desired_local_batch = np.zeros((batch, 4, 3))
         normals_local_batch = np.zeros((batch, 4, 3))
-        forces_local_batch = np.zeros((batch, 4, 3))
-        jacobians_batch: list[list[np.ndarray]] = []
-        palm_poses: list[tuple[np.ndarray, np.ndarray]] = []
+        direct_forces_local_raw_batch = np.zeros((batch, 4, 3))
+        motor_forces_diagnostic_batch = np.zeros((batch, 4, 3))
         external_tau_batch = -(tau_motor - bias_motor)
 
         for env_id in range(batch):
             q_full = q_full_batch[env_id]
             self._set_hand_q(q_full[ARM_DOF:TOTAL_DOF])
-            positions, jacobians = self._tip_positions_and_jacobians()
-            palm_origin, palm_rotation = self._world_palm_pose(q_full)
+            _, jacobians = self._tip_positions_and_jacobians()
+            (
+                palm_origin,
+                palm_rotation,
+                tip_rotations_world,
+                _,
+            ) = self._world_kinematics(q_full)
             world_to_fixed = (
                 self.fixed_to_attached_palm_rotation.T
                 @ palm_rotation.T
             )
-            actual_local_batch[env_id] = positions
             desired_local_batch[env_id] = (
                 world_to_fixed
                 @ (targets_world[env_id] - palm_origin).T
             ).T
-            palm_desired_local_batch[env_id, 0] = (
-                world_to_fixed
-                @ (palm_target_np[env_id] - palm_origin)
-            )
             normals_local_batch[env_id] = (
                 world_to_fixed @ normals_world[env_id].T
             ).T
-            palm_normals_local_batch[env_id, 0] = (
-                world_to_fixed @ palm_normal_np[env_id]
+            direct_force_world = np.einsum(
+                "fij,fj->fi",
+                tip_rotations_world,
+                direct_force_tip_local_batch[env_id],
             )
-            palm_force_local_batch[env_id, 0] = (
-                self.core.gains.desired_palm_force
-                * palm_normals_local_batch[env_id, 0]
+            direct_forces_local_raw_batch[env_id] = (
+                world_to_fixed @ direct_force_world.T
+            ).T
+            motor_forces_diagnostic_batch[env_id] = (
+                self._motor_torque_to_tip_forces_diagnostic(
+                    jacobians,
+                    external_tau_batch[env_id],
+                )
             )
-            forces_local_batch[env_id] = self._motor_torque_to_tip_forces(
-                jacobians, external_tau_batch[env_id]
-            )
-            jacobians_batch.append(jacobians)
-            palm_poses.append((palm_origin, palm_rotation))
 
-        # The existing palm MCC owns contact 0.  Its kinematic target is still
-        # included here so hierarchical_mcc can express each fingertip relative
-        # to the moving palm.  A synthetic force exactly at the palm setpoint
-        # keeps this coordinator from duplicating the arm force loop.
-        finger_step = self.core.step(
-            np.concatenate((palm_actual_local_batch, actual_local_batch), axis=1),
-            np.concatenate((palm_desired_local_batch, desired_local_batch), axis=1),
-            np.concatenate((palm_normals_local_batch, normals_local_batch), axis=1),
-            np.concatenate((palm_force_local_batch, forces_local_batch), axis=1),
+        signed_normal_force_raw = np.einsum(
+            "bfi,bfi->bf",
+            direct_forces_local_raw_batch,
+            normals_local_batch,
         )
-        reference_local_batch = finger_step.reference_points[:, 1:]
+        direct_forces_local_batch = (
+            direct_forces_local_raw_batch
+            * self.fingertip_force_sign[None, :, None]
+        )
+        finger_step = self.admittance.step(
+            desired_local_batch,
+            normals_local_batch,
+            direct_forces_local_batch,
+            desired_force=self.fingertip_force_setpoint[None, :],
+        )
+        reference_local_batch = finger_step.command_points
 
         q_ref_batch = np.zeros((batch, 16), dtype=np.float32)
         force_joint_correction_batch = np.zeros((batch, 16), dtype=np.float32)
         ik_local_batch = np.zeros((batch, 4, 3), dtype=np.float32)
         for env_id in range(batch):
             q_hand = q_full_batch[env_id, ARM_DOF:TOTAL_DOF]
+            nominal_q = (
+                nominal_hand_np[env_id]
+                if nominal_hand_np is not None
+                else q_hand
+            )
             self.config.data.qpos[:] = 0.0
-            self.config.data.qpos[self.hand_qpos_indices] = q_hand
+            self.config.data.qpos[self.hand_qpos_indices] = nominal_q
             mujoco.mj_forward(self.config.model, self.config.data)
             self.posture_task.set_target_from_configuration(self.config)
             for task, target, site_id in zip(
@@ -1566,90 +1641,25 @@ class MotorForceFingerMCCController:
             q_ref = self.config.data.qpos[
                 self.hand_qpos_indices
             ].copy()
-
-            if self.variant == "motor_torque_mcc":
-                desired_external_tau = np.zeros(16, dtype=np.float64)
-                for jacobian, normal in zip(
-                    jacobians_batch[env_id], normals_local_batch[env_id]
-                ):
-                    desired_external_tau += jacobian.T @ (
-                        self.core.gains.desired_fingertip_force * normal
-                    )
-                external_torque_error = (
-                    desired_external_tau - external_tau_batch[env_id]
-                )
-                # The position actuator must generate the reaction torque
-                # opposite to the desired environment torque.
-                q_ref -= self.motor_force_gain * external_torque_error
-
             if nominal_hand_np is not None:
-                # The simultaneous five-point solver owns all tangential
-                # geometry.  Apply only a normal motor-force MCC correction
-                # around it.  Reusing the unconstrained Cartesian reference
-                # here allowed its internal state to drift into a natural
-                # closure even after a valid five-contact pose was supplied.
-                nominal_q = nominal_hand_np[env_id]
-                joint_correction = np.zeros(16, dtype=np.float64)
-                for finger, (normal, measured_force) in enumerate(zip(
-                    normals_local_batch[env_id],
-                    forces_local_batch[env_id],
-                )):
-                    finger_preload_m = (
-                        self.normal_preload_m
-                        * self.normal_preload_scales[finger]
-                    )
-                    desired_force = self.motor_force_setpoint[finger]
-                    measured_normal = abs(float(np.dot(measured_force, normal)))
-                    force_error = desired_force - measured_normal
-                    normal_displacement = (
-                        finger_preload_m
-                        + self.normal_compliance_m_per_n * force_error
-                    )
-                    # Map the requested inward pad displacement through the
-                    # actual per-finger Jacobian.  Adding the same angle to
-                    # every flexion motor is not a surface-normal motion and
-                    # can pull a curved fingertip away from the object.
-                    base = 4 * finger
-                    finger_jacobian = jacobians_batch[env_id][finger][
-                        :, base : base + 4
-                    ]
-                    normal_displacement = np.clip(
-                        normal_displacement,
-                        -self.max_release_correction * 0.10,
-                        finger_preload_m
-                        + self.nominal_tracking_radius * 0.10,
-                    )
-                    target_displacement = -normal_displacement * normal
-                    normal_matrix = (
-                        finger_jacobian @ finger_jacobian.T
-                        + self.force_regularization * np.eye(3)
-                    )
-                    finger_correction = (
-                        finger_jacobian.T
-                        @ np.linalg.solve(normal_matrix, target_displacement)
-                    )
-                    peak = float(np.max(np.abs(finger_correction)))
-                    if peak > self.nominal_tracking_radius:
-                        finger_correction *= (
-                            self.nominal_tracking_radius / peak
-                        )
-                    joint_correction[base : base + 4] = finger_correction
-                joint_correction = np.clip(
-                    joint_correction,
-                    -self.nominal_tracking_radius,
-                    self.nominal_tracking_radius,
-                )
+                joint_correction = q_ref - nominal_q
+                peak = float(np.max(np.abs(joint_correction)))
+                if peak > self.nominal_tracking_radius:
+                    joint_correction *= self.nominal_tracking_radius / peak
                 q_ref = nominal_q + joint_correction
                 force_joint_correction_batch[env_id] = (
                     joint_correction.astype(np.float32)
                 )
 
             q_ref_batch[env_id] = q_ref.astype(np.float32)
-            ik_local_batch[env_id] = self.config.data.site_xpos[
-                self.tip_ids
-            ].astype(np.float32)
+            self._set_hand_q(q_ref)
+            ik_local_batch[env_id] = self.data.site_xpos[self.tip_ids].astype(
+                np.float32
+            )
 
-        q_hand_t = finger_obs[:, 18:34]
+        q_hand_t = finger_obs[
+            :, 12 + ARM_DOF : 12 + TOTAL_DOF
+        ]
         q_ref_t = torch.as_tensor(q_ref_batch, device=self.device)
         command = q_ref_t
         if not self.prev_action_initialized:
@@ -1666,8 +1676,50 @@ class MotorForceFingerMCCController:
             "motor_external_torque": torch.as_tensor(
                 external_tau_batch, device=self.device, dtype=torch.float32
             ),
-            "tip_force_from_motors": torch.as_tensor(
-                forces_local_batch, device=self.device, dtype=torch.float32
+            "tip_force_from_motors_diagnostic": torch.as_tensor(
+                motor_forces_diagnostic_batch,
+                device=self.device,
+                dtype=torch.float32,
+            ),
+            "tip_force_direct_raw_palm": torch.as_tensor(
+                direct_forces_local_raw_batch,
+                device=self.device,
+                dtype=torch.float32,
+            ),
+            "tip_force_direct_palm": torch.as_tensor(
+                direct_forces_local_batch,
+                device=self.device,
+                dtype=torch.float32,
+            ),
+            "tip_normal_force_signed_raw": torch.as_tensor(
+                signed_normal_force_raw,
+                device=self.device,
+                dtype=torch.float32,
+            ),
+            "tip_normal_force": torch.as_tensor(
+                finger_step.measured_normal_force,
+                device=self.device,
+                dtype=torch.float32,
+            ),
+            "tip_normal_force_filtered": torch.as_tensor(
+                finger_step.filtered_normal_force,
+                device=self.device,
+                dtype=torch.float32,
+            ),
+            "tip_force_error": torch.as_tensor(
+                finger_step.force_error,
+                device=self.device,
+                dtype=torch.float32,
+            ),
+            "finger_normal_admittance_offset_m": torch.as_tensor(
+                finger_step.normal_offset,
+                device=self.device,
+                dtype=torch.float32,
+            ),
+            "finger_normal_admittance_velocity_m_s": torch.as_tensor(
+                finger_step.normal_velocity,
+                device=self.device,
+                dtype=torch.float32,
             ),
             "tip_reference_palm": torch.as_tensor(
                 reference_local_batch, device=self.device, dtype=torch.float32
@@ -1684,16 +1736,15 @@ class MotorForceFingerMCCController:
                 dtype=torch.float32,
             ),
             "tip_contact_active": torch.as_tensor(
-                finger_step.contact_active[:, 1:], device=self.device
-            ),
-            "energy_tank": torch.as_tensor(
-                finger_step.energy_tank, device=self.device, dtype=torch.float32
-            ),
-            "passivity_scale": torch.as_tensor(
-                finger_step.passivity_scale, device=self.device, dtype=torch.float32
+                finger_step.contact_active, device=self.device
             ),
         }
         return action
+
+
+# Compatibility import for older scripts.  The implementation no longer uses
+# motor torque as its contact-force source.
+MotorForceFingerMCCController = FingertipForceFingerMCCController
 
 
 def _align_local_z_to_normal(
@@ -1717,7 +1768,7 @@ def _align_local_z_to_normal(
 
 
 class FullHandMCCController:
-    """Compose arm/palm MCC and motor-force fingertip MCC."""
+    """Baseline 2: wrist admittance plus four fingertip-force admittances."""
 
     def __init__(self, device: str, num_envs: int, **kwargs) -> None:
         variant = str(kwargs.get("variant", "hybrid_force_position"))
@@ -1730,12 +1781,56 @@ class FullHandMCCController:
         self.arm_mcc_correction_limit = float(
             kwargs.get("arm_mcc_correction_limit", 0.012)
         )
-        self.arm_force_feedback_gain = float(
-            kwargs.get("arm_force_feedback_gain", 3.0e-4)
+        self.wrist_update_decimation = max(
+            1, int(kwargs.get("wrist_update_decimation", 4))
         )
+        self.wrist_wrench_force_regularization = float(
+            kwargs.get("wrist_wrench_force_regularization", 1.0e-3)
+        )
+        self.wrist_wrench_torque_regularization = float(
+            kwargs.get("wrist_wrench_torque_regularization", 1.0e-2)
+        )
+        self.wrist_ik_damping = float(
+            kwargs.get("wrist_ik_damping", 2.0e-3)
+        )
+        control_dt = float(kwargs.get("control_dt", 0.01))
+        wrist_gains = WristAdmittanceGains(
+            dt=control_dt * self.wrist_update_decimation,
+            translation_mass=float(kwargs.get("mass_trans", 1.5)),
+            rotation_inertia=tuple(
+                float(value)
+                for value in kwargs.get(
+                    "inertia_diag", (0.15, 0.15, 0.15)
+                )
+            ),
+            normal_stiffness=float(kwargs.get("K_force", 25.0)),
+            tangent_stiffness=float(kwargs.get("K_position", 180.0)),
+            rotation_stiffness=float(kwargs.get("K_rot", 25.0)),
+            damping_ratio=float(kwargs.get("wrist_damping_ratio", 1.0)),
+            wrench_filter_alpha=float(kwargs.get("alpha_tau", 0.2)),
+            max_translation_offset=float(
+                kwargs.get("wrist_max_translation_offset_m", 0.012)
+            ),
+            max_rotation_offset=float(
+                kwargs.get("wrist_max_rotation_offset_rad", 0.06)
+            ),
+            max_translation_speed=float(
+                kwargs.get("wrist_max_translation_speed_m_s", 0.04)
+            ),
+            max_rotation_speed=float(
+                kwargs.get("wrist_max_rotation_speed_rad_s", 0.25)
+            ),
+            max_translation_acceleration=float(
+                kwargs.get("wrist_max_translation_acceleration", 0.5)
+            ),
+            max_rotation_acceleration=float(
+                kwargs.get("wrist_max_rotation_acceleration", 2.0)
+            ),
+        )
+        self.wrist_admittance = WristCartesianAdmittance(wrist_gains)
         finger_kwargs = dict(kwargs)
         finger_kwargs.pop("variant", None)
-        self.fingers = MotorForceFingerMCCController(
+        self.fingers = FingertipForceFingerMCCController(
             device=device,
             num_envs=num_envs,
             variant=self.variant,
@@ -1744,13 +1839,18 @@ class FullHandMCCController:
         self.last_debug: dict[str, torch.Tensor] = {}
         self._previous_action: torch.Tensor | None = None
         self._arm_anchor: torch.Tensor | None = None
-        self._arm_external_torque_setpoint: torch.Tensor | None = None
+        self._arm_external_wrench_setpoint: np.ndarray | None = None
+        self._wrist_last_step = None
+        self._wrist_step_count = 0
 
     def reset(self) -> None:
         self.fingers.reset()
+        self.wrist_admittance.reset()
         self._previous_action = None
         self._arm_anchor = None
-        self._arm_external_torque_setpoint = None
+        self._arm_external_wrench_setpoint = None
+        self._wrist_last_step = None
+        self._wrist_step_count = 0
 
     @staticmethod
     def _arm_external_torque(palm_obs: torch.Tensor) -> torch.Tensor:
@@ -1762,15 +1862,66 @@ class FullHandMCCController:
         bias_torque = palm_obs[:, bias_start : bias_start + ARM_DOF]
         return -(actuator_torque - bias_torque)
 
+    def _arm_external_wrench(
+        self,
+        q_full_batch: np.ndarray,
+        external_torque_batch: np.ndarray,
+    ) -> tuple[np.ndarray, list[np.ndarray]]:
+        """Estimate world-frame palm wrench from FR3 external joint torque."""
+
+        wrench_batch = np.zeros(
+            (q_full_batch.shape[0], 6), dtype=np.float64
+        )
+        jacobians: list[np.ndarray] = []
+        regularization = np.diag(
+            [
+                self.wrist_wrench_force_regularization,
+                self.wrist_wrench_force_regularization,
+                self.wrist_wrench_force_regularization,
+                self.wrist_wrench_torque_regularization,
+                self.wrist_wrench_torque_regularization,
+                self.wrist_wrench_torque_regularization,
+            ]
+        )
+        for env_id, (q_full, external_torque) in enumerate(
+            zip(q_full_batch, external_torque_batch, strict=True)
+        ):
+            _, _, _, jacobian = self.fingers._world_kinematics(q_full)
+            lhs = jacobian @ jacobian.T + regularization
+            wrench_batch[env_id] = np.linalg.solve(
+                lhs,
+                jacobian @ external_torque,
+            )
+            jacobians.append(jacobian)
+        return wrench_batch, jacobians
+
     def calibrate_arm_force_setpoint(
         self,
         palm_obs: torch.Tensor,
     ) -> None:
-        """Capture the loaded four-contact arm torque as the MCC setpoint."""
+        """Capture the loaded four-contact world-frame wrist wrench setpoint."""
 
-        self._arm_external_torque_setpoint = (
-            self._arm_external_torque(palm_obs).detach().clone()
+        q_full = (
+            palm_obs[:, :TOTAL_DOF]
+            .detach()
+            .cpu()
+            .numpy()
+            .astype(np.float64)
         )
+        external_torque = (
+            self._arm_external_torque(palm_obs)
+            .detach()
+            .cpu()
+            .numpy()
+            .astype(np.float64)
+        )
+        self._arm_external_wrench_setpoint = self._arm_external_wrench(
+            q_full,
+            external_torque,
+        )[0]
+        self.wrist_admittance.reset()
+        self._wrist_last_step = None
+        self._wrist_step_count = 0
 
     def __call__(
         self,
@@ -1812,27 +1963,82 @@ class FullHandMCCController:
             else self._arm_anchor
         )
         arm_external_torque = self._arm_external_torque(palm_obs)
+        q_full_np = (
+            palm_obs[:, :TOTAL_DOF]
+            .detach()
+            .cpu()
+            .numpy()
+            .astype(np.float64)
+        )
+        arm_external_torque_np = (
+            arm_external_torque.detach().cpu().numpy().astype(np.float64)
+        )
+        arm_external_wrench_np, _ = self._arm_external_wrench(
+            q_full_np,
+            arm_external_torque_np,
+        )
         if (
             self.arm_mcc_correction_limit > 0.0
-            and self._arm_external_torque_setpoint is not None
+            and self._arm_external_wrench_setpoint is not None
         ):
-            # Position-servo deflection is proportional to the actuator
-            # torque balancing the external load.  A bounded proportional
-            # correction around the calibrated loaded state provides force
-            # feedback without the legacy admittance controller's hidden
-            # reference/integral wind-up.
-            arm_force_error = (
-                arm_external_torque
-                - self._arm_external_torque_setpoint
+            arm_wrench_error_np = (
+                arm_external_wrench_np
+                - self._arm_external_wrench_setpoint
             )
-            arm_mcc_delta = torch.clamp(
-                self.arm_force_feedback_gain * arm_force_error,
-                -self.arm_mcc_correction_limit,
-                self.arm_mcc_correction_limit,
+            if (
+                self._wrist_last_step is None
+                or self._wrist_step_count % self.wrist_update_decimation == 0
+            ):
+                self._wrist_last_step = self.wrist_admittance.step(
+                    arm_wrench_error_np,
+                    surface_normals[:, 0]
+                    .detach()
+                    .cpu()
+                    .numpy()
+                    .astype(np.float64),
+                )
+            assert self._wrist_last_step is not None
+            wrist_reference_offset_np = (
+                self._wrist_last_step.reference_offset
+            )
+            nominal_full_np = (
+                joint_reference.detach().cpu().numpy().astype(np.float64)
+                if joint_reference is not None
+                else q_full_np.copy()
+            )
+            nominal_full_np[:, :ARM_DOF] = (
+                nominal_arm.detach().cpu().numpy().astype(np.float64)
+            )
+            arm_mcc_delta_np = np.zeros(
+                (q_full_np.shape[0], ARM_DOF),
+                dtype=np.float64,
+            )
+            for env_id, nominal_full in enumerate(nominal_full_np):
+                _, _, _, nominal_jacobian = self.fingers._world_kinematics(
+                    nominal_full
+                )
+                lhs = (
+                    nominal_jacobian @ nominal_jacobian.T
+                    + self.wrist_ik_damping * np.eye(6)
+                )
+                joint_delta = nominal_jacobian.T @ np.linalg.solve(
+                    lhs,
+                    wrist_reference_offset_np[env_id],
+                )
+                peak = float(np.max(np.abs(joint_delta)))
+                if peak > self.arm_mcc_correction_limit:
+                    joint_delta *= self.arm_mcc_correction_limit / peak
+                arm_mcc_delta_np[env_id] = joint_delta
+            arm_mcc_delta = torch.as_tensor(
+                arm_mcc_delta_np,
+                device=self.device,
+                dtype=torch.float32,
             )
         else:
-            arm_force_error = torch.zeros_like(arm_external_torque)
+            arm_wrench_error_np = np.zeros_like(arm_external_wrench_np)
+            wrist_reference_offset_np = np.zeros_like(arm_external_wrench_np)
             arm_mcc_delta = torch.zeros_like(current_arm)
+        self._wrist_step_count += 1
         arm_nominal_with_mcc = nominal_arm + arm_mcc_delta
         trust_center = (
             nominal_arm if joint_reference is not None else self._arm_anchor
@@ -1859,9 +2065,8 @@ class FullHandMCCController:
         action = torch.cat((arm_action, finger_action), dim=-1)
 
         if self.variant == "passivity_tank" and self._previous_action is not None:
-            # The energy tank lives in fingertip Cartesian space.  A final
-            # whole-hand rate limiter also prevents a large arm command from
-            # bypassing that safety layer.
+            # Preserve the legacy variant's conservative whole-hand rate
+            # limiter.  Baseline-2 admittance limits remain authoritative.
             action = self._previous_action + torch.clamp(
                 action - self._previous_action, -0.04, 0.04
             )
@@ -1872,7 +2077,21 @@ class FullHandMCCController:
             "five_kinematic_targets": tracking_points.detach().clone(),
             "five_surface_normals": surface_normals.detach().clone(),
             "arm_external_torque": arm_external_torque.detach().clone(),
-            "arm_force_error": arm_force_error.detach().clone(),
+            "arm_external_wrench": torch.as_tensor(
+                arm_external_wrench_np,
+                device=self.device,
+                dtype=torch.float32,
+            ),
+            "arm_wrench_error": torch.as_tensor(
+                arm_wrench_error_np,
+                device=self.device,
+                dtype=torch.float32,
+            ),
+            "wrist_admittance_reference_offset": torch.as_tensor(
+                wrist_reference_offset_np,
+                device=self.device,
+                dtype=torch.float32,
+            ),
             "arm_force_joint_correction": arm_mcc_delta.detach().clone(),
             "nominal_joint_reference": (
                 joint_reference.detach().clone()
@@ -1914,21 +2133,39 @@ class FullHandMCCControlCfg(RslRlOnPolicyRunnerCfg):
     dls_lambda: float = 0.12
     k_posture: float = 0.0
 
-    # Finger motor-force MCC.
+    # Baseline-2 fingertip admittance. Direct fingertip forces are primary;
+    # motor loads are retained only as diagnostics.
     finger_desired_force: float = 1.0
-    finger_tangent_kp: float = 18.0
-    finger_force_kp: float = 0.004
-    finger_force_ki: float = 0.001
-    motor_force_gain: float = 0.015
+    finger_virtual_mass: float = 0.08
+    finger_virtual_damping: float = 14.0
+    finger_virtual_stiffness: float = 800.0
+    finger_force_gain: float = 1.0
+    finger_force_filter_alpha: float = 0.25
+    finger_contact_on_force: float = 0.15
+    finger_contact_off_force: float = 0.08
+    finger_max_normal_offset_m: float = 0.004
+    finger_max_normal_acceleration: float = 0.5
     force_regularization: float = 1.0e-3
-    max_tip_speed: float = 0.04
+    max_tip_speed: float = 0.025
     mink_damping: float = 0.1
     mink_num_iter: int = 3
     action_rate_limit: float = 0.18
+
+    # Baseline-2 wrist admittance. The default 4x decimation gives 25 Hz at
+    # the 100 Hz controller rate, slower than the fingertip loops.
     arm_trust_region: float = 0.08
     arm_mcc_correction_limit: float = 0.012
-    arm_force_feedback_gain: float = 3.0e-4
+    wrist_update_decimation: int = 4
+    wrist_wrench_force_regularization: float = 1.0e-3
+    wrist_wrench_torque_regularization: float = 1.0e-2
+    wrist_ik_damping: float = 2.0e-3
+    wrist_damping_ratio: float = 1.0
+    wrist_max_translation_offset_m: float = 0.012
+    wrist_max_rotation_offset_rad: float = 0.06
+    wrist_max_translation_speed_m_s: float = 0.04
+    wrist_max_rotation_speed_rad_s: float = 0.25
+    wrist_max_translation_acceleration: float = 0.5
+    wrist_max_rotation_acceleration: float = 2.0
+
     finger_mcc_tracking_radius: float = 0.15
-    finger_force_closure_gain: float = 0.02
-    finger_max_release_correction: float = 0.01
     pregrasp_q: tuple[float, ...] = DEFAULT_PREGRASP_Q

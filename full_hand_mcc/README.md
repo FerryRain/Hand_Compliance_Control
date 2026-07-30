@@ -22,9 +22,10 @@ Compliance Control (MCC). The five jointly planned points are:
 5. thumb fingertip.
 
 The Franka FR3 follows a joint-limit-aware surface trajectory and uses
-calibrated seven-axis external-load feedback. All 16 LEAP Hand motor-load
-channels provide four independent fingertip force estimates. FR3 links must
-never contact the object. Every LEAP Hand part may make bounded incidental
+calibrated seven-axis external-load feedback. Four physical fingertip contact
+sensors provide four direct 3-D force measurements; the 16 motor-load channels
+are retained only for actuator diagnostics and safety monitoring. FR3 links
+must never contact the object. Every LEAP Hand part may make bounded incidental
 contact, but only the four physical fingertip pads count toward the contact
 objective. Brief fingertip release and brief no-motion intervals are allowed;
 by default, static recovery alone may span at most `1.5 mm`, while a combined
@@ -42,6 +43,47 @@ Use `--viewer headless` for the first full physical audit. It executes the
 same planning, dynamics, contact, travel, collision, force, and final-recovery
 checks without encoding a video. Generate a video only after that audit passes.
 
+## Baseline-2 low-level controller
+
+The upper optimizer owns the wrist pose trajectory and all four Cartesian
+fingertip trajectories. The low-level controller is:
+
+- fingertip loop at 100 Hz: transform each real fingertip force into the
+  current palm frame, project it only onto the planned local surface normal,
+  integrate one scalar virtual mass–damping–stiffness state, add the bounded
+  normal offset to the planned tip point, then solve four-site IK;
+- wrist loop at 25 Hz by default: estimate a 6-D world-frame wrist wrench from
+  the seven FR3 external joint torques, subtract the loaded calibration wrench,
+  integrate a lower-bandwidth Cartesian admittance reference, then map it to
+  a bounded seven-joint correction with damped least squares;
+- tangential fingertip motion is unchanged by the force loop and therefore
+  stays under the upper trajectory planner;
+- force filtering, contact hysteresis, acceleration/speed/offset limits, and
+  saturation anti-windup are active in both loops.
+
+For one fingertip, with outward normal \(n_i\), inward offset \(x_i\), and
+direct measured normal force \(f_i=n_i^\top f_{tip,i}\):
+
+```text
+M_i ẍ_i + B_i ẋ_i + K_i x_i = K_f (f_i* - f_i)
+p_tip,cmd,i = p_tip,plan,i - x_i n_i
+```
+
+This is still position-command execution: MCC/admittance changes the reference
+position in response to force; it does not replace the robot's inner position
+servo.
+
+The previous implementation did **not** meet this definition: it reconstructed
+tip forces from 16 motor-torque residuals, converted force error directly to a
+static displacement, and applied proportional joint corrections at the wrist.
+That path is now removed from primary control. Its motor-to-tip estimate remains
+visible only as `tip_force_from_motors_diagnostic`.
+
+Current verification status: 22 numerical/structure regression tests pass.
+The earlier v1–v106 GPU results predate this correction, so they remain useful
+planner/collision evidence but are not final validation of the corrected
+Baseline-2 low-level controller. A new headless physical audit is required.
+
 ## Current Windows environment
 
 For the current project, continue the already validated runtime:
@@ -55,7 +97,13 @@ until the demo is complete. Do not change environments during the current
 planning/dynamic acceptance sequence. A separate manual `handcomp` setup
 checklist will be provided after completion.
 
-## Full-robot 200 mm collision baseline
+## Historical pre-correction results
+
+The following accepted xArm/early-controller runs document route planning,
+contact auditing, and visual review. They must not be cited as final validation
+of the corrected direct-force FR3 Baseline-2 controller.
+
+### Full-robot 200 mm collision baseline
 
 The `adaptive_surface_mpc + hybrid_force_position` baseline was validated
 on native Windows with an RTX 4090 D and `cuda:0`. The object is a thick
@@ -94,7 +142,7 @@ The controller explicitly applies
 using the fixed-palm Jacobian. The diagnostic script verifies about 0.01 mm
 tip-position agreement and direction cosine `1.0` for all four Jacobians.
 
-## Accepted 280 mm bottom-to-top slide
+### Accepted 280 mm bottom-to-top slide
 
 The current longest reviewed run moves all four physical fingertip pads from
 the lower capsule end-cap region to the upper cylinder/end-cap boundary. The
@@ -130,7 +178,7 @@ hidden natural-closure command: each preload is projected through that
 finger's Jacobian along its local inward surface normal, while the full
 22-DoF trajectory and collision guards remain active.
 
-## Variable-curvature validation
+### Variable-curvature validation
 
 The latest reviewed demo replaces the long constant-curvature cylinder with a
 short, thick capsule (`radius=150 mm`, cylindrical half-height `100 mm`). The
@@ -164,7 +212,40 @@ object. The tactile/contact sensors independently prove continuous contact.
 This avoids false travel spikes when MuJoCo changes the selected
 `ContactSensor.pos` slot on a rounded pad.
 
-## Run on Windows
+## Run the corrected FR3 controller on Windows
+
+Start with the numerical/headless path. This command intentionally writes no
+video; the planner may still reject the unresolved v106 local reachability
+bottleneck, which must be fixed before a delivery recording:
+
+```powershell
+.\.venv\Scripts\python.exe -B `
+  full_hand_mcc\scripts\demo_surface_slide.py `
+  --viewer headless --device cuda:0 --seed 42 `
+  --object-shape capsule `
+  --object-radius-m 0.10 --object-half-height-m 0.17 `
+  --collision-mode full_robot `
+  --initial-grasp full_hand_mcc\assets\fr3_capsule_100x170_bottom_grasp_high_clearance_v4.npz `
+  --planner adaptive_surface_mpc `
+  --axial-travel-m 0.48 --axial-direction 1 `
+  --palm-guide-only `
+  --object-retreat-azimuth-deg -90 `
+  --finger-force-n 12 `
+  --finger-admittance-mass-kg 0.08 `
+  --finger-admittance-damping-n-s-m 14 `
+  --finger-admittance-stiffness-n-m 800 `
+  --finger-max-normal-offset-mm 4 `
+  --arm-mcc-correction-rad 0.012 `
+  --wrist-update-decimation 4 `
+  --motion-start 350 --steps 4700
+```
+
+Only after the full headless summary passes should the exact command be rerun
+with `--viewer video` and an output under
+`full_hand_mcc/outputs/debug/20_fr3_planning/`. Move it into
+`outputs/deliverables/fr3/` only after visual review.
+
+### Historical xArm replay commands
 
 From the repository root:
 
@@ -295,36 +376,41 @@ The demo:
 1. performs tactile-supervised contact search with no natural closure;
 2. requires four real fingertip contacts before motion;
 3. records loaded arm/finger servo offsets and force baselines;
-4. solves all five points against the xArm6 + LEAP Hand model and limits;
+4. solves all five points against the FR3 + LEAP Hand model and limits;
 5. validates every plan frame for pad orientation, self-collision, and
    non-tip/object clearance;
-6. uses each finger's motor-force error only along its local surface normal;
-7. uses bounded, non-integrating arm external-load feedback around the loaded
-   four-contact state;
-8. rejects prolonged tip contact loss, contact ratio below 99%, tip
-   penetration above 1 mm, or any arm/non-tip object collision;
+6. uses each direct fingertip force only along its local surface normal;
+7. uses a bounded, lower-bandwidth wrist Cartesian admittance around the loaded
+   four-contact wrench state;
+8. rejects contact-window/aggregate ratios below the configured policy,
+   excessive fingertip or incidental-hand penetration/force, and any
+   FR3/object contact;
 9. reports real contact travel and both feedback correction magnitudes.
 
-## Controller variants
+## Legacy experiment labels
 
-Five structures are implemented:
+The CLI still accepts five historical labels so archived commands and files can
+be parsed. For the current Baseline-2 work, use `hybrid_force_position`; all
+labels use the same direct-force fingertip and wrist admittance implementation,
+while `passivity_tank` additionally retains a conservative whole-hand command
+rate limiter. The labels are not five separately validated Baseline-2 results.
 
-| Variant | Main difference | Current status |
+| Variant | Current interpretation | Status after controller correction |
 |---|---|---|
-| `hybrid_force_position` | Tangential position + normal motor-force feedback | accepted |
-| `independent_mcc` | Independent contact-coordinate loops | needs final pad/full-collision rerun |
-| `motor_torque_mcc` | Direct motor-torque residual path | needs final pad/full-collision rerun |
-| `hierarchical_mcc` | Palm/arm priority + fingertip-relative regulation | needs final pad/full-collision rerun |
-| `passivity_tank` | Cartesian energy tank + whole-hand rate limit | needs final pad/full-collision rerun |
+| `hybrid_force_position` | Canonical Baseline-2 controller | numerical tests pass; GPU audit pending |
+| `independent_mcc` | compatibility label | not separately validated |
+| `motor_torque_mcc` | compatibility label; motor torque is diagnostic only | not separately validated |
+| `hierarchical_mcc` | compatibility label | not separately validated |
+| `passivity_tank` | Baseline-2 plus final rate limiter | not separately validated |
 
 Videos made before the physical finger-pad, self-collision, and full-robot
 collision audits are not accepted as final evidence.
 
 ## Generalization and limitations
 
-- The `100 mm` radius, `170 mm` half-height bottom-to-top case and the
-  `150 mm` radius variable-curvature case have passed the final physical-pad
-  and full-robot visual audit.
+- Historical xArm runs on the `100 mm` radius, `170 mm` half-height case and
+  the `150 mm` radius variable-curvature case passed their physical-pad and
+  full-robot visual audits. They do not validate the corrected FR3 controller.
 - Earlier 18-22 mm radius tests are retained as numerical experiments and
   require rerunning under the final checks.
 - Arbitrary mesh geometry, short-object collision-free approach, and a full
@@ -336,11 +422,13 @@ collision audits are not accepted as final evidence.
   this to `4.1-5.9 mm`; the 280 mm bottom-to-top run reaches
   `8.4-19.2 mm` and passes explicit active-finger-motion thresholds.
 - Higher-curvature ellipsoid candidates were explored but rejected: the
-  current xArm6 + LEAP Hand configuration encountered protected MCP-to-DIP
+  historical xArm6 + LEAP Hand configuration encountered protected MCP-to-DIP
   self-clearance or link/object constraints after roughly `14-18 mm`.
   They are not presented as successful demos.
 - Hardware use still requires motor torque sign/offset identification,
   conservative effort limits, stale-data handling, and an emergency stop.
 
-Progress, rejected candidates, and the accepted pad-side result are tracked in
+Current FR3/Baseline-2 work is tracked in
+[Issue #7](https://github.com/FerryRain/Hand_Compliance_Control/issues/7).
+Historical xArm pad-side evidence is retained in
 [Issue #6](https://github.com/FerryRain/Hand_Compliance_Control/issues/6).

@@ -35,6 +35,10 @@ DEMO_PATH = (
     Path(__file__).resolve().parents[1]
     / "scripts/demo_surface_slide.py"
 )
+ADAPTER_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "src/mjlab/tasks/leaphand/leaphand_full_hand_mcc_env_cfg.py"
+)
 
 
 class FullHandMCCCoreTest(unittest.TestCase):
@@ -132,6 +136,150 @@ class FullHandMCCCoreTest(unittest.TestCase):
                 np.zeros((4, 3)),
                 np.zeros((4, 3)),
             )
+
+
+class BaselineTwoAdmittanceTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.planned = np.zeros((1, 4, 3), dtype=np.float64)
+        self.planned[..., 0] = np.asarray([[0.01, 0.02, 0.03, 0.04]])
+        self.planned[..., 1] = np.asarray([[-0.01, -0.02, -0.03, -0.04]])
+        self.normals = np.zeros_like(self.planned)
+        self.normals[..., 2] = 1.0
+
+    def test_low_direct_force_moves_inward_and_preserves_tangent(self) -> None:
+        controller = CORE.FingertipNormalAdmittance()
+        result = controller.step(
+            self.planned,
+            self.normals,
+            np.zeros_like(self.planned),
+        )
+        self.assertTrue(np.all(result.normal_offset > 0.0))
+        self.assertTrue(np.all(result.command_points[..., 2] < 0.0))
+        np.testing.assert_allclose(
+            result.command_points[..., :2],
+            self.planned[..., :2],
+            atol=1.0e-12,
+        )
+
+    def test_high_force_releases_normal_offset(self) -> None:
+        gains = CORE.FingertipAdmittanceGains(
+            virtual_mass=0.08,
+            virtual_damping=3.0,
+            virtual_stiffness=100.0,
+            force_filter_alpha=1.0,
+            max_normal_acceleration=5.0,
+        )
+        controller = CORE.FingertipNormalAdmittance(gains)
+        low_force = np.zeros_like(self.planned)
+        for _ in range(20):
+            low_result = controller.step(
+                self.planned,
+                self.normals,
+                low_force,
+            )
+        peak_offset = low_result.normal_offset.copy()
+        high_force = np.zeros_like(self.planned)
+        high_force[..., 2] = 3.0
+        for _ in range(60):
+            high_result = controller.step(
+                self.planned,
+                self.normals,
+                high_force,
+            )
+        self.assertTrue(np.all(high_result.normal_offset < peak_offset))
+
+    def test_fingertip_offset_speed_and_contact_hysteresis_are_bounded(
+        self,
+    ) -> None:
+        controller = CORE.FingertipNormalAdmittance()
+        result = None
+        for _ in range(1000):
+            result = controller.step(
+                self.planned,
+                self.normals,
+                np.zeros_like(self.planned),
+            )
+        assert result is not None
+        self.assertLessEqual(
+            float(np.max(np.abs(result.normal_offset))),
+            controller.gains.max_normal_offset + 1.0e-12,
+        )
+        self.assertLessEqual(
+            float(np.max(np.abs(result.normal_velocity))),
+            controller.gains.max_normal_speed + 1.0e-12,
+        )
+
+        hysteresis = CORE.FingertipNormalAdmittance(
+            CORE.FingertipAdmittanceGains(force_filter_alpha=1.0)
+        )
+        force = np.zeros_like(self.planned)
+        force[..., 2] = 0.16
+        self.assertTrue(
+            np.all(
+                hysteresis.step(
+                    self.planned, self.normals, force
+                ).contact_active
+            )
+        )
+        force[..., 2] = 0.10
+        self.assertTrue(
+            np.all(
+                hysteresis.step(
+                    self.planned, self.normals, force
+                ).contact_active
+            )
+        )
+        force[..., 2] = 0.0
+        self.assertFalse(
+            np.any(
+                hysteresis.step(
+                    self.planned, self.normals, force
+                ).contact_active
+            )
+        )
+
+    def test_wrist_admittance_is_wrench_driven_and_bounded(self) -> None:
+        controller = CORE.WristCartesianAdmittance()
+        normal = np.asarray([[0.0, 0.0, 1.0]])
+        wrench = np.asarray([[0.0, 0.0, 8.0, 0.0, 0.0, 0.0]])
+        first = controller.step(wrench, normal)
+        self.assertGreater(float(first.reference_offset[0, 2]), 0.0)
+        result = first
+        for _ in range(1000):
+            result = controller.step(wrench, normal)
+        self.assertLessEqual(
+            float(np.linalg.norm(result.reference_offset[0, :3])),
+            controller.gains.max_translation_offset + 1.0e-12,
+        )
+        self.assertLessEqual(
+            float(np.linalg.norm(result.reference_velocity[0, :3])),
+            controller.gains.max_translation_speed + 1.0e-12,
+        )
+
+    def test_adapter_uses_direct_forces_and_separate_wrist_loop(self) -> None:
+        source = ADAPTER_PATH.read_text(encoding="utf-8")
+        demo_source = DEMO_PATH.read_text(encoding="utf-8")
+        self.assertIn("class FingertipForceFingerMCCController", source)
+        self.assertIn("finger_obs[:, :12]", source)
+        self.assertIn("direct_forces_local_batch", source)
+        self.assertIn("FingertipNormalAdmittance", source)
+        self.assertIn("WristCartesianAdmittance", source)
+        self.assertIn("tip_force_from_motors_diagnostic", source)
+        self.assertIn(
+            "12 + ARM_DOF : 12 + TOTAL_DOF",
+            source,
+        )
+        self.assertIn("tip_normal_force_signed_raw", demo_source)
+        self.assertIn(
+            "calibrate_fingertip_force_sign",
+            demo_source,
+        )
+        self.assertNotIn('["tip_force_from_motors"]', demo_source)
+        self.assertNotIn(
+            "calibrate_motor_force_setpoint",
+            demo_source,
+        )
+        self.assertNotIn("normal_preload_m =", demo_source)
 
 
 class SurfaceGeometryTest(unittest.TestCase):

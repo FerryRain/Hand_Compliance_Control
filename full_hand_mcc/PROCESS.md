@@ -1181,3 +1181,62 @@ Optimization-Time-Capped 版本，并记录性能—求解时间权衡。
 
 详细控制律、力符号校准、限幅/anti-windup 和两版公平对比见根目录
 `CONTROL_STRATEGIES.md`。本次仅更新研究/控制边界，尚未修改现有仿真控制代码。
+
+#### Baseline 2 底层控制器纠偏已实现（2026-07-30，待 GPU）
+
+本轮把上一节的控制边界真正落实到代码。审计确认旧控制器与 Baseline 2 要求的
+差异不是参数问题，而是传感器来源和控制律均不正确：
+
+- finger observation 的前 12 维本来就是四路真实
+  `fingertip_force_3d`，旧控制器却忽略它们，把 16 个 motor torque/bias
+  残差经固定掌模型 Jacobian 反演成四路 tip force；
+- 有 nominal URDF 轨迹时，旧 finger path 直接使用
+  `preload + compliance * force_error` 的静态法向位移，绕过了原先五点
+  reference integrator；没有虚拟质量、阻尼、速度或动态 reference；
+- wrist path 只把外力矩误差乘一个常数加到 arm joint target，demo 默认
+  `--arm-mcc-correction-rad 0` 还会完全关闭它；
+- finger rate limiter 读取当前关节的 observation 切片从 `18:34` 开始，
+  但真实 layout 是 force(12)+arm q(7)+hand q(16)，正确 hand q 为 `19:35`。
+
+实现内容：
+
+1. `full_hand_mcc_core.py`
+   - `FingertipNormalAdmittance`：每指只积分一个 inward normal offset；
+     \(M\ddot x+B\dot x+Kx=K_f(f^*-f)\)，command 为
+     `planned_tip - x * outward_normal`；
+   - `WristCartesianAdmittance`：6-D wrench-driven reference offset，
+     法向/切向不同刚度；两者均含 EMA、限速/限加速度/限位移和 anti-windup。
+2. `leaphand_full_hand_mcc_env_cfg.py`
+   - 四路 sensor-local force 经当前 tip site rotation 转到 world，再转到
+     fixed-palm IK frame；传感器符号由已接触状态标定；
+   - four-site Mink IK 跟踪“上层计划点 + 法向导纳偏置”，并围绕上层 nominal
+     hand q 设置信赖半径；
+   - FR3 七轴 external torque 用 world 6×7 Jacobian 的正则化反演得到
+     6-D wrist wrench；wrist reference 再通过 nominal Jacobian DLS 映射回
+     七关节小修正；
+   - motor-derived tip force 仅以
+     `tip_force_from_motors_diagnostic` 输出，不能进入 admittance；
+   - 默认 finger 100 Hz、wrist decimation 4，即 25 Hz。
+3. `demo_surface_slide.py`
+   - 接触/settled 标定使用直接指尖法向力；desired force 保留显式
+     `--finger-force-n`，不再用偶然 baseline 覆盖；
+   - 新增 M/B/K、滤波、接触滞回、法向 offset/speed/acceleration，以及
+     wrist decimation/limit 参数；wrist correction 默认从 0 改为
+     `0.012 rad`；
+   - 旧 static normal preload/compliance 参数仅为历史命令解析兼容，不再
+     参与控制；日志同时报告 direct tip force 与 motor-force diagnostic。
+4. 验证
+   - 新增低力向内、高力退让、切向严格保持、滞回、限幅/anti-windup、
+     wrist wrench response、直接力数据流和 observation index 回归；
+   - `22/22` unittest 通过；
+   - CLI `--help` 通过；`git diff --check` 只有仓库既有的 LF/CRLF 提示。
+
+当前没有生成视频。旧 v1–v106 的 planner/collision 结果仍可用于定位可达性
+瓶颈，但全部发生在旧 motor-residual/static-displacement 控制器下，不能作为
+本次 Baseline 2 控制器验收。下一步：
+
+1. 把本检查点同步 issue #7 并提交/push `main`；
+2. 用现有 `.venv` 先做短 GPU smoke，确认 direct force 符号、wrist wrench
+   符号、reference offset 和接触恢复方向；
+3. 再跑完整 headless 0.48 m 规划/4700 步动力学；失败只保存日志/诊断；
+4. 数值全部通过后才生成候选视频并逐帧审核。

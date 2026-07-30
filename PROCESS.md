@@ -805,3 +805,38 @@ v64 将新种子门控到 77.5 mm 后，成功保留早段并把首个失败从�
 - issue #7 已同步评论 `5117379121`。下一步提交 v106 检查点并只运行
   headless GPU 数值验收；完整 0.48 m 规划与 4700 步动力学通过前不生成
   视频。
+
+#### Baseline 2 底层控制器纠偏（2026-07-30，正在做）
+
+用户再次确认当前目录要交付的是 proposal “方案二 / Baseline 2”的底层
+控制器。对 `53c6960` 后的实现审计发现，既有 GPU v1–v106 虽然验证了大量
+规划、碰撞和接触审核逻辑，但当时底层控制与正式定义仍有三处本质差异：
+
+1. 四指主反馈来自 16 电机 torque/bias 残差经 Jacobian 反演，而不是环境已经
+   提供的四路真实 `fingertip_force_3d`；
+2. 指尖力误差被直接换算为静态法向位移，没有虚拟质量–阻尼–刚度动态状态；
+3. FR3 只用外力矩误差做比例关节修正，且 demo 默认把 arm MCC correction
+   设为零；这不是较低带宽的 Wrist Cartesian admittance。
+
+当前已完成第一轮代码纠偏：
+
+- 新增纯数值 `FingertipNormalAdmittance`：100 Hz 四路独立标量法向 M-B-K，
+  输入真实 3-D 指尖力；上层切向轨迹完全保留，带滤波、接触滞回、加速度/
+  速度/位移限幅和饱和 anti-windup；
+- 新增 `WristCartesianAdmittance`：默认 25 Hz，把 FR3 七轴外力矩用 6×7
+  world Jacobian 反演为 wrist wrench，减去有载标定值后积分 6-D 虚拟参考，
+  再用阻尼最小二乘映射为有界七关节修正；
+- 电机到指尖力反演改名为 `tip_force_from_motors_diagnostic`，只保留诊断；
+- 修正 finger observation 中当前 16 维手指关节位置切片从错误的 `18:34`
+  为 `19:35`；
+- demo 改为用 `tip_normal_force_signed_raw` 做传感器符号标定，显式 force
+  target 不再被偶然的接触基线覆盖；旧 static preload/compliance 参数不再
+  参与控制；
+- demo 默认启用 `0.012 rad` 有界 wrist correction，并新增 finger/wrist
+  admittance CLI 参数和直接力/诊断力分离日志；
+- 纯数值、结构和接触策略回归共 `22/22` 通过，CLI `--help` 通过。
+
+重要限制：这次只完成软件级纠偏，尚未运行新的 GPU headless 物理验收。
+因此旧 v1–v106 不能作为纠偏后 Baseline 2 的最终控制证据；下一步是同步
+issue #7、提交 main 检查点，然后以现有 `.venv` 运行新的 headless 动态审查。
+只有完整物理终审通过后才生成新视频。

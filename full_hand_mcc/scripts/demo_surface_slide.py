@@ -1244,10 +1244,49 @@ def main() -> None:
     parser.add_argument("--contact-search-limit-rad", type=float, default=0.30)
     parser.add_argument("--finger-force-n", type=float, default=12.0)
     parser.add_argument(
+        "--finger-admittance-mass-kg",
+        type=float,
+        default=0.08,
+        help="Virtual mass of each scalar fingertip normal admittance loop.",
+    )
+    parser.add_argument(
+        "--finger-admittance-damping-n-s-m",
+        type=float,
+        default=14.0,
+        help="Virtual damping of each fingertip normal admittance loop.",
+    )
+    parser.add_argument(
+        "--finger-admittance-stiffness-n-m",
+        type=float,
+        default=800.0,
+        help="Virtual stiffness of each fingertip normal admittance loop.",
+    )
+    parser.add_argument("--finger-force-gain", type=float, default=1.0)
+    parser.add_argument("--finger-force-filter-alpha", type=float, default=0.25)
+    parser.add_argument("--finger-contact-on-force-n", type=float, default=0.15)
+    parser.add_argument("--finger-contact-off-force-n", type=float, default=0.08)
+    parser.add_argument(
+        "--finger-max-normal-offset-mm",
+        type=float,
+        default=4.0,
+    )
+    parser.add_argument(
+        "--finger-max-normal-speed-mm-s",
+        type=float,
+        default=25.0,
+    )
+    parser.add_argument(
+        "--finger-max-normal-acceleration-m-s2",
+        type=float,
+        default=0.5,
+    )
+    # Accepted only so archived experiment commands remain parseable.  These
+    # static displacement parameters are not part of Baseline-2 admittance.
+    parser.add_argument(
         "--finger-normal-preload-mm",
         type=float,
         default=0.0,
-        help="Constant inward Cartesian pad preload around the URDF plan.",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--finger-normal-preload-scales",
@@ -1255,21 +1294,34 @@ def main() -> None:
         nargs=4,
         default=(1.0, 1.0, 1.0, 1.0),
         metavar=("INDEX", "MIDDLE", "RING", "THUMB"),
-        help="Per-finger multipliers for the Cartesian normal preload.",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--finger-normal-compliance-mm-per-n",
         type=float,
         default=0.05,
-        help="Motor-force error to inward Cartesian pad displacement gain.",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--finger-max-release-correction-rad",
         type=float,
         default=0.0,
+        help=argparse.SUPPRESS,
     )
     parser.add_argument("--palm-force-n", type=float, default=0.0)
-    parser.add_argument("--arm-mcc-correction-rad", type=float, default=0.0)
+    parser.add_argument("--arm-mcc-correction-rad", type=float, default=0.012)
+    parser.add_argument("--wrist-update-decimation", type=int, default=4)
+    parser.add_argument("--wrist-damping-ratio", type=float, default=1.0)
+    parser.add_argument(
+        "--wrist-max-translation-offset-mm",
+        type=float,
+        default=12.0,
+    )
+    parser.add_argument(
+        "--wrist-max-rotation-offset-rad",
+        type=float,
+        default=0.06,
+    )
     parser.add_argument(
         "--arm-trajectory-tracking-gain",
         type=float,
@@ -1737,6 +1789,36 @@ def main() -> None:
         raise ValueError(
             "--finger-normal-compliance-mm-per-n cannot be negative"
         )
+    if min(
+        args.finger_admittance_mass_kg,
+        args.finger_admittance_damping_n_s_m,
+        args.finger_admittance_stiffness_n_m,
+        args.finger_force_gain,
+        args.finger_max_normal_offset_mm,
+        args.finger_max_normal_speed_mm_s,
+        args.finger_max_normal_acceleration_m_s2,
+    ) <= 0.0:
+        raise ValueError("Fingertip admittance gains and limits must be positive")
+    if not 0.0 <= args.finger_force_filter_alpha <= 1.0:
+        raise ValueError("--finger-force-filter-alpha must lie in [0, 1]")
+    if not (
+        0.0
+        <= args.finger_contact_off_force_n
+        <= args.finger_contact_on_force_n
+    ):
+        raise ValueError(
+            "Finger contact thresholds require 0 <= off <= on"
+        )
+    if args.arm_mcc_correction_rad < 0.0:
+        raise ValueError("--arm-mcc-correction-rad cannot be negative")
+    if args.wrist_update_decimation < 1:
+        raise ValueError("--wrist-update-decimation must be positive")
+    if min(
+        args.wrist_damping_ratio,
+        args.wrist_max_translation_offset_mm,
+        args.wrist_max_rotation_offset_rad,
+    ) <= 0.0:
+        raise ValueError("Wrist admittance damping and limits must be positive")
     if args.arm_trajectory_tracking_gain < 0.0:
         raise ValueError("--arm-trajectory-tracking-gain cannot be negative")
     if args.finger_trajectory_tracking_gain < 0.0:
@@ -2013,26 +2095,35 @@ def main() -> None:
         variant=args.variant,
         device=device,
         finger_desired_force=args.finger_force_n,
-        finger_max_release_correction=(
-            args.finger_max_release_correction_rad
+        finger_virtual_mass=args.finger_admittance_mass_kg,
+        finger_virtual_damping=args.finger_admittance_damping_n_s_m,
+        finger_virtual_stiffness=args.finger_admittance_stiffness_n_m,
+        finger_force_gain=args.finger_force_gain,
+        finger_force_filter_alpha=args.finger_force_filter_alpha,
+        finger_contact_on_force=args.finger_contact_on_force_n,
+        finger_contact_off_force=args.finger_contact_off_force_n,
+        finger_max_normal_offset_m=(
+            args.finger_max_normal_offset_mm / 1000.0
+        ),
+        max_tip_speed=args.finger_max_normal_speed_mm_s / 1000.0,
+        finger_max_normal_acceleration=(
+            args.finger_max_normal_acceleration_m_s2
         ),
         palm_desired_force=args.palm_force_n,
         arm_mcc_correction_limit=args.arm_mcc_correction_rad,
+        wrist_update_decimation=args.wrist_update_decimation,
+        wrist_damping_ratio=args.wrist_damping_ratio,
+        wrist_max_translation_offset_m=(
+            args.wrist_max_translation_offset_mm / 1000.0
+        ),
+        wrist_max_rotation_offset_rad=(
+            args.wrist_max_rotation_offset_rad
+        ),
     )
     kwargs = asdict(cfg)
     policy_class = kwargs.pop("policy_class")
     kwargs.pop("device", None)
     controller = policy_class(device=device, num_envs=1, **kwargs)
-    controller.fingers.normal_preload_m = (
-        args.finger_normal_preload_mm / 1000.0
-    )
-    controller.fingers.normal_preload_scales = np.asarray(
-        args.finger_normal_preload_scales,
-        dtype=np.float64,
-    )
-    controller.fingers.normal_compliance_m_per_n = (
-        args.finger_normal_compliance_mm_per_n / 1000.0
-    )
     controller.fingers.nominal_tracking_radius = (
         args.precontact_tracking_radius_rad
     )
@@ -2094,8 +2185,8 @@ def main() -> None:
             self.final_all_contact_streak = 0
             self.contact_settle_streak = 0
             self.contact_calibrated = False
-            self.motor_force_recalibrated = False
-            self.max_force_correction_rad = 0.0
+            self.fingertip_force_recalibrated = False
+            self.max_fingertip_admittance_joint_correction_rad = 0.0
             self.max_arm_force_correction_rad = 0.0
             self.precontact_closure = np.zeros(16, dtype=np.float32)
             self.last_command_q: np.ndarray | None = None
@@ -2563,13 +2654,14 @@ def main() -> None:
             self._build_axial_plan(center, rotation)
             self._audit_planned_surface_curvature(center, rotation)
             self.contact_calibrated = True
-            motor_baseline = torch.linalg.vector_norm(
-                controller.last_debug["tip_force_from_motors"][0],
-                dim=-1,
-            ).detach().cpu().numpy()
+            direct_normal_baseline = controller.last_debug[
+                "tip_normal_force_signed_raw"
+            ][0].detach().cpu().numpy()
             controller.reset()
             controller.calibrate_arm_force_setpoint(obs["palm"])
-            controller.fingers.calibrate_motor_force_setpoint(motor_baseline)
+            controller.fingers.calibrate_fingertip_force_sign(
+                direct_normal_baseline
+            )
             controller.fingers.nominal_tracking_radius = (
                 args.contact_tracking_radius_rad
             )
@@ -2582,8 +2674,10 @@ def main() -> None:
                 f"site_standoff_mm="
                 f"{(self.surface_error[1:] * 1000).round(2).tolist()} "
                 f"tactile_force_N={self.tactile_force.round(2).tolist()} "
-                f"motor_force_baseline_N="
-                f"{motor_baseline.round(2).tolist()} "
+                f"direct_normal_force_raw_N="
+                f"{direct_normal_baseline.round(2).tolist()} "
+                f"force_target_N="
+                f"{controller.fingers.fingertip_force_setpoint.round(2).tolist()} "
                 f"servo_deflection_rad="
                 f"{self.contact_servo_offset_q.round(3).tolist()}",
                 flush=True,
@@ -7580,21 +7674,23 @@ def main() -> None:
                 self._apply_runtime_finger_gait(center, rotation)
             elif (
                 self.contact_calibrated
-                and not self.motor_force_recalibrated
+                and not self.fingertip_force_recalibrated
                 and self.step == args.motion_start - 1
             ):
-                settled_motor_force = torch.linalg.vector_norm(
-                    controller.last_debug["tip_force_from_motors"][0],
-                    dim=-1,
-                ).detach().cpu().numpy()
-                controller.fingers.calibrate_motor_force_setpoint(
-                    settled_motor_force
+                settled_direct_normal_force = controller.last_debug[
+                    "tip_normal_force_signed_raw"
+                ][0].detach().cpu().numpy()
+                controller.fingers.calibrate_fingertip_force_sign(
+                    settled_direct_normal_force
                 )
                 controller.calibrate_arm_force_setpoint(obs["palm"])
-                self.motor_force_recalibrated = True
+                self.fingertip_force_recalibrated = True
                 print(
-                    "[MOTOR-FORCE-RECALIBRATION] settled per-finger "
-                    f"setpoint_N={settled_motor_force.round(2).tolist()}",
+                    "[FINGERTIP-FORCE-RECALIBRATION] settled direct sensor "
+                    f"raw_normal_N="
+                    f"{settled_direct_normal_force.round(2).tolist()} "
+                    f"target_N="
+                    f"{controller.fingers.fingertip_force_setpoint.round(2).tolist()}",
                     flush=True,
                 )
             assert self.targets is not None
@@ -7889,8 +7985,8 @@ def main() -> None:
                 force_correction = controller.last_debug[
                     "finger_force_joint_correction"
                 ]
-                self.max_force_correction_rad = max(
-                    self.max_force_correction_rad,
+                self.max_fingertip_admittance_joint_correction_rad = max(
+                    self.max_fingertip_admittance_joint_correction_rad,
                     float(torch.max(torch.abs(force_correction)).item()),
                 )
                 arm_force_correction = controller.last_debug[
@@ -7905,18 +8001,26 @@ def main() -> None:
                     ),
                 )
             if not self.contact_calibrated:
-                # Do not let a motor-residual force estimate release fingers
-                # before true tactile contact has been established.  This
-                # phase is absolute position hold plus independent tactile
-                # search; motor-force MCC starts after calibration.
+                # Before sensor-sign calibration, contact establishment uses
+                # absolute position hold plus independent tactile search.
                 action[:, :ARM_DOF] = joint_reference_t[:, :ARM_DOF]
                 action[:, ARM_DOF:TOTAL_DOF] = joint_reference_t[
                     :, ARM_DOF:TOTAL_DOF
                 ]
             if self.step % max(args.print_every, 1) == 0:
                 debug = controller.last_debug
-                motor_force = torch.linalg.vector_norm(
-                    debug["tip_force_from_motors"][0], dim=-1
+                direct_tip_force = debug["tip_normal_force_filtered"][0]
+                motor_force_diagnostic = torch.linalg.vector_norm(
+                    debug["tip_force_from_motors_diagnostic"][0], dim=-1
+                )
+                finger_offset_mm = (
+                    debug["finger_normal_admittance_offset_m"][0] * 1000.0
+                )
+                wrist_offset_mm = (
+                    torch.linalg.vector_norm(
+                        debug["wrist_admittance_reference_offset"][0, :3]
+                    )
+                    * 1000.0
                 )
                 print(
                     f"[FULL-HAND-MCC] step={self.step:05d} variant={args.variant} "
@@ -7928,7 +8032,10 @@ def main() -> None:
                     f"max_joint_error_rad="
                     f"[{np.max(np.abs(self.joint_error[:ARM_DOF])):.3f},"
                     f"{np.max(np.abs(self.joint_error[ARM_DOF:])):.3f}] "
-                    f"tip_force_N={motor_force.cpu().numpy().round(2).tolist()} "
+                    f"tip_force_N="
+                    f"{direct_tip_force.cpu().numpy().round(2).tolist()} "
+                    f"motor_force_diag_N="
+                    f"{motor_force_diagnostic.cpu().numpy().round(2).tolist()} "
                     f"tactile_force_N={self.tactile_force.round(2).tolist()} "
                     f"contact_dist_mm="
                     f"{(self.contact_distance_m * 1000).round(3).tolist()} "
@@ -7936,7 +8043,10 @@ def main() -> None:
                     f"{self.contact_surface_travel_m.round(3).tolist()} "
                     f"tip_in_palm_travel_mm="
                     f"{(self.contact_relative_travel_m * 1000).round(1).tolist()} "
-                    f"tank={float(debug['energy_tank'][0]):.3f} "
+                    f"finger_admittance_offset_mm="
+                    f"{finger_offset_mm.cpu().numpy().round(3).tolist()} "
+                    f"wrist_admittance_offset_mm="
+                    f"{float(wrist_offset_mm):.3f} "
                     f"axial_travel_m={self.executed_axial_travel:.4f} "
                     f"plan_frame={self.plan_index}",
                     flush=True,
@@ -8148,8 +8258,8 @@ def main() -> None:
                 f"final_all_contact_streak_frames="
                 f"{policy.final_all_contact_streak} "
                 f"axial_travel_m={policy.executed_axial_travel:.4f} "
-                f"max_motor_force_correction_rad="
-                f"{policy.max_force_correction_rad:.6f} "
+                f"max_fingertip_admittance_joint_correction_rad="
+                f"{policy.max_fingertip_admittance_joint_correction_rad:.6f} "
                 f"max_arm_force_correction_rad="
                 f"{policy.max_arm_force_correction_rad:.6f} "
                 f"max_contact_penetration_mm="
