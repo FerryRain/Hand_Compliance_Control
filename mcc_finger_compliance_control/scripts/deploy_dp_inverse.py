@@ -67,6 +67,13 @@ class MCCPrecontactConfig:
     command_ema_alpha: float = 0.65
     recovery_offset_decay: float = 0.999
     recovery_decay_force_ratio: float = 1.5
+    # A geometry hit with only a tiny force is not a settled contact.  Such a
+    # finger must continue the sensor-driven Jacobian precontact search.
+    settle_force_ratio: float = 0.80
+    # Without an analytic surface projection, the tactile loop must absorb
+    # both force error and the site-to-contact geometric residual.  None uses
+    # 3 mm for oracle mode and 6 mm for sensor-only mode.
+    max_normal_offset_m: float | None = None
 
 
 def _episode(file: h5py.File, episode_id: int, name: str) -> np.ndarray:
@@ -89,24 +96,35 @@ def _episode(file: h5py.File, episode_id: int, name: str) -> np.ndarray:
     ).astype(np.float32)
 
 
-def load_episode(path: Path, episode_id: int) -> dict[str, np.ndarray]:
-    required = (
-        "palm_pose_object",
-        "q_hand",
-        "fingertip_force_object",
-        "fingertip_contact_normal_object",
-        "palm_twist_object",
-        "fingertip_pose_object",
-    )
-    with h5py.File(path, "r") as file:
-        names = required + tuple(
-            name
-            for name in (
-                "fingertip_contact_pos_object",
-                "fingertip_contact",
+def load_episode(
+    path: Path,
+    episode_id: int,
+    *,
+    include_teacher_tactile: bool,
+) -> dict[str, np.ndarray]:
+    # Live deployment must not even load recorded fingertip force/normal/pose
+    # channels.  Those channels are retained only for the explicit
+    # ``teacher_dp`` and ``offline_teacher`` evaluation modes.
+    required = ["palm_pose_object", "q_hand", "palm_twist_object"]
+    if include_teacher_tactile:
+        required.extend(
+            (
+                "fingertip_force_object",
+                "fingertip_contact_normal_object",
+                "fingertip_pose_object",
             )
-            if name in file
         )
+    with h5py.File(path, "r") as file:
+        names = tuple(required)
+        if include_teacher_tactile:
+            names += tuple(
+                name
+                for name in (
+                    "fingertip_contact_pos_object",
+                    "fingertip_contact",
+                )
+                if name in file
+            )
         return {name: _episode(file, episode_id, name) for name in names}
 
 
@@ -431,35 +449,47 @@ def live_tip_observation(
         geometry_sensor.update(0.0)
         force_data = force_sensor.data
         geometry_data = geometry_sensor.data
-        if force_data.force is None or force_data.found is None:
-            continue
-        found = force_data.found[0] > 0
-        if not bool(found.any()):
-            continue
-        slot_force = force_data.force[0]
-        forces[tip_index] = (
-            torch.where(found[:, None], slot_force, torch.zeros_like(slot_force))
-            .sum(dim=0)
-            .detach()
-            .cpu()
-            .numpy()
+        force_found = (
+            force_data.found is not None
+            and bool((force_data.found[0] > 0).any())
         )
-        magnitudes = torch.linalg.vector_norm(slot_force, dim=-1)
-        magnitudes = torch.where(
-            found, magnitudes, torch.full_like(magnitudes, -1.0)
+        geometry_found = (
+            geometry_data.found is not None
+            and bool((geometry_data.found[0] > 0).any())
         )
-        slot = int(torch.argmax(magnitudes))
-        loaded[tip_index] = True
-        if geometry_data.normal is not None:
-            normals[tip_index] = (
-                geometry_data.normal[0, 0].detach().cpu().numpy()
+        if force_found and force_data.force is not None:
+            found_force = force_data.found[0] > 0
+            slot_force = force_data.force[0]
+            forces[tip_index] = (
+                torch.where(
+                    found_force[:, None],
+                    slot_force,
+                    torch.zeros_like(slot_force),
+                )
+                .sum(dim=0)
+                .detach()
+                .cpu()
+                .numpy()
             )
-        if geometry_data.pos is not None:
-            positions[tip_index] = (
-                geometry_data.pos[0, 0].detach().cpu().numpy()
-            )
-        if geometry_data.dist is not None:
-            distances[tip_index] = float(geometry_data.dist[0, 0])
+            loaded[tip_index] = True
+        if geometry_found:
+            found_geometry = geometry_data.found[0] > 0
+            slot = int(torch.nonzero(found_geometry, as_tuple=False)[0, 0])
+            if geometry_data.normal is not None:
+                normals[tip_index] = (
+                    geometry_data.normal[0, slot].detach().cpu().numpy()
+                )
+            if geometry_data.pos is not None:
+                positions[tip_index] = (
+                    geometry_data.pos[0, slot].detach().cpu().numpy()
+                )
+            if geometry_data.dist is not None:
+                distances[tip_index] = float(geometry_data.dist[0, slot])
+        # `loaded` historically represented geometry-found contact in the
+        # replay path. Keep that contract: force_found remains a separate
+        # diagnostic and may legitimately be false for a geometry contact.
+        if geometry_found:
+            loaded[tip_index] = True
     return forces, normals, positions, loaded, distances
 
 
@@ -476,6 +506,9 @@ def run_inverse(
     chunk_config: DPChunkSchedulerConfig | None,
     contact_guard_config: ContactAwareReplanConfig | None,
     execution_layer: Literal["joint_position", "fullhand_mcc"],
+    mcc_direction_source: Literal[
+        "oracle", "sensor_normal", "grasp_closure", "hybrid"
+    ],
     mcc_desired_force: float,
     mcc_precontact_config: MCCPrecontactConfig,
     highlight_contacts: bool,
@@ -496,10 +529,10 @@ def run_inverse(
         raise ValueError(
             f"Need more than {bootstrap_end + runtime.stride} frames, got {frames}"
         )
-    teacher = teacher_state(
-        data,
-        runtime.input_frame,
-        runtime.state_schema,
+    teacher = (
+        teacher_state(data, runtime.input_frame, runtime.state_schema)
+        if mode == "teacher_dp"
+        else None
     )
     if execution_layer == "fullhand_mcc" and impedance_config is not None:
         raise ValueError(
@@ -558,6 +591,16 @@ def run_inverse(
                 FullHandMCCFingerController(
                     FullHandMCCFingerConfig(
                         desired_force=mcc_desired_force,
+                        max_normal_offset=(
+                            mcc_precontact_config.max_normal_offset_m
+                            if mcc_precontact_config.max_normal_offset_m
+                            is not None
+                            else (
+                                0.003
+                                if mcc_direction_source == "oracle"
+                                else 0.006
+                            )
+                        ),
                         action_rate_limit=(
                             mcc_precontact_config.command_rate_limit_rad
                         ),
@@ -609,6 +652,24 @@ def run_inverse(
             self.held_force_state = np.zeros((4, 3), dtype=np.float32)
             self.held_normal_state = np.zeros((4, 3), dtype=np.float32)
             self.held_tactile_valid = np.zeros(4, dtype=bool)
+            # Preserve the sensor's native normal convention for the DP
+            # observation.  The MCC control history below deliberately uses
+            # the opposite (outward-surface) convention.
+            self.state_normal_history = np.zeros((4, 3), dtype=np.float32)
+            self.state_point_history = np.zeros((4, 3), dtype=np.float32)
+            self.state_normal_valid = np.zeros(4, dtype=bool)
+            self.state_point_valid = np.zeros(4, dtype=bool)
+            # FullHandMCC receives only normals/points returned by the live
+            # contact sensors.  Keep the last valid sample during a short
+            # geometry dropout; no object shape, mesh, or analytic oracle is
+            # available in this deployment path.
+            self.sensor_normal_history = np.zeros((4, 3), dtype=np.float32)
+            self.sensor_point_history = np.zeros((4, 3), dtype=np.float32)
+            self.sensor_normal_valid = np.zeros(4, dtype=bool)
+            self.sensor_point_valid = np.zeros(4, dtype=bool)
+            self.sensor_normal_age = np.full(4, 10_000, dtype=np.int32)
+            self.fullhand_control_outward = np.zeros((4, 3), dtype=np.float32)
+            self.fullhand_control_direction_valid = False
 
         def _set_palm(self, t: int) -> None:
             pose = torch.as_tensor(
@@ -640,10 +701,25 @@ def run_inverse(
             float,
         ]:
             forces, normals, positions, found, distances = live_tip_observation(env)
+            # Geometry is measured by the contact sensors.  Hold the last
+            # valid point/normal across a short sensor dropout so the policy
+            # does not receive an artificial all-zero surface observation.
+            normal_valid = found & (np.linalg.norm(normals, axis=-1) > 1.0e-6)
+            point_valid = found & (np.linalg.norm(positions, axis=-1) > 1.0e-9)
+            self.state_normal_history[normal_valid] = normals[normal_valid]
+            self.state_point_history[point_valid] = positions[point_valid]
+            self.state_normal_valid[normal_valid] = True
+            self.state_point_valid[point_valid] = True
+            state_normals_live = normals.copy()
+            state_positions_live = positions.copy()
+            held_normals = (~normal_valid) & self.state_normal_valid
+            held_points = (~point_valid) & self.state_point_valid
+            state_normals_live[held_normals] = self.state_normal_history[held_normals]
+            state_positions_live[held_points] = self.state_point_history[held_points]
             q_live = robot.data.joint_pos[0].detach().cpu().numpy().astype(np.float32)
             state_forces = forces
-            state_normals = normals
-            state_positions = positions
+            state_normals = state_normals_live
+            state_positions = state_positions_live
             state_twist = data["palm_twist_object"][t]
             if runtime.input_frame == "palm":
                 palm_pose = data["palm_pose_object"][t]
@@ -652,10 +728,10 @@ def run_inverse(
                     forces, palm_quaternion
                 )
                 state_normals = _vectors_object_to_palm(
-                    normals, palm_quaternion
+                    state_normals_live, palm_quaternion
                 )
                 state_positions = _points_object_to_palm(
-                    positions[None, ...],
+                    state_positions_live[None, ...],
                     palm_pose[None, ...],
                 )[0]
                 state_twist = np.concatenate(
@@ -687,8 +763,8 @@ def run_inverse(
             return (
                 state,
                 forces,
-                normals,
-                positions,
+                state_normals_live,
+                state_positions_live,
                 found,
                 found_count,
                 loaded_count,
@@ -703,6 +779,8 @@ def run_inverse(
                 indices = history_indices(
                     t, runtime.stride, runtime.obs_horizon
                 )
+                if teacher is None:
+                    raise RuntimeError("teacher history is unavailable")
                 history = teacher[indices]
                 q_base = data["q_hand"][t]
             else:
@@ -885,9 +963,103 @@ def run_inverse(
                 self.fullhand_search_delta[:] = 0.0
                 palm_pose = data["palm_pose_object"][t]
                 force_magnitude = np.linalg.norm(live_forces, axis=-1)
-                real_contact = live_found & (
-                    force_magnitude >= mcc_precontact_config.force_threshold
+                normal_valid = live_found & (
+                    np.linalg.norm(live_normals, axis=-1) > 1.0e-6
                 )
+                point_valid = live_found & (
+                    np.linalg.norm(live_contact_positions, axis=-1) > 1.0e-9
+                )
+                # ContactSensor.normal is primary -> secondary.  Here the
+                # fingertip geom is primary and the object is secondary, so
+                # the measured vector points *into* the object.  FullHandMCC
+                # expects an outward surface normal and internally moves in
+                # ``-normal`` to increase force.  Store the sign-corrected
+                # outward normal once at this boundary.
+                measured_outward = -live_normals
+                self.sensor_normal_history[normal_valid] = measured_outward[
+                    normal_valid
+                ]
+                self.sensor_point_history[point_valid] = live_contact_positions[
+                    point_valid
+                ]
+                self.sensor_normal_valid[normal_valid] = True
+                self.sensor_point_valid[point_valid] = True
+                self.sensor_normal_age += 1
+                self.sensor_normal_age[normal_valid] = 0
+                closure_inward_palm = (
+                    self.fullhand_mcc.grasp_closure_directions_palm(q_live)
+                )
+                closure_inward_world = self.fullhand_mcc.vectors_palm_to_world(
+                    closure_inward_palm, palm_pose
+                ).astype(np.float32)
+                closure_outward_world = -closure_inward_world
+                # A fresh tactile normal is authoritative.  Across a brief
+                # contact dropout retain the last measured normal, because
+                # the local surface cannot rotate discontinuously.  Once the
+                # measurement is stale, fall back to the kinematic closing
+                # direction rather than extrapolating unknown geometry.
+                short_normal_memory = self.sensor_normal_valid & (
+                    self.sensor_normal_age
+                    <= mcc_precontact_config.runtime_loss_frames
+                )
+                sensor_outward_world = closure_outward_world.copy()
+                sensor_outward_world[short_normal_memory] = (
+                    self.sensor_normal_history[short_normal_memory]
+                )
+                if mcc_direction_source == "oracle":
+                    oracle_query_world = self.fullhand_mcc.points_palm_to_world(
+                        self.fullhand_mcc.tip_positions_palm(q_live), palm_pose
+                    )
+                    control_outward_world = self.surface_oracle.observe(
+                        oracle_query_world
+                    ).normals_world
+                elif mcc_direction_source == "sensor_normal":
+                    control_outward_world = sensor_outward_world.copy()
+                elif mcc_direction_source == "grasp_closure":
+                    control_outward_world = closure_outward_world.copy()
+                else:
+                    # Use the local ground-truth contact normal whenever a
+                    # geometry contact exists.  Missing fingers fall back to
+                    # their kinematic grasp-closing direction.  A short EMA
+                    # suppresses switching jitter at contact boundaries.
+                    raw_outward = closure_outward_world.copy()
+                    raw_outward[short_normal_memory] = sensor_outward_world[
+                        short_normal_memory
+                    ]
+                    if self.fullhand_control_direction_valid:
+                        direction_alpha = 0.35
+                        raw_outward = (
+                            (1.0 - direction_alpha)
+                            * self.fullhand_control_outward
+                            + direction_alpha * raw_outward
+                        )
+                    direction_norm = np.linalg.norm(
+                        raw_outward, axis=-1, keepdims=True
+                    )
+                    control_outward_world = raw_outward / np.maximum(
+                        direction_norm, 1.0e-8
+                    )
+                    self.fullhand_control_outward[:] = control_outward_world
+                    self.fullhand_control_direction_valid = True
+                control_inward_world = -control_outward_world
+                force_target = np.full(
+                    4,
+                    float(mcc_desired_force),
+                    dtype=np.float32,
+                )
+                if mcc_direction_source == "oracle":
+                    real_contact = live_found & (
+                        force_magnitude
+                        >= mcc_precontact_config.force_threshold
+                    )
+                else:
+                    settle_force = np.maximum(
+                        float(mcc_precontact_config.force_threshold),
+                        mcc_precontact_config.settle_force_ratio * force_target,
+                    )
+                    real_contact = live_found & (
+                        force_magnitude >= settle_force
+                    )
                 if t <= bootstrap_end:
                     self.fullhand_phase = "bootstrap"
                     plan_q = self.fullhand_mcc.clamp_joint_positions(dp_desired)
@@ -901,22 +1073,45 @@ def run_inverse(
                     search_q = self.fullhand_mcc.clamp_joint_positions(
                         dp_desired + self.fullhand_precontact_closure
                     )
-                    search_points_world = self.fullhand_mcc.points_palm_to_world(
-                        self.fullhand_mcc.tip_positions_palm(search_q), palm_pose
-                    )
-                    search_surface = self.surface_oracle.observe(
-                        search_points_world
-                    )
-                    self.fullhand_search_delta = (
-                        self.fullhand_mcc.normal_search_delta(
+                    if mcc_direction_source == "oracle":
+                        search_points_world = (
+                            self.fullhand_mcc.points_palm_to_world(
+                                self.fullhand_mcc.tip_positions_palm(search_q),
+                                palm_pose,
+                            )
+                        )
+                        search_surface = self.surface_oracle.observe(
+                            search_points_world
+                        )
+                        self.fullhand_search_delta = (
+                            self.fullhand_mcc.normal_search_delta(
+                                q_action_order=q_live,
+                                palm_pose_world=palm_pose,
+                                surface_normals_world=(
+                                    search_surface.normals_world
+                                ),
+                                missing=missing,
+                                inward_step=(
+                                    mcc_precontact_config.cartesian_step_m
+                                ),
+                                max_joint_step=(
+                                    mcc_precontact_config.joint_step_rad
+                                ),
+                            )
+                        )
+                    else:
+                        self.fullhand_search_delta = (
+                            self.fullhand_mcc.directional_search_delta(
                             q_action_order=q_live,
                             palm_pose_world=palm_pose,
-                            surface_normals_world=search_surface.normals_world,
+                            inward_directions_world=control_inward_world,
                             missing=missing,
                             inward_step=mcc_precontact_config.cartesian_step_m,
                             max_joint_step=mcc_precontact_config.joint_step_rad,
+                            contact_points_world=live_contact_positions,
+                            contact_point_found=point_valid,
                         )
-                    )
+                        )
                     self.fullhand_precontact_closure = np.clip(
                         self.fullhand_precontact_closure
                         + self.fullhand_search_delta,
@@ -946,11 +1141,25 @@ def run_inverse(
                         self.fullhand_contact_settle_streak
                         >= mcc_precontact_config.settle_frames
                     ):
-                        self.fullhand_mcc.calibrate_force_setpoint(
-                            live_forces,
-                            live_found,
-                            search_surface.normals_world,
-                        )
+                        if mcc_direction_source == "oracle":
+                            self.fullhand_mcc.calibrate_force_setpoint(
+                                live_forces,
+                                live_found,
+                                search_surface.normals_world,
+                            )
+                        elif mcc_direction_source != "grasp_closure":
+                            self.fullhand_mcc.calibrate_force_sign(
+                                live_forces,
+                                live_found,
+                                control_outward_world,
+                            )
+                            self.fullhand_mcc.force_setpoint[:] = (
+                                mcc_desired_force
+                            )
+                        else:
+                            self.fullhand_mcc.force_setpoint[:] = (
+                                mcc_desired_force
+                            )
                         # FullHandMCC changes coordinates at contact: the
                         # loaded physical posture becomes the new planning
                         # anchor, while only command-to-loaded servo
@@ -1051,22 +1260,40 @@ def run_inverse(
                         + (dp_desired - self.fullhand_dp_anchor_q)
                     )
                     if bool(np.any(self.fullhand_recovery_active)):
-                        base_points_world = (
-                            self.fullhand_mcc.points_palm_to_world(
-                                self.fullhand_mcc.tip_positions_palm(base_plan_q),
-                                palm_pose,
+                        if mcc_direction_source == "oracle":
+                            base_points_world = (
+                                self.fullhand_mcc.points_palm_to_world(
+                                    self.fullhand_mcc.tip_positions_palm(
+                                        base_plan_q
+                                    ),
+                                    palm_pose,
+                                )
                             )
-                        )
-                        base_surface = self.surface_oracle.observe(
-                            base_points_world
-                        )
-                        self.fullhand_search_delta = (
-                            self.fullhand_mcc.normal_search_delta(
+                            base_surface = self.surface_oracle.observe(
+                                base_points_world
+                            )
+                            self.fullhand_search_delta = (
+                                self.fullhand_mcc.normal_search_delta(
+                                    q_action_order=q_live,
+                                    palm_pose_world=palm_pose,
+                                    surface_normals_world=(
+                                        base_surface.normals_world
+                                    ),
+                                    missing=self.fullhand_recovery_active,
+                                    inward_step=(
+                                        mcc_precontact_config.cartesian_step_m
+                                    ),
+                                    max_joint_step=(
+                                        mcc_precontact_config.joint_step_rad
+                                    ),
+                                )
+                            )
+                        else:
+                            self.fullhand_search_delta = (
+                                self.fullhand_mcc.directional_search_delta(
                                 q_action_order=q_live,
                                 palm_pose_world=palm_pose,
-                                surface_normals_world=(
-                                    base_surface.normals_world
-                                ),
+                                inward_directions_world=control_inward_world,
                                 missing=self.fullhand_recovery_active,
                                 inward_step=(
                                     mcc_precontact_config.cartesian_step_m
@@ -1074,8 +1301,10 @@ def run_inverse(
                                 max_joint_step=(
                                     mcc_precontact_config.joint_step_rad
                                 ),
+                                contact_points_world=live_contact_positions,
+                                contact_point_found=point_valid,
                             )
-                        )
+                            )
                         self.fullhand_runtime_recovery_offset = np.clip(
                             self.fullhand_runtime_recovery_offset
                             + self.fullhand_search_delta,
@@ -1089,10 +1318,18 @@ def run_inverse(
                     self.fullhand_mcc.tip_positions_palm(plan_q),
                     palm_pose,
                 )
-                surface = self.surface_oracle.observe(planned_tip_world)
-                self.fullhand_mcc.calibrate_force_sign(
-                    live_forces, live_found, surface.normals_world
-                )
+                if mcc_direction_source == "oracle":
+                    surface = self.surface_oracle.observe(planned_tip_world)
+                    control_outward_world = surface.normals_world
+                    self.fullhand_mcc.calibrate_force_sign(
+                        live_forces,
+                        live_found,
+                        surface.normals_world,
+                    )
+                elif mcc_direction_source != "grasp_closure":
+                    self.fullhand_mcc.calibrate_force_sign(
+                        live_forces, live_found, control_outward_world
+                    )
                 if t <= bootstrap_end:
                     desired = plan_q
                     self.fullhand_mcc.previous_command = desired.copy()
@@ -1114,9 +1351,20 @@ def run_inverse(
                         # DP site here and use the projection only for its
                         # outward normal; forcing the internal site itself
                         # onto the object surface over-penetrates the pad.
+                        # ContactSensor ``pos`` is the geom-to-geom contact
+                        # point, not the fingertip site center.  Keep the DP
+                        # FK site as the position target and use the live
+                        # sensor normal/force for the normal loop.
                         surface_points_world=planned_tip_world,
-                        surface_normals_world=surface.normals_world,
+                        surface_normals_world=control_outward_world,
                         nominal_posture_q=joint_reference_q,
+                        force_magnitude_only=(
+                            mcc_direction_source == "grasp_closure"
+                        ),
+                        contact_points_world=live_contact_positions,
+                        use_contact_point_jacobian=(
+                            mcc_direction_source != "oracle"
+                        ),
                     )
                     mcc_normal_force = mcc_debug["normal_force"]
                     mcc_force_error = mcc_debug["force_error"]
@@ -1127,8 +1375,12 @@ def run_inverse(
                 self.fullhand_last_command_q = np.asarray(
                     desired, dtype=np.float32
                 ).copy()
-                self.visual_surface_targets[:] = surface.points_world
-                self.visual_normals[:] = surface.normals_world
+                self.visual_surface_targets[:] = (
+                    surface.points_world
+                    if mcc_direction_source == "oracle"
+                    else planned_tip_world
+                )
+                self.visual_normals[:] = control_outward_world
                 self.visual_contact_points[:] = np.nan
                 self.visual_contact_points[live_found] = live_contact_positions[
                     live_found
@@ -1208,6 +1460,7 @@ def run_inverse(
             row: dict[str, float | int | str] = {
                     "mode": mode,
                     "execution_layer": execution_layer,
+                    "mcc_direction_source": mcc_direction_source,
                     "frame": t,
                     "dp_calls": self.dp_calls,
                     "q_teacher_mae_rad": q_error,
@@ -1276,6 +1529,18 @@ def run_inverse(
                         f"{label}_normal_x": float(impedance_normal[finger, 0]),
                         f"{label}_normal_y": float(impedance_normal[finger, 1]),
                         f"{label}_normal_z": float(impedance_normal[finger, 2]),
+                        f"{label}_sensor_normal_norm": float(
+                            np.linalg.norm(live_normals[finger])
+                        ),
+                        f"{label}_sensor_normal_x": float(
+                            live_normals[finger, 0]
+                        ),
+                        f"{label}_sensor_normal_y": float(
+                            live_normals[finger, 1]
+                        ),
+                        f"{label}_sensor_normal_z": float(
+                            live_normals[finger, 2]
+                        ),
                         f"{label}_offset_mm": float(
                             impedance_offset[finger] * 1000.0
                         ),
@@ -1558,6 +1823,18 @@ def main() -> None:
         help="Fallback desired normal force before per-finger bootstrap calibration.",
     )
     parser.add_argument(
+        "--mcc-direction-source",
+        choices=("oracle", "sensor_normal", "grasp_closure", "hybrid"),
+        default="oracle",
+        help=(
+            "MCC contact axis: oracle restores the analytic capsule normal; "
+            "sensor_normal always uses measured contact "
+            "normals; grasp_closure uses only the Jacobian direction toward "
+            "the default grasp; hybrid uses contact-normal GT when available "
+            "and grasp closure while contact is missing."
+        ),
+    )
+    parser.add_argument(
         "--mcc-surface-preload-mm",
         type=float,
         default=0.0,
@@ -1577,6 +1854,16 @@ def main() -> None:
     parser.add_argument("--mcc-recovery-confirm-frames", type=int, default=3)
     parser.add_argument(
         "--mcc-runtime-recovery-limit-rad", type=float, default=0.08
+    )
+    parser.add_argument(
+        "--mcc-max-normal-offset-mm",
+        type=float,
+        default=None,
+        help=(
+            "Bidirectional tactile admittance range. Default: 3 mm with the "
+            "surface oracle and 6 mm with sensor-only directions, where the "
+            "loop must also absorb site-to-contact geometric residuals."
+        ),
     )
     parser.add_argument(
         "--mcc-command-rate-limit-rad",
@@ -1747,7 +2034,11 @@ def main() -> None:
     device = torch.device(
         args.device if torch.cuda.is_available() else "cpu"
     )
-    data = load_episode(args.file, args.episode_id)
+    data = load_episode(
+        args.file,
+        args.episode_id,
+        include_teacher_tactile=args.mode != "live_dp",
+    )
     runtime = DPRuntime(
         args.model, device, args.inference_steps, args.seed
     )
@@ -1766,7 +2057,9 @@ def main() -> None:
         f"action={runtime.action_representation} "
         f"stride={runtime.stride} obs={runtime.obs_horizon} "
         f"pred={runtime.pred_horizon} inference={runtime.policy.diffusion.num_inference_steps} "
-        f"execution_layer={args.execution_layer}"
+        f"execution_layer={args.execution_layer} "
+        f"mcc_direction={args.mcc_direction_source} "
+        f"surface_source={'analytic_capsule_oracle' if args.mcc_direction_source == 'oracle' else 'live_contact_sensor'}"
     )
     if args.impedance_stiffness != 0.0:
         print(
@@ -1844,10 +2137,16 @@ def main() -> None:
                 else None
             ),
             args.execution_layer,
+            args.mcc_direction_source,
             args.mcc_desired_force,
             MCCPrecontactConfig(
                 force_threshold=args.mcc_contact_force_threshold,
                 settle_frames=args.mcc_contact_settle_frames,
+                max_normal_offset_m=(
+                    None
+                    if args.mcc_max_normal_offset_mm is None
+                    else args.mcc_max_normal_offset_mm / 1000.0
+                ),
                 cartesian_step_m=args.mcc_contact_search_step_mm / 1000.0,
                 joint_step_rad=args.mcc_contact_search_step_rad,
                 joint_limit_rad=args.mcc_contact_search_limit_rad,

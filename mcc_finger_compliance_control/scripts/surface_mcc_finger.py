@@ -50,6 +50,19 @@ HAND_JOINT_NAMES = (
     "12", "13", "14", "15",
 )
 
+# Conservative hand-closing posture used by the standalone MCC collection
+# task.  In normal-free deployment this is not commanded directly: its FK
+# direction supplies one local inward search axis per finger.
+DEFAULT_GRASP_CLOSURE_Q = np.asarray(
+    (
+        0.85, 0.00, 0.45, 0.55,
+        0.85, 0.00, 0.45, 0.55,
+        0.85, 0.00, 0.45, 0.55,
+        0.85, 1.57, 0.45, 0.55,
+    ),
+    dtype=np.float64,
+)
+
 
 def _normalize(vectors: np.ndarray) -> np.ndarray:
     vectors = np.asarray(vectors, dtype=np.float64)
@@ -169,6 +182,319 @@ class PrivilegedCapsuleSurfaceOracle:
             points_world=surface_world.astype(np.float32),
             normals_world=normals_world.astype(np.float32),
             signed_distance=signed_distance.astype(np.float32),
+        )
+
+
+class GeometrySurfaceOracle:
+    """FullHandMCC-style object-frame surface projection for the catalog.
+
+    A query is first transformed into each geom's object-local frame.  The
+    surface point is selected along the primitive's centre/medial-axis ray and
+    the normal is the analytical outward surface normal.  In particular, the
+    capsule branch is identical to ``full_hand_mcc_geometry.capsule_project``:
+    clamp onto the local Z axis, then normalize the axis-to-tip vector.
+    """
+
+    def __init__(
+        self,
+        config,  # ObjectConfig (lazy import to avoid circular dependency)
+        center_world: np.ndarray | None = None,
+        rotation_world_from_object: np.ndarray | None = None,
+    ) -> None:
+        self._geoms: list[dict] = []
+        for geom_config in config.geoms:
+            rotation = np.empty(9, dtype=np.float64)
+            mujoco.mju_quat2Mat(rotation, np.asarray(geom_config.quat))
+            size_arr = np.asarray(geom_config.size, dtype=np.float64)
+            if geom_config.geom_type == "rounded_box":
+                entry = {
+                    "type": "rounded_box",
+                    "size": size_arr,
+                    "pos": np.asarray(geom_config.pos, dtype=np.float64),
+                    "rotation": rotation.reshape(3, 3).copy(),
+                    "radius": geom_config.rounding_radius,
+                }
+            else:
+                entry = {
+                    "type": geom_config.geom_type,
+                    "size": size_arr,
+                    "pos": np.asarray(geom_config.pos, dtype=np.float64),
+                    "rotation": rotation.reshape(3, 3).copy(),
+                }
+            self._geoms.append(entry)
+
+        self.center_world = np.asarray(
+            np.zeros(3) if center_world is None else center_world,
+            dtype=np.float64,
+        ).reshape(3)
+        self.rotation_world_from_object = np.asarray(
+            np.eye(3) if rotation_world_from_object is None else rotation_world_from_object,
+            dtype=np.float64,
+        ).reshape(3, 3)
+
+    def set_pose(
+        self,
+        center_world: np.ndarray,
+        quaternion_wxyz: np.ndarray,
+    ) -> None:
+        """Update the rigid object pose used by subsequent surface queries."""
+
+        self.center_world = np.asarray(center_world, dtype=np.float64).reshape(3)
+        quaternion = np.asarray(quaternion_wxyz, dtype=np.float64).reshape(4)
+        norm = float(np.linalg.norm(quaternion))
+        if norm < 1.0e-12:
+            raise ValueError("Object quaternion cannot be zero")
+        rotation = np.empty(9, dtype=np.float64)
+        mujoco.mju_quat2Mat(rotation, quaternion / norm)
+        self.rotation_world_from_object = rotation.reshape(3, 3)
+
+    # -- per-primitive closest-point helpers (geom-local coordinates) ----------
+
+    @staticmethod
+    def _closest_sphere(
+        pt: np.ndarray, size: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray, float]:
+        radius = float(size[0])
+        dist = float(np.linalg.norm(pt))
+        if dist < 1e-12:
+            normal = np.array((1.0, 0.0, 0.0))
+            closest = np.array((radius, 0.0, 0.0))
+            return closest, normal, -radius
+        normal = pt / dist
+        closest = radius * normal
+        return closest, normal, dist - radius
+
+    @staticmethod
+    def _closest_capsule(
+        pt: np.ndarray, size: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray, float]:
+        radius = float(size[0])
+        half = float(size[1])
+        t = float(np.clip(pt[2] / max(half, 1e-12), -1.0, 1.0))
+        axis = np.array((0.0, 0.0, t * half))
+        radial = pt - axis
+        radial_dist = float(np.linalg.norm(radial))
+        if radial_dist < 1e-12:
+            normal = np.array((1.0, 0.0, 0.0))
+            closest = axis + np.array((radius, 0.0, 0.0))
+            return closest, normal, -radius
+        normal = radial / radial_dist
+        closest = axis + radius * normal
+        sd = radial_dist - radius
+        return closest, normal, sd
+
+    @staticmethod
+    def _closest_cylinder(
+        pt: np.ndarray, size: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray, float]:
+        radius = float(size[0])
+        half = float(size[1])
+        z = float(pt[2])
+        rho = float(np.linalg.norm(pt[:2]))
+        radial_dir = (
+            pt[:2] / rho if rho > 1.0e-12 else np.array((1.0, 0.0))
+        )
+        if rho < 1.0e-12 and abs(z) < 1.0e-12:
+            return (
+                np.array((radius, 0.0, 0.0)),
+                np.array((1.0, 0.0, 0.0)),
+                -min(radius, half),
+            )
+        side_scale = radius / max(rho, 1.0e-12)
+        cap_scale = half / max(abs(z), 1.0e-12)
+        scale = min(side_scale, cap_scale)
+        closest = scale * pt
+        if side_scale <= cap_scale:
+            normal = np.array((radial_dir[0], radial_dir[1], 0.0))
+        else:
+            normal = np.array((0.0, 0.0, 1.0 if z >= 0.0 else -1.0))
+        distance = float(np.linalg.norm(pt - closest))
+        inside = rho <= radius and abs(z) <= half
+        return closest, normal, -distance if inside else distance
+
+    @staticmethod
+    def _closest_ellipsoid(
+        pt: np.ndarray, size: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray, float]:
+        """Centre-ray projection used by FullHandMCC's ellipsoid planner."""
+
+        radii = np.maximum(size[:3], 1e-9)
+        radii_sq = radii * radii
+        scaled_norm = float(np.linalg.norm(pt / radii))
+        if scaled_norm < 1.0e-12:
+            axis = int(np.argmin(radii))
+            closest = np.zeros(3, dtype=np.float64)
+            closest[axis] = radii[axis]
+            normal_local = np.zeros(3, dtype=np.float64)
+            normal_local[axis] = 1.0
+            return closest, normal_local, -float(radii[axis])
+        closest = pt / scaled_norm
+        normal_local = closest / radii_sq
+        normal_local /= float(np.linalg.norm(normal_local))
+        sd = float(np.linalg.norm(pt - closest))
+        if scaled_norm < 1.0:
+            sd = -sd
+        return closest, normal_local, sd
+
+    @staticmethod
+    def _closest_box(
+        pt: np.ndarray, size: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray, float]:
+        half = np.asarray(size[:3], dtype=np.float64)
+        if float(np.linalg.norm(pt)) < 1.0e-12:
+            axis = int(np.argmin(half))
+            closest = np.zeros(3, dtype=np.float64)
+            closest[axis] = half[axis]
+            normal = np.zeros(3, dtype=np.float64)
+            normal[axis] = 1.0
+            return closest, normal, -float(half[axis])
+        ratios = np.divide(
+            half,
+            np.abs(pt),
+            out=np.full(3, np.inf),
+            where=np.abs(pt) > 1.0e-12,
+        )
+        axis = int(np.argmin(ratios))
+        closest = float(ratios[axis]) * pt
+        normal = np.zeros(3, dtype=np.float64)
+        normal[axis] = 1.0 if pt[axis] >= 0.0 else -1.0
+        distance = float(np.linalg.norm(pt - closest))
+        inside = bool(np.all(np.abs(pt) <= half))
+        return closest, normal, -distance if inside else distance
+
+    @staticmethod
+    def _closest_rounded_box(
+        pt: np.ndarray, size: np.ndarray, radius: float,
+    ) -> tuple[np.ndarray, np.ndarray, float]:
+        """Exact query for an axis-aligned box rounded by a sphere."""
+
+        half = np.asarray(size[:3], dtype=np.float64)
+        core = half - float(radius)
+        if float(np.linalg.norm(pt)) < 1.0e-12:
+            axis = int(np.argmin(half))
+            closest = np.zeros(3, dtype=np.float64)
+            closest[axis] = half[axis]
+            normal = np.zeros(3, dtype=np.float64)
+            normal[axis] = 1.0
+            return closest, normal, -float(half[axis])
+
+        def sdf(scale: float) -> float:
+            q = np.abs(scale * pt) - core
+            return float(np.linalg.norm(np.maximum(q, 0.0)) - radius)
+
+        low, high = 0.0, 1.0
+        while sdf(high) < 0.0:
+            high *= 2.0
+        for _ in range(48):
+            middle = 0.5 * (low + high)
+            if sdf(middle) < 0.0:
+                low = middle
+            else:
+                high = middle
+        closest = 0.5 * (low + high) * pt
+        core_point = np.clip(closest, -core, core)
+        displacement = closest - core_point
+        displacement_norm = float(np.linalg.norm(displacement))
+        if displacement_norm > 1.0e-12:
+            normal = displacement / displacement_norm
+        else:
+            axis = int(np.argmin(half - np.abs(closest)))
+            normal = np.zeros(3, dtype=np.float64)
+            normal[axis] = 1.0 if closest[axis] >= 0.0 else -1.0
+        distance = float(np.linalg.norm(pt - closest))
+        inside = sdf(1.0) <= 0.0
+        return closest, normal, -distance if inside else distance
+
+    @staticmethod
+    def _closest_mesh(
+        pt_world: np.ndarray,
+        mesh,  # trimesh.Trimesh
+    ) -> tuple[np.ndarray, np.ndarray, float]:
+        import trimesh
+
+        closest, distance, triangle_id = trimesh.proximity.closest_point(
+            mesh, [pt_world],
+        )
+        closest = np.asarray(closest[0], dtype=np.float64)
+        sd = float(distance[0])
+        if triangle_id[0] >= 0:
+            normal = np.asarray(
+                mesh.face_normals[triangle_id[0]], dtype=np.float64
+            )
+        else:
+            normal = np.array((0.0, 0.0, 1.0))
+        # trimesh always returns non-negative distance; sign via ray test
+        # (conservative: assume outside for performance)
+        return closest, normal, sd
+
+    # -- public interface ------------------------------------------------------
+
+    def observe(
+        self, query_points_world: np.ndarray,
+    ) -> CapsuleSurfaceObservation:
+        query = np.asarray(query_points_world, dtype=np.float64).reshape(-1, 3)
+        rotation_wo = self.rotation_world_from_object
+        center = self.center_world
+
+        points_world = np.zeros_like(query)
+        normals_world = np.zeros_like(query)
+        distances = np.zeros(query.shape[0], dtype=np.float32)
+
+        for i, pt_world in enumerate(query):
+            pt_obj = rotation_wo.T @ (pt_world - center)
+            candidates: list[tuple[float, np.ndarray, np.ndarray]] = []
+
+            for geom in self._geoms:
+                rot_g = geom["rotation"]
+                pt_geom = rot_g.T @ (pt_obj - geom["pos"])
+
+                if geom["type"] == "sphere":
+                    cp_g, n_g, sd = self._closest_sphere(pt_geom, geom["size"])
+                elif geom["type"] == "capsule":
+                    cp_g, n_g, sd = self._closest_capsule(pt_geom, geom["size"])
+                elif geom["type"] == "cylinder":
+                    cp_g, n_g, sd = self._closest_cylinder(pt_geom, geom["size"])
+                elif geom["type"] == "ellipsoid":
+                    cp_g, n_g, sd = self._closest_ellipsoid(pt_geom, geom["size"])
+                elif geom["type"] == "box":
+                    cp_g, n_g, sd = self._closest_box(pt_geom, geom["size"])
+                elif geom["type"] == "rounded_box":
+                    cp_g, n_g, sd = self._closest_rounded_box(
+                        pt_geom, geom["size"], geom["radius"]
+                    )
+                else:
+                    raise AssertionError(f"Unhandled geom type {geom['type']!r}")
+
+                # Transform geom-local result back to world
+                cp_obj = rot_g @ cp_g + geom["pos"]
+                cp_world = rotation_wo @ cp_obj + center
+                n_world = rotation_wo @ (rot_g @ n_g)
+
+                candidates.append((float(sd), cp_world, n_world))
+
+            # For a union of primitives, an exterior query uses the closest
+            # positive primitive distance.  Inside an overlap, selecting the
+            # smallest absolute value exposes an internal seam; selecting the
+            # most negative primitive instead follows the exterior envelope.
+            signed = np.asarray([item[0] for item in candidates])
+            if np.any(signed <= 0.0):
+                best_index = int(np.argmin(signed))
+            else:
+                best_index = int(np.argmin(signed))
+            best_sd, best_pt_world, best_n_world = candidates[best_index]
+
+            # Normalize normal (needed for compound edge cases)
+            n_norm = float(np.linalg.norm(best_n_world))
+            if n_norm > 1e-12:
+                best_n_world = best_n_world / n_norm
+            points_world[i] = best_pt_world
+            normals_world[i] = best_n_world
+            distances[i] = float(best_sd)
+
+        return CapsuleSurfaceObservation(
+            points_world=points_world.astype(np.float32),
+            normals_world=normals_world.astype(np.float32),
+            signed_distance=distances,
         )
 
 
@@ -605,6 +931,8 @@ class FullHandMCCFingerConfig:
     posture_cost: float = 0.08
     action_rate_limit: float = 0.18
     command_ema_alpha: float = 0.65
+    contact_point_jacobian_regularization: float = 1.0e-5
+    grasp_closure_q: tuple[float, ...] = tuple(DEFAULT_GRASP_CLOSURE_Q)
 
 
 class FullHandMCCFingerController:
@@ -659,6 +987,17 @@ class FullHandMCCFingerController:
              for name in TIP_NAMES],
             dtype=np.int32,
         )
+        self.tip_body_ids = np.asarray(
+            [
+                mujoco.mj_name2id(
+                    self.model, mujoco.mjtObj.mjOBJ_BODY, name
+                )
+                for name in TIP_BODY_NAMES
+            ],
+            dtype=np.int32,
+        )
+        if np.any(self.tip_body_ids < 0):
+            raise ValueError("One or more fingertip bodies are missing")
         self.tasks = [
             mink.FrameTask(
                 frame_name=name,
@@ -689,12 +1028,23 @@ class FullHandMCCFingerController:
         )
         self.force_sign = np.ones(4, dtype=np.float64)
         self.force_setpoint = np.full(4, cfg.desired_force, dtype=np.float64)
+        self.grasp_closure_q = self.clamp_joint_positions(
+            np.asarray(cfg.grasp_closure_q, dtype=np.float64)
+        ).astype(np.float64)
+        # The tactile contact centre is generally not the fixed MCC site.
+        # Store its last measured coordinates in the corresponding distal
+        # body frame so the point remains attached to the pad during a short
+        # contact dropout and its Jacobian can be evaluated at any q.
+        self.contact_point_body_local = np.zeros((4, 3), dtype=np.float64)
+        self.contact_point_valid = np.zeros(4, dtype=bool)
         self.previous_command: np.ndarray | None = None
 
     def reset(self) -> None:
         self.admittance.reset()
         self.force_sign[:] = 1.0
         self.force_setpoint[:] = self.config.desired_force
+        self.contact_point_body_local[:] = 0.0
+        self.contact_point_valid[:] = False
         self.previous_command = None
 
     def reset_admittance_fingers(
@@ -741,6 +1091,70 @@ class FullHandMCCFingerController:
         self._set_q(self.data, q_action_order)
         return self.data.site_xpos[self.tip_ids].copy()
 
+    def update_contact_point_anchors(
+        self,
+        q_action_order: np.ndarray,
+        palm_pose_world: np.ndarray,
+        contact_points_world: np.ndarray,
+        found: np.ndarray,
+    ) -> None:
+        """Capture measured contact centres in their fingertip body frames.
+
+        A world-frame point from an old frame must not be reused directly
+        after the finger moves.  Its body-local coordinate, however, follows
+        the physical tactile pad and provides the correct lever arm for the
+        contact-point Jacobian during a short loss/recovery interval.
+        """
+
+        self._set_q(self.data, q_action_order)
+        points_palm = self.points_world_to_palm(
+            contact_points_world, palm_pose_world
+        )
+        valid = np.asarray(found, dtype=bool).reshape(4)
+        for finger in np.flatnonzero(valid):
+            body_id = int(self.tip_body_ids[finger])
+            rotation = self.data.xmat[body_id].reshape(3, 3)
+            origin = self.data.xpos[body_id]
+            self.contact_point_body_local[finger] = rotation.T @ (
+                points_palm[finger] - origin
+            )
+            self.contact_point_valid[finger] = True
+
+    def _finger_control_point_jacobian(self, finger: int) -> np.ndarray:
+        """Return the 3x4 Jacobian at the measured pad contact centre.
+
+        ``self.data`` must already contain the configuration at which the
+        Jacobian is requested.  Before a finger has touched anything, the
+        fixed MCC site is retained as a safe bootstrap fallback.
+        """
+
+        jacobian = np.zeros((3, self.model.nv), dtype=np.float64)
+        jacobian_rot = np.zeros_like(jacobian)
+        if self.contact_point_valid[finger]:
+            body_id = int(self.tip_body_ids[finger])
+            rotation = self.data.xmat[body_id].reshape(3, 3)
+            point = self.data.xpos[body_id] + (
+                rotation @ self.contact_point_body_local[finger]
+            )
+            mujoco.mj_jac(
+                self.model,
+                self.data,
+                jacobian,
+                jacobian_rot,
+                point,
+                body_id,
+            )
+        else:
+            mujoco.mj_jacSite(
+                self.model,
+                self.data,
+                jacobian,
+                jacobian_rot,
+                int(self.tip_ids[finger]),
+            )
+        block = slice(4 * finger, 4 * finger + 4)
+        return jacobian[:, self.dof_indices[block]].copy()
+
     def clamp_joint_positions(self, q_action_order: np.ndarray) -> np.ndarray:
         """Clamp a hand command to the physical 16-DOF joint limits."""
 
@@ -778,6 +1192,140 @@ class FullHandMCCFingerController:
         )
         return (rotation.T @ np.asarray(vectors_world).T).T
 
+    @staticmethod
+    def vectors_palm_to_world(
+        vectors_palm: np.ndarray, palm_pose_world: np.ndarray
+    ) -> np.ndarray:
+        rotation = _quat_wxyz_to_matrix(
+            np.asarray(palm_pose_world, dtype=np.float64).reshape(7)[3:7]
+        )
+        return (rotation @ np.asarray(vectors_palm).T).T
+
+    def grasp_closure_directions_palm(
+        self,
+        q_action_order: np.ndarray,
+    ) -> np.ndarray:
+        """Return per-finger Cartesian directions toward the grasp posture.
+
+        The direction is computed through each finger's own 3x4 Jacobian.
+        This preserves the thumb's four-DoF kinematics and avoids treating a
+        joint-space vector as if it were a Cartesian surface normal.
+        """
+
+        q = np.asarray(q_action_order, dtype=np.float64).reshape(16)
+        self._set_q(self.data, q)
+        directions = np.zeros((4, 3), dtype=np.float64)
+        fallback_synergy = np.asarray((0.20, 0.0, 0.12, 0.12))
+        for finger in range(4):
+            block = slice(4 * finger, 4 * finger + 4)
+            jacobian = np.zeros((3, self.model.nv), dtype=np.float64)
+            jacobian_rot = np.zeros_like(jacobian)
+            mujoco.mj_jacSite(
+                self.model,
+                self.data,
+                jacobian,
+                jacobian_rot,
+                int(self.tip_ids[finger]),
+            )
+            finger_jacobian = jacobian[:, self.dof_indices[block]]
+            joint_direction = self.grasp_closure_q[block] - q[block]
+            direction = finger_jacobian @ joint_direction
+            if np.linalg.norm(direction) < 1.0e-7:
+                direction = finger_jacobian @ fallback_synergy
+            norm = np.linalg.norm(direction)
+            if norm < 1.0e-9:
+                raise ValueError(
+                    f"Finger {finger} has no usable grasp-closure direction"
+                )
+            directions[finger] = direction / norm
+        return directions.astype(np.float32)
+
+    def directional_search_delta(
+        self,
+        q_action_order: np.ndarray,
+        palm_pose_world: np.ndarray,
+        inward_directions_world: np.ndarray,
+        missing: np.ndarray,
+        inward_step: float,
+        max_joint_step: float,
+        contact_points_world: np.ndarray | None = None,
+        contact_point_found: np.ndarray | None = None,
+    ) -> np.ndarray:
+        """Move missing tactile contact centres along the selected axes."""
+
+        if contact_points_world is not None and contact_point_found is not None:
+            self.update_contact_point_anchors(
+                q_action_order,
+                palm_pose_world,
+                contact_points_world,
+                contact_point_found,
+            )
+        self._set_q(self.data, q_action_order)
+        directions = _normalize(
+            self.vectors_world_to_palm(
+                inward_directions_world, palm_pose_world
+            )
+        )
+        delta = np.zeros(16, dtype=np.float64)
+        for finger, is_missing in enumerate(np.asarray(missing, dtype=bool)):
+            if not is_missing:
+                continue
+            block = slice(4 * finger, 4 * finger + 4)
+            finger_jacobian = self._finger_control_point_jacobian(finger)
+            target = float(inward_step) * directions[finger]
+            lhs = finger_jacobian @ finger_jacobian.T + 1.0e-5 * np.eye(3)
+            correction = finger_jacobian.T @ np.linalg.solve(lhs, target)
+            delta[block] = np.clip(
+                correction, -max_joint_step, max_joint_step
+            )
+        return delta.astype(np.float32)
+
+    def grasp_synergy_search_delta(
+        self,
+        q_action_order: np.ndarray,
+        missing: np.ndarray,
+        cartesian_step: float,
+        max_joint_step: float,
+    ) -> np.ndarray:
+        """Advance missing fingers directly toward the grasp posture.
+
+        Unlike ``J^# (J dq_grasp)``, this preserves the original four-joint
+        grasp synergy.  The Jacobian is used only to scale that joint-space
+        direction to an approximate Cartesian step length.
+        """
+
+        q = np.asarray(q_action_order, dtype=np.float64).reshape(16)
+        self._set_q(self.data, q)
+        delta = np.zeros(16, dtype=np.float64)
+        for finger, is_missing in enumerate(np.asarray(missing, dtype=bool)):
+            if not is_missing:
+                continue
+            block = slice(4 * finger, 4 * finger + 4)
+            joint_direction = self.grasp_closure_q[block] - q[block]
+            if np.linalg.norm(joint_direction) < 1.0e-9:
+                continue
+            jacobian = np.zeros((3, self.model.nv), dtype=np.float64)
+            jacobian_rot = np.zeros_like(jacobian)
+            mujoco.mj_jacSite(
+                self.model,
+                self.data,
+                jacobian,
+                jacobian_rot,
+                int(self.tip_ids[finger]),
+            )
+            finger_jacobian = jacobian[:, self.dof_indices[block]]
+            cartesian_direction = finger_jacobian @ joint_direction
+            cartesian_norm = np.linalg.norm(cartesian_direction)
+            if cartesian_norm < 1.0e-9:
+                continue
+            correction = (
+                float(cartesian_step) / cartesian_norm
+            ) * joint_direction
+            delta[block] = np.clip(
+                correction, -max_joint_step, max_joint_step
+            )
+        return delta.astype(np.float32)
+
     def calibrate_force_sign(
         self,
         force_world: np.ndarray,
@@ -798,8 +1346,15 @@ class FullHandMCCFingerController:
         found: np.ndarray,
         surface_normals_world: np.ndarray,
         maximum_force: float = 12.0,
+        capture_measured: bool = True,
     ) -> np.ndarray:
-        """Capture fullhandMCC's loaded-force operating point at contact settle."""
+        """Calibrate force sign and optionally capture a loaded force point.
+
+        Sensor-only replay uses ``capture_measured=False``: the first valid
+        contact can transiently contain a large collision impulse, so that
+        impulse must not become a permanent force setpoint.  The configured
+        ``desired_force`` remains the target in that mode.
+        """
 
         self.calibrate_force_sign(force_world, found, surface_normals_world)
         signed = np.einsum(
@@ -807,11 +1362,14 @@ class FullHandMCCFingerController:
             np.asarray(force_world, dtype=np.float64).reshape(4, 3),
             _normalize(surface_normals_world),
         ) * self.force_sign
-        loaded = np.abs(signed)
         reliable = np.asarray(found, dtype=bool).reshape(4)
-        self.force_setpoint[reliable] = np.clip(
-            loaded[reliable], self.config.desired_force, maximum_force
-        )
+        if capture_measured:
+            loaded = np.abs(signed)
+            self.force_setpoint[reliable] = np.clip(
+                loaded[reliable], self.config.desired_force, maximum_force
+            )
+        else:
+            self.force_setpoint[reliable] = self.config.desired_force
         return self.force_setpoint.copy()
 
     def normal_search_delta(
@@ -862,6 +1420,9 @@ class FullHandMCCFingerController:
         surface_points_world: np.ndarray,
         surface_normals_world: np.ndarray,
         nominal_posture_q: np.ndarray | None = None,
+        force_magnitude_only: bool = False,
+        contact_points_world: np.ndarray | None = None,
+        use_contact_point_jacobian: bool = False,
     ) -> tuple[np.ndarray, dict[str, np.ndarray]]:
         cfg = self.config
         q_live = np.asarray(q_live, dtype=np.float64).reshape(16)
@@ -871,9 +1432,21 @@ class FullHandMCCFingerController:
         normals = _normalize(
             self.vectors_world_to_palm(surface_normals_world, palm_pose_world)
         )
-        force_local = self.vectors_world_to_palm(force_world, palm_pose_world)
-        force_local *= self.force_sign[:, None]
-        force_local[~found] = 0.0
+        if force_magnitude_only:
+            # The admittance core only needs a scalar load along its control
+            # axis.  Reconstruct that scalar from the 3-D force magnitude so
+            # tangential friction and an uncertain surface normal cannot
+            # reverse the contact correction.
+            force_magnitude = np.linalg.norm(
+                np.asarray(force_world, dtype=np.float64).reshape(4, 3),
+                axis=-1,
+            )
+            force_magnitude[~found] = 0.0
+            force_local = force_magnitude[:, None] * normals
+        else:
+            force_local = self.vectors_world_to_palm(force_world, palm_pose_world)
+            force_local *= self.force_sign[:, None]
+            force_local[~found] = 0.0
         finger_step = self.admittance.step(
             desired,
             normals,
@@ -892,26 +1465,59 @@ class FullHandMCCFingerController:
             if nominal_posture_q is None
             else np.asarray(nominal_posture_q, dtype=np.float64).reshape(16)
         )
-        self._set_q(self.configuration.data, nominal_q)
-        self.posture_task.set_target_from_configuration(self.configuration)
-        for task, target, site_id in zip(
-            self.tasks, command_points, self.tip_ids, strict=True
-        ):
-            rotation = mink.SO3.from_matrix(
-                self.configuration.data.site_xmat[site_id].reshape(3, 3).copy()
+        if use_contact_point_jacobian:
+            if contact_points_world is None:
+                raise ValueError(
+                    "contact_points_world is required for contact-point control"
+                )
+            self.update_contact_point_anchors(
+                q_live,
+                palm_pose_world,
+                contact_points_world,
+                found,
             )
-            task.set_target(mink.SE3.from_rotation_and_translation(rotation, target))
-        for _ in range(cfg.mink_iterations):
-            velocity = mink.solve_ik(
-                self.configuration,
-                [self.posture_task, *self.tasks],
-                cfg.control_dt,
-                solver="daqp",
-                damping=cfg.mink_damping,
-                limits=self.limits,
-            )
-            self.configuration.integrate_inplace(velocity, cfg.control_dt)
-        q_command = self.configuration.data.qpos[self.qpos_indices].copy()
+            # FullHandMCC's scalar admittance state remains unchanged.  Only
+            # its Cartesian-to-joint mapping is replaced: the normal offset
+            # is now applied at the measured tactile contact centre rather
+            # than at the fixed kinematic site.
+            normal_displacement = command_points - desired
+            self._set_q(self.data, nominal_q)
+            q_command = nominal_q.copy()
+            for finger in range(4):
+                block = slice(4 * finger, 4 * finger + 4)
+                jacobian = self._finger_control_point_jacobian(finger)
+                lhs = jacobian @ jacobian.T + (
+                    cfg.contact_point_jacobian_regularization * np.eye(3)
+                )
+                correction = jacobian.T @ np.linalg.solve(
+                    lhs, normal_displacement[finger]
+                )
+                q_command[block] += correction
+            q_command = self.clamp_joint_positions(q_command).astype(np.float64)
+            self._set_q(self.configuration.data, q_command)
+        else:
+            self._set_q(self.configuration.data, nominal_q)
+            self.posture_task.set_target_from_configuration(self.configuration)
+            for task, target, site_id in zip(
+                self.tasks, command_points, self.tip_ids, strict=True
+            ):
+                rotation = mink.SO3.from_matrix(
+                    self.configuration.data.site_xmat[site_id].reshape(3, 3).copy()
+                )
+                task.set_target(
+                    mink.SE3.from_rotation_and_translation(rotation, target)
+                )
+            for _ in range(cfg.mink_iterations):
+                velocity = mink.solve_ik(
+                    self.configuration,
+                    [self.posture_task, *self.tasks],
+                    cfg.control_dt,
+                    solver="daqp",
+                    damping=cfg.mink_damping,
+                    limits=self.limits,
+                )
+                self.configuration.integrate_inplace(velocity, cfg.control_dt)
+            q_command = self.configuration.data.qpos[self.qpos_indices].copy()
         if self.previous_command is None:
             self.previous_command = q_live.copy()
         q_command = self.previous_command + np.clip(
@@ -928,6 +1534,7 @@ class FullHandMCCFingerController:
             q_command - self.previous_command
         )
         self.previous_command = q_command.copy()
+        self._set_q(self.configuration.data, q_command)
         tip_ik = self.configuration.data.site_xpos[self.tip_ids].copy()
         surface_error = np.linalg.norm(desired - actual, axis=-1)
         return q_command.astype(np.float32), {

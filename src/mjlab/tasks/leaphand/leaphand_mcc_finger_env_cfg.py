@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import TypedDict
 
@@ -25,6 +26,11 @@ from mjlab.sim import MujocoCfg, SimulationCfg
 from mjlab.terrains import TerrainEntityCfg
 from mjlab.viewer import ViewerConfig
 from mjlab.utils.lab_api.math import quat_apply_inverse
+from mcc_finger_compliance_control.scripts.object_catalog import (
+    ObjectConfig,
+    add_object_body,
+    load_object_config,
+)
 
 _LEAPHAND_XML = (
     Path(__file__).resolve().parents[2]
@@ -151,16 +157,17 @@ def _load_mcc_leaphand_spec() -> mujoco.MjSpec:
     return spec
 
 
-def _get_hard_contact_target_spec() -> mujoco.MjSpec:
-    """Target whose high-priority material makes only hand/object contact hard."""
+def _get_hard_contact_target_spec(
+    object_config: ObjectConfig | None = None,
+) -> mujoco.MjSpec:
+    """Build a configured target with the collection contact material."""
+    object_config = object_config or load_object_config("capsule_medium")
     spec = mujoco.MjSpec()
-    body = spec.worldbody.add_body(name="target_ball", mocap=True)
-    body.add_geom(
-        name="target_capsule_medium_geom",
-        type=mujoco.mjtGeom.mjGEOM_CAPSULE,
-        size=(0.15, 0.08, 0.0),
-        rgba=(0.2, 0.6, 1.0, 1.0),
-        mass=1.0,
+    add_object_body(
+        spec,
+        object_config,
+        body_name="target_ball",
+        mocap=True,
     )
     for geom in spec.geoms:
         _apply_hard_contact(geom)
@@ -317,7 +324,12 @@ def fingertip_force_3d(env: ManagerBasedRlEnv) -> torch.Tensor:
 def mcc_finger_contact_env_cfg(
     num_envs: int = 1,
     play: bool = False,
+    object_id: str = "capsule_medium",
+    object_config: ObjectConfig | None = None,
 ) -> ManagerBasedRlEnvCfg:
+    if object_config is not None and object_id != "capsule_medium":
+        raise ValueError("Pass either object_id or object_config, not both")
+    resolved_object = object_config or load_object_config(object_id)
     robot_cfg = EntityCfg(
         spec_fn=_load_mcc_leaphand_spec,
         articulation=EntityArticulationInfoCfg(
@@ -355,7 +367,7 @@ def mcc_finger_contact_env_cfg(
         ),
     )
     target_cfg = EntityCfg(
-        spec_fn=_get_hard_contact_target_spec,
+        spec_fn=partial(_get_hard_contact_target_spec, resolved_object),
         init_state=EntityCfg.InitialStateCfg(pos=(0.7007, 0.0003, 0.8377)),
     )
 

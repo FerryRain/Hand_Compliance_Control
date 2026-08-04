@@ -1,0 +1,19 @@
+id: capsule_long
+display_name: Long capsule
+family: smooth_convex
+rgba: [0.16, 0.72, 0.92, 1.00]
+
+geoms:
+  - type: capsule
+    size: [0.11, 0.16]
+
+motion:
+  translation:
+    allowed_axes: [principal_x, principal_y, principal_z]
+    distance_mode: object_extent_ratio
+    distance_ratio_range: [0.15, 0.60]
+    absolute_max_m: 0.080
+  rotation:
+    allowed_axes: [principal_x, principal_y, principal_z, uniform_sphere]
+    angle_range_deg: [60.0, 360.0]
+

@@ -27,11 +27,13 @@ from replay_inverted import replay_env_cfg
 from surface_mcc_finger import (
     FullHandMCCFingerConfig,
     FullHandMCCFingerController,
+    GeometrySurfaceOracle,
     PrivilegedCapsuleSurfaceOracle,
     SurfaceMCCFingerConfig,
     SurfaceMCCFingerController,
     TIP_NAMES,
 )
+from object_catalog import load_object_config
 
 
 ACTION_SCALE = 0.08
@@ -166,7 +168,8 @@ def run(
     controller_config: SurfaceMCCFingerConfig | FullHandMCCFingerConfig,
     capsule_radius: float,
     capsule_half_height: float,
-    target_source: Literal["teacher_tip", "nearest_surface"],
+    object_id: str | None = None,
+    target_source: Literal["teacher_tip", "nearest_surface"] = "teacher_tip",
     controller_kind: Literal["reference_dynamics", "fullhand_admittance"],
     teacher_nominal: bool,
     surface_preload: float,
@@ -214,10 +217,15 @@ def run(
         if not isinstance(controller_config, SurfaceMCCFingerConfig):
             raise TypeError("reference_dynamics requires SurfaceMCCFingerConfig")
         controller = SurfaceMCCFingerController(controller_config)
-    oracle = PrivilegedCapsuleSurfaceOracle(
-        radius=capsule_radius,
-        half_height=capsule_half_height,
-    )
+    if object_id is not None:
+        oracle = GeometrySurfaceOracle(load_object_config(object_id))
+        print(f"[ORACLE] using GeometrySurfaceOracle with object_id={object_id}")
+    else:
+        oracle = PrivilegedCapsuleSurfaceOracle(
+            radius=capsule_radius,
+            half_height=capsule_half_height,
+        )
+        print(f"[ORACLE] using PrivilegedCapsuleSurfaceOracle r={capsule_radius:.3f} h={capsule_half_height:.3f}")
 
     class ReplayPolicy:
         def __init__(self) -> None:
@@ -781,6 +789,12 @@ def main() -> None:
     parser.add_argument("--capsule-radius", type=float, default=0.15)
     parser.add_argument("--capsule-half-height", type=float, default=0.08)
     parser.add_argument(
+        "--object-id",
+        default=None,
+        help="Use GeometrySurfaceOracle with this catalog object. "
+             "Overrides --capsule-radius / --capsule-half-height.",
+    )
+    parser.add_argument(
         "--target-source",
         choices=("teacher_tip", "nearest_surface"),
         default="teacher_tip",
@@ -855,6 +869,7 @@ def main() -> None:
         controller_config=controller_config,
         capsule_radius=args.capsule_radius,
         capsule_half_height=args.capsule_half_height,
+        object_id=args.object_id,
         target_source=args.target_source,
         controller_kind=args.controller,
         teacher_nominal=args.teacher_nominal,

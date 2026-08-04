@@ -1,0 +1,17 @@
+collection:
+  quality:
+    min_three_finger_ratio: 0.85
+    min_four_finger_ratio: 0.45
+    max_contact_loss_frames: 25
+    max_force_N: 9.0
+
+motion_defaults:
+  translation:
+    speed_range_m_s: [0.002, 0.007]
+    acceleration_time_s: 0.7
+    hold_time_s: 0.5
+  rotation:
+    angular_speed_range_rad_s: [0.02, 0.07]
+    acceleration_time_s: 0.8
+    hold_time_s: 0.5
+

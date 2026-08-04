@@ -1,0 +1,19 @@
+id: sphere_medium
+display_name: Sphere
+family: smooth_convex
+rgba: [0.25, 0.78, 0.48, 1.00]
+
+geoms:
+  - type: sphere
+    size: [0.14]
+
+motion:
+  translation:
+    allowed_axes: [uniform_sphere]
+    distance_mode: object_extent_ratio
+    distance_ratio_range: [0.15, 0.40]
+    absolute_max_m: 0.050
+  rotation:
+    allowed_axes: [uniform_sphere]
+    angle_range_deg: [90.0, 360.0]
+

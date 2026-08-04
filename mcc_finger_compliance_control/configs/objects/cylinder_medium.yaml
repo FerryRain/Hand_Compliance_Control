@@ -1,0 +1,19 @@
+id: cylinder_medium
+display_name: Cylinder
+family: sharp_convex
+rgba: [1.00, 0.58, 0.20, 1.00]
+
+geoms:
+  - type: cylinder
+    size: [0.12, 0.13]
+
+motion:
+  translation:
+    allowed_axes: [principal_x, principal_y, principal_z]
+    distance_mode: object_extent_ratio
+    distance_ratio_range: [0.10, 0.35]
+    absolute_max_m: 0.045
+  rotation:
+    allowed_axes: [principal_x, principal_y, principal_z]
+    angle_range_deg: [30.0, 180.0]
+

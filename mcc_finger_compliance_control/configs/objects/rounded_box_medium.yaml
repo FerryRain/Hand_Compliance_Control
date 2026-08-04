@@ -1,0 +1,22 @@
+id: rounded_box_medium
+display_name: Rounded box
+family: smooth_convex
+rgba: [0.92, 0.46, 0.18, 1.00]
+
+geoms:
+  - type: rounded_box
+    # Final half-size. The 25 mm radius is carved inside this envelope.
+    size: [0.14, 0.105, 0.09]
+    rounding_radius: 0.025
+    mesh_subdivisions: 3
+
+motion:
+  translation:
+    allowed_axes: [principal_x, principal_y, principal_z]
+    distance_mode: object_extent_ratio
+    distance_ratio_range: [0.12, 0.38]
+    absolute_max_m: 0.050
+  rotation:
+    allowed_axes: [principal_x, principal_y, principal_z, uniform_sphere]
+    angle_range_deg: [45.0, 220.0]
+
