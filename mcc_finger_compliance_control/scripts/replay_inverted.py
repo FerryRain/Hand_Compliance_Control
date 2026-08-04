@@ -184,9 +184,13 @@ def replay_env_cfg() -> ManagerBasedRlEnvCfg:
             actuators=(
                 BuiltinPositionActuatorCfg(
                     target_names_expr=(r"^[0-9]+$",),
-                    stiffness=5.0,
-                    damping=0.5,
-                    effort_limit=10.0,
+                    # Match the hand position servo used by full_hand_mcc.
+                    # This is intentionally separate from the contact
+                    # material: it supplies enough authority to maintain a
+                    # collision-consistent fingertip IK reference.
+                    stiffness=35.0,
+                    damping=2.5,
+                    effort_limit=35.0,
                     armature=0.0,
                     frictionloss=0.001,
                 ),

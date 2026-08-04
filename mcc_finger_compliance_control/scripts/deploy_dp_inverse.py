@@ -28,6 +28,11 @@ from fingertip_impedance import (
     FingertipImpedanceController,
 )
 from replay_inverted import MCC_TIP_NAMES, replay_env_cfg
+from surface_mcc_finger import (
+    FullHandMCCFingerConfig,
+    FullHandMCCFingerController,
+    PrivilegedCapsuleSurfaceOracle,
+)
 from train_dp import build_policy
 
 
@@ -42,6 +47,26 @@ class ContactAwareReplanConfig:
     min_fingers: int = 3
     force_threshold: float = 0.05
     bad_grace_steps: int = 5
+
+
+@dataclass(frozen=True)
+class MCCPrecontactConfig:
+    """Per-finger Cartesian contact search copied from FullHandMCC."""
+
+    force_threshold: float = 0.10
+    settle_frames: int = 3
+    cartesian_step_m: float = 0.00015
+    joint_step_rad: float = 0.02
+    joint_limit_rad: float = 0.30
+    servo_load_scale: float = 1.5
+    trajectory_tracking_gain: float = 0.5
+    runtime_loss_frames: int = 5
+    recovery_confirm_frames: int = 3
+    runtime_recovery_limit_rad: float = 0.08
+    command_rate_limit_rad: float = 0.02
+    command_ema_alpha: float = 0.65
+    recovery_offset_decay: float = 0.999
+    recovery_decay_force_ratio: float = 1.5
 
 
 def _episode(file: h5py.File, episode_id: int, name: str) -> np.ndarray:
@@ -450,6 +475,10 @@ def run_inverse(
     impedance_config: FingertipImpedanceConfig | None,
     chunk_config: DPChunkSchedulerConfig | None,
     contact_guard_config: ContactAwareReplanConfig | None,
+    execution_layer: Literal["joint_position", "fullhand_mcc"],
+    mcc_desired_force: float,
+    mcc_precontact_config: MCCPrecontactConfig,
+    highlight_contacts: bool,
     report: Path,
     video_output: Path | None,
     video_fps: int,
@@ -472,6 +501,11 @@ def run_inverse(
         runtime.input_frame,
         runtime.state_schema,
     )
+    if execution_layer == "fullhand_mcc" and impedance_config is not None:
+        raise ValueError(
+            "--finger-impedance and --execution-layer fullhand_mcc are "
+            "alternative low-level controllers; enable only one."
+        )
     env_cfg = replay_env_cfg()
     if viewer == "video":
         env_cfg.viewer.width = video_width
@@ -516,6 +550,53 @@ def run_inverse(
                 if impedance_config is not None
                 else None
             )
+            # DP remains the nominal geometric planner.  This execution
+            # layer converts its q prediction into four FK tip targets and
+            # lets the shared full-hand MCC apply high-rate force control and
+            # four-site IK around those targets.
+            self.fullhand_mcc = (
+                FullHandMCCFingerController(
+                    FullHandMCCFingerConfig(
+                        desired_force=mcc_desired_force,
+                        action_rate_limit=(
+                            mcc_precontact_config.command_rate_limit_rad
+                        ),
+                        command_ema_alpha=(
+                            mcc_precontact_config.command_ema_alpha
+                        ),
+                    )
+                )
+                if execution_layer == "fullhand_mcc"
+                else None
+            )
+            self.surface_oracle = (
+                PrivilegedCapsuleSurfaceOracle(radius=0.15, half_height=0.08)
+                if self.fullhand_mcc is not None
+                else None
+            )
+            self.fullhand_mcc_calibrated = False
+            self.fullhand_precontact_closure = np.zeros(16, dtype=np.float32)
+            self.fullhand_contact_anchor_q = data["q_hand"][0].copy()
+            self.fullhand_dp_anchor_q = data["q_hand"][0].copy()
+            self.fullhand_servo_offset = np.zeros(16, dtype=np.float32)
+            self.fullhand_search_delta = np.zeros(16, dtype=np.float32)
+            self.fullhand_contact_settle_streak = 0
+            self.fullhand_loss_streak = np.zeros(4, dtype=np.int64)
+            self.fullhand_recovery_confirm_streak = np.zeros(4, dtype=np.int64)
+            self.fullhand_recovery_active = np.zeros(4, dtype=bool)
+            self.fullhand_runtime_recovery_offset = np.zeros(
+                16, dtype=np.float32
+            )
+            self.fullhand_last_command_q = data["q_hand"][0].copy()
+            self.fullhand_phase = "bootstrap"
+            # FullHandMCC-style viewer state.  Planning targets retain each
+            # finger's colour; live markers encode physical contact state.
+            self.visual_surface_targets = np.full((4, 3), np.nan)
+            self.visual_normals = np.full((4, 3), np.nan)
+            self.visual_contact_points = np.full((4, 3), np.nan)
+            self.visual_tip_points = np.full((4, 3), np.nan)
+            self.visual_found = np.zeros(4, dtype=bool)
+            self.visual_loaded = np.zeros(4, dtype=bool)
             self.chunk_scheduler = (
                 DPChunkScheduler(runtime.action_std, chunk_config)
                 if chunk_config is not None
@@ -793,6 +874,272 @@ def run_inverse(
                 )
             dp_desired = np.asarray(desired, dtype=np.float32).copy()
             self.nominal_q = dp_desired.copy()
+            q_live = robot.data.joint_pos[0].detach().cpu().numpy()
+            mcc_normal_force = np.zeros(4, dtype=np.float32)
+            mcc_force_error = np.zeros(4, dtype=np.float32)
+            mcc_contact_active = np.zeros(4, dtype=bool)
+            mcc_tip_target_error = np.zeros(4, dtype=np.float32)
+            mcc_normal_offset = np.zeros(4, dtype=np.float32)
+            mcc_normal_velocity = np.zeros(4, dtype=np.float32)
+            if self.fullhand_mcc is not None:
+                self.fullhand_search_delta[:] = 0.0
+                palm_pose = data["palm_pose_object"][t]
+                force_magnitude = np.linalg.norm(live_forces, axis=-1)
+                real_contact = live_found & (
+                    force_magnitude >= mcc_precontact_config.force_threshold
+                )
+                if t <= bootstrap_end:
+                    self.fullhand_phase = "bootstrap"
+                    plan_q = self.fullhand_mcc.clamp_joint_positions(dp_desired)
+                elif not self.fullhand_mcc_calibrated:
+                    self.fullhand_phase = "precontact"
+                    missing = ~real_contact
+                    # One independent 3x4 Jacobian solve per missing finger.
+                    # Blocks are [0:4], [4:8], [8:12], [12:16], so the thumb
+                    # always uses all four of its joints and never shares a
+                    # Jacobian with the three parallel fingers.
+                    search_q = self.fullhand_mcc.clamp_joint_positions(
+                        dp_desired + self.fullhand_precontact_closure
+                    )
+                    search_points_world = self.fullhand_mcc.points_palm_to_world(
+                        self.fullhand_mcc.tip_positions_palm(search_q), palm_pose
+                    )
+                    search_surface = self.surface_oracle.observe(
+                        search_points_world
+                    )
+                    self.fullhand_search_delta = (
+                        self.fullhand_mcc.normal_search_delta(
+                            q_action_order=q_live,
+                            palm_pose_world=palm_pose,
+                            surface_normals_world=search_surface.normals_world,
+                            missing=missing,
+                            inward_step=mcc_precontact_config.cartesian_step_m,
+                            max_joint_step=mcc_precontact_config.joint_step_rad,
+                        )
+                    )
+                    self.fullhand_precontact_closure = np.clip(
+                        self.fullhand_precontact_closure
+                        + self.fullhand_search_delta,
+                        -mcc_precontact_config.joint_limit_rad,
+                        mcc_precontact_config.joint_limit_rad,
+                    )
+                    plan_q = self.fullhand_mcc.clamp_joint_positions(
+                        dp_desired + self.fullhand_precontact_closure
+                    )
+                    # Match FullHandMCC's outer precontact rate limit.  The
+                    # accumulated closure may be large, but the physical
+                    # command advances by at most one search step per frame.
+                    desired = self.fullhand_mcc.clamp_joint_positions(
+                        q_live
+                        + np.clip(
+                            plan_q - q_live,
+                            -mcc_precontact_config.joint_step_rad,
+                            mcc_precontact_config.joint_step_rad,
+                        )
+                    )
+                    self.fullhand_mcc.previous_command = desired.copy()
+                    if bool(np.all(real_contact)):
+                        self.fullhand_contact_settle_streak += 1
+                    else:
+                        self.fullhand_contact_settle_streak = 0
+                    if (
+                        self.fullhand_contact_settle_streak
+                        >= mcc_precontact_config.settle_frames
+                    ):
+                        self.fullhand_mcc.calibrate_force_setpoint(
+                            live_forces,
+                            live_found,
+                            search_surface.normals_world,
+                        )
+                        # FullHandMCC changes coordinates at contact: the
+                        # loaded physical posture becomes the new planning
+                        # anchor, while only command-to-loaded servo
+                        # deflection is retained as feed-forward.  The local
+                        # precontact closure is not a permanent trajectory
+                        # offset.
+                        self.fullhand_contact_anchor_q = q_live.copy()
+                        self.fullhand_dp_anchor_q = dp_desired.copy()
+                        self.fullhand_servo_offset = (
+                            mcc_precontact_config.servo_load_scale
+                            * (self.fullhand_last_command_q - q_live)
+                        )
+                        self.fullhand_precontact_closure[:] = 0.0
+                        self.fullhand_mcc_calibrated = True
+                        self.fullhand_phase = "track"
+                        plan_q = self.fullhand_contact_anchor_q.copy()
+                        print(
+                            "[DP->FULLHAND-MCC] per-finger contact settled; "
+                            "force_setpoint="
+                            f"{np.round(self.fullhand_mcc.force_setpoint, 2).tolist()}N "
+                            "servo_offset="
+                            f"{np.round(self.fullhand_servo_offset, 3).tolist()}"
+                        )
+                else:
+                    # Weak force with a valid geometry contact remains the
+                    # admittance loop's job.  Cartesian recovery starts only
+                    # after consecutive true geometry-loss frames.
+                    self.fullhand_loss_streak = np.where(
+                        live_found, 0, self.fullhand_loss_streak + 1
+                    )
+                    newly_lost = (
+                        ~self.fullhand_recovery_active
+                        & (
+                            self.fullhand_loss_streak
+                            >= mcc_precontact_config.runtime_loss_frames
+                        )
+                    )
+                    if np.any(newly_lost):
+                        self.fullhand_recovery_active[newly_lost] = True
+                        self.fullhand_recovery_confirm_streak[newly_lost] = 0
+                        self.fullhand_mcc.reset_admittance_fingers(
+                            newly_lost, preserve_offset=True
+                        )
+
+                    self.fullhand_recovery_confirm_streak = np.where(
+                        self.fullhand_recovery_active & real_contact,
+                        self.fullhand_recovery_confirm_streak + 1,
+                        0,
+                    )
+                    recovered = (
+                        self.fullhand_recovery_active
+                        & (
+                            self.fullhand_recovery_confirm_streak
+                            >= mcc_precontact_config.recovery_confirm_frames
+                        )
+                    )
+                    if np.any(recovered):
+                        self.fullhand_recovery_active[recovered] = False
+                        self.fullhand_recovery_confirm_streak[recovered] = 0
+                        self.fullhand_loss_streak[recovered] = 0
+                        self.fullhand_mcc.reset_admittance_fingers(
+                            recovered, preserve_offset=True
+                        )
+
+                    # FullHandMCC establishes the loaded planning anchor only
+                    # once.  Runtime re-contact must not replace it with
+                    # q_live, otherwise every small tracking error is
+                    # integrated into the future DP trajectory.  Preserve the
+                    # bounded recovery correction and relax it only when that
+                    # finger already carries its calibrated target force.
+                    force_supported = (
+                        ~self.fullhand_recovery_active
+                        & live_found
+                        & (
+                            force_magnitude
+                            >= (
+                                mcc_precontact_config.recovery_decay_force_ratio
+                                * self.fullhand_mcc.force_setpoint
+                            )
+                        )
+                    )
+                    for finger in np.flatnonzero(force_supported):
+                        block = slice(4 * finger, 4 * finger + 4)
+                        self.fullhand_runtime_recovery_offset[block] *= (
+                            mcc_precontact_config.recovery_offset_decay
+                        )
+
+                    self.fullhand_phase = (
+                        "recover"
+                        if bool(np.any(self.fullhand_recovery_active))
+                        else "track"
+                    )
+                    # DP tangential progression continues during recovery.
+                    # The normal-search correction is a separate bounded
+                    # state, equivalent to q_ref + dq_DP + dq_contact.
+                    base_plan_q = self.fullhand_mcc.clamp_joint_positions(
+                        self.fullhand_contact_anchor_q
+                        + (dp_desired - self.fullhand_dp_anchor_q)
+                    )
+                    if bool(np.any(self.fullhand_recovery_active)):
+                        base_points_world = (
+                            self.fullhand_mcc.points_palm_to_world(
+                                self.fullhand_mcc.tip_positions_palm(base_plan_q),
+                                palm_pose,
+                            )
+                        )
+                        base_surface = self.surface_oracle.observe(
+                            base_points_world
+                        )
+                        self.fullhand_search_delta = (
+                            self.fullhand_mcc.normal_search_delta(
+                                q_action_order=q_live,
+                                palm_pose_world=palm_pose,
+                                surface_normals_world=(
+                                    base_surface.normals_world
+                                ),
+                                missing=self.fullhand_recovery_active,
+                                inward_step=(
+                                    mcc_precontact_config.cartesian_step_m
+                                ),
+                                max_joint_step=(
+                                    mcc_precontact_config.joint_step_rad
+                                ),
+                            )
+                        )
+                        self.fullhand_runtime_recovery_offset = np.clip(
+                            self.fullhand_runtime_recovery_offset
+                            + self.fullhand_search_delta,
+                            -mcc_precontact_config.runtime_recovery_limit_rad,
+                            mcc_precontact_config.runtime_recovery_limit_rad,
+                        )
+                    plan_q = self.fullhand_mcc.clamp_joint_positions(
+                        base_plan_q + self.fullhand_runtime_recovery_offset
+                    )
+                planned_tip_world = self.fullhand_mcc.points_palm_to_world(
+                    self.fullhand_mcc.tip_positions_palm(plan_q),
+                    palm_pose,
+                )
+                surface = self.surface_oracle.observe(planned_tip_world)
+                self.fullhand_mcc.calibrate_force_sign(
+                    live_forces, live_found, surface.normals_world
+                )
+                if t <= bootstrap_end:
+                    desired = plan_q
+                    self.fullhand_mcc.previous_command = desired.copy()
+                elif self.fullhand_mcc_calibrated:
+                    joint_reference_q = self.fullhand_mcc.clamp_joint_positions(
+                        plan_q
+                        + self.fullhand_servo_offset
+                        + mcc_precontact_config.trajectory_tracking_gain
+                        * (plan_q - q_live)
+                    )
+                    desired, mcc_debug = self.fullhand_mcc.update(
+                        q_live=q_live,
+                        palm_pose_world=palm_pose,
+                        force_world=live_forces,
+                        found=live_found,
+                        # This finger-only port has one position task, unlike
+                        # full_hand_mcc which keeps separate surface and
+                        # unloaded kinematic targets.  Track the body-fixed
+                        # DP site here and use the projection only for its
+                        # outward normal; forcing the internal site itself
+                        # onto the object surface over-penetrates the pad.
+                        surface_points_world=planned_tip_world,
+                        surface_normals_world=surface.normals_world,
+                        nominal_posture_q=joint_reference_q,
+                    )
+                    mcc_normal_force = mcc_debug["normal_force"]
+                    mcc_force_error = mcc_debug["force_error"]
+                    mcc_contact_active = mcc_debug["contact_active"]
+                    mcc_tip_target_error = mcc_debug["surface_error"]
+                    mcc_normal_offset = mcc_debug["normal_offset"]
+                    mcc_normal_velocity = mcc_debug["normal_velocity"]
+                self.fullhand_last_command_q = np.asarray(
+                    desired, dtype=np.float32
+                ).copy()
+                self.visual_surface_targets[:] = surface.points_world
+                self.visual_normals[:] = surface.normals_world
+                self.visual_contact_points[:] = np.nan
+                self.visual_contact_points[live_found] = live_contact_positions[
+                    live_found
+                ]
+                self.visual_tip_points[:] = self.fullhand_mcc.points_palm_to_world(
+                    self.fullhand_mcc.tip_positions_palm(q_live), palm_pose
+                )
+                self.visual_found[:] = live_found
+                self.visual_loaded[:] = live_found & (
+                    np.linalg.norm(live_forces, axis=-1) >= contact_threshold
+                )
             impedance_offset = np.zeros(4, dtype=np.float32)
             impedance_joint = np.zeros(16, dtype=np.float32)
             impedance_force = np.zeros(4, dtype=np.float32)
@@ -843,7 +1190,6 @@ def run_inverse(
                     impedance_recovery_steps = impedance_debug[
                         "recovery_contact_steps"
                     ]
-            q_live = robot.data.joint_pos[0].detach().cpu().numpy()
             raw_action = (desired - q_live) / ACTION_SCALE
             raw_action = np.clip(raw_action, -2.0, 2.0)
             q_error = float(np.abs(q_live - data["q_hand"][t]).mean())
@@ -861,6 +1207,7 @@ def run_inverse(
                 self.force_max = max(self.force_max, force_max)
             row: dict[str, float | int | str] = {
                     "mode": mode,
+                    "execution_layer": execution_layer,
                     "frame": t,
                     "dp_calls": self.dp_calls,
                     "q_teacher_mae_rad": q_error,
@@ -881,6 +1228,23 @@ def run_inverse(
                     "contact_guard_bad_steps": self.contact_guard_bad_steps,
                     "contact_guard_held_fingers": int(
                         np.sum(self.held_tactile_valid & ~guard_contact)
+                    ),
+                    "fullhand_mcc_calibrated": int(self.fullhand_mcc_calibrated),
+                    "fullhand_phase": self.fullhand_phase,
+                    "fullhand_contact_settle_streak": (
+                        self.fullhand_contact_settle_streak
+                    ),
+                    "fullhand_search_delta_max_rad": float(
+                        np.abs(self.fullhand_search_delta).max()
+                    ),
+                    "fullhand_servo_offset_max_rad": float(
+                        np.abs(self.fullhand_servo_offset).max()
+                    ),
+                    "fullhand_recovery_fingers": int(
+                        self.fullhand_recovery_active.sum()
+                    ),
+                    "fullhand_runtime_recovery_offset_max_rad": float(
+                        np.abs(self.fullhand_runtime_recovery_offset).max()
                     ),
                 }
             tip_labels = ("index", "middle", "ring", "thumb")
@@ -934,6 +1298,54 @@ def run_inverse(
                         f"{label}_recovery_contact_steps": int(
                             impedance_recovery_steps[finger]
                         ),
+                        f"{label}_mcc_normal_force_N": float(
+                            mcc_normal_force[finger]
+                        ),
+                        f"{label}_mcc_force_error_N": float(
+                            mcc_force_error[finger]
+                        ),
+                        f"{label}_mcc_contact_active": int(
+                            mcc_contact_active[finger]
+                        ),
+                        f"{label}_mcc_tip_target_error_mm": float(
+                            mcc_tip_target_error[finger] * 1000.0
+                        ),
+                        f"{label}_mcc_normal_offset_mm": float(
+                            mcc_normal_offset[finger] * 1000.0
+                        ),
+                        f"{label}_mcc_normal_velocity_mm_s": float(
+                            mcc_normal_velocity[finger] * 1000.0
+                        ),
+                        f"{label}_mcc_search_delta_max_rad": float(
+                            np.abs(
+                                self.fullhand_search_delta[
+                                    4 * finger : 4 * finger + 4
+                                ]
+                            ).max()
+                        ),
+                        f"{label}_mcc_recovery_active": int(
+                            self.fullhand_recovery_active[finger]
+                        ),
+                        f"{label}_mcc_loss_streak": int(
+                            self.fullhand_loss_streak[finger]
+                        ),
+                        f"{label}_mcc_recovery_confirm_streak": int(
+                            self.fullhand_recovery_confirm_streak[finger]
+                        ),
+                        f"{label}_mcc_servo_offset_max_rad": float(
+                            np.abs(
+                                self.fullhand_servo_offset[
+                                    4 * finger : 4 * finger + 4
+                                ]
+                            ).max()
+                        ),
+                        f"{label}_mcc_runtime_recovery_offset_max_rad": float(
+                            np.abs(
+                                self.fullhand_runtime_recovery_offset[
+                                    4 * finger : 4 * finger + 4
+                                ]
+                            ).max()
+                        ),
                     }
                 )
                 for local_index, dof in enumerate(dofs):
@@ -950,14 +1362,28 @@ def run_inverse(
                 row[f"q_teacher_{joint}"] = float(data["q_hand"][t, joint])
             self.rows.append(row)
             if t % 100 == 0:
-                thumb_dofs = (
-                    self.impedance.active_dofs[3] if self.impedance else ()
-                )
-                thumb_dq = (
-                    np.round(impedance_joint[thumb_dofs], 4).tolist()
-                    if len(thumb_dofs) > 0
-                    else []
-                )
+                if self.fullhand_mcc is not None:
+                    thumb_summary = (
+                        f"mcc(Fn={mcc_normal_force[3]:.3f}N "
+                        f"err={mcc_force_error[3]:+.3f}N "
+                        f"active={int(mcc_contact_active[3])} "
+                        f"tip_err={mcc_tip_target_error[3]*1000.0:.2f}mm)"
+                    )
+                else:
+                    thumb_dofs = (
+                        self.impedance.active_dofs[3] if self.impedance else ()
+                    )
+                    thumb_dq = (
+                        np.round(impedance_joint[thumb_dofs], 4).tolist()
+                        if len(thumb_dofs) > 0
+                        else []
+                    )
+                    thumb_summary = (
+                        f"n_norm={np.linalg.norm(impedance_normal[3]):.2f} "
+                        f"offset={impedance_offset[3]*1000.0:+.2f}mm "
+                        f"pred_n={impedance_predicted_normal[3]*1000.0:+.2f}mm "
+                        f"dq={thumb_dq}"
+                    )
                 print(
                     f"[REPLAY] mode={mode} frame={t:4d} "
                     f"q_mae={q_error:.5f}rad "
@@ -965,10 +1391,7 @@ def run_inverse(
                     f"force_max={force_max:.2f}N | "
                     f"thumb(found={int(live_found[3])} "
                     f"F={np.linalg.norm(live_forces[3]):.3f}N "
-                    f"n_norm={np.linalg.norm(impedance_normal[3]):.2f} "
-                    f"offset={impedance_offset[3]*1000.0:+.2f}mm "
-                    f"pred_n={impedance_predicted_normal[3]*1000.0:+.2f}mm "
-                    f"dq={thumb_dq})"
+                    f"{thumb_summary})"
                 )
             self.frame += 1
             return torch.as_tensor(
@@ -976,6 +1399,49 @@ def run_inverse(
             ).unsqueeze(0)
 
     policy = DPReplayPolicy()
+    if highlight_contacts and execution_layer == "fullhand_mcc":
+        base_update_visualizers = env.update_visualizers
+
+        def update_contact_visualizers(visualizer) -> None:
+            base_update_visualizers(visualizer)
+            if not np.all(np.isfinite(policy.visual_surface_targets)):
+                return
+            target_colors = (
+                (1.0, 0.30, 0.20, 0.95),  # index plan
+                (0.20, 0.70, 1.0, 0.95),  # middle plan
+                (1.0, 0.80, 0.15, 0.95),  # ring plan
+                (0.80, 0.30, 1.0, 0.95),  # thumb plan
+            )
+            for finger, color in enumerate(target_colors):
+                target = policy.visual_surface_targets[finger]
+                normal = policy.visual_normals[finger]
+                visualizer.add_sphere(target, radius=0.005, color=color)
+                visualizer.add_arrow(
+                    target,
+                    target + 0.025 * normal,
+                    color=color,
+                    width=0.0025,
+                )
+                if policy.visual_found[finger]:
+                    contact = policy.visual_contact_points[finger]
+                    if np.all(np.isfinite(contact)):
+                        visualizer.add_sphere(
+                            contact,
+                            radius=0.009,
+                            color=(
+                                (0.15, 1.0, 0.20, 1.0)
+                                if policy.visual_loaded[finger]
+                                else (1.0, 0.50, 0.05, 1.0)
+                            ),
+                        )
+                else:
+                    visualizer.add_sphere(
+                        policy.visual_tip_points[finger],
+                        radius=0.007,
+                        color=(1.0, 0.05, 0.05, 1.0),
+                    )
+
+        env.update_visualizers = update_contact_visualizers
     try:
         if viewer == "headless":
             for _ in range(frames):
@@ -1075,6 +1541,79 @@ def main() -> None:
     parser.add_argument("--max-steps", type=int, default=0)
     parser.add_argument("--max-dp-calls", type=int, default=0)
     parser.add_argument("--contact-threshold", type=float, default=0.05)
+    parser.add_argument(
+        "--execution-layer",
+        choices=("joint_position", "fullhand_mcc"),
+        default="joint_position",
+        help=(
+            "joint_position sends DP q directly; fullhand_mcc converts DP q "
+            "to FK fingertip targets and executes them through the shared "
+            "normal-admittance + four-site IK layer."
+        ),
+    )
+    parser.add_argument(
+        "--mcc-desired-force",
+        type=float,
+        default=1.0,
+        help="Fallback desired normal force before per-finger bootstrap calibration.",
+    )
+    parser.add_argument(
+        "--mcc-surface-preload-mm",
+        type=float,
+        default=0.0,
+        help=(
+            "Deprecated compatibility option. Fixed Cartesian preload is no "
+            "longer used; precontact is established per finger by Jacobian search."
+        ),
+    )
+    parser.add_argument("--mcc-contact-force-threshold", type=float, default=0.10)
+    parser.add_argument("--mcc-contact-settle-frames", type=int, default=3)
+    parser.add_argument("--mcc-contact-search-step-mm", type=float, default=0.15)
+    parser.add_argument("--mcc-contact-search-step-rad", type=float, default=0.02)
+    parser.add_argument("--mcc-contact-search-limit-rad", type=float, default=0.30)
+    parser.add_argument("--mcc-finger-servo-load-scale", type=float, default=1.5)
+    parser.add_argument("--mcc-finger-tracking-gain", type=float, default=0.5)
+    parser.add_argument("--mcc-runtime-loss-frames", type=int, default=5)
+    parser.add_argument("--mcc-recovery-confirm-frames", type=int, default=3)
+    parser.add_argument(
+        "--mcc-runtime-recovery-limit-rad", type=float, default=0.08
+    )
+    parser.add_argument(
+        "--mcc-command-rate-limit-rad",
+        type=float,
+        default=0.02,
+        help="Maximum per-frame FullHandMCC joint-command change.",
+    )
+    parser.add_argument(
+        "--mcc-command-ema-alpha",
+        type=float,
+        default=0.65,
+        help=(
+            "EMA weight of the newest rate-limited MCC command; 1 disables "
+            "filtering and smaller values suppress recovery-transition jitter."
+        ),
+    )
+    parser.add_argument(
+        "--mcc-recovery-offset-decay",
+        type=float,
+        default=0.999,
+        help="Per-frame decay applied to a supported finger's re-contact offset.",
+    )
+    parser.add_argument(
+        "--mcc-recovery-decay-force-ratio",
+        type=float,
+        default=1.5,
+        help="Only decay re-contact offset above this multiple of force setpoint.",
+    )
+    parser.add_argument(
+        "--highlight-contacts",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Draw DP fingertip plans/normals and live contact markers in "
+            "FullHandMCC native, viser, or video viewers."
+        ),
+    )
     parser.add_argument(
         "--finger-impedance",
         action="store_true",
@@ -1226,7 +1765,8 @@ def main() -> None:
         f"state_schema={runtime.state_schema} state_dim={runtime.state_dim} "
         f"action={runtime.action_representation} "
         f"stride={runtime.stride} obs={runtime.obs_horizon} "
-        f"pred={runtime.pred_horizon} inference={runtime.policy.diffusion.num_inference_steps}"
+        f"pred={runtime.pred_horizon} inference={runtime.policy.diffusion.num_inference_steps} "
+        f"execution_layer={args.execution_layer}"
     )
     if args.impedance_stiffness != 0.0:
         print(
@@ -1303,6 +1843,29 @@ def main() -> None:
                 )
                 else None
             ),
+            args.execution_layer,
+            args.mcc_desired_force,
+            MCCPrecontactConfig(
+                force_threshold=args.mcc_contact_force_threshold,
+                settle_frames=args.mcc_contact_settle_frames,
+                cartesian_step_m=args.mcc_contact_search_step_mm / 1000.0,
+                joint_step_rad=args.mcc_contact_search_step_rad,
+                joint_limit_rad=args.mcc_contact_search_limit_rad,
+                servo_load_scale=args.mcc_finger_servo_load_scale,
+                trajectory_tracking_gain=args.mcc_finger_tracking_gain,
+                runtime_loss_frames=args.mcc_runtime_loss_frames,
+                recovery_confirm_frames=args.mcc_recovery_confirm_frames,
+                runtime_recovery_limit_rad=(
+                    args.mcc_runtime_recovery_limit_rad
+                ),
+                command_rate_limit_rad=args.mcc_command_rate_limit_rad,
+                command_ema_alpha=args.mcc_command_ema_alpha,
+                recovery_offset_decay=args.mcc_recovery_offset_decay,
+                recovery_decay_force_ratio=(
+                    args.mcc_recovery_decay_force_ratio
+                ),
+            ),
+            args.highlight_contacts,
             report,
             video_output,
             args.video_fps,
