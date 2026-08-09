@@ -57,6 +57,93 @@ def smooth_pad_alignment_residual(
     )
 
 
+def positive_self_clearance_residual(
+    protected_clearance_m: np.ndarray,
+    *,
+    target_clearance_m: float,
+) -> np.ndarray:
+    """Return a one-sided residual below a positive self-clearance target."""
+
+    clearance = np.asarray(protected_clearance_m, dtype=np.float64)
+    if clearance.ndim != 1 or clearance.size == 0:
+        raise ValueError("protected_clearance_m must be a non-empty vector")
+    if not np.all(np.isfinite(clearance)):
+        raise ValueError("protected_clearance_m must be finite")
+    if not np.isfinite(target_clearance_m) or target_clearance_m < 0.0:
+        raise ValueError("target_clearance_m must be finite and non-negative")
+    return np.maximum(float(target_clearance_m) - clearance, 0.0)
+
+
+def central_difference_clearance_gradient(
+    plus_clearance_m: np.ndarray,
+    minus_clearance_m: np.ndarray,
+    sample_span_rad: np.ndarray,
+) -> np.ndarray:
+    """Recover a deterministic central-FD distance gradient from samples."""
+
+    plus = np.asarray(plus_clearance_m, dtype=np.float64)
+    minus = np.asarray(minus_clearance_m, dtype=np.float64)
+    span = np.asarray(sample_span_rad, dtype=np.float64)
+    if plus.ndim != 1 or plus.shape != minus.shape or plus.shape != span.shape:
+        raise ValueError("central-difference inputs must be equal-sized vectors")
+    if plus.size == 0 or not np.all(np.isfinite(plus)):
+        raise ValueError("plus_clearance_m must be finite and non-empty")
+    if not np.all(np.isfinite(minus)) or not np.all(np.isfinite(span)):
+        raise ValueError("central-difference inputs must be finite")
+    if np.any(span <= 0.0):
+        raise ValueError("sample_span_rad must be positive")
+    return (plus - minus) / span
+
+
+def self_separation_ascent_seeds(
+    q_rad: np.ndarray,
+    clearance_gradient_m_per_rad: np.ndarray,
+    lower_rad: np.ndarray,
+    upper_rad: np.ndarray,
+    *,
+    maximum_step_rad: float,
+) -> tuple[np.ndarray, ...]:
+    """Build 0.4x/1.0x normalized ascent seeds for a protected pair."""
+
+    q = np.asarray(q_rad, dtype=np.float64)
+    gradient = np.asarray(clearance_gradient_m_per_rad, dtype=np.float64)
+    lower = np.asarray(lower_rad, dtype=np.float64)
+    upper = np.asarray(upper_rad, dtype=np.float64)
+    if q.ndim != 1 or q.shape != gradient.shape:
+        raise ValueError("q_rad and clearance gradient must be equal vectors")
+    if lower.shape != q.shape or upper.shape != q.shape:
+        raise ValueError("joint bounds must match q_rad")
+    if not all(
+        np.all(np.isfinite(value))
+        for value in (q, gradient, lower, upper)
+    ):
+        raise ValueError("self-separation inputs must be finite")
+    if np.any(lower > upper):
+        raise ValueError("lower_rad cannot exceed upper_rad")
+    if not np.isfinite(maximum_step_rad) or maximum_step_rad <= 0.0:
+        raise ValueError("maximum_step_rad must be finite and positive")
+    gradient_norm = float(np.linalg.norm(gradient))
+    if gradient_norm <= 1.0e-15:
+        return ()
+    direction = gradient / gradient_norm
+    seeds: list[np.ndarray] = []
+    for fraction in (0.4, 1.0):
+        seed = np.clip(
+            q + fraction * float(maximum_step_rad) * direction,
+            lower,
+            upper,
+        )
+        if np.allclose(seed, q, atol=1.0e-14, rtol=0.0):
+            continue
+        if any(
+            np.allclose(seed, old, atol=1.0e-14, rtol=0.0)
+            for old in seeds
+        ):
+            continue
+        seeds.append(seed)
+    return tuple(seeds)
+
+
 def orientation_aware_candidate_rank(
     *,
     hard_feasible: bool,
@@ -67,13 +154,15 @@ def orientation_aware_candidate_rank(
     task_error_score: float,
     continuity_error: float,
     solver_cost: float,
+    minimum_protected_self_clearance_m: float,
+    soft_self_clearance_target_m: float,
 ) -> tuple[float, ...]:
     """Build the common lexicographic rank for ordinary MPC candidates.
 
-    Hard feasibility always wins.  Among hard-feasible states, candidates
-    outside the preferred soft cone are ordered by their worst interpolated
-    pad deficit.  Once the full segment is inside that cone, task tracking,
-    continuity, and solver cost regain priority.
+    Hard feasibility always wins.  Among hard-feasible states, positive
+    protected self-clearance is preferred before the soft pad cone.  Once
+    both soft bands pass, task tracking, continuity, and solver cost regain
+    priority.
     """
 
     scalars = np.asarray(
@@ -85,6 +174,8 @@ def orientation_aware_candidate_rank(
             task_error_score,
             continuity_error,
             solver_cost,
+            minimum_protected_self_clearance_m,
+            soft_self_clearance_target_m,
         ],
         dtype=np.float64,
     )
@@ -95,6 +186,8 @@ def orientation_aware_candidate_rank(
             "soft_pad_alignment must describe a tighter cone than the hard "
             "alignment"
         )
+    if soft_self_clearance_target_m < 0.0:
+        raise ValueError("soft self-clearance target must be non-negative")
     hard_pad_deficit = max(
         float(hard_pad_alignment) - float(minimum_pad_alignment),
         0.0,
@@ -107,6 +200,12 @@ def orientation_aware_candidate_rank(
         0.0,
     )
     outside_soft_cone = soft_pad_deficit > 1.0e-12
+    soft_self_deficit = max(
+        float(soft_self_clearance_target_m)
+        - float(minimum_protected_self_clearance_m),
+        0.0,
+    )
+    outside_soft_self_clearance = soft_self_deficit > 1.0e-12
     return (
         float(not effective_hard_feasible),
         (
@@ -115,6 +214,8 @@ def orientation_aware_candidate_rank(
             else max(float(hard_violation_score), 0.0)
             + hard_pad_deficit
         ),
+        float(outside_soft_self_clearance),
+        soft_self_deficit if outside_soft_self_clearance else 0.0,
         float(outside_soft_cone),
         soft_pad_deficit if outside_soft_cone else 0.0,
         float(task_error_score),
@@ -566,6 +667,10 @@ def build_bridge_rejection_metrics(
     recovery_terminal_cutoff_m: float,
     solver_cost: float,
     solver_nfev: int,
+    self_collision_sample_occurrence_count: int | None = None,
+    minimum_protected_self_clearance_m: float = np.inf,
+    protected_self_clearance_target_m: float = 0.0,
+    minimum_protected_self_pair_name: str = "",
 ) -> dict[str, object]:
     """Build values, limits, and signed margins for a rejected bridge."""
 
@@ -595,6 +700,11 @@ def build_bridge_rejection_metrics(
     recovery_contact_count = int(np.count_nonzero(recovery_contact_mask))
     active_tip_motion_margin = (
         tip_motion[active_fingers] - minimum_tip_motion_m
+    )
+    self_collision_occurrences = (
+        int(self_collision_count)
+        if self_collision_sample_occurrence_count is None
+        else int(self_collision_sample_occurrence_count)
     )
     metrics: dict[str, object] = {
         "bridge_interval_m": bridge_interval_m,
@@ -649,8 +759,19 @@ def build_bridge_rejection_metrics(
         "hand_clearance_limit_m": hand_clearance_limit_m,
         "tip_clearance_limit_m": tip_clearance_limit_m,
         "self_collision_count": self_collision_count,
+        "self_collision_unique_pair_count": self_collision_count,
+        "self_collision_sample_occurrence_count": self_collision_occurrences,
         "self_collision_limit": 0,
         "self_collision_margin": -self_collision_count,
+        "protected_self_clearance_m": minimum_protected_self_clearance_m,
+        "protected_self_clearance_target_m": (
+            protected_self_clearance_target_m
+        ),
+        "protected_self_clearance_margin_m": (
+            minimum_protected_self_clearance_m
+            - protected_self_clearance_target_m
+        ),
+        "protected_self_nearest_pair": minimum_protected_self_pair_name,
         "pad_alignment": pad_alignment,
         "pad_alignment_limit": pad_alignment_limit,
         "pad_alignment_margin": pad_alignment - pad_alignment_limit,
@@ -744,6 +865,10 @@ def build_candidate_failure_metrics(
     joint_min_margin_rad: float,
     solver_cost: float,
     solver_nfev: int,
+    self_collision_sample_occurrence_count: int | None = None,
+    minimum_protected_self_clearance_m: float = np.inf,
+    protected_self_clearance_target_m: float = 0.0,
+    minimum_protected_self_pair_name: str = "",
 ) -> dict[str, object]:
     """Build flat, pickle-free metrics for a rejected coarse candidate."""
 
@@ -762,6 +887,11 @@ def build_candidate_failure_metrics(
     normal_margin = normal_tolerance - normal_error
     tangential_margin = tangential_tolerance - tangential_error
     contact_count = int(np.count_nonzero(contact_mask))
+    self_collision_occurrences = (
+        int(self_collision_count)
+        if self_collision_sample_occurrence_count is None
+        else int(self_collision_sample_occurrence_count)
+    )
     collision_ok = bool(
         collision_mode != "full_robot"
         or (
@@ -815,8 +945,19 @@ def build_candidate_failure_metrics(
         "tip_clearance_margin_m": tip_clearance_m - tip_clearance_limit_m,
         "tip_nearest_geometry": tip_nearest_geometry,
         "self_collision_count": self_collision_count,
+        "self_collision_unique_pair_count": self_collision_count,
+        "self_collision_sample_occurrence_count": self_collision_occurrences,
         "self_collision_limit": 0,
         "self_collision_margin": -self_collision_count,
+        "protected_self_clearance_m": minimum_protected_self_clearance_m,
+        "protected_self_clearance_target_m": (
+            protected_self_clearance_target_m
+        ),
+        "protected_self_clearance_margin_m": (
+            minimum_protected_self_clearance_m
+            - protected_self_clearance_target_m
+        ),
+        "protected_self_nearest_pair": minimum_protected_self_pair_name,
         "pad_alignment": pad_alignment,
         "pad_alignment_limit": pad_alignment_limit,
         "pad_alignment_margin": pad_alignment - pad_alignment_limit,

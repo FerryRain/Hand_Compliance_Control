@@ -27,6 +27,7 @@ os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 
 import imageio.v2 as imageio
+import mujoco
 import numpy as np
 import torch
 from scipy.optimize import least_squares
@@ -55,6 +56,7 @@ from mjlab.tasks.leaphand.full_hand_mcc_planner_diagnostics import (
     build_bridge_rejection_metrics,
     build_candidate_failure_metrics,
     build_palm_guide_multistart_specs,
+    central_difference_clearance_gradient,
     evaluate_bridge_conditions,
     evaluate_moving_bridge_motion,
     find_unmarked_low_motion_windows,
@@ -62,9 +64,11 @@ from mjlab.tasks.leaphand.full_hand_mcc_planner_diagnostics import (
     make_bridge_rejection_record,
     moving_bridge_local_residual,
     orientation_aware_candidate_rank,
+    positive_self_clearance_residual,
     save_mpc_failure_prefix,
     save_npz_no_overwrite,
     segment_tip_clearance_status,
+    self_separation_ascent_seeds,
     smooth_pad_alignment_residual,
 )
 from mjlab.tasks.leaphand.leaphand_full_hand_mcc_env_cfg import (
@@ -87,6 +91,12 @@ CAPSULE_RADIUS = FULL_HAND_CAPSULE_RADIUS
 CAPSULE_HALF_HEIGHT = FULL_HAND_CAPSULE_HALF_HEIGHT
 SURFACE_TOTAL_LENGTH = np.pi * CAPSULE_RADIUS + 2.0 * CAPSULE_HALF_HEIGHT
 surface_meridian_curvature = capsule_meridian_curvature
+
+PROTECTED_SELF_PAIR_NAMES = (
+    ("mcp_joint_geom", "dip_geom"),
+    ("mcp_joint_2_geom", "dip_2_geom"),
+    ("mcp_joint_3_geom", "dip_3_geom"),
+)
 
 
 def build_mpc_distance_grid(
@@ -772,6 +782,30 @@ def main() -> None:
         type=float,
         default=18000.0,
         help="Weight of physical-tip penetration beyond the soft inner cap.",
+    )
+    parser.add_argument(
+        "--planner-protected-self-clearance-mm",
+        type=float,
+        default=0.10,
+        help=(
+            "Preferred positive clearance for the three protected "
+            "non-adjacent MCP-to-DIP geometry pairs."
+        ),
+    )
+    parser.add_argument(
+        "--planner-protected-self-clearance-weight",
+        type=float,
+        default=4000.0,
+        help="Weight of the protected MCP-to-DIP clearance barrier.",
+    )
+    parser.add_argument(
+        "--planner-self-separation-seed-step-rad",
+        type=float,
+        default=0.005,
+        help=(
+            "Maximum normalized central-FD ascent nudge used when a "
+            "protected self pair starts below its preferred clearance."
+        ),
     )
     parser.add_argument("--motion-start", type=int, default=1000)
     parser.add_argument("--ik-tolerance-mm", type=float, default=5.0)
@@ -2057,6 +2091,26 @@ def main() -> None:
     ):
         if not np.isfinite(value) or value <= 0.0:
             raise ValueError(f"{option} must be finite and positive")
+    if (
+        not np.isfinite(args.planner_protected_self_clearance_mm)
+        or args.planner_protected_self_clearance_mm < 0.0
+    ):
+        raise ValueError(
+            "--planner-protected-self-clearance-mm must be finite and "
+            "non-negative"
+        )
+    for option, value in (
+        (
+            "--planner-protected-self-clearance-weight",
+            args.planner_protected_self_clearance_weight,
+        ),
+        (
+            "--planner-self-separation-seed-step-rad",
+            args.planner_self_separation_seed_step_rad,
+        ),
+    ):
+        if not np.isfinite(value) or value <= 0.0:
+            raise ValueError(f"{option} must be finite and positive")
     if not 0.0 <= args.palm_surface_frame_gain <= 1.0:
         raise ValueError("--palm-surface-frame-gain must be in [0, 1]")
     if (
@@ -2329,6 +2383,26 @@ def main() -> None:
         max_iterations=args.ik_max_iterations,
         palm_weight=args.palm_ik_weight,
     )
+    protected_self_pairs = tuple(
+        (
+            mujoco.mj_name2id(
+                reachability.model,
+                mujoco.mjtObj.mjOBJ_GEOM,
+                first,
+            ),
+            mujoco.mj_name2id(
+                reachability.model,
+                mujoco.mjtObj.mjOBJ_GEOM,
+                second,
+            ),
+        )
+        for first, second in PROTECTED_SELF_PAIR_NAMES
+    )
+    if any(first < 0 or second < 0 for first, second in protected_self_pairs):
+        raise ValueError("One or more protected MCP-to-DIP geoms are missing")
+    protected_self_pair_labels = tuple(
+        f"{first}::{second}" for first, second in PROTECTED_SELF_PAIR_NAMES
+    )
     target_mocap_idx = int(env.scene["target"].data.indexing.mocap_id)
     dt = float(env_cfg.decimation * env_cfg.sim.mujoco.timestep)
 
@@ -2408,6 +2482,9 @@ def main() -> None:
             self.nearest_planned_hand_geom = ""
             self.min_planned_tip_clearance_m = np.full(4, np.inf)
             self.min_planned_tip_clearance_frame = np.full(4, -1)
+            self.min_planned_protected_self_clearance_m = np.inf
+            self.min_planned_protected_self_clearance_frame = -1
+            self.min_planned_protected_self_pair_name = ""
             self.min_planned_pad_alignment = 1.0
             self.min_runtime_pad_alignment = 1.0
             self.planned_curvature_min_inv_m = 0.0
@@ -2482,6 +2559,9 @@ def main() -> None:
             minimum_pad_alignment = 1.0
             minimum_pad_frame = -1
             minimum_pad_finger = -1
+            minimum_protected_self_clearance = np.inf
+            minimum_protected_self_frame = -1
+            minimum_protected_self_pair_name = ""
             for frame, q in enumerate(joint_plan):
                 (
                     tip_clearances,
@@ -2533,17 +2613,33 @@ def main() -> None:
                 self_pairs, self_distances = (
                     reachability.self_collision_contacts(q)
                 )
-                significant_self_penetration = bool(
-                    len(self_distances)
-                    and float(self_distances.min())
-                    < -args.max_runtime_self_penetration_mm / 1000.0
+                protected_distances = reachability.geometry_pair_distances(
+                    q,
+                    protected_self_pairs,
                 )
-                if significant_self_penetration:
+                protected_index = int(np.argmin(protected_distances))
+                protected_clearance = float(
+                    protected_distances[protected_index]
+                )
+                if protected_clearance < minimum_protected_self_clearance:
+                    minimum_protected_self_clearance = protected_clearance
+                    minimum_protected_self_frame = frame
+                    minimum_protected_self_pair_name = (
+                        protected_self_pair_labels[protected_index]
+                    )
+                if self_pairs:
+                    unique_self_pairs = set(self_pairs)
                     raise RuntimeError(
-                        "Full-robot trajectory contains robot self-collision: "
+                        "Full-robot trajectory contains active robot self "
+                        "contacts: "
                         f"label={label} frame={frame}/{len(joint_plan)} "
-                        f"pairs={len(self_pairs)} deepest_mm="
-                        f"{self_distances.min() * 1000:.3f}"
+                        f"unique_pairs={len(unique_self_pairs)} "
+                        f"sample_occurrences={len(self_pairs)} "
+                        f"deepest_mm={self_distances.min() * 1000:.3f} "
+                        "minimum_protected_clearance_mm="
+                        f"{minimum_protected_self_clearance * 1000:.3f} "
+                        f"nearest_protected_pair="
+                        f"{minimum_protected_self_pair_name}"
                     )
             required_arm = args.min_arm_clearance_mm / 1000.0
             if minimum_arm < required_arm:
@@ -2614,6 +2710,15 @@ def main() -> None:
             self.nearest_planned_hand_geom = nearest_hand
             self.min_planned_tip_clearance_m = minimum_tip.copy()
             self.min_planned_tip_clearance_frame = minimum_tip_frame.copy()
+            self.min_planned_protected_self_clearance_m = float(
+                minimum_protected_self_clearance
+            )
+            self.min_planned_protected_self_clearance_frame = (
+                minimum_protected_self_frame
+            )
+            self.min_planned_protected_self_pair_name = (
+                minimum_protected_self_pair_name
+            )
             self.min_planned_pad_alignment = minimum_pad_alignment
             print(
                 "[FULL-ROBOT-PLAN-CLEARANCE] "
@@ -2632,6 +2737,11 @@ def main() -> None:
                 f"allowed_tip_penetration_mm="
                 f"{args.max_contact_penetration_mm:.3f} "
                 f"tip_frames={minimum_tip_frame.tolist()} "
+                "minimum_protected_self_clearance_mm="
+                f"{minimum_protected_self_clearance * 1000:.3f} "
+                f"protected_self_frame={minimum_protected_self_frame} "
+                f"nearest_protected_self_pair="
+                f"{minimum_protected_self_pair_name} "
                 f"max_pad_angle_deg="
                 f"{np.degrees(np.arccos(np.clip(minimum_pad_alignment, -1, 1))):.2f} "
                 f"planner_limit_deg="
@@ -3683,6 +3793,88 @@ def main() -> None:
             planner_tip_geom_inner_cap_m = (
                 args.planner_tip_geom_inner_cap_mm / 1000.0
             )
+            planner_protected_self_clearance_m = (
+                args.planner_protected_self_clearance_mm / 1000.0
+            )
+
+            def protected_self_clearance_state(
+                q: np.ndarray,
+            ) -> tuple[float, str, np.ndarray]:
+                clearances = reachability.geometry_pair_distances(
+                    q,
+                    protected_self_pairs,
+                )
+                index = int(np.argmin(clearances))
+                return (
+                    float(clearances[index]),
+                    protected_self_pair_labels[index],
+                    clearances,
+                )
+
+            def protected_self_separation_seeds(
+                seed_q: np.ndarray,
+                seed_lower: np.ndarray = lower,
+                seed_upper: np.ndarray = upper,
+            ) -> tuple[np.ndarray, ...]:
+                """Nudge the worst protected pair along its measured ascent."""
+
+                if args.collision_mode != "full_robot":
+                    return ()
+                minimum_clearance, _, clearances = (
+                    protected_self_clearance_state(seed_q)
+                )
+                if minimum_clearance >= planner_protected_self_clearance_m:
+                    return ()
+                worst_pair = int(np.argmin(clearances))
+                fd_step_rad = 1.0e-4
+                plus_distance = np.zeros(TOTAL_DOF, dtype=np.float64)
+                minus_distance = np.zeros(TOTAL_DOF, dtype=np.float64)
+                sample_span = np.zeros(TOTAL_DOF, dtype=np.float64)
+                for joint in range(TOTAL_DOF):
+                    plus_q = seed_q.copy()
+                    minus_q = seed_q.copy()
+                    plus_q[joint] = min(
+                        plus_q[joint] + fd_step_rad,
+                        seed_upper[joint],
+                    )
+                    minus_q[joint] = max(
+                        minus_q[joint] - fd_step_rad,
+                        seed_lower[joint],
+                    )
+                    sample_span[joint] = plus_q[joint] - minus_q[joint]
+                    if sample_span[joint] <= 0.0:
+                        sample_span[joint] = 1.0
+                        plus_distance[joint] = clearances[worst_pair]
+                        minus_distance[joint] = clearances[worst_pair]
+                        continue
+                    plus_distance[joint] = (
+                        reachability.geometry_pair_distances(
+                            plus_q,
+                            protected_self_pairs,
+                        )[worst_pair]
+                    )
+                    minus_distance[joint] = (
+                        reachability.geometry_pair_distances(
+                            minus_q,
+                            protected_self_pairs,
+                        )[worst_pair]
+                    )
+                gradient = central_difference_clearance_gradient(
+                    plus_distance,
+                    minus_distance,
+                    sample_span,
+                )
+                maximum_seed_step = min(
+                    args.planner_self_separation_seed_step_rad,
+                    0.25 * args.max_plan_joint_step_rad,
+                )
+                return self_separation_ascent_seeds(
+                    seed_q,
+                    gradient,
+                    seed_lower,
+                    seed_upper,
+                    maximum_step_rad=maximum_seed_step,
+                )
 
             def contact_state(
                 q: np.ndarray,
@@ -3752,6 +3944,31 @@ def main() -> None:
                     f"{(initial_tip_clearance * 1000).round(3).tolist()} "
                     f"allowed_penetration_mm="
                     f"{args.max_contact_penetration_mm:.3f}",
+                    flush=True,
+                )
+                initial_self_pairs, initial_self_distances = (
+                    reachability.self_collision_contacts(start_q)
+                )
+                (
+                    initial_protected_clearance,
+                    initial_protected_pair_name,
+                    initial_protected_clearances,
+                ) = protected_self_clearance_state(start_q)
+                if initial_self_pairs:
+                    raise RuntimeError(
+                        "Initial grasp contains active robot self contacts: "
+                        f"unique_pairs={len(set(initial_self_pairs))} "
+                        f"sample_occurrences={len(initial_self_pairs)} "
+                        f"deepest_mm={initial_self_distances.min() * 1000:.3f}"
+                    )
+                print(
+                    "[INITIAL-PROTECTED-SELF-AUDIT] "
+                    "clearance_mm="
+                    f"{(initial_protected_clearances * 1000).round(6).tolist()} "
+                    f"minimum_mm={initial_protected_clearance * 1000:.6f} "
+                    f"nearest={initial_protected_pair_name} "
+                    "soft_target_mm="
+                    f"{args.planner_protected_self_clearance_mm:.3f}",
                     flush=True,
                 )
             initial_palm_position, initial_palm_rotation = (
@@ -4970,6 +5187,10 @@ def main() -> None:
                         4,
                         dtype=np.float64,
                     )
+                    protected_self_violation = np.zeros(
+                        len(protected_self_pairs),
+                        dtype=np.float64,
+                    )
                     if args.collision_mode == "full_robot":
                         (
                             tip_geom_clearance,
@@ -5015,6 +5236,17 @@ def main() -> None:
                             - planner_tip_geom_inner_cap_m,
                             0.0,
                         )
+                        protected_self_violation = (
+                            positive_self_clearance_residual(
+                                reachability.geometry_pair_distances(
+                                    q,
+                                    protected_self_pairs,
+                                ),
+                                target_clearance_m=(
+                                    planner_protected_self_clearance_m
+                                ),
+                            )
+                        )
                     pad_alignment = np.einsum(
                         "ij,ij->i",
                         reachability.fingertip_pad_normals(q),
@@ -5052,6 +5284,8 @@ def main() -> None:
                             args.planner_tip_geom_weight * tip_geom_error,
                             args.planner_tip_geom_inner_weight
                             * tip_geom_inner_violation,
+                            args.planner_protected_self_clearance_weight
+                            * protected_self_violation,
                             active_pad_scale * pad_alignment_violation,
                         )
                     )
@@ -5072,6 +5306,9 @@ def main() -> None:
                     float,
                     str,
                     int,
+                    int,
+                    float,
+                    str,
                     float,
                 ]:
                     """Audit distinct arm, hand, tip, self, and pad gates."""
@@ -5085,6 +5322,9 @@ def main() -> None:
                             np.inf,
                             "",
                             0,
+                            0,
+                            planner_protected_self_clearance_m,
+                            "",
                             1.0,
                         )
                     sample_count = max(
@@ -5096,7 +5336,10 @@ def main() -> None:
                     minimum_hand = np.inf
                     nearest_hand = ""
                     sampled_tip_clearances: list[np.ndarray] = []
-                    self_pair_count = 0
+                    active_self_pairs: set[tuple[int, int]] = set()
+                    self_pair_sample_occurrences = 0
+                    minimum_protected_self_clearance = np.inf
+                    minimum_protected_self_pair_name = ""
                     minimum_pad_alignment = 1.0
                     for fraction in np.linspace(
                         0.0,
@@ -5134,11 +5377,26 @@ def main() -> None:
                         sample_self_pairs, sample_self_distances = (
                             reachability.self_collision_contacts(sample_q)
                         )
-                        self_pair_count += sum(
-                            float(distance)
-                            < -args.max_runtime_self_penetration_mm / 1000.0
-                            for distance in sample_self_distances
+                        _ = sample_self_distances
+                        active_self_pairs.update(sample_self_pairs)
+                        self_pair_sample_occurrences += len(
+                            sample_self_pairs
                         )
+                        (
+                            sample_protected_clearance,
+                            sample_protected_pair_name,
+                            _,
+                        ) = protected_self_clearance_state(sample_q)
+                        if (
+                            sample_protected_clearance
+                            < minimum_protected_self_clearance
+                        ):
+                            minimum_protected_self_clearance = (
+                                sample_protected_clearance
+                            )
+                            minimum_protected_self_pair_name = (
+                                sample_protected_pair_name
+                            )
                         _, _, sample_normals, _, _ = contact_state(sample_q)
                         sample_pad_alignment = np.einsum(
                             "ij,ij->i",
@@ -5172,7 +5430,10 @@ def main() -> None:
                         nearest_hand,
                         minimum_tip,
                         nearest_tip,
-                        self_pair_count,
+                        len(active_self_pairs),
+                        self_pair_sample_occurrences,
+                        minimum_protected_self_clearance,
+                        minimum_protected_self_pair_name,
                         minimum_pad_alignment,
                     )
 
@@ -5349,6 +5610,9 @@ def main() -> None:
                     surface_ik_tip_clearance,
                     surface_ik_tip_nearest,
                     surface_ik_self_count,
+                    surface_ik_self_occurrences,
+                    surface_ik_protected_clearance,
+                    surface_ik_protected_pair_name,
                     surface_ik_pad_alignment,
                 ) = segment_collision_status(surface_ik_seed)
                 endpoint_self_pairs, endpoint_self_distances = (
@@ -5379,7 +5643,12 @@ def main() -> None:
                     f"tip_clearance_mm="
                     f"{surface_ik_tip_clearance * 1000:.2f} "
                     f"nearest_tip={surface_ik_tip_nearest or 'none'} "
-                    f"self_collision_pairs={surface_ik_self_count} "
+                    f"self_collision_unique_pairs={surface_ik_self_count} "
+                    "self_collision_sample_occurrences="
+                    f"{surface_ik_self_occurrences} "
+                    "protected_self_clearance_mm="
+                    f"{surface_ik_protected_clearance * 1000:.3f} "
+                    f"protected_self_pair={surface_ik_protected_pair_name} "
                     f"max_pad_angle_deg="
                     f"{np.degrees(np.arccos(np.clip(surface_ik_pad_alignment, -1, 1))):.2f}",
                     f"endpoint_self_pairs={endpoint_self_pair_names} "
@@ -5499,6 +5768,12 @@ def main() -> None:
                                 task_error_score=surface_ik_task_score,
                                 continuity_error=surface_ik_joint_step,
                                 solver_cost=surface_ik_cost,
+                                minimum_protected_self_clearance_m=(
+                                    surface_ik_protected_clearance
+                                ),
+                                soft_self_clearance_target_m=(
+                                    planner_protected_self_clearance_m
+                                ),
                             ),
                             SimpleNamespace(
                                 x=surface_ik_seed,
@@ -5552,6 +5827,9 @@ def main() -> None:
                     rigid_tip_clearance,
                     _,
                     rigid_self_collision_count,
+                    rigid_self_occurrences,
+                    rigid_protected_clearance,
+                    rigid_protected_pair_name,
                     rigid_pad_alignment,
                 ) = segment_collision_status(rigid_arm_seed)
                 rigid_collision_safe = bool(
@@ -5606,6 +5884,12 @@ def main() -> None:
                                 task_error_score=rigid_task_score,
                                 continuity_error=rigid_joint_step,
                                 solver_cost=0.0,
+                                minimum_protected_self_clearance_m=(
+                                    rigid_protected_clearance
+                                ),
+                                soft_self_clearance_target_m=(
+                                    planner_protected_self_clearance_m
+                                ),
                             ),
                             SimpleNamespace(
                                 x=rigid_arm_seed,
@@ -5636,8 +5920,13 @@ def main() -> None:
                         f"{rigid_hand_clearance * 1000:.2f} "
                         f"tip_clearance_mm="
                         f"{rigid_tip_clearance * 1000:.2f} "
-                        f"self_collision_pairs="
-                        f"{rigid_self_collision_count}",
+                        f"self_collision_unique_pairs="
+                        f"{rigid_self_collision_count} "
+                        "self_collision_sample_occurrences="
+                        f"{rigid_self_occurrences} "
+                        "protected_self_clearance_mm="
+                        f"{rigid_protected_clearance * 1000:.3f} "
+                        f"protected_self_pair={rigid_protected_pair_name}",
                         flush=True,
                     )
                 local_seed_specs = [
@@ -5739,6 +6028,87 @@ def main() -> None:
                         4.0 * args.planner_soft_pad_weight,
                     ),
                 ]
+                seen_self_separation_seeds: list[np.ndarray] = []
+                for separation_source, separation_base in (
+                    ("surface", surface_ik_seed),
+                    ("extrapolated", extrapolated_seed),
+                    ("previous", previous_q),
+                ):
+                    separation_lower = np.maximum(
+                        lower,
+                        previous_q - args.max_plan_joint_step_rad,
+                    )
+                    separation_upper = np.minimum(
+                        upper,
+                        previous_q + args.max_plan_joint_step_rad,
+                    )
+                    bounded_separation_base = np.clip(
+                        separation_base,
+                        separation_lower,
+                        separation_upper,
+                    )
+                    source_clearance, source_pair_name, _ = (
+                        protected_self_clearance_state(
+                            bounded_separation_base
+                        )
+                    )
+                    for separation_index, separation_seed in enumerate(
+                        protected_self_separation_seeds(
+                            bounded_separation_base,
+                            separation_lower,
+                            separation_upper,
+                        )
+                    ):
+                        if any(
+                            np.allclose(
+                                separation_seed,
+                                old_seed,
+                                atol=1.0e-12,
+                                rtol=0.0,
+                            )
+                            for old_seed in seen_self_separation_seeds
+                        ):
+                            continue
+                        seen_self_separation_seeds.append(separation_seed)
+                        seed_clearance, _, _ = (
+                            protected_self_clearance_state(separation_seed)
+                        )
+                        separation_kind = (
+                            f"self_separation_{separation_source}_"
+                            f"{separation_index}"
+                        )
+                        local_seed_specs.append(
+                            (
+                                f"task_{separation_kind}",
+                                separation_seed,
+                                0.0001,
+                                48.0,
+                                48.0,
+                                args.planner_soft_pad_weight,
+                            )
+                        )
+                        orientation_posture_seed_specs.append(
+                            (
+                                f"orientation_posture_{separation_kind}",
+                                separation_seed,
+                                0.0001,
+                                48.0,
+                                48.0,
+                                4.0 * args.planner_soft_pad_weight,
+                            )
+                        )
+                        print(
+                            "[SELF-SEPARATION-SEED] "
+                            f"keyframe={keyframe}/{keyframe_count} "
+                            f"source={separation_source} "
+                            f"index={separation_index} "
+                            f"pair={source_pair_name} "
+                            "source_clearance_mm="
+                            f"{source_clearance * 1000:.6f} "
+                            f"seed_clearance_mm="
+                            f"{seed_clearance * 1000:.6f}",
+                            flush=True,
+                        )
                 local_seed_specs.extend(orientation_posture_seed_specs)
                 for (
                     candidate_kind,
@@ -5933,6 +6303,9 @@ def main() -> None:
                         )
                     candidate_pad_alignment = 1.0
                     candidate_tip_clearance = np.inf
+                    candidate_protected_clearance = (
+                        planner_protected_self_clearance_m
+                    )
                     if args.collision_mode == "full_robot":
                         (
                             arm_clearance,
@@ -5942,6 +6315,9 @@ def main() -> None:
                             candidate_tip_clearance,
                             _,
                             candidate_self_count,
+                            _,
+                            candidate_protected_clearance,
+                            _,
                             candidate_pad_alignment,
                         ) = segment_collision_status(result.x)
                         arm_clearance_violation = max(
@@ -6002,6 +6378,12 @@ def main() -> None:
                                 task_error_score=candidate_task_score,
                                 continuity_error=candidate_joint_step,
                                 solver_cost=float(result.cost),
+                                minimum_protected_self_clearance_m=(
+                                    candidate_protected_clearance
+                                ),
+                                soft_self_clearance_target_m=(
+                                    planner_protected_self_clearance_m
+                                ),
                             ),
                             result,
                             progress_error,
@@ -6038,6 +6420,9 @@ def main() -> None:
                         preliminary_tip_clearance,
                         _,
                         preliminary_self_count,
+                        _,
+                        _,
+                        _,
                         preliminary_pad_alignment,
                     ) = segment_collision_status(best.x)
                 (
@@ -6309,6 +6694,9 @@ def main() -> None:
                             )
                         repaired_pad_alignment = 1.0
                         repaired_tip_clearance = np.inf
+                        repaired_protected_clearance = (
+                            planner_protected_self_clearance_m
+                        )
                         if args.collision_mode == "full_robot":
                             (
                                 arm_clearance,
@@ -6318,6 +6706,9 @@ def main() -> None:
                                 repaired_tip_clearance,
                                 _,
                                 repaired_self_count,
+                                _,
+                                repaired_protected_clearance,
+                                _,
                                 repaired_pad_alignment,
                             ) = segment_collision_status(repaired.x)
                             arm_clearance_violation = max(
@@ -6385,6 +6776,12 @@ def main() -> None:
                                     ),
                                     continuity_error=repaired_joint_step,
                                     solver_cost=float(repaired.cost),
+                                    minimum_protected_self_clearance_m=(
+                                        repaired_protected_clearance
+                                    ),
+                                    soft_self_clearance_target_m=(
+                                        planner_protected_self_clearance_m
+                                    ),
                                 ),
                                 repaired,
                                 repaired_progress_error,
@@ -6443,6 +6840,9 @@ def main() -> None:
                         pre_rephase_tip_clearance,
                         _,
                         pre_rephase_self_count,
+                        _,
+                        _,
+                        _,
                         pre_rephase_pad_alignment,
                     ) = segment_collision_status(best.x)
                     pre_rephase_collision_ok = bool(
@@ -6572,6 +6972,7 @@ def main() -> None:
                         offset_norm_m: float,
                         progress_error_m: float,
                         solver_cost: float,
+                        minimum_protected_self_clearance_m: float,
                     ) -> tuple[float, ...]:
                         """Rank hard-feasible fallback states by pad first."""
 
@@ -6586,6 +6987,12 @@ def main() -> None:
                             task_error_score=offset_norm_m,
                             continuity_error=progress_error_m,
                             solver_cost=solver_cost,
+                            minimum_protected_self_clearance_m=(
+                                minimum_protected_self_clearance_m
+                            ),
+                            soft_self_clearance_target_m=(
+                                planner_protected_self_clearance_m
+                            ),
                         )
 
                     # Before launching another non-convex least-squares solve,
@@ -6694,6 +7101,9 @@ def main() -> None:
                     )
                     bridge_collision_ok = True
                     bridge_pad_alignment = 1.0
+                    bridge_protected_clearance = (
+                        planner_protected_self_clearance_m
+                    )
                     if args.collision_mode == "full_robot":
                         (
                             bridge_arm_clearance,
@@ -6703,6 +7113,9 @@ def main() -> None:
                             bridge_tip_clearance,
                             _,
                             bridge_self_count,
+                            _,
+                            bridge_protected_clearance,
+                            _,
                             bridge_pad_alignment,
                         ) = segment_collision_status(previous_q)
                         bridge_collision_ok = bool(
@@ -6811,6 +7224,9 @@ def main() -> None:
                                     static_progress_error_m
                                 ),
                                 solver_cost=0.0,
+                                minimum_protected_self_clearance_m=(
+                                    bridge_protected_clearance
+                                ),
                             ),
                             static_offset_norm_m,
                             static_progress_error_m,
@@ -6925,6 +7341,9 @@ def main() -> None:
                                     )
                                     rephased_collision_ok = True
                                     rephased_pad_alignment = 1.0
+                                    rephased_protected_clearance = (
+                                        planner_protected_self_clearance_m
+                                    )
                                     if args.collision_mode == "full_robot":
                                         (
                                             rephased_arm_clearance,
@@ -6934,6 +7353,9 @@ def main() -> None:
                                             rephased_tip_clearance,
                                             _,
                                             rephased_self_count,
+                                            _,
+                                            rephased_protected_clearance,
+                                            _,
                                             rephased_pad_alignment,
                                         ) = segment_collision_status(
                                             rephased.x
@@ -7008,6 +7430,9 @@ def main() -> None:
                                                 solver_cost=float(
                                                     rephased.cost
                                                 ),
+                                                minimum_protected_self_clearance_m=(
+                                                    rephased_protected_clearance
+                                                ),
                                             ),
                                             rephased_offset_norm_m,
                                             rephased_progress_max_m,
@@ -7060,7 +7485,7 @@ def main() -> None:
                             q: np.ndarray,
                         ) -> np.ndarray:
                             _, _, _, moving_arc, moving_aux = contact_state(q)
-                            return moving_bridge_local_residual(
+                            bridge_base_residual = moving_bridge_local_residual(
                                 arc_m=moving_arc[1:],
                                 target_arc_m=moving_bridge_target_arc,
                                 standoff_m=moving_aux[1:, 1],
@@ -7078,13 +7503,51 @@ def main() -> None:
                                     args.mpc_feasibility_bridge_target_weight
                                 ),
                             )
+                            bridge_self_residual = np.zeros(
+                                len(protected_self_pairs),
+                                dtype=np.float64,
+                            )
+                            if args.collision_mode == "full_robot":
+                                bridge_self_residual = (
+                                    positive_self_clearance_residual(
+                                        reachability.geometry_pair_distances(
+                                            q,
+                                            protected_self_pairs,
+                                        ),
+                                        target_clearance_m=(
+                                            planner_protected_self_clearance_m
+                                        ),
+                                    )
+                                )
+                            return np.concatenate(
+                                (
+                                    bridge_base_residual,
+                                    args.planner_protected_self_clearance_weight
+                                    * bridge_self_residual,
+                                )
+                            )
 
+                        moving_bridge_seed = np.minimum(
+                            np.maximum(previous_q, bridge_lower),
+                            bridge_upper,
+                        )
+                        moving_separation_seeds = (
+                            protected_self_separation_seeds(
+                                moving_bridge_seed,
+                                bridge_lower,
+                                bridge_upper,
+                            )
+                        )
+                        if moving_separation_seeds:
+                            moving_bridge_seed = max(
+                                moving_separation_seeds,
+                                key=lambda seed: (
+                                    protected_self_clearance_state(seed)[0]
+                                ),
+                            )
                         moving_bridge = least_squares(
                             moving_bridge_residual,
-                            np.minimum(
-                                np.maximum(previous_q, bridge_lower),
-                                bridge_upper,
-                            ),
+                            moving_bridge_seed,
                             bounds=(bridge_lower, bridge_upper),
                             max_nfev=args.mpc_max_nfev,
                             xtol=1.0e-10,
@@ -7151,6 +7614,11 @@ def main() -> None:
                         moving_bridge_hand_clearance = np.inf
                         moving_bridge_tip_clearance = np.inf
                         moving_bridge_self_count = 0
+                        moving_bridge_self_occurrences = 0
+                        moving_bridge_protected_clearance = (
+                            planner_protected_self_clearance_m
+                        )
+                        moving_bridge_protected_pair_name = ""
                         moving_bridge_pad_alignment = 1.0
                         if args.collision_mode == "full_robot":
                             (
@@ -7161,6 +7629,9 @@ def main() -> None:
                                 moving_bridge_tip_clearance,
                                 _,
                                 moving_bridge_self_count,
+                                moving_bridge_self_occurrences,
+                                moving_bridge_protected_clearance,
+                                moving_bridge_protected_pair_name,
                                 moving_bridge_pad_alignment,
                             ) = segment_collision_status(moving_bridge.x)
                             moving_bridge_collision_ok = bool(
@@ -7344,6 +7815,18 @@ def main() -> None:
                                 self_collision_count=(
                                     moving_bridge_self_count
                                 ),
+                                self_collision_sample_occurrence_count=(
+                                    moving_bridge_self_occurrences
+                                ),
+                                minimum_protected_self_clearance_m=(
+                                    moving_bridge_protected_clearance
+                                ),
+                                protected_self_clearance_target_m=(
+                                    planner_protected_self_clearance_m
+                                ),
+                                minimum_protected_self_pair_name=(
+                                    moving_bridge_protected_pair_name
+                                ),
                                 pad_alignment=(
                                     moving_bridge_pad_alignment
                                 ),
@@ -7439,6 +7922,9 @@ def main() -> None:
                             offset_norm_m=moving_offset_norm_m,
                             progress_error_m=moving_progress_max_m,
                             solver_cost=float(moving_bridge.cost),
+                            minimum_protected_self_clearance_m=(
+                                moving_bridge_protected_clearance
+                            ),
                         )
                         if moving_bridge_hard_ok:
                             accepted_rephase_candidates.append(
@@ -7636,6 +8122,11 @@ def main() -> None:
                 best_tip_clearance = np.inf
                 best_tip_nearest = ""
                 best_self_count = 0
+                best_self_occurrences = 0
+                best_protected_self_clearance = (
+                    planner_protected_self_clearance_m
+                )
+                best_protected_self_pair_name = ""
                 best_pad_alignment = 1.0
                 if args.collision_mode == "full_robot":
                     (
@@ -7646,6 +8137,9 @@ def main() -> None:
                         best_tip_clearance,
                         best_tip_nearest,
                         best_self_count,
+                        best_self_occurrences,
+                        best_protected_self_clearance,
+                        best_protected_self_pair_name,
                         best_pad_alignment,
                     ) = segment_collision_status(best.x)
                 arm_clearance_limit_m = (
@@ -7696,6 +8190,18 @@ def main() -> None:
                         tip_clearance_limit_m=tip_clearance_limit_m,
                         tip_nearest_geometry=best_tip_nearest,
                         self_collision_count=best_self_count,
+                        self_collision_sample_occurrence_count=(
+                            best_self_occurrences
+                        ),
+                        minimum_protected_self_clearance_m=(
+                            best_protected_self_clearance
+                        ),
+                        protected_self_clearance_target_m=(
+                            planner_protected_self_clearance_m
+                        ),
+                        minimum_protected_self_pair_name=(
+                            best_protected_self_pair_name
+                        ),
                         pad_alignment=best_pad_alignment,
                         pad_alignment_limit=planner_pad_alignment,
                         joint_min_margin_rad=best_joint_margin_rad,
@@ -7898,7 +8404,14 @@ def main() -> None:
                             "allowed_tip_penetration_mm="
                             f"{args.max_contact_penetration_mm:.3f} "
                             f"nearest_tip={best_tip_nearest} "
-                            f"self_collision_pairs={best_self_count} "
+                            "self_collision_unique_pairs="
+                            f"{best_self_count} "
+                            "self_collision_sample_occurrences="
+                            f"{best_self_occurrences} "
+                            "protected_self_clearance_mm="
+                            f"{best_protected_self_clearance * 1000:.6f} "
+                            f"protected_self_pair="
+                            f"{best_protected_self_pair_name} "
                             "max_pad_angle_deg="
                             f"{np.degrees(np.arccos(np.clip(best_pad_alignment, -1, 1))):.2f} "
                             "planner_limit_deg="
@@ -8591,11 +9104,33 @@ def main() -> None:
                 planner_tip_geom_inner_weight=np.asarray(
                     args.planner_tip_geom_inner_weight
                 ),
+                planner_protected_self_clearance_mm=np.asarray(
+                    args.planner_protected_self_clearance_mm
+                ),
+                planner_protected_self_clearance_weight=np.asarray(
+                    args.planner_protected_self_clearance_weight
+                ),
+                planner_self_separation_seed_step_rad=np.asarray(
+                    args.planner_self_separation_seed_step_rad
+                ),
+                planner_protected_self_pair_names=np.asarray(
+                    protected_self_pair_labels,
+                    dtype=np.str_,
+                ),
                 planned_tip_geom_minimum_clearance_m=(
                     self.min_planned_tip_clearance_m
                 ),
                 planned_tip_geom_minimum_clearance_frame=(
                     self.min_planned_tip_clearance_frame
+                ),
+                planned_protected_self_minimum_clearance_m=np.asarray(
+                    self.min_planned_protected_self_clearance_m
+                ),
+                planned_protected_self_minimum_clearance_frame=np.asarray(
+                    self.min_planned_protected_self_clearance_frame
+                ),
+                planned_protected_self_nearest_pair=np.asarray(
+                    self.min_planned_protected_self_pair_name
                 ),
                 max_incidental_hand_contact_force_n=np.asarray(
                     args.max_incidental_hand_contact_force_n

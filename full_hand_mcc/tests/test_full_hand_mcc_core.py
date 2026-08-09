@@ -67,6 +67,7 @@ class PlannerDiagnosticsTest(unittest.TestCase):
         *,
         hard_feasible: bool = True,
         task_error: float = 0.0,
+        self_clearance_mm: float = 0.2,
     ) -> tuple[float, ...]:
         return DIAGNOSTICS.orientation_aware_candidate_rank(
             hard_feasible=hard_feasible,
@@ -77,7 +78,58 @@ class PlannerDiagnosticsTest(unittest.TestCase):
             task_error_score=task_error,
             continuity_error=0.0,
             solver_cost=0.0,
+            minimum_protected_self_clearance_m=(
+                self_clearance_mm / 1000.0
+            ),
+            soft_self_clearance_target_m=0.1 / 1000.0,
         )
+
+    def test_positive_self_clearance_residual_is_one_sided(self) -> None:
+        residual = DIAGNOSTICS.positive_self_clearance_residual(
+            np.asarray([-0.00002, 0.00004, 0.00020]),
+            target_clearance_m=0.00010,
+        )
+        np.testing.assert_allclose(
+            residual,
+            np.asarray([0.00012, 0.00006, 0.0]),
+        )
+
+    def test_central_fd_self_separation_seeds_follow_clearance_ascent(
+        self,
+    ) -> None:
+        plus = np.asarray([0.3, -0.1, 0.2]) * 2.0e-4
+        minus = -plus
+        gradient = DIAGNOSTICS.central_difference_clearance_gradient(
+            plus,
+            minus,
+            np.full(3, 2.0e-4),
+        )
+        np.testing.assert_allclose(gradient, np.asarray([0.6, -0.2, 0.4]))
+        seeds = DIAGNOSTICS.self_separation_ascent_seeds(
+            np.zeros(3),
+            gradient,
+            np.full(3, -1.0),
+            np.full(3, 1.0),
+            maximum_step_rad=0.005,
+        )
+        self.assertEqual(len(seeds), 2)
+        self.assertAlmostEqual(float(np.linalg.norm(seeds[0])), 0.002)
+        self.assertAlmostEqual(float(np.linalg.norm(seeds[1])), 0.005)
+        self.assertGreater(float(np.dot(seeds[0], gradient)), 0.0)
+        self.assertGreater(float(np.dot(seeds[1], gradient)), 0.0)
+
+    def test_soft_self_clearance_precedes_pad_and_task_rank(self) -> None:
+        near_contact_20_deg = self._candidate_rank(
+            20.0,
+            task_error=0.0,
+            self_clearance_mm=0.01,
+        )
+        separated_34_deg = self._candidate_rank(
+            34.0,
+            task_error=1000.0,
+            self_clearance_mm=0.11,
+        )
+        self.assertLess(separated_34_deg, near_contact_20_deg)
 
     def test_soft_pad_residual_has_gradient_before_hard_cone(self) -> None:
         target = float(np.cos(np.deg2rad(35.0)))
@@ -1108,6 +1160,10 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
         self.assertIn("reachability.geometry_group_clearances", segment)
         self.assertIn("segment_tip_clearance_status", segment)
         self.assertIn("args.max_contact_penetration_mm", segment)
+        self.assertIn("active_self_pairs.update(sample_self_pairs)", segment)
+        self.assertIn("self_pair_sample_occurrences", segment)
+        self.assertIn("minimum_protected_self_clearance", segment)
+        self.assertNotIn("max_runtime_self_penetration_mm", segment)
 
     def test_level2_runner_freezes_both_planner_cones_at_40_degrees(
         self,
@@ -1142,6 +1198,18 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             '"--planner-tip-geom-inner-weight", "18000"',
             source,
         )
+        self.assertIn(
+            '"--planner-protected-self-clearance-mm", "0.10"',
+            source,
+        )
+        self.assertIn(
+            '"--planner-protected-self-clearance-weight", "4000"',
+            source,
+        )
+        self.assertIn(
+            '"--planner-self-separation-seed-step-rad", "0.005"',
+            source,
+        )
 
     def test_physical_tip_objective_and_full_plan_audit_are_distinct(
         self,
@@ -1156,6 +1224,9 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             "planner_tip_geom_inner_cap_m",
             "args.planner_tip_geom_weight * tip_geom_error",
             "args.planner_tip_geom_inner_weight",
+            "positive_self_clearance_residual",
+            "args.planner_protected_self_clearance_weight",
+            "protected_self_pairs",
         ):
             self.assertIn(required_term, residual)
         audit_start = source.index(
@@ -1173,7 +1244,34 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             audit,
         )
         self.assertIn("planner_limit_deg=", audit)
+        self.assertIn("if self_pairs:", audit)
+        self.assertIn("minimum_protected_self_clearance", audit)
         self.assertIn("[INITIAL-PHYSICAL-TIP-AUDIT]", source)
+        self.assertIn("[INITIAL-PROTECTED-SELF-AUDIT]", source)
+
+    def test_protected_self_separation_multistart_is_triggered_and_ranked(
+        self,
+    ) -> None:
+        source = DEMO_PATH.read_text(encoding="utf-8")
+        planner_start = source.index("def _build_adaptive_surface_mpc_plan")
+        planner = source[planner_start:]
+        self.assertIn("PROTECTED_SELF_PAIR_NAMES", source)
+        for required in (
+            "protected_self_clearance_state",
+            "protected_self_separation_seeds",
+            "central_difference_clearance_gradient",
+            "self_separation_ascent_seeds",
+            '("surface", surface_ik_seed)',
+            '("extrapolated", extrapolated_seed)',
+            '("previous", previous_q)',
+            "previous_q - args.max_plan_joint_step_rad",
+            "previous_q + args.max_plan_joint_step_rad",
+            'f"task_{separation_kind}"',
+            'f"orientation_posture_{separation_kind}"',
+            "minimum_protected_self_clearance_m=",
+            "soft_self_clearance_target_m=",
+        ):
+            self.assertIn(required, planner)
 
     def test_dynamic_refinement_uses_a_mutable_keyframe_loop(self) -> None:
         tree = ast.parse(DEMO_PATH.read_text(encoding="utf-8"))
@@ -1283,11 +1381,19 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             moving_residual_start:moving_residual_end
         ]
         self.assertIn(
-            "return moving_bridge_local_residual(",
+            "bridge_base_residual = moving_bridge_local_residual(",
             moving_residual_source,
         )
-        self.assertNotIn("return np.concatenate", moving_residual_source)
-        self.assertNotIn("bridge_base_residual", source)
+        self.assertIn("return np.concatenate", moving_residual_source)
+        self.assertIn(
+            "args.planner_protected_self_clearance_weight",
+            moving_residual_source,
+        )
+        self.assertIn(
+            "positive_self_clearance_residual",
+            moving_residual_source,
+        )
+        self.assertIn("moving_separation_seeds", source)
         self.assertNotIn("progress_target_arc", source)
         self.assertNotIn("palm_target", moving_residual_source)
         self.assertNotIn("desired_azimuth", moving_residual_source)
@@ -1341,6 +1447,10 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             '"joint_min_margin_rad"',
             '"recovery_dwell_margin_m"',
             '"recovery_total_margin_m"',
+            '"self_collision_unique_pair_count"',
+            '"self_collision_sample_occurrence_count"',
+            '"protected_self_clearance_margin_m"',
+            '"protected_self_nearest_pair"',
         ):
             self.assertIn(required_metric, diagnostics_source)
         for explicit_snapshot_field in (

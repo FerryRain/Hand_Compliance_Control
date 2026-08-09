@@ -1955,3 +1955,67 @@ protected self pairs 提供正向 avoidance gradient，优化器只能在末端 
 发现越界。**下一步：**对全部 3 个 protected pairs 加 positive-distance barrier，
 覆盖 ordinary、repair、rephase 与 moving 候选路径；继续冻结 `-0.010 mm` hard
 gate，并用 segment interpolation 作为最终判据。
+
+### `bea312e` 后 protected-self positive barrier 实施检查点（2026-08-10）
+
+该阶段以已提交的 `bea312e docs: record protected self-collision failure` 为基线；
+当前实现仍是尚未提交的 4-file WIP：
+
+- `full_hand_mcc/scripts/demo_surface_slide.py`；
+- `full_hand_mcc/scripts/run_baseline2_capsule_level2.ps1`；
+- `full_hand_mcc/tests/test_full_hand_mcc_core.py`；
+- `src/mjlab/tasks/leaphand/full_hand_mcc_planner_diagnostics.py`。
+
+#### 已实施的优化与硬审计接线
+
+3 个 initial protected MCP↔DIP pairs 统一使用 preferred positive clearance=
+`0.10 mm`、residual weight=`4000`。one-sided barrier 已进入 common 23-DoF residual，
+因此 ordinary、orientation/posture、repair 与 rephase candidates 都对真实 MuJoCo
+geom-pair distance 获得正向梯度；moving 12D local residual 也在原 bridge residual
+后 append 同一 barrier，不再只依赖事后 collision hard audit。
+
+当 seed 小于 soft target 时，会对最差 protected pair 用 central finite difference
+测量 clearance gradient，并生成归一化 ascent seeds：`0.002 rad` 与 `0.005 rad`
+两档。seed 同时 clip 到 joint lower/upper bounds；在线 maximum seed step 还取
+`min(0.005 rad, 0.25 × max_plan_joint_step)`，所以不会绕过当前逐关节 max-step
+约束。ordinary/posture multistart 与 moving bridge 均已接入这些 separation seeds。
+
+candidate rank 的词典序现在是：hard feasibility → protected self soft-clearance →
+soft pad cone → task/continuity/cost。因此一个接近 self-contact 的低 task-error 候选
+不能再压过具有正间隙、但 pad/task 略差的候选。segment planner audit 与最终
+full-plan audit 都要求 active self contacts=`0`；runtime dynamics 的原有
+`max_runtime_self_penetration_mm=0.01` 仍保留，未用 planner 修复偷改运行期限制。
+
+诊断语义也已纠正：`self_collision_unique_pair_count` 记录唯一 geom pairs，
+`self_collision_sample_occurrence_count` 记录跨 interpolation samples 的 occurrences；
+同时保存 nearest protected pair、minimum clearance 和相对 soft target 的 margin。
+runner 冻结并传入：
+
+- `--planner-protected-self-clearance-mm 0.10`；
+- `--planner-protected-self-clearance-weight 4000`；
+- `--planner-self-separation-seed-step-rad 0.005`。
+
+failure/bridge 与成功 plan NPZ 继续写入上述参数、3 个 pair names，以及 planned
+minimum protected clearance/frame/pair，便于下一次失败直接区分“哪个 pair”和
+“多少 sample occurrences”，不再复用含混的单一 count。
+
+#### 当前验证边界
+
+本地验证已通过 `79/79` 单元回归、CLI、Python AST、PowerShell AST 与
+`git diff --check`；独立 review 未发现 P0/P1。CPU 实模探针解析出的 protected
+geom IDs 为 `(9,11)`、`(13,15)`、`(17,19)`，与预期三指 pair 一致。在上一轮已知
+ring-pair 临界 seed 上，第三对从 `-0.009723 mm` 经两档 FD ascent seed 分别提升到
+`+0.001208 mm` 与 `+0.017628 mm`，证明梯度符号和 seed 方向在该真实模型状态上
+正确。
+
+但这仍不是 GPU 或全 planner 集成通过。独立 review 保留一个 P2：自动测试主要覆盖
+纯函数和 source wiring，尚没有在真实 MuJoCo planner 调用链中验证 residual、seed、
+rank、segment/full-plan audit 的端到端组合。另一个明确未完成项是 dynamically
+discovered outer retry：当前只主动优化 3 个已知 protected pairs；若 GPU 路径出现
+新的、未列入 protected set 的 active self pair，末端 hard audit 会安全拒绝，但尚无
+“发现该 pair→扩展 barrier→从外层重试”的恢复机制。
+
+本检查点尚未运行 GPU，没有新的 0--50 mm plan、dynamics、audit 或视频，Level 2
+仍为 **NOT PASS**。**正在执行：**提交并 push 该 WIP 后，按完全相同的 Acceptance
+seed 42、0--50 mm headless 配置重跑；仍以 active self contacts=`0` 的 planner hard
+audit 终审，不用排除 pair、放宽 self 门或 runtime `0.01 mm` 限制掩盖失败。

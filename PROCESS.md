@@ -1225,3 +1225,20 @@ occurrences，并非 18/17 个不同 pairs。上一 accepted endpoint 距离为
 正是 initial protected 第三对，初始距离=`+0.67277 mm`，不能当作天然相邻碰撞而
 排除。**下一步：**为全部 3 个 protected pairs 加 positive barrier，并覆盖 ordinary/
 repair/rephase/moving 路径；`-0.010 mm` hard gate 保持不变。
+
+### `bea312e` 后 protected-self 修复实施检查点（2026-08-10）
+
+当前 4-file WIP 已把 3 个 protected MCP↔DIP pairs 接入 `0.10 mm × 4000`
+positive-clearance residual：common residual 覆盖 ordinary/posture/repair/rephase，
+moving residual 也单独追加；central-FD 会生成 `0.002/0.005 rad` separation seeds，
+并服从 joint limits 与当前 max-step bounds。候选排序把 self-clearance 放在 pad/task
+之前；segment 与 full-plan planner audit 要求 active self contacts=`0`，runtime dynamics
+原有 `0.01 mm` 限制仍保留。failure/bridge metrics 已区分 unique pairs 和 sample
+occurrences，runner 与 NPZ 也保存新的 target/weight/seed-step/pair/clearance 字段。
+
+本地 `79/79`、CLI、Python/PowerShell AST 与 `git diff --check` 已通过；独立 review
+无 P0/P1。P2 残余是尚缺真实 MuJoCo wiring 集成测试。CPU 探针确认 pair IDs 为
+`(9,11)/(13,15)/(17,19)`，并在已知失败 seed 上把第三对从 `-0.009723 mm`
+提高至 `+0.001208/+0.017628 mm`。尚未实现运行时发现未知 pair 后的 outer retry，
+且 GPU 尚未重跑，所以 Level 2 仍为 **NOT PASS**。**正在执行：**提交并 push 后，
+用完全相同的 Acceptance seed 42、0--50 mm 配置重跑；不放宽 self hard gate。
