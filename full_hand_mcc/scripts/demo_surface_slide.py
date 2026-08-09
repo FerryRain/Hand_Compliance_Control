@@ -57,12 +57,15 @@ from mjlab.tasks.leaphand.full_hand_mcc_planner_diagnostics import (
     build_candidate_failure_metrics,
     build_palm_guide_multistart_specs,
     central_difference_clearance_gradient,
+    deduplicated_bridge_multistart_seeds,
     evaluate_bridge_conditions,
     evaluate_moving_bridge_motion,
     find_unmarked_low_motion_windows,
     format_bridge_rejection_record,
     make_bridge_rejection_record,
+    moving_bridge_candidate_rank,
     moving_bridge_local_residual,
+    moving_bridge_tip_geometry_residual,
     orientation_aware_candidate_rank,
     positive_self_clearance_residual,
     save_mpc_failure_prefix,
@@ -907,6 +910,16 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--mpc-feasibility-bridge-tip-target-scale",
+        type=float,
+        default=0.5,
+        help=(
+            "Scale applied to the ordinary physical-tip target residual "
+            "inside each moving feasibility-bridge solve. The immutable "
+            "physical-tip penetration gate is unchanged."
+        ),
+    )
+    parser.add_argument(
         "--mpc-static-bridge-max-dwell-mm",
         type=float,
         default=1.50,
@@ -1740,6 +1753,14 @@ def main() -> None:
     if args.mpc_feasibility_bridge_target_weight <= 0.0:
         raise ValueError(
             "--mpc-feasibility-bridge-target-weight must be positive"
+        )
+    if (
+        not np.isfinite(args.mpc_feasibility_bridge_tip_target_scale)
+        or args.mpc_feasibility_bridge_tip_target_scale < 0.0
+    ):
+        raise ValueError(
+            "--mpc-feasibility-bridge-tip-target-scale must be finite and "
+            "non-negative"
         )
     if args.mpc_static_bridge_max_dwell_mm < 0.0:
         raise ValueError("--mpc-static-bridge-max-dwell-mm cannot be negative")
@@ -4088,6 +4109,9 @@ def main() -> None:
                     ),
                     "feasibility_bridge_rephase_max_m": (
                         args.mpc_feasibility_bridge_max_mm / 1000.0
+                    ),
+                    "feasibility_bridge_tip_target_scale": (
+                        args.mpc_feasibility_bridge_tip_target_scale
                     ),
                     "static_bridge_dwell_m": float(
                         coarse_static_bridge_dwell_m[previous_index]
@@ -7519,12 +7543,282 @@ def main() -> None:
                                         ),
                                     )
                                 )
+                            bridge_tip_residual = np.zeros(
+                                8,
+                                dtype=np.float64,
+                            )
+                            if args.collision_mode == "full_robot":
+                                bridge_tip_clearance = (
+                                    reachability.geometry_group_clearances(
+                                        q,
+                                        center,
+                                        rotation,
+                                    )[0]
+                                )
+                                bridge_tip_residual = (
+                                    moving_bridge_tip_geometry_residual(
+                                        bridge_tip_clearance,
+                                        planner_tip_geom_target_m,
+                                        inner_cap_m=(
+                                            planner_tip_geom_inner_cap_m
+                                        ),
+                                        target_weight=(
+                                            args.planner_tip_geom_weight
+                                        ),
+                                        target_scale=(
+                                            args.mpc_feasibility_bridge_tip_target_scale
+                                        ),
+                                        inner_weight=(
+                                            args.planner_tip_geom_inner_weight
+                                        ),
+                                    )
+                                )
                             return np.concatenate(
                                 (
                                     bridge_base_residual,
                                     args.planner_protected_self_clearance_weight
                                     * bridge_self_residual,
+                                    bridge_tip_residual,
                                 )
+                            )
+
+                        def moving_bridge_multistart_rank(
+                            candidate: object,
+                        ) -> tuple[float, ...]:
+                            """Run every immutable hard gate for one seed."""
+
+                            (
+                                candidate_points,
+                                _,
+                                _,
+                                candidate_arc,
+                                candidate_aux,
+                            ) = contact_state(candidate.x)
+                            candidate_progress_error = np.abs(
+                                direction
+                                * (candidate_arc - bridge_desired_arc)
+                            )
+                            candidate_progress_error[0] = 0.0
+                            candidate_normal_error = np.abs(
+                                candidate_aux[:, 1] - desired_standoff
+                            )
+                            candidate_tangential_error = (
+                                (
+                                    candidate_aux[:, 0]
+                                    - desired_azimuth
+                                    + np.pi
+                                )
+                                % (2.0 * np.pi)
+                                - np.pi
+                            ) * CAPSULE_RADIUS
+                            candidate_progress = direction * (
+                                candidate_arc - start_arc
+                            )
+                            candidate_monotonic_error = np.maximum(
+                                minimum_progress - candidate_progress,
+                                0.0,
+                            )
+                            candidate_monotonic_error[0] = 0.0
+                            (
+                                candidate_normal_ok,
+                                _,
+                                _,
+                            ) = scheduled_contact_status(
+                                candidate_normal_error[1:],
+                                desired_distance,
+                            )
+                            (
+                                candidate_recovery_normal_ok,
+                                _,
+                                _,
+                            ) = recovery_contact_status(
+                                candidate_normal_error[1:]
+                            )
+                            candidate_palm_error = float(
+                                np.linalg.norm(
+                                    candidate_points[0] - palm_target
+                                )
+                            )
+                            candidate_collision_ok = True
+                            candidate_tip_clearance = (
+                                planner_tip_geom_inner_cap_m
+                            )
+                            candidate_protected_clearance = (
+                                planner_protected_self_clearance_m
+                            )
+                            candidate_pad_alignment = 1.0
+                            if args.collision_mode == "full_robot":
+                                (
+                                    candidate_arm_clearance,
+                                    _,
+                                    candidate_hand_clearance,
+                                    _,
+                                    candidate_tip_clearance,
+                                    _,
+                                    candidate_self_count,
+                                    _,
+                                    candidate_protected_clearance,
+                                    _,
+                                    candidate_pad_alignment,
+                                ) = segment_collision_status(candidate.x)
+                                candidate_collision_ok = bool(
+                                    candidate_arm_clearance
+                                    >= args.min_arm_clearance_mm / 1000.0
+                                    and candidate_hand_clearance
+                                    >= -args.max_incidental_hand_penetration_mm
+                                    / 1000.0
+                                    and candidate_tip_clearance
+                                    >= -args.max_contact_penetration_mm
+                                    / 1000.0
+                                    and candidate_self_count == 0
+                                    and candidate_pad_alignment
+                                    >= planner_pad_alignment
+                                )
+                            candidate_joint_motion = float(
+                                np.max(np.abs(candidate.x - previous_q))
+                            )
+                            candidate_joint_ok = bool(
+                                np.all(candidate.x >= lower - 1.0e-12)
+                                and np.all(candidate.x <= upper + 1.0e-12)
+                                and candidate_joint_motion
+                                <= args.max_plan_joint_step_rad + 1.0e-12
+                            )
+                            candidate_tip_motion = direction * (
+                                candidate_arc[1:] - bridge_arc[1:]
+                            )
+                            candidate_minimum_motion = (
+                                args.mpc_feasibility_bridge_min_progress_ratio
+                                * bridge_interval_m
+                            )
+                            candidate_motion_ok, _ = (
+                                evaluate_moving_bridge_motion(
+                                    max_joint_motion_rad=(
+                                        candidate_joint_motion
+                                    ),
+                                    tip_motion_m=candidate_tip_motion,
+                                    minimum_tip_motion_m=(
+                                        candidate_minimum_motion
+                                    ),
+                                    active_fingers=(
+                                        np.abs(bridge_offset_delta_m)
+                                        > 1.0e-12
+                                    ),
+                                )
+                            )
+                            candidate_strict = evaluate_bridge_conditions(
+                                progress_error_m=(
+                                    candidate_progress_error
+                                ),
+                                progress_limit_m=progress_limit_m,
+                                normal_ok=candidate_normal_ok,
+                                tangential_error_m=(
+                                    candidate_tangential_error[1:]
+                                ),
+                                tangential_limit_m=(
+                                    tip_tangential_tolerances
+                                ),
+                                monotonic_error_m=(
+                                    candidate_monotonic_error
+                                ),
+                                monotonic_limit_m=(
+                                    args.mpc_monotonic_tolerance_mm
+                                    / 1000.0
+                                ),
+                                palm_error_m=candidate_palm_error,
+                                palm_limit_m=palm_tracking_limit_m,
+                                collision_ok=candidate_collision_ok,
+                                joint_ok=candidate_joint_ok,
+                                motion_ok=candidate_motion_ok,
+                                budget_ok=True,
+                            )
+                            candidate_recovery = evaluate_bridge_conditions(
+                                progress_error_m=(
+                                    candidate_progress_error
+                                ),
+                                progress_limit_m=max(
+                                    progress_limit_m,
+                                    args.mpc_recovery_bridge_progress_tolerance_mm
+                                    / 1000.0,
+                                ),
+                                normal_ok=(
+                                    candidate_recovery_normal_ok
+                                ),
+                                tangential_error_m=(
+                                    candidate_tangential_error[1:]
+                                ),
+                                tangential_limit_m=(
+                                    tip_tangential_tolerances
+                                ),
+                                monotonic_error_m=(
+                                    candidate_monotonic_error
+                                ),
+                                monotonic_limit_m=(
+                                    args.mpc_monotonic_tolerance_mm
+                                    / 1000.0
+                                ),
+                                palm_error_m=candidate_palm_error,
+                                palm_limit_m=palm_tracking_limit_m,
+                                collision_ok=candidate_collision_ok,
+                                joint_ok=candidate_joint_ok,
+                                motion_ok=candidate_motion_ok,
+                                budget_ok=recovery_bridge_budget_ok,
+                            )
+                            strict_ok = all(candidate_strict.values())
+                            recovery_ok = bool(
+                                not strict_ok
+                                and all(candidate_recovery.values())
+                            )
+                            failed_condition_count = min(
+                                sum(
+                                    not passed
+                                    for passed in candidate_strict.values()
+                                ),
+                                sum(
+                                    not passed
+                                    for passed in candidate_recovery.values()
+                                ),
+                            )
+                            task_error_score = float(
+                                np.max(candidate_progress_error)
+                                + np.max(candidate_normal_error[1:])
+                                + np.max(
+                                    np.abs(
+                                        candidate_tangential_error[1:]
+                                    )
+                                )
+                                + np.max(candidate_monotonic_error)
+                                + candidate_palm_error
+                            )
+                            return moving_bridge_candidate_rank(
+                                strict_hard_feasible=strict_ok,
+                                recovery_hard_feasible=recovery_ok,
+                                collision_hard_feasible=(
+                                    candidate_collision_ok
+                                ),
+                                failed_condition_count=(
+                                    failed_condition_count
+                                ),
+                                minimum_tip_clearance_m=(
+                                    candidate_tip_clearance
+                                ),
+                                tip_inner_cap_m=(
+                                    planner_tip_geom_inner_cap_m
+                                ),
+                                minimum_protected_self_clearance_m=(
+                                    candidate_protected_clearance
+                                ),
+                                soft_self_clearance_target_m=(
+                                    planner_protected_self_clearance_m
+                                ),
+                                minimum_pad_alignment=(
+                                    candidate_pad_alignment
+                                ),
+                                soft_pad_alignment=(
+                                    planner_soft_pad_alignment
+                                ),
+                                task_error_score=task_error_score,
+                                continuity_error=candidate_joint_motion,
+                                solver_cost=float(candidate.cost),
                             )
 
                         moving_bridge_seed = np.minimum(
@@ -7538,25 +7832,47 @@ def main() -> None:
                                 bridge_upper,
                             )
                         )
-                        if moving_separation_seeds:
-                            moving_bridge_seed = max(
+                        moving_bridge_seeds = (
+                            deduplicated_bridge_multistart_seeds(
+                                moving_bridge_seed,
                                 moving_separation_seeds,
-                                key=lambda seed: (
-                                    protected_self_clearance_state(seed)[0]
-                                ),
                             )
-                        moving_bridge = least_squares(
-                            moving_bridge_residual,
-                            moving_bridge_seed,
-                            bounds=(bridge_lower, bridge_upper),
-                            max_nfev=args.mpc_max_nfev,
-                            xtol=1.0e-10,
-                            ftol=1.0e-10,
-                            gtol=1.0e-10,
-                            x_scale="jac",
-                            diff_step=1.0e-5,
                         )
-                        moving_bridge.candidate_kind = "moving_bridge"
+                        moving_bridge_candidates = []
+                        for bridge_seed_index, bridge_seed in enumerate(
+                            moving_bridge_seeds
+                        ):
+                            bridge_candidate = least_squares(
+                                moving_bridge_residual,
+                                bridge_seed,
+                                bounds=(bridge_lower, bridge_upper),
+                                max_nfev=args.mpc_max_nfev,
+                                xtol=1.0e-10,
+                                ftol=1.0e-10,
+                                gtol=1.0e-10,
+                                x_scale="jac",
+                                diff_step=1.0e-5,
+                            )
+                            bridge_candidate.candidate_kind = (
+                                "moving_bridge"
+                            )
+                            bridge_candidate.bridge_seed_index = (
+                                bridge_seed_index
+                            )
+                            bridge_candidate.bridge_multistart_rank = (
+                                moving_bridge_multistart_rank(
+                                    bridge_candidate
+                                )
+                            )
+                            moving_bridge_candidates.append(
+                                bridge_candidate
+                            )
+                        moving_bridge = min(
+                            moving_bridge_candidates,
+                            key=lambda candidate: (
+                                candidate.bridge_multistart_rank
+                            ),
+                        )
                         (
                             moving_bridge_points,
                             _,
@@ -9009,6 +9325,9 @@ def main() -> None:
                 ),
                 mpc_feasibility_bridge_target_weight=np.asarray(
                     args.mpc_feasibility_bridge_target_weight
+                ),
+                mpc_feasibility_bridge_tip_target_scale=np.asarray(
+                    args.mpc_feasibility_bridge_tip_target_scale
                 ),
                 mpc_static_bridge_max_dwell_mm=np.asarray(
                     args.mpc_static_bridge_max_dwell_mm

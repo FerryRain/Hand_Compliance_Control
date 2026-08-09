@@ -118,6 +118,195 @@ class PlannerDiagnosticsTest(unittest.TestCase):
         self.assertGreater(float(np.dot(seeds[0], gradient)), 0.0)
         self.assertGreater(float(np.dot(seeds[1], gradient)), 0.0)
 
+    def test_bridge_multistart_keeps_previous_and_all_unique_seeds(
+        self,
+    ) -> None:
+        previous = np.asarray([0.1, -0.2, 0.3])
+        separation_a = np.asarray([0.11, -0.2, 0.3])
+        separation_b = np.asarray([0.1, -0.19, 0.3])
+        seeds = DIAGNOSTICS.deduplicated_bridge_multistart_seeds(
+            previous,
+            (
+                separation_a,
+                previous.copy(),
+                separation_a.copy(),
+                separation_b,
+            ),
+        )
+        self.assertEqual(len(seeds), 3)
+        np.testing.assert_array_equal(seeds[0], previous)
+        np.testing.assert_array_equal(seeds[1], separation_a)
+        np.testing.assert_array_equal(seeds[2], separation_b)
+
+    def test_bridge_tip_residual_wires_target_and_inner_blocks(self) -> None:
+        clearance = np.asarray([-0.0002, -0.0009, 0.0, -0.0005])
+        target = np.asarray([-0.00025, -0.00025, -0.0005, -0.00025])
+        residual = DIAGNOSTICS.moving_bridge_tip_geometry_residual(
+            clearance,
+            target,
+            inner_cap_m=-0.0008,
+            target_weight=2200.0,
+            target_scale=0.5,
+            inner_weight=18000.0,
+        )
+        np.testing.assert_allclose(
+            residual[:4],
+            0.5 * 2200.0 * (clearance - target),
+        )
+        np.testing.assert_allclose(
+            residual[4:],
+            18000.0 * np.minimum(clearance + 0.0008, 0.0),
+        )
+        self.assertEqual(np.count_nonzero(residual[4:]), 1)
+
+    def test_bridge_rank_prefers_strict_then_recovery_then_tip_buffer(
+        self,
+    ) -> None:
+        common = {
+            "collision_hard_feasible": True,
+            "failed_condition_count": 0,
+            "minimum_tip_clearance_m": -0.0007,
+            "tip_inner_cap_m": -0.0008,
+            "minimum_protected_self_clearance_m": 0.0002,
+            "soft_self_clearance_target_m": 0.0001,
+            "minimum_pad_alignment": 0.9,
+            "soft_pad_alignment": 0.8,
+            "task_error_score": 0.0,
+            "continuity_error": 0.0,
+            "solver_cost": 0.0,
+        }
+        strict = DIAGNOSTICS.moving_bridge_candidate_rank(
+            strict_hard_feasible=True,
+            recovery_hard_feasible=False,
+            **common,
+        )
+        recovery = DIAGNOSTICS.moving_bridge_candidate_rank(
+            strict_hard_feasible=False,
+            recovery_hard_feasible=True,
+            **common,
+        )
+        rejected = DIAGNOSTICS.moving_bridge_candidate_rank(
+            strict_hard_feasible=False,
+            recovery_hard_feasible=False,
+            **(common | {"failed_condition_count": 1}),
+        )
+        unsafe_tip = DIAGNOSTICS.moving_bridge_candidate_rank(
+            strict_hard_feasible=True,
+            recovery_hard_feasible=False,
+            **(common | {"minimum_tip_clearance_m": -0.0009}),
+        )
+        self.assertLess(strict, recovery)
+        self.assertLess(recovery, rejected)
+        self.assertLess(strict, unsafe_tip)
+
+    def test_bridge_rejection_rank_keeps_collision_safe_prefix(self) -> None:
+        common = {
+            "strict_hard_feasible": False,
+            "recovery_hard_feasible": False,
+            "minimum_tip_clearance_m": -0.0007,
+            "tip_inner_cap_m": -0.0008,
+            "minimum_protected_self_clearance_m": 0.0002,
+            "soft_self_clearance_target_m": 0.0001,
+            "minimum_pad_alignment": 0.9,
+            "soft_pad_alignment": 0.8,
+            "task_error_score": 0.0,
+            "continuity_error": 0.0,
+            "solver_cost": 0.0,
+        }
+        collision_safe_two_task_failures = (
+            DIAGNOSTICS.moving_bridge_candidate_rank(
+                collision_hard_feasible=True,
+                failed_condition_count=2,
+                **common,
+            )
+        )
+        collision_unsafe_one_failure = (
+            DIAGNOSTICS.moving_bridge_candidate_rank(
+                collision_hard_feasible=False,
+                failed_condition_count=1,
+                **common,
+            )
+        )
+        self.assertLess(
+            collision_safe_two_task_failures,
+            collision_unsafe_one_failure,
+        )
+
+    def test_seed42_bridge_tip_probe_fixture_passes_every_named_gate(
+        self,
+    ) -> None:
+        # Frozen CPU measurements from the 45.9375 mm seed-42 failure
+        # snapshot after adding the 0.5x physical-tip target residual.
+        strict = DIAGNOSTICS.evaluate_bridge_conditions(
+            progress_error_m=np.asarray([0.0, 0.004615616]),
+            progress_limit_m=0.004631122,
+            normal_ok=bool(
+                np.all(
+                    np.asarray([3.0179, 2.6063, 2.7050, 1.7653])
+                    <= np.asarray([3.6311, 3.0, 3.0, 3.0])
+                )
+            ),
+            tangential_error_m=(
+                np.asarray([1.6000, 1.2152, 1.9785, 1.6467])
+                / 1000.0
+            ),
+            tangential_limit_m=(
+                np.asarray([2.2705, 2.0, 2.0, 2.0]) / 1000.0
+            ),
+            monotonic_error_m=np.zeros(5),
+            monotonic_limit_m=0.0002,
+            palm_error_m=0.0130195,
+            palm_limit_m=0.030,
+            collision_ok=bool(
+                0.015332 >= 0.002
+                and -0.0000385 >= -0.001
+                and -0.0009255 >= -0.001
+                and 36.147 <= 40.0
+            ),
+            joint_ok=bool(0.003128 <= 0.03 and 0.003608 >= 0.0),
+            motion_ok=bool(
+                np.count_nonzero(
+                    np.asarray([0.1053, 0.1259, 0.1644, 0.0426])
+                    >= 0.015625
+                )
+                >= 3
+            ),
+            budget_ok=True,
+        )
+        self.assertEqual(tuple(strict), DIAGNOSTICS.BRIDGE_CONDITION_NAMES)
+        self.assertTrue(all(strict.values()))
+        candidate_rank = DIAGNOSTICS.moving_bridge_candidate_rank(
+            strict_hard_feasible=True,
+            recovery_hard_feasible=False,
+            collision_hard_feasible=True,
+            failed_condition_count=0,
+            minimum_tip_clearance_m=-0.0009255,
+            tip_inner_cap_m=-0.0008,
+            minimum_protected_self_clearance_m=0.0,
+            soft_self_clearance_target_m=0.0001,
+            minimum_pad_alignment=float(np.cos(np.deg2rad(36.147))),
+            soft_pad_alignment=float(np.cos(np.deg2rad(35.0))),
+            task_error_score=0.004615616,
+            continuity_error=0.003128,
+            solver_cost=1.0,
+        )
+        rejected_tip_rank = DIAGNOSTICS.moving_bridge_candidate_rank(
+            strict_hard_feasible=False,
+            recovery_hard_feasible=False,
+            collision_hard_feasible=False,
+            failed_condition_count=1,
+            minimum_tip_clearance_m=-0.001041958,
+            tip_inner_cap_m=-0.0008,
+            minimum_protected_self_clearance_m=0.0,
+            soft_self_clearance_target_m=0.0001,
+            minimum_pad_alignment=float(np.cos(np.deg2rad(36.0))),
+            soft_pad_alignment=float(np.cos(np.deg2rad(35.0))),
+            task_error_score=0.0,
+            continuity_error=0.0,
+            solver_cost=0.0,
+        )
+        self.assertLess(candidate_rank, rejected_tip_rank)
+
     def test_soft_self_clearance_precedes_pad_and_task_rank(self) -> None:
         near_contact_20_deg = self._candidate_rank(
             20.0,
@@ -605,7 +794,10 @@ class PlannerDiagnosticsTest(unittest.TestCase):
             "final_best_points_m": np.ones((5, 3)),
             "final_best_arcs_m": np.ones(5),
             "rephase_offset_m": np.zeros(4),
-            "budget_values": {"recovery_remaining_m": 0.001},
+            "budget_values": {
+                "recovery_remaining_m": 0.001,
+                "feasibility_bridge_tip_target_scale": 0.5,
+            },
             "failure_metrics": {
                 "progress_error_m": np.asarray([0.0, 0.006])
             },
@@ -724,6 +916,14 @@ class PlannerDiagnosticsTest(unittest.TestCase):
             self.assertEqual(
                 saved["bridge_strict_conditions"].shape,
                 (9,),
+            )
+            self.assertAlmostEqual(
+                float(
+                    saved[
+                        "budget_feasibility_bridge_tip_target_scale"
+                    ]
+                ),
+                0.5,
             )
 
         mispaired_values = dict(values)
@@ -1210,6 +1410,10 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             '"--planner-self-separation-seed-step-rad", "0.005"',
             source,
         )
+        self.assertIn(
+            '"--mpc-feasibility-bridge-tip-target-scale", "0.5"',
+            source,
+        )
 
     def test_physical_tip_objective_and_full_plan_audit_are_distinct(
         self,
@@ -1325,7 +1529,12 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
         )
         self.assertIsNotNone(source)
         for required_term in (
-            "moving_bridge = least_squares",
+            "bridge_candidate = least_squares",
+            "moving_bridge_candidates",
+            "moving_bridge_multistart_rank",
+            "deduplicated_bridge_multistart_seeds",
+            "bridge_candidate.bridge_multistart_rank",
+            "moving_bridge_candidate_rank",
             "bridge_lower",
             "bridge_upper",
             "moving_bridge_motion_ok",
@@ -1346,6 +1555,7 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             "mpc_feasibility_bridge_trust_radius_rad",
             "mpc_feasibility_bridge_min_progress_ratio",
             "mpc_feasibility_bridge_target_weight",
+            "mpc_feasibility_bridge_tip_target_scale",
             "bridge_result = SimpleNamespace",
             "x=previous_q.copy()",
             "bridge_interval_short",
@@ -1374,7 +1584,7 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             self.assertIn(required_term, source)
         moving_residual_start = source.index("def moving_bridge_residual")
         moving_residual_end = source.index(
-            "moving_bridge = least_squares",
+            "def moving_bridge_multistart_rank",
             moving_residual_start,
         )
         moving_residual_source = source[
@@ -1393,7 +1603,21 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             "positive_self_clearance_residual",
             moving_residual_source,
         )
+        self.assertIn(
+            "moving_bridge_tip_geometry_residual",
+            moving_residual_source,
+        )
+        self.assertIn("planner_tip_geom_target_m", moving_residual_source)
+        self.assertIn("planner_tip_geom_inner_cap_m", moving_residual_source)
+        self.assertIn(
+            "args.mpc_feasibility_bridge_tip_target_scale",
+            moving_residual_source,
+        )
         self.assertIn("moving_separation_seeds", source)
+        self.assertNotIn(
+            "moving_bridge_seed = max(",
+            source,
+        )
         self.assertNotIn("progress_target_arc", source)
         self.assertNotIn("palm_target", moving_residual_source)
         self.assertNotIn("desired_azimuth", moving_residual_source)
@@ -1409,6 +1633,55 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
         )
         self.assertNotIn(
             "bridge_arc[1:] + direction * bridge_interval_m",
+            source,
+        )
+        preaudit_start = source.index(
+            "def moving_bridge_multistart_rank"
+        )
+        preaudit_end = source.index(
+            "moving_bridge_seed = np.minimum",
+            preaudit_start,
+        )
+        preaudit = source[preaudit_start:preaudit_end]
+        for hard_gate in (
+            "segment_collision_status(candidate.x)",
+            "scheduled_contact_status(",
+            "recovery_contact_status(",
+            "evaluate_moving_bridge_motion(",
+            "candidate_strict = evaluate_bridge_conditions(",
+            "candidate_recovery = evaluate_bridge_conditions(",
+            "strict_hard_feasible=strict_ok",
+            "recovery_hard_feasible=recovery_ok",
+            "minimum_tip_clearance_m=",
+            "minimum_protected_self_clearance_m=",
+            "minimum_pad_alignment=",
+        ):
+            self.assertIn(hard_gate, preaudit)
+        solve_loop = source[
+            source.index("moving_bridge_candidates = []") :
+            source.index("moving_bridge = min(")
+        ]
+        self.assertIn("for bridge_seed_index, bridge_seed in enumerate(", solve_loop)
+        self.assertIn("moving_bridge_multistart_rank(", solve_loop)
+
+    def test_bridge_tip_scale_is_validated_and_saved_in_both_artifacts(
+        self,
+    ) -> None:
+        source = DEMO_PATH.read_text(encoding="utf-8")
+        self.assertIn(
+            '"--mpc-feasibility-bridge-tip-target-scale"',
+            source,
+        )
+        self.assertIn(
+            "not np.isfinite(args.mpc_feasibility_bridge_tip_target_scale)",
+            source,
+        )
+        self.assertIn(
+            '"feasibility_bridge_tip_target_scale": (',
+            source,
+        )
+        self.assertIn(
+            "mpc_feasibility_bridge_tip_target_scale=np.asarray(",
             source,
         )
 

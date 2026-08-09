@@ -136,6 +136,7 @@ $pythonArguments = @(
     "--mpc-feasibility-bridge-trust-radius-rad", "0.05"
     "--mpc-feasibility-bridge-min-progress-ratio", "0.10"
     "--mpc-feasibility-bridge-target-weight", "3200"
+    "--mpc-feasibility-bridge-tip-target-scale", "0.5"
     "--mpc-static-bridge-max-dwell-mm", "1.50"
     "--mpc-static-bridge-max-total-ratio", "0.02"
     "--mpc-static-bridge-progress-tolerance-mm", "6.00"

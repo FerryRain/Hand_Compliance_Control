@@ -2019,3 +2019,178 @@ discovered outer retry：当前只主动优化 3 个已知 protected pairs；若
 仍为 **NOT PASS**。**正在执行：**提交并 push 该 WIP 后，按完全相同的 Acceptance
 seed 42、0--50 mm headless 配置重跑；仍以 active self contacts=`0` 的 planner hard
 audit 终审，不用排除 pair、放宽 self 门或 runtime `0.01 mm` 限制掩盖失败。
+
+### `fce1eb2` protected-self GPU 0--50 mm Acceptance seed 42（2026-08-10）
+
+#### 运行证据、进度与产物边界
+
+已用提交 `fce1eb2da80ac413dcba51a1c23242e70d3f3b82` 执行真实 GPU headless
+资格测试。证据 stem 为：
+
+`baseline2_capsule_selfguard_0to50_acceptance_seed42_20260810_062913_375`
+
+对应产物为：
+
+- log：`outputs/debug/20_fr3_planning/baseline2_capsule_selfguard_0to50_acceptance_seed42_20260810_062913_375.log`，
+  SHA256=`035AF1A51A87A71005B13665547B42A042FC2CAB928F8142444C0A3782E7497B`；
+- failure-prefix：`outputs/debug/20_fr3_planning/baseline2_capsule_selfguard_0to50_acceptance_seed42_20260810_062913_375_failure_prefix.npz`，
+  SHA256=`FE09DF82AE4B8D35653151D5F982E6328F6D4EC89D70A55B55EE4390ED4DDAE1`。
+
+运行 `exit 1`。最后接收距离=`45.78125 mm`；失败目标=`45.9375 mm`，
+keyframe=`45/49`，相邻间隔=`0.15625 mm`，adaptive refinement=`9/96`。
+这条连续路径已真正接收 `33.125 mm`、`33.75 mm` 等状态，因而越过旧运行的
+`32.8125/32.96875 mm` self-collision 瓶颈。后段 raw surface seeds 曾出现
+`1` 个 unique pair 和最多 `9` 次 sample occurrences，但这些候选均未被接收；
+每个 `[ADAPTIVE-MPC]` accepted segment 都通过 hard collision condition，因此已接收
+路径的 active-self unique pair/sample occurrence 始终为 `0/0`。
+
+只有 log 与 failure-prefix 存在；没有 `_plan.npz` 或 `_low_motion.npz`，没有进入
+成功计划的 full/standalone audit，没有 dynamics，更没有 debug/交付视频。当前仍是
+Level 2 **NOT PASS**，不能因为越过旧瓶颈而宣称短程资格测试通过。
+
+#### `failure_final_best`：progress 与 monotonic 失败，collision hard gates 通过
+
+失败前缀中 final-best 的逐门结果为：
+
+- progress error=`[0,4.505510,3.081184,1.611665,5.218475] mm`，limit=
+  `4.631122 mm`，故 progress=false；
+- monotonic error=`[0,0,0.599656,0,0] mm`，limit=`0.200000 mm`，故
+  monotonic=false；
+- normal error=`[3.530347,2.779957,2.766396,2.346370] mm`，对应 tolerance=
+  `[3.631122,3,3,3] mm`，normal=true、contact=`4/4`；
+- tangential error=`[0.349348,0.019328,0.184910,0.348561] mm`，对应 tolerance=
+  `[2.270481,2,2,2] mm`，tangent=true；
+- palm guide error=`12.744205 mm <30 mm`；
+- FR3 minimum clearance=`14.904546 mm >2 mm`，nearest=
+  `fr3v2_link5_collision`；
+- non-tip hand clearance=`-0.652455 mm >-1 mm`，nearest=
+  `palm_lower_collision`；
+- physical-tip clearance=`-0.895393 mm >-1 mm`，nearest=
+  `thumb_fingertip_geom`；
+- self unique pair/sample occurrence=`0/0`；
+- protected-self minimum=`0 mm`，nearest=`mcp_joint_geom::dip_geom`，低于
+  `0.10 mm` soft target，但 protected target 不是 collision hard gate；
+- pad angle=`36.876224 deg <40 deg`；minimum joint margin=
+  `0.000467833 rad >=0`。
+
+所以 final-best 的 `condition_collision_ok=true`，失败原因不能写成 tip、pad、FR3、
+hand 或 self collision；实际错误是 progress 与 monotonic，其中终端异常明确报告
+`error_mm=[0,0,0.6,0,0]`。
+
+#### `bridge_rejected`：仅 physical-tip collision hard gate 失败
+
+独立 moving bridge candidate 的 strict 门为：
+
+- progress max=`4.564558 mm <4.631122 mm`，progress=true；
+- normal error=`[2.886120,2.539045,2.687369,1.733129] mm`，strict tolerance=
+  `[3.631122,3,3,3] mm`，normal=true、contact=`4/4`；
+- tangential error=`[1.613882,1.178137,1.971937,1.591347] mm`，tolerance=
+  `[2.270481,2,2,2] mm`，minimum margin=`0.028063 mm`，tangent=true；
+- monotonic error=`0 mm <0.2 mm`，palm=`12.937397 mm <30 mm`；
+- FR3=`15.329508 mm >2 mm`；non-tip hand=`-0.041140 mm >-1 mm`；
+- self unique pair/sample occurrence=`0/0`；pad=`36.166999 deg <40 deg`；
+- joint margin=`0.003940653 rad`，max joint motion=`0.007868073 rad`；
+- tip motion=`[0.156337,0.156152,0.156144,0] mm`，三指 forward-motion quorum
+  刚好满足，motion=true；
+- physical-tip minimum=`-1.041956 mm <-1 mm`，只超限 `0.041956 mm`，因此
+  strict conditions 中只有 collision=false；
+- protected-self minimum=`0 mm <0.10 mm` soft target，同样不是此次 strict hard
+  failure。
+
+recovery 的 progress/normal/tangent/monotonic/palm/joint/motion 均通过，但 collision
+仍因 tip 超限而 false；此外目标 `45.9375 mm` 已超过
+`recovery_terminal_cutoff=30 mm`，terminal margin=`-15.9375 mm`，所以 recovery
+budget=false。不能用 terminal budget 解释或掩盖独立存在的 physical-tip 硬失败。
+
+本轮还连续接收了多个约 `0.156 mm` 的 moving bridges，但 thumb motion 基本为
+`0 mm`；即便末端 tip 穿透被修复，完整 plan 仍必须接受 low-motion gate 检查，不能
+提前假定 thumb 的连续表面滑动合格。
+
+#### 结论、issue 与下一步
+
+protected-self positive barrier 确实把在线路径从 `32.8125 mm` 推进到
+`45.78125 mm`，同时保持 accepted-segment self=`0/0`；本轮新首要瓶颈已经收敛为：
+ordinary final-best 无法满足 progress/monotonic，而可满足这些运动门的 moving
+bridge 又因 physical tip 比冻结界限多穿入 `0.041956 mm` 被 hard audit 拒绝。
+issue #7 已同步：
+[comment 5234293221](https://github.com/FerryRain/Hand_Compliance_Control/issues/7#issuecomment-5234293221)。
+
+**正在执行/下一步：**在 moving 12D local residual 中加入与 ordinary 23-DoF
+分支一致的 physical-tip signed-distance target 和 `-0.8 mm` inner-cap 梯度，使 bridge
+在求解阶段主动避开 `-1 mm` 边界；segment/full-plan 的 `-1 mm` hard gate 继续作为
+独立终审。不得放宽 physical-tip penetration、`40 deg` planner cone、FR3/hand/self
+collision 或 low-motion 门，也不得在成功 plan/audit/dynamics 前生成视频。
+
+### moving-bridge physical-tip / previous-first multistart WIP（2026-08-10，待 review）
+
+#### 对 `fce1eb2` final-best 的 joint 诊断纠正
+
+对 failure-prefix 保存状态重新按上一 accepted endpoint 做差后，
+`failure_final_best` 的 `max|dq|=0.065071889 rad >0.03 rad`。因此它除了已记录的
+progress=`5.218475 mm >4.631122 mm` 与 monotonic=`0.599656 mm >0.2 mm`
+之外，还违反逐段 joint-step hard gate。failure JSON 当时的 `joint=true` 只审计
+candidate 是否仍在 joint limits 内，并未表达“相对上一 accepted state 的 joint step
+也通过”；后续 session 不得继续把该字段解释成完整 joint gate。其 collision hard
+gates 仍然通过，这一纠正也不改变独立 moving bridge 的失败归因。
+
+`bridge_rejected` 经独立复算的 strict hard gates 中，progress、normal、tangent、
+monotonic、palm、FR3/object、LEAP non-tip/object、self、pad、joint-step、motion 与
+budget 都通过；唯一 strict hard failure 是 thumb physical-tip minimum=
+`-1.041956 mm <-1 mm`。recovery 的 terminal budget=false 是额外的 recovery 限制，
+不能取代或掩盖这个 strict tip failure。
+
+#### 同 snapshot 的 `0.5×` CPU 实模 probe
+
+在同一 bridge snapshot 上，把 ordinary physical-tip target 以 scale=`0.5` 接入 local
+bridge residual，同时保留原 `-0.8 mm × 18000` inner-cap 项后，真实模型 CPU probe
+得到一个全部 hard gates 通过的候选：
+
+- progress max=`4.615616 mm <4.631122 mm`；
+- normal、tangent、monotonic、palm 全部通过；
+- 四指 segment physical-tip minima=
+  `[-0.9082,-0.8301,-0.5995,-0.9255] mm`，全部高于 `-1 mm`；
+- FR3 minimum clearance=`15.332 mm >2 mm`；
+- LEAP non-tip minimum clearance=`-0.0385 mm >-1 mm`；
+- active self collision=`0`；maximum pad angle=`36.147 deg <40 deg`；
+- tip motions=`[0.1053,0.1259,0.1644,0.0426] mm`，满足 moving quorum；
+- `max|dq|=0.003128 rad <0.03 rad`；minimum joint margin=`0.003608 rad`。
+
+该结果只证明 failure snapshot 的局部修复方向可行，不是 GPU planner、full plan、
+dynamics 或 Level-2 通过证据。
+
+#### 当前未提交实现
+
+新增 CLI `--mpc-feasibility-bridge-tip-target-scale`，默认=`0.5`，显式验证 finite 且
+`>=0`；Level-2 runner 冻结传入 `0.5`，成功 plan NPZ 与 failure-prefix NPZ 都保存
+该配置。moving residual 现在按顺序包含既有 local task、protected-self residual，
+以及以下两块 physical-tip residual：
+
+- `scale * planner_tip_geom_weight * (tip_clearance - tip_target)`；
+- `planner_tip_geom_inner_weight * min(tip_clearance - inner_cap, 0)`。
+
+所有 segment/full-plan physical-tip、FR3/hand/self、pad、joint 与运动 hard gates 均未
+放宽。原来存在 separation seeds 时用最大 protected-clearance seed 替换
+`previous_q` 的逻辑已删除；moving seed 集合现在始终以 `previous_q` 开头，再加入
+全部去重的 protected-self separation seeds。
+
+每个 seed 独立执行 least-squares，并在不修改 selected flags、bridge budget 或外层
+accepted state 的前提下审计 strict/recovery 的 progress、normal、tangent、monotonic、
+palm、collision、joint、motion 与 budget。全部候选审计完成后才统一按
+strict→recovery→tip inner buffer→protected self→soft pad→task/continuity/cost 排序；
+若所有 seeds 都失败，则先按 `collision_hard_feasible` 让现有 segment collision bundle
+安全的候选优先，再依次比较 tip inner buffer、protected self、soft pad、failed-count、
+task/continuity/cost。这样 collision-unsafe、即使只失败一个门的深穿透候选，也不能
+覆盖 failure-prefix 中 collision-safe、但有两个任务门失败的 rejected evidence。
+
+新增纯 NumPy helper/fixture 已证明 previous seed 不会丢失、tip target 与 inner 两块
+residual 接线、strict 优先 recovery、tip/self/pad/task 排序，以及 seed-42 `0.5×`
+snapshot 的全门结果。全量 CPU regression=`85/85`；demo CLI、Python AST、
+PowerShell AST 与 `git diff --check` 均通过。独立 review 无 P0/P1 blocker；保留的
+P2 是该 snapshot 仍为冻结 fixture，并非真实 MuJoCo planner 调用链的端到端集成测试，
+将由完全相同 seed 的 GPU 重跑终审。当前尚未 commit/push，也没有运行新的 GPU、
+生成成功 plan、运行 standalone/full audit、进入 dynamics 或录制视频，Level 2 仍为
+**NOT PASS**。
+
+**正在执行/下一步：**commit/push → 用原封不动的 Acceptance seed 42、0--50 mm
+headless 配置重跑。只有短程 GPU 规划及后续物理审计通过后，才继续 seeds 43--46、
+完整 `0.48 m`、dynamics 与视频。

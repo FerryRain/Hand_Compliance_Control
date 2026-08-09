@@ -144,6 +144,153 @@ def self_separation_ascent_seeds(
     return tuple(seeds)
 
 
+def deduplicated_bridge_multistart_seeds(
+    previous_q_rad: np.ndarray,
+    separation_seeds_rad: tuple[np.ndarray, ...],
+    *,
+    atol_rad: float = 1.0e-14,
+) -> tuple[np.ndarray, ...]:
+    """Keep the predecessor first and append every distinct separation seed.
+
+    A protected-self nudge is only an additional basin probe.  It must never
+    replace the last accepted state, because doing so silently discards the
+    locally continuous branch that the feasibility bridge exists to recover.
+    """
+
+    previous = np.asarray(previous_q_rad, dtype=np.float64)
+    if previous.ndim != 1 or previous.size == 0:
+        raise ValueError("previous_q_rad must be a non-empty vector")
+    if not np.all(np.isfinite(previous)):
+        raise ValueError("previous_q_rad must be finite")
+    if not np.isfinite(atol_rad) or atol_rad < 0.0:
+        raise ValueError("atol_rad must be finite and non-negative")
+    seeds: list[np.ndarray] = [previous.copy()]
+    for candidate_raw in separation_seeds_rad:
+        candidate = np.asarray(candidate_raw, dtype=np.float64)
+        if candidate.shape != previous.shape:
+            raise ValueError("all bridge seeds must match previous_q_rad")
+        if not np.all(np.isfinite(candidate)):
+            raise ValueError("all bridge seeds must be finite")
+        if any(
+            np.allclose(candidate, old, atol=atol_rad, rtol=0.0)
+            for old in seeds
+        ):
+            continue
+        seeds.append(candidate.copy())
+    return tuple(seeds)
+
+
+def moving_bridge_tip_geometry_residual(
+    tip_clearance_m: np.ndarray,
+    target_clearance_m: np.ndarray,
+    *,
+    inner_cap_m: float,
+    target_weight: float,
+    target_scale: float,
+    inner_weight: float,
+) -> np.ndarray:
+    """Return four target and four one-sided inner-tip bridge residuals."""
+
+    clearance = np.asarray(tip_clearance_m, dtype=np.float64)
+    target = np.asarray(target_clearance_m, dtype=np.float64)
+    if clearance.shape != (4,) or target.shape != (4,):
+        raise ValueError("tip clearance and target must have shape (4,)")
+    scalar_values = np.asarray(
+        [inner_cap_m, target_weight, target_scale, inner_weight],
+        dtype=np.float64,
+    )
+    if not np.all(np.isfinite(clearance)) or not np.all(np.isfinite(target)):
+        raise ValueError("tip clearance and target must be finite")
+    if not np.all(np.isfinite(scalar_values)):
+        raise ValueError("tip residual parameters must be finite")
+    if target_weight < 0.0 or target_scale < 0.0 or inner_weight < 0.0:
+        raise ValueError("tip residual weights and scale must be non-negative")
+    return np.concatenate(
+        (
+            float(target_scale)
+            * float(target_weight)
+            * (clearance - target),
+            float(inner_weight)
+            * np.minimum(clearance - float(inner_cap_m), 0.0),
+        )
+    )
+
+
+def moving_bridge_candidate_rank(
+    *,
+    strict_hard_feasible: bool,
+    recovery_hard_feasible: bool,
+    collision_hard_feasible: bool,
+    failed_condition_count: int,
+    minimum_tip_clearance_m: float,
+    tip_inner_cap_m: float,
+    minimum_protected_self_clearance_m: float,
+    soft_self_clearance_target_m: float,
+    minimum_pad_alignment: float,
+    soft_pad_alignment: float,
+    task_error_score: float,
+    continuity_error: float,
+    solver_cost: float,
+) -> tuple[float, ...]:
+    """Rank independently audited bridge solves without seed privilege.
+
+    Strict feasibility precedes recovery feasibility.  Within either class,
+    the existing segment collision bundle remains safe before physical-tip
+    inner buffer, protected-self buffer, pad posture, failed-gate count, task
+    error, continuity, and cost are ordered lexicographically.  This prevents
+    an all-rejected, deeply colliding candidate with one failed gate from
+    replacing a collision-safe rejection snapshot with two task failures.
+    """
+
+    scalar_values = np.asarray(
+        [
+            minimum_tip_clearance_m,
+            tip_inner_cap_m,
+            minimum_protected_self_clearance_m,
+            soft_self_clearance_target_m,
+            minimum_pad_alignment,
+            soft_pad_alignment,
+            task_error_score,
+            continuity_error,
+            solver_cost,
+        ],
+        dtype=np.float64,
+    )
+    if not np.all(np.isfinite(scalar_values)):
+        raise ValueError("moving bridge rank inputs must be finite")
+    if failed_condition_count < 0:
+        raise ValueError("failed_condition_count cannot be negative")
+    if soft_self_clearance_target_m < 0.0:
+        raise ValueError("soft self-clearance target cannot be negative")
+    feasibility_class = (
+        0.0
+        if strict_hard_feasible
+        else 1.0
+        if recovery_hard_feasible
+        else 2.0
+    )
+    failed_gate_rank = (
+        float(failed_condition_count)
+        if feasibility_class == 2.0
+        else 0.0
+    )
+    return (
+        feasibility_class,
+        float(not collision_hard_feasible),
+        max(float(tip_inner_cap_m) - float(minimum_tip_clearance_m), 0.0),
+        max(
+            float(soft_self_clearance_target_m)
+            - float(minimum_protected_self_clearance_m),
+            0.0,
+        ),
+        max(float(soft_pad_alignment) - float(minimum_pad_alignment), 0.0),
+        failed_gate_rank,
+        float(task_error_score),
+        float(continuity_error),
+        float(solver_cost),
+    )
+
+
 def orientation_aware_candidate_rank(
     *,
     hard_feasible: bool,

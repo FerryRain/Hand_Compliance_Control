@@ -1242,3 +1242,80 @@ occurrences，runner 与 NPZ 也保存新的 target/weight/seed-step/pair/cleara
 提高至 `+0.001208/+0.017628 mm`。尚未实现运行时发现未知 pair 后的 outer retry，
 且 GPU 尚未重跑，所以 Level 2 仍为 **NOT PASS**。**正在执行：**提交并 push 后，
 用完全相同的 Acceptance seed 42、0--50 mm 配置重跑；不放宽 self hard gate。
+
+### `fce1eb2` protected-self GPU 0--50 mm 检查点（2026-08-10）
+
+真实 Acceptance seed 42 headless 重跑的证据 stem 为
+`baseline2_capsule_selfguard_0to50_acceptance_seed42_20260810_062913_375`。
+运行 `exit 1`；最后接收 `45.78125 mm`，失败目标 `45.9375 mm`、keyframe
+`45/49`，adaptive refine=`9/96`。这次已经越过上一轮的
+`32.96875 mm` 旧瓶颈；所有已接收段仍通过 active-self hard gate，即
+unique pair=`0`、sample occurrence=`0`。后段 raw seeds 出现的 self contacts
+均被拒，不能与 accepted segments 混为一谈。
+
+必须区分两个失败候选。`failure_final_best` 因 progress max=
+`5.218475 mm >4.631122 mm` 和 monotonic=`0.599656 mm >0.200000 mm`
+失败；其 normal/tangent/palm 均通过，且 FR3=`14.904546 mm >2 mm`、
+non-tip hand=`-0.652455 mm >-1 mm`、physical tip=`-0.895393 mm >-1 mm`、
+self unique/occurrence=`0/0`、pad=`36.876224 deg <40 deg`、joint margin=
+`0.000467833 rad`，所以 final-best 的 collision hard condition 实际通过。
+独立 `bridge_rejected` 的 strict progress/normal/tangent/monotonic/palm/joint/
+motion/budget 均通过，唯一 strict 失败是 physical tip=`-1.041956 mm`，比
+`-1 mm` 冻结门多穿入 `0.041956 mm`；同时 FR3=`15.329508 mm`、hand=
+`-0.041140 mm`、self=`0/0`、pad=`36.166999 deg`。recovery 还因
+`45.9375 mm` 超过 `30 mm` terminal cutoff 而 budget=false。两者的
+protected-self minimum 都为 `0 mm <0.10 mm` soft target，但这不是本轮硬拒绝项。
+
+log SHA256=`035AF1A51A87A71005B13665547B42A042FC2CAB928F8142444C0A3782E7497B`；
+failure-prefix SHA256=`FE09DF82AE4B8D35653151D5F982E6328F6D4EC89D70A55B55EE4390ED4DDAE1`。
+没有 `_plan.npz`、low-motion 产物、成功 full-plan audit、dynamics 或视频，Level 2
+仍为 **NOT PASS**。issue #7 已同步：
+[comment 5234293221](https://github.com/FerryRain/Hand_Compliance_Control/issues/7#issuecomment-5234293221)。
+**下一步：**给 moving 12D bridge residual 加 physical-tip signed-distance/inner-cap
+梯度，使它在优化内主动远离 `-1 mm`，而不是仅靠末端 hard audit 拒绝；不放宽
+physical-tip、pad、FR3/hand 或 self 门槛。
+
+### moving-bridge physical-tip 与原子 multistart 修复检查点（2026-08-10，待独立 review）
+
+对 `fce1eb2` failure-prefix 的独立复算补充纠正了一项诊断语义：
+`failure_final_best` 除 progress 与 monotonic 失败外，从上一 accepted state 到该候选的
+`max|dq|=0.065071889 rad >0.03 rad`，也违反冻结的逐段 joint-step hard gate。此前
+failure JSON 中的 `joint=true` 只表示候选位于 joint limits 内，不能据此宣称逐段
+joint motion 通过。该修正不改变 moving bridge 的结论：其 strict progress、normal、
+tangent、monotonic、palm、FR3/hand/self、pad、joint-step、motion 与 budget 均通过，
+唯一 strict hard failure 是 thumb physical tip=`-1.041956 mm <-1 mm`。
+
+针对同一 failure snapshot 的真实模型 CPU probe 已验证 bridge physical-tip residual
+采用 target scale=`0.5` 时全部 hard gates 通过：progress=`4.615616 <4.631122 mm`；
+normal、tangent、monotonic 与 palm 均通过；四指 segment physical-tip minima 为
+`[-0.9082,-0.8301,-0.5995,-0.9255] mm`；FR3 minimum=`15.332 mm`；non-tip
+hand minimum=`-0.0385 mm`；active self=`0`；maximum pad angle=`36.147 deg`；
+tip motions=`[0.1053,0.1259,0.1644,0.0426] mm`；`max|dq|=0.003128 rad`；
+minimum joint margin=`0.003608 rad`。这是离线局部候选证据，不等同于 GPU/full-plan
+通过。
+
+当前未提交实现已经：
+
+- 新增并冻结 `--mpc-feasibility-bridge-tip-target-scale 0.5`，在 Level-2 runner 中
+  显式传入，并保存到成功 plan 与 failure-prefix NPZ；
+- 在 moving local residual 的既有 local-task 与 protected-self 项之后追加 physical-tip
+  target residual，以及不放宽 `-1 mm` hard gate 的 `-0.8 mm` inner-cap residual；
+- 不再用单个最大-clearance separation seed 替换 predecessor；moving seed 集合始终
+  包含 `previous_q` 与全部去重 protected-self separation seeds；
+- 对每个 seed 独立 least-squares，并完整审计 strict/recovery 的 progress、normal、
+  tangent、monotonic、palm、collision、joint、motion 与 budget；全部候选完成后才按
+  strict→recovery→tip inner buffer→self→pad→task/continuity/cost 原子选优；全部失败时
+  先按 `collision_hard_feasible` 区分，再比较 tip inner buffer、self、pad、failed-count
+  与 task/continuity/cost，避免 collision-unsafe 候选覆盖 failure-prefix 中更安全的
+  rejected evidence。所有既有 hard gates 保持不变。
+
+纯 NumPy、结构与 seed-42 snapshot fixture 已加入；全量 CPU regression=`85/85`，
+demo CLI、新参数接线、Python AST、PowerShell AST 与 `git diff --check` 均通过。
+独立代码 review 无 P0/P1 blocker；保留的 P2 是该 snapshot 仍为冻结 fixture，并非真实
+MuJoCo planner 端到端集成测试，将由同 seed GPU 重跑终审。当前尚未 commit/push；
+新的 GPU 0--50 mm、plan、standalone/full audit、dynamics 与视频均未运行或生成，
+Level 2 仍为 **NOT PASS**。
+
+**正在执行/下一步：**commit/push → 用完全相同的 Acceptance seed 42、0--50 mm
+headless 配置重跑。只有该次 GPU 规划和后续物理审计通过后才继续其它 seeds、完整
+`0.48 m`、dynamics 与视频。
