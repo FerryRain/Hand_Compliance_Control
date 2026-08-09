@@ -1439,3 +1439,35 @@ failure-prefix 和 30 mm palm-guide 区间内的确定性 FR3 redundancy multist
 Diagnostic，故 Level 2 仍是 `NOT RUN`，没有新 plan 或视频。下一步先用
 `-Mode Diagnostic -Seed 42` headless 运行；若数值全程通过，再用相同 seed
 运行 Acceptance，仍然不录像，直到正式数值门槛通过。
+
+### Level 2 Diagnostic seed 42 真实结果与正在执行（2026-08-10）
+
+提交 `df7d7c8` 中的 `scripts/run_baseline2_capsule_level2.ps1` 已实际运行
+`-Mode Diagnostic -Seed 42`。GPU headless 规划越过旧 v106 约 `269.8 mm`
+的局部拒绝，推进到 `380.103896 mm` 后才失败；没有输出成功 plan，也没有
+生成调试或交付视频。原始日志的稳定 failure-prefix 为：
+
+`outputs/debug/20_fr3_planning/baseline2_capsule_level2_diagnostic_seed42_20260810_012853_122_failure_prefix.npz`
+
+必须区分 NPZ 中的两种候选，不能把指标错配：
+
+- 最终 coarse `failure_final_best` 的唯一硬失败为
+  `self_collision_pairs=3`；FR3/object 与 LEAP/object 净距、pad angle 及其它
+  误差/安全项均安全；
+- 同位置的 `bridge_rejected` moving candidate 为 FR3 净距 `106.25 mm`、
+  手部净距 `+8.97 mm`、`self_collision_pairs=0`。其 recovery 九项中
+  progress、normal、tangent、monotonic、palm、collision、joint、budget
+  全部为 true，仅 `motion=false`，即没有达到最少三指真实前进和最小关节运动；
+- 到失败处连续 static dwell=`1.558 mm`，recovery total=`3.429 mm`，
+  adaptive insertions=`79/96`，均未耗尽原有硬预算。
+
+这证明结构化诊断已把旧的“contact-policy-safe candidate 不存在”拆成两个独立
+分支：coarse best 因三对自碰撞拒绝，而无自碰撞 moving bridge 因实际运动为零
+拒绝；不能通过延长 static dwell、允许穿透或弱化 FR3 安全来掩盖。
+
+当前正在实现 `5-keyframe strict horizon`：窗口从最后 strict-feasible 状态跨过
+现有 static chain 到失败点，对每个 knot 和插值逐项审计，只有整窗原子通过才
+提交。若该窗口仍无解，下一层才启用顺序单指 rephase：一次移动一指、保持至少
+三指支撑，再恢复四指共同分支，原有 recovery 预算不变。工作区已经新增 CPU
+plan audit 脚本和测试，但它们尚未提交，也尚未对 plan 执行；目前仍没有可供
+audit 的成功 plan。下一轮仍是 headless 数值验证，完整 Level 2 PASS 前不录像。

@@ -996,3 +996,29 @@ NPZ 和 palm-guide FR3 redundancy multistart；全量 unittest discover 当前
 Diagnostic，也没有成功 plan、Acceptance 结果或候选视频。下一步先运行默认
 Diagnostic 并用新的 failure-prefix 定位首个硬拒绝；只有数值通过后才进入
 Acceptance 和后续录像。
+
+### Level 2 Diagnostic seed 42 真实结果与正在执行（2026-08-10）
+
+提交 `df7d7c8` 中的可复现 runner 已完成第一次 GPU headless
+`Diagnostic / seed 42`。规划成功越过旧 v106 的约 `269.8 mm` 局部失败点，
+最终推进至 `380.103896 mm` 后停止；本次没有生成成功 plan，也没有生成视频。
+失败证据保存在：
+
+`full_hand_mcc/outputs/debug/20_fr3_planning/baseline2_capsule_level2_diagnostic_seed42_20260810_012853_122_failure_prefix.npz`
+
+最终 coarse best candidate 的唯一硬失败是 `self_collision_pairs=3`；FR3/object
+净距、LEAP/object 净距、pad angle 和其它误差/安全条件仍在门槛内。与之分开
+记录的 rejected moving bridge 具有 `106.25 mm` FR3 净距、`+8.97 mm` 手部
+净距且 `self_collision_pairs=0`；其 recovery 的 progress、normal、tangent、
+monotonic、palm、collision、joint 和 budget 均为 true，只有 `motion=false`。
+到最终拒绝点，连续 static dwell 为 `1.558 mm`、累计 recovery 为
+`3.429 mm`，adaptive insertions 为 `79/96`。因此这次结果不是 FR3 穿模、
+手部穿透、误差超限或 budget 耗尽，而是局部候选分支的自碰撞与 moving bridge
+无真实关节/指尖前进不能同时解决。
+
+正在执行的下一步是不放宽停顿、穿透、FR3 零碰撞或 recovery budget：先在最后
+strict-feasible 状态到失败点之间加入 `5-keyframe strict horizon`，对窗口内
+每个 knot 和插值状态做原有硬约束审计；若仍不可行，再进入顺序单指 rephase，
+一次只重定位一指并要求其余至少三指支撑，最后恢复四指共同分支。CPU plan audit
+脚本及其测试已加入工作区，但尚未提交，也尚未对任何 plan 运行；只有产生完整
+数值 PASS 的 0.48 m plan 后才继续 Acceptance，更不会提前录像。
