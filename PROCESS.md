@@ -1187,3 +1187,41 @@ plan、dynamics 或视频，Level 2 继续为 **NOT PASS**。
 
 **正在执行：**提交并 push 该检查点后，以完全相同的 seed 42、0--50 mm
 Acceptance headless 配置重跑；完整物理/数值通过前不录像。
+
+### `e4dd68b` GPU 0--50 mm：新硬门生效，首失败转为 self collision（2026-08-10）
+
+已实际重跑 Acceptance seed 42，证据 stem 为
+`baseline2_capsule_posturetip_0to50_acceptance_seed42_20260810_052730_233`。
+log/prefix SHA256 分别为
+`C49FD1D10CEB2B1DD074178F1518CF66472E760BE111B910DDE6FF3D978E4948` 与
+`2C5646DFA2D0398D59FC633BEA913EF29311FEB288F20040EE858CD61EF54411`。
+GPU headless 运行约 `1769 s`、exit 1；最后接受 `32.8125 mm`，在
+`32.96875 mm`、keyframe `32/47` 失败，adaptive refine=`7/96`。
+
+新 physical-tip/posture 修复已在真实在线路径生效：从 `6.25 mm` 起，旧 raw/rigid
+候选因 tip `<-1 mm` 被拒，替代的 accepted candidates 保持 tip 约
+`-0.50..-0.99 mm`、pad 约 `29..33 deg` 和 `4/4` 规划接触。最终
+`failure_final_best` 的 tip=`-0.613 mm`、pad=`34.01 deg`、FR3=
+`13.778 mm`、non-tip hand=`-0.796 mm`，progress/normal/tangent/monotonic/palm/
+joint 也都通过；首个硬失败已明确转为 segment self-collision count=`18`。
+独立 `bridge_rejected` 同样不是 tip/pad 失败，而是 self count=`17`；recovery 还因
+超过 `30 mm` terminal cutoff 而 budget=false。
+
+本轮没有 plan、dynamics、成功计划 audit 或视频，仍为 Level 2 **NOT PASS**。
+issue #7 已记录：[comment 5234047398](https://github.com/FerryRain/Hand_Compliance_Control/issues/7#issuecomment-5234047398)。
+**正在执行：**先完成 18/17 个 self contacts 的精确 pair/插值位置审计，再加入针对
+真实 pair 的 self-avoidance gradient；绝不放宽 self-collision 门槛。
+
+精确 pair 审计现已完成：唯一超限 pair 是 ring finger 的
+`mcp_joint_3_geom`↔`dip_3_geom`；`18/17` 表示 18 个 segment samples 中的超限
+occurrences，并非 18/17 个不同 pairs。上一 accepted endpoint 距离为
+`-0.009723010 mm`，距冻结的 `-0.010 mm` 门仅余 `0.000276990 mm`。final-best
+为 `18/18` samples 超限，sample 1=`-0.016295465 mm`，连续越界 fraction=
+`0.002340548`，endpoint=`-0.127325534 mm`；bridge 的 sample 1=
+`-0.009967233 mm` 尚安全，从 sample 2 起共 `17` 次超限，连续越界 fraction=
+`0.063009598`，endpoint=`-0.014117995 mm`。其余硬门精确通过。
+
+根因是在线 residual 对 protected self pairs 没有正向 avoidance gradient；该 pair
+正是 initial protected 第三对，初始距离=`+0.67277 mm`，不能当作天然相邻碰撞而
+排除。**下一步：**为全部 3 个 protected pairs 加 positive barrier，并覆盖 ordinary/
+repair/rephase/moving 路径；`-0.010 mm` hard gate 保持不变。

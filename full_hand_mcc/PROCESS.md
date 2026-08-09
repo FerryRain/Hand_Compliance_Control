@@ -1833,3 +1833,125 @@ Level 2 仍是 **NOT PASS**。
 0--50 mm Acceptance headless 配置重跑。若规划完成，先过 low-motion 与新增
 physical-tip full-plan gate，再进入 dynamics；只有该短程全链条通过后才扩展其它
 seeds 和 0.48 m，更不会提前生成视频。
+
+### `e4dd68b` GPU 0--50 mm Acceptance seed 42：tip/posture 已生效，转入 self-pair 审计（2026-08-10）
+
+#### 运行证据与终止位置
+
+提交 `e4dd68b` 已用上一节完全相同的 Acceptance seed 42、0--50 mm headless
+配置真实重跑。证据 stem 为：
+
+`baseline2_capsule_posturetip_0to50_acceptance_seed42_20260810_052730_233`
+
+对应文件为：
+
+- log：
+  `outputs/debug/20_fr3_planning/baseline2_capsule_posturetip_0to50_acceptance_seed42_20260810_052730_233.log`，
+  SHA256=`C49FD1D10CEB2B1DD074178F1518CF66472E760BE111B910DDE6FF3D978E4948`；
+- failure-prefix：
+  `outputs/debug/20_fr3_planning/baseline2_capsule_posturetip_0to50_acceptance_seed42_20260810_052730_233_failure_prefix.npz`，
+  SHA256=`2C5646DFA2D0398D59FC633BEA913EF29311FEB288F20040EE858CD61EF54411`。
+
+运行约 `1769 s`、exit 1。最后接受的 coarse state=`32.8125 mm`；失败目标=
+`32.96875 mm`，间隔=`0.15625 mm`，keyframe=`32/47`。自动加密仅用
+`7/96`，不是 adaptive-refinement 预算耗尽。只生成 log 和 failure-prefix；没有
+成功 `_plan.npz`，没有进入 dynamics，没有运行成功计划的 standalone/full audit，
+也没有 debug 或交付视频。
+
+#### 新 physical-tip 与 posture 分支已经真实生效
+
+本轮不是“加了代码但仍走旧候选”的假验证。在线日志给出清晰的分支切换：
+
+- `1.25--5.0 mm` 的 raw surface-IK 仍在硬门内被接受，segment tip clearance 从
+  `-0.515` 逐步到 `-0.990 mm`，pad 从 `29.03` 到 `29.87 deg`；
+- 到 `6.25 mm`，raw surface-IK 的 tip=`-1.12 mm`、rigid seed 的
+  tip=`-1.35 mm`，二者都因新 physical-tip `<-1 mm` 门被拒；
+- 同一 `6.25 mm` 目标改由 `task_surface_balanced` 接受，segment tip=
+  `-0.966 mm`、pad=`29.85 deg`、contact=`4/4`；
+- 后续 accepted ordinary/repair/rephase candidates 的 segment tip 大体保持
+  `-0.50..-0.99 mm`，pad 主要在 `29..33 deg`，接受日志持续为 `4/4`。旧运行中
+  从 `6.25 mm` 开始的多毫米 tip-geom 穿入没有再被允许。
+
+因此上一节的 hard gate、orientation residual 和无 raw/rigid 排名特权确实改变了
+GPU 在线候选选择；不能把本次失败重新归因于 tip penetration 或 `40 deg` pad。
+
+#### `failure_final_best`：除 self collision 外均通过
+
+failure-prefix 的 final-best 数值为：
+
+- physical tip minimum clearance=`-0.612541 mm`，最近
+  `fingertip_3_geom`；相对 `-1 mm` 门余量=`0.387459 mm`；
+- maximum pad angle=`34.01 deg <40 deg`，alignment=`0.828919095`；
+- FR3 minimum clearance=`13.777926 mm >2 mm`，最近
+  `fr3v2_link5_collision`；
+- non-tip hand minimum clearance=`-0.795645 mm >-1 mm`，最近
+  `palm_lower_collision`，硬门余量=`0.204355 mm`；
+- progress maximum error=`5.250072 mm <7.5 mm`；
+- normal error=`[2.363716,1.752523,1.997885,1.717407] mm`，对应
+  tolerance=`[6.5,3,3,3] mm`，contact=`4/4`；
+- tangential maximum error=`0.025260 mm`，minimum margin=`1.993751 mm`；
+- monotonic maximum error=`0.007569 mm <0.2 mm`；
+- palm guide error=`11.292834 mm <30 mm`；
+- minimum joint margin=`0.073076 rad`，solver `nfev=31`。
+
+这些条件全部通过。`metric_condition_collision_ok=false` 的首个实质原因是逐段
+`self_collision_count=18`，而不是 FR3、non-tip hand、physical tip 或 pad。当前
+count 是 segment audit 的聚合结果；在 pair 名称、具体 fraction 与 penetration
+深度独立重算完成前，不推测是哪组 link，也不据此修改 collision exclusions。
+
+#### `bridge_rejected`：self collision + terminal budget
+
+独立 moving bridge candidate 同样通过 tip/pad/arm/hand 等门：tip=
+`-0.634084 mm`、pad alignment=`0.842206751`、FR3=`16.822936 mm`、non-tip
+hand=`-0.793612 mm`。三指达到 forward-motion quorum，strict condition 中只有
+`collision=false`；其逐段 self count=`17`。
+
+recovery condition 另有 `budget=false`：目标 `32.96875 mm` 已超过
+`recovery_terminal_cutoff=30 mm`，terminal margin=`-2.96875 mm`。其它 recovery
+量没有耗尽，且 adaptive refine 也只有 `7/96`。因此 bridge 不能解释成 tip hard
+gate、姿态门或总预算问题；它与 final-best 共同指向新的 self-collision 瓶颈，但
+两者的 `18/17` 仍须分别做 pair-level 精确审计，不能混为同一接触集合。
+
+#### 当前结论与下一步
+
+这次 GPU 证明 online posture 与 physical-tip 修复有效，并把旧的
+`40.625 mm` pad/tip 问题替换为更早暴露的真实 self-collision hard failure；它仍
+没有形成完整 0--50 mm plan，更不构成 Level 2 PASS。issue #7 已同步：
+[comment 5234047398](https://github.com/FerryRain/Hand_Compliance_Control/issues/7#issuecomment-5234047398)。
+
+**正在执行：**先对 `failure_final_best` 的 18 次与 `bridge_rejected` 的 17 次
+segment self contacts 独立重算，记录每个 geom pair、插值 fraction、signed distance
+和是否超过冻结 `0.01 mm` penetration；确认真实 pair 后，在 ordinary/posture/
+repair/rephase residual 中加入对应 self-avoidance gradient，并继续用未改变的 hard
+gate 终审。不得通过放宽 self penetration、排除未知 pair 或增加 recovery budget
+掩盖失败；修复经 CPU 回归后再重跑同一 0--50 mm Acceptance seed 42。
+
+#### 精确 self-pair 审计：18/17 是 sample occurrences，不是 pair 数
+
+对 final-best 与 bridge 的全部 segment interpolation samples 做独立 geom-pair
+重算后，唯一越过 `-0.010 mm` 冻结门槛的 pair 均为 ring finger 的
+`mcp_joint_3_geom`↔`dip_3_geom`。因此 failure-prefix 中的 `18` 与 `17` 是同一
+pair 分别在 18 个 segment samples 中出现的超限次数，不是 18/17 个不同碰撞对；
+上文“18/17 个 self contacts”应按这一精确定义理解。
+
+上一 accepted endpoint 上该 pair 的 signed distance=`-0.009723010 mm`，虽然仍在
+门内，但相对 `-0.010 mm` hard gate 只剩 `0.000276990 mm` 余量。两条候选的连续
+审计结果为：
+
+- `failure_final_best`：`18/18` samples 全部超限；sample 1=
+  `-0.016295465 mm`，由上一 endpoint 到候选的连续首次 crossing fraction=
+  `0.002340548`，candidate endpoint=`-0.127325534 mm`；
+- `bridge_rejected`：sample 1=`-0.009967233 mm`，仍以 `0.000032767 mm` 余量
+  安全；从 sample 2 起共 `17` samples 超限，连续首次 crossing fraction=
+  `0.063009598`，candidate endpoint=`-0.014117995 mm`。
+
+final-best 与 bridge 的其它 hard gates 经精确重算均通过；bridge 仍独立带有上文的
+terminal recovery budget=false，但这不改变 collision hard failure。pair 在 initial
+protected-pair 列表中正是第三对，初始 signed distance=`+0.67277 mm`，所以它是应被
+主动保持间隙的真实 pair，不能通过加入 exclusions 或放宽 penetration 来消除失败。
+
+根因已收敛为：ordinary/posture/repair/rephase/moving 的在线 residual 尚未给
+protected self pairs 提供正向 avoidance gradient，优化器只能在末端 hard audit 才
+发现越界。**下一步：**对全部 3 个 protected pairs 加 positive-distance barrier，
+覆盖 ordinary、repair、rephase 与 moving 候选路径；继续冻结 `-0.010 mm` hard
+gate，并用 segment interpolation 作为最终判据。
