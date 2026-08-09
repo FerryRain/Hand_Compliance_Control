@@ -8,11 +8,11 @@ import numpy as np
 
 from mjlab.tasks.leaphand.full_hand_mcc_geometry import capsule_project
 from mjlab.tasks.leaphand.leaphand_full_hand_mcc_env_cfg import (
+    FR3_HOME_Q,
     FivePointReachabilitySolver,
 )
-from mjlab.tasks.leaphand.leaphand_mcc_finger_env_cfg import (
+from mjlab.tasks.leaphand.leaphand_direct_force_env import (
     DEFAULT_PREGRASP_Q,
-    MCC_TARGET_ARM_Q,
 )
 import mjlab.tasks.leaphand.leaphand_full_hand_mcc_env_cfg as env_module
 
@@ -45,7 +45,7 @@ def main() -> None:
     for roll in np.linspace(2.25, 4.05, 13):
         q = np.concatenate(
             (
-                MCC_TARGET_ARM_Q.astype(np.float64),
+                FR3_HOME_Q.astype(np.float64),
                 np.asarray(DEFAULT_PREGRASP_Q, dtype=np.float64),
             )
         )

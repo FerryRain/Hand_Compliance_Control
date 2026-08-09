@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import NamedTuple, cast
+from typing import NamedTuple
 
 import mink
 import mujoco
@@ -24,6 +24,9 @@ import numpy as np
 import torch
 from scipy.spatial.transform import Rotation as R
 
+from mjlab.actuator import BuiltinPositionActuatorCfg
+from mjlab.entity import EntityCfg
+from mjlab.entity.entity import EntityArticulationInfoCfg
 from mjlab.envs import ManagerBasedRlEnv, ManagerBasedRlEnvCfg
 from mjlab.envs.mdp.actions import JointPositionActionCfg
 from mjlab.managers.observation_manager import ObservationGroupCfg, ObservationTermCfg
@@ -32,24 +35,22 @@ from mjlab.rl import RslRlOnPolicyRunnerCfg
 from mjlab.tasks.leaphand.full_hand_mcc_core import (
     FingertipAdmittanceGains,
     FingertipNormalAdmittance,
-    MCC_VARIANTS,
-    MCCVariant,
     WristAdmittanceGains,
     WristCartesianAdmittance,
 )
-from mjlab.tasks.leaphand.leaphand_mcc_finger_env_cfg import (
+from mjlab.tasks.leaphand.leaphand_direct_force_env import (
     DEFAULT_PREGRASP_Q,
+    LEAP_HAND_TACTILE_XML,
     MCC_NON_TIP_HAND_GEOM_PATTERN,
     MCC_TIP_BODY_NAMES,
     MCC_TIP_GEOM_NAMES,
     MCC_TIP_SITE_LOCAL_POSITIONS,
     MCC_TIP_NAMES,
-    _LEAPHAND_XML as _TACTILE_ROBOT_XML,
-    _get_hard_contact_target_spec,
-    _load_fixed_palm_mcc_hand_spec,
+    direct_force_contact_env_cfg,
     fingertip_force_3d,
     joint_pos,
-    mcc_finger_contact_env_cfg,
+    load_fixed_palm_direct_force_hand_spec,
+    make_hard_contact_target_spec,
 )
 
 
@@ -73,23 +74,21 @@ FR3_HOME_Q = np.asarray(
     dtype=np.float32,
 )
 _FR3_LEAP_XML = (
-    _TACTILE_ROBOT_XML.parents[1]
+    LEAP_HAND_TACTILE_XML.parents[1]
     / "fr3_leap_hand"
     / "fr3v2_collision.xml"
 )
-_LEAP_HAND_ONLY_XML = _TACTILE_ROBOT_XML.with_name("leap_hand_tactile.xml")
-# The legacy tactile model places each tip FSR on the local -X face of its
-# fingertip body.  This is the physical finger-pad outward normal; the
-# opposite +X face is the nail/back side.
+_LEAP_HAND_ONLY_XML = LEAP_HAND_TACTILE_XML
+# The LEAP model places the fingertip contact reference on the local -X face.
+# This is the physical finger-pad outward normal; the opposite +X face is the
+# nail/back side.
 MCC_TIP_PAD_NORMAL_LOCAL = np.asarray(
     ((-1.0, 0.0, 0.0),) * 4,
     dtype=np.float64,
 )
-# The standalone LeapHand model and the hand attached to xArm describe the
-# same palm frame with different axes.  For any vector, attached-palm
-# coordinates are R @ fixed-palm coordinates.  Omitting this proper rotation
-# made the fixed-palm MCC's inward correction point outward for the middle and
-# ring fingers.
+# The fixed-palm IK model and FR3-attached hand share the same palm axes.  Keep
+# this explicit transform so every force/target conversion has one documented
+# frame boundary.
 FIXED_TO_ATTACHED_PALM_ROTATION = np.eye(3, dtype=np.float64)
 HAND_QPOS_NAMES = (
     "1", "0", "2", "3",
@@ -125,7 +124,7 @@ def _configure_full_hand_target_geom(geom) -> None:
 def _get_full_hand_contact_target_spec() -> mujoco.MjSpec:
     """Use the selected surface with a dedicated robot/object collision bit."""
 
-    spec = _get_hard_contact_target_spec()
+    spec = make_hard_contact_target_spec()
     geom = spec.geom("target_capsule_medium_geom")
     if geom is None:
         raise ValueError("target_capsule_medium_geom is missing")
@@ -173,9 +172,8 @@ def _load_fr3_leaphand_spec() -> mujoco.MjSpec:
     flange = fr3_spec.body("fr3v2_link8")
     if flange is None:
         raise ValueError("fr3v2_link8 is missing from the FR3 model")
-    # Keep the same pad-side convention as the validated xArm assembly while
-    # centring the hand on the FR3 flange.  The small offset represents the
-    # rigid hand adapter.
+    # Keep the validated pad-side convention while centring the hand on the
+    # FR3 flange.  The small offset represents the rigid hand adapter.
     # The extra local-X half turn sends the fingers away from the FR3 wrist.
     # Without it the pre-grasp fingers point back toward links 6/7 and overlap
     # the arm collision meshes by as much as 49 mm.
@@ -316,67 +314,71 @@ def full_hand_mcc_env_cfg(
     num_envs: int = 1,
     play: bool = False,
 ) -> ManagerBasedRlEnvCfg:
-    """Reuse the tactile environment and expose both MCC feedback paths."""
+    """Build the FR3 + LEAP Baseline-2 direct-force environment."""
 
-    cfg = mcc_finger_contact_env_cfg(num_envs=num_envs, play=play)
-    robot_cfg = cfg.scene.entities["robot"]
-    robot_cfg.spec_fn = _load_full_hand_robot_spec
-    arm_actuator = robot_cfg.articulation.actuators[0]
-    arm_actuator.target_names_expr = (r"^fr3v2_joint[1-7]$",)
-    arm_actuator.stiffness = 2200.0
-    arm_actuator.damping = 220.0
-    arm_actuator.effort_limit = 87.0
-    # The standalone finger task intentionally uses a very soft 5 Nm/rad
-    # position servo.  In the five-contact task that servo stalls against the
-    # capsule before reaching the collision-consistent IK reference, which
-    # looks like an uncommanded natural closure.  Keep the arm settings and
-    # strengthen only the LEAP joints for reliable nominal tracking; MCC still
-    # supplies the bounded force-feedback correction around that nominal pose.
-    hand_actuator = robot_cfg.articulation.actuators[1]
-    hand_actuator.stiffness = 35.0
-    hand_actuator.damping = 2.5
-    hand_actuator.effort_limit = 35.0
-    # Entity joint selectors are regular expressions. Bare numeric names such
-    # as "1" also match "10".."15", silently copying the index-finger value
-    # into six later joints. Remove those ambiguous keys and use anchors.
-    for ambiguous_name in (
-        *(f"joint{joint_id}" for joint_id in range(1, 7)),
-        *HAND_QPOS_NAMES,
-    ):
-        robot_cfg.init_state.joint_pos.pop(ambiguous_name, None)
-    robot_cfg.init_state.joint_pos.update(
-        {
-            **{
-                f"^{joint_name}$": float(value)
-                for joint_name, value in zip(
-                    ARM_JOINT_NAMES, FR3_HOME_Q, strict=True
-                )
+    robot_cfg = EntityCfg(
+        spec_fn=_load_full_hand_robot_spec,
+        articulation=EntityArticulationInfoCfg(
+            actuators=(
+                BuiltinPositionActuatorCfg(
+                    target_names_expr=(r"^fr3v2_joint[1-7]$",),
+                    stiffness=2200.0,
+                    damping=220.0,
+                    effort_limit=87.0,
+                ),
+                BuiltinPositionActuatorCfg(
+                    target_names_expr=(r"^[0-9]+$",),
+                    stiffness=35.0,
+                    damping=2.5,
+                    effort_limit=35.0,
+                    armature=0.0,
+                    frictionloss=0.001,
+                ),
+            ),
+        ),
+        init_state=EntityCfg.InitialStateCfg(
+            pos=(0.0, 0.0, 0.0),
+            # Anchored selectors are required because a bare numeric pattern
+            # such as "1" also matches joints "10" through "15".
+            joint_pos={
+                **{
+                    f"^{joint_name}$": float(value)
+                    for joint_name, value in zip(
+                        ARM_JOINT_NAMES, FR3_HOME_Q, strict=True
+                    )
+                },
+                **{
+                    f"^{joint_name}$": float(value)
+                    for joint_name, value in zip(
+                        HAND_QPOS_NAMES, DEFAULT_PREGRASP_Q, strict=True
+                    )
+                },
             },
-            **{
-                f"^{joint_name}$": float(value)
-                for joint_name, value in zip(
-                    HAND_QPOS_NAMES, DEFAULT_PREGRASP_Q, strict=True
-                )
-            },
-        }
+        ),
     )
-    cfg.scene.entities["target"].spec_fn = _get_full_hand_contact_target_spec
-    # Put all four initial fingertip contacts near the lower end of the
-    # straight cylinder.  A 200 mm slide then finishes near the upper end
-    # without forcing any finger through a capsule end-cap curvature change.
-    # Keep the original upper end fixed while extending the useful sliding
-    # surface downward by 0.20 m.  This avoids introducing new target geometry
-    # into the palm/proximal-link region above the fingertip contact band.
-    cfg.scene.entities["target"].init_state.pos = (0.7007, 0.0003, 0.7077)
-    cfg.actions["arm_pos"] = JointPositionActionCfg(
-        entity_name="robot",
-        actuator_names=(r"^fr3v2_joint[1-7]$",),
-        use_default_offset=False,
+    target_cfg = EntityCfg(
+        spec_fn=_get_full_hand_contact_target_spec,
+        # Put all four initial fingertip contacts near the lower end of the
+        # straight cylinder while retaining room to slide toward the top.
+        init_state=EntityCfg.InitialStateCfg(pos=(0.7007, 0.0003, 0.7077)),
     )
-    cfg.actions["hand_delta"] = JointPositionActionCfg(
-        entity_name="robot",
-        actuator_names=(r"^[0-9]+$",),
-        use_default_offset=False,
+    cfg = direct_force_contact_env_cfg(
+        robot_cfg=robot_cfg,
+        target_cfg=target_cfg,
+        actions={
+            "arm_pos": JointPositionActionCfg(
+                entity_name="robot",
+                actuator_names=(r"^fr3v2_joint[1-7]$",),
+                use_default_offset=False,
+            ),
+            "hand_delta": JointPositionActionCfg(
+                entity_name="robot",
+                actuator_names=(r"^[0-9]+$",),
+                use_default_offset=False,
+            ),
+        },
+        num_envs=num_envs,
+        play=play,
     )
     cfg.viewer.origin_type = cfg.viewer.OriginType.ASSET_BODY
     cfg.viewer.entity_name = "target"
@@ -1231,12 +1233,10 @@ class FingertipForceFingerMCCController:
         self,
         device: str,
         num_envs: int,
-        variant: MCCVariant,
         **kwargs,
     ) -> None:
         self.device = device
         self.num_envs = int(num_envs)
-        self.variant = variant
         self.control_dt = float(kwargs.get("control_dt", 0.01))
         self.mink_damping = float(kwargs.get("mink_damping", 0.1))
         self.mink_num_iter = int(kwargs.get("mink_num_iter", 3))
@@ -1248,7 +1248,7 @@ class FingertipForceFingerMCCController:
         self.pregrasp_q = np.asarray(
             kwargs.get("pregrasp_q", DEFAULT_PREGRASP_Q), dtype=np.float64
         )
-        self.model = _load_fixed_palm_mcc_hand_spec().compile()
+        self.model = load_fixed_palm_direct_force_hand_spec().compile()
         self.data = mujoco.MjData(self.model)
         self.config = mink.Configuration(self.model)
         # The environment/action order is HAND_QPOS_NAMES, whereas MuJoCo's
@@ -1441,13 +1441,6 @@ class FingertipForceFingerMCCController:
             self.minimum_fingertip_force_setpoint,
             self.maximum_fingertip_force_setpoint,
         )
-
-    def calibrate_motor_force_setpoint(
-        self, force_magnitude: np.ndarray
-    ) -> None:
-        """Compatibility wrapper; direct fingertip force is now authoritative."""
-
-        self.calibrate_fingertip_force_sign(force_magnitude)
 
     def _set_hand_q(self, q_hand: np.ndarray) -> None:
         self.data.qpos[:] = 0.0
@@ -1764,11 +1757,6 @@ class FingertipForceFingerMCCController:
         return action
 
 
-# Compatibility import for older scripts.  The implementation no longer uses
-# motor torque as its contact-force source.
-MotorForceFingerMCCController = FingertipForceFingerMCCController
-
-
 def _align_local_z_to_normal(
     current_rotvec: np.ndarray,
     outward_normal: np.ndarray,
@@ -1793,12 +1781,11 @@ class FullHandMCCController:
     """Baseline 2: wrist admittance plus four fingertip-force admittances."""
 
     def __init__(self, device: str, num_envs: int, **kwargs) -> None:
-        variant = str(kwargs.get("variant", "hybrid_force_position"))
-        if variant not in MCC_VARIANTS:
-            raise ValueError(f"Unknown variant {variant!r}; choose from {MCC_VARIANTS}")
         self.device = device
         self.num_envs = int(num_envs)
-        self.variant = cast(MCCVariant, variant)
+        self.action_rate_limit = float(kwargs.get("action_rate_limit", 0.18))
+        if self.action_rate_limit <= 0.0:
+            raise ValueError("action_rate_limit must be positive")
         self.arm_trust_region = float(kwargs.get("arm_trust_region", 0.08))
         self.arm_mcc_correction_limit = float(
             kwargs.get("arm_mcc_correction_limit", 0.012)
@@ -1856,13 +1843,10 @@ class FullHandMCCController:
             ),
         )
         self.wrist_admittance = WristCartesianAdmittance(wrist_gains)
-        finger_kwargs = dict(kwargs)
-        finger_kwargs.pop("variant", None)
         self.fingers = FingertipForceFingerMCCController(
             device=device,
             num_envs=num_envs,
-            variant=self.variant,
-            **finger_kwargs,
+            **kwargs,
         )
         self.last_debug: dict[str, torch.Tensor] = {}
         self._previous_action: torch.Tensor | None = None
@@ -2092,11 +2076,13 @@ class FullHandMCCController:
         )
         action = torch.cat((arm_action, finger_action), dim=-1)
 
-        if self.variant == "passivity_tank" and self._previous_action is not None:
-            # Preserve the legacy variant's conservative whole-hand rate
-            # limiter.  Baseline-2 admittance limits remain authoritative.
+        if self._previous_action is not None:
+            # Apply one controller-independent joint-command rate limit to the
+            # arm and fingers after both admittance corrections are composed.
             action = self._previous_action + torch.clamp(
-                action - self._previous_action, -0.04, 0.04
+                action - self._previous_action,
+                -self.action_rate_limit,
+                self.action_rate_limit,
             )
         self._previous_action = action.detach().clone()
         self.last_debug = {
@@ -2139,7 +2125,6 @@ class FullHandMCCControlCfg(RslRlOnPolicyRunnerCfg):
     device: str = "cuda:0"
     policy_class: type = FullHandMCCController
     amplitude: float = 0.5
-    variant: str = "hybrid_force_position"
     control_dt: float = 0.01
     prep_duration_s: float = 1.5
 

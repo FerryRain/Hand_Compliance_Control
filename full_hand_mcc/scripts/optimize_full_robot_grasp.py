@@ -18,7 +18,7 @@ from mjlab.tasks.leaphand.leaphand_full_hand_mcc_env_cfg import (
     TOTAL_DOF,
     FivePointReachabilitySolver,
 )
-from mjlab.tasks.leaphand.leaphand_mcc_finger_env_cfg import (
+from mjlab.tasks.leaphand.leaphand_direct_force_env import (
     DEFAULT_PREGRASP_Q,
 )
 import mjlab.tasks.leaphand.leaphand_full_hand_mcc_env_cfg as env_module

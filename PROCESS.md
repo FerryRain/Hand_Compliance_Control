@@ -52,9 +52,11 @@
 13. 2026-07-28 用户决定在当前 demo 完成前继续使用此前已经验证的项目
     `.venv`（其基础解释器来自 `DMtactile`），暂不切换完整运行栈到 `handcomp`；
     项目完成后再通知用户并提供手动配置 `handcomp` 的步骤。
-14. 视频必须按阶段保存：冒烟/探针、历史方法调试、FR3 规划调试、已审核参考和
-    FR3 完整交付分别放入固定子目录。失败或未审核视频不得进入交付目录，已有视频
-    也要按同一规则重新分类。
+14. 视频按现行三类保存：冒烟/探针进入
+    `outputs/debug/00_smoke_and_probes/`，FR3 规划调试进入
+    `outputs/debug/20_fr3_planning/`，通过完整数值与视觉验收的结果才进入
+    `outputs/deliverables/fr3/`。失败或未审核视频不得进入交付目录；旧方法和
+    xArm reference 视频目录已于 2026-08-10 清理。
 15. 2026-07-29 项目研究定位以根目录 `PROPOSAL.md` 为准。主贡献改为可规模化
     逆向示范生成、以 wrist motion/触觉为条件的 finger Diffusion Policy，以及
     wrist-only ER-GPIS 主动探索。在线主方法不求解高维全手非线性优化；
@@ -78,28 +80,21 @@
 
 | 子目录 | 作用 | 状态 | 详细进程 |
 | --- | --- | --- | --- |
-| `full_hand_mcc/` | Baseline 2 的 FR3 + LEAP 全手 MCC、五点显式优化、碰撞审核、视频 | 基线迁移进行中 | [`full_hand_mcc/PROCESS.md`](full_hand_mcc/PROCESS.md) |
-| `palm_compliance_control/` | 原始掌部/机械臂 MCC 参考 | 已有参考实现 | README/源码 |
-| `mcc_finger_compliance_control/` | 手指 MCC 参考 | 已有参考实现 | README/源码 |
-| `finger_compliance_control/` | 手指顺应控制参考 | 已有参考实现 | README/源码 |
+| `full_hand_mcc/` | Baseline 2 的 FR3 + LEAP 全手 MCC、五点显式优化、碰撞审核、视频 | 清理后 Level 1 数值通过；Level 2–5 待执行 | [`full_hand_mcc/PROCESS.md`](full_hand_mcc/PROCESS.md) |
 | `minimalist_compliance_control/` | 上游/简化 MCC 方法 | 参考代码 | README/源码 |
 
 ## GitHub issue 索引
 
-- [#8 主方法：逆向示范生成 + wrist-conditioned finger DP + wrist-only ER-GPIS](https://github.com/FerryRain/Hand_Compliance_Control/issues/8)
+- [#8（open）主方法：逆向示范生成 + wrist-conditioned finger DP + wrist-only ER-GPIS](https://github.com/FerryRain/Hand_Compliance_Control/issues/8)
   —— Proposal 主线与 Phase 1–5 的实现/实验追踪；优先级高于继续扩展在线联合优化。
-- [#7 FR3 full-hand MCC：迁移机械臂并滑到物体顶部](https://github.com/FerryRain/Hand_Compliance_Control/issues/7)
+- [#7（open）FR3 full-hand MCC：迁移机械臂并滑到物体顶部](https://github.com/FerryRain/Hand_Compliance_Control/issues/7)
   —— Baseline 2 的底层 MCC、Optimization Oracle 和 time-capped 对照。
-- [#4 多物体/曲率泛化](https://github.com/FerryRain/Hand_Compliance_Control/issues/4)
+- [#4（open）多物体/曲率泛化](https://github.com/FerryRain/Hand_Compliance_Control/issues/4)
   —— 未完成，FR3 单物体验收后继续。
-- [#1 硬件力矩符号与五接触接口](https://github.com/FerryRain/Hand_Compliance_Control/issues/1)
-  —— 仿真后续硬件问题，仍开放。
-- [#3 长距离连续表面滑动](https://github.com/FerryRain/Hand_Compliance_Control/issues/3)
-  —— xArm6 版本已关闭；FR3 的更强顶部要求由 #7 追踪。
-- [#6 指腹方向、全机碰撞和长路线审核](https://github.com/FerryRain/Hand_Compliance_Control/issues/6)
-  —— xArm6 验收记录，已关闭。
+- [#2（closed，保留的历史记录）](https://github.com/FerryRain/Hand_Compliance_Control/issues/2)
+  —— 不再作为活动任务；当前活动 issues 只有 #4、#7、#8。
 
-## 当前正在做
+## 历史实现过程（始于 2026-07-28）
 
 2026-07-28 完成视频目录治理：将 `full_hand_mcc` 的 259 个历史 MP4 从
 `output/` 与 `outputs/` 根目录迁移到阶段子目录，其中冒烟/探针 77 个、
@@ -879,3 +874,93 @@ issue #7、提交 main 检查点，然后以现有 `.venv` 运行新的 headless
   泛化。代码/测试/文档已由 `192ae9c` 提交并推送 `main`，issue #7 已同步
   评论 `5128133855`。下一步继续完整 headless 数值终审；终审通过前不生成
   视频。
+
+## 错误工程与历史产物清理检查点（2026-08-10，已完成）
+
+用户已确认把仓库当前入口收束到 proposal 主方法文档和方案二/Baseline 2
+底层控制器，不再把早期 hand-only、palm-only、motor-force、xArm 或“五个
+版本”实验当作当前工程。历史过程不从本文档删除：它们仍解释为什么现有
+Baseline-2 传感器语义、控制律和验收规则被这样定义，但不能继续作为运行说明、
+成功证据或可交付结果。
+
+本次文件、依赖和 GitHub 清理均已完成：
+
+- 已删除旧独立工程 `finger_compliance_control/`、
+  `mcc_finger_compliance_control/`、`palm_compliance_control/`；
+- 已把 FR3 当前所需的 LEAP 模型、常量和四路 force sensor 定义解耦到独立
+  direct-force module；随后删除五个旧 task cfg：
+  `leaphand_finger_adhesion_env_cfg.py`、`leaphand_finger_env_cfg.py`、
+  `leaphand_mcc_finger_env_cfg.py`、`leaphand_palm_env_cfg.py`、
+  `leaphand_palm_mcc_env_cfg.py`；
+- 已删除旧 motor-force compatibility API、五个旧 variant 及 demo 的
+  `--variant`；motor load 只保留 read-only diagnostic，不进入 Finger MCC；
+- 已删除旧 xArm、旧 motor-force/five-variant 资产、无效计划 NPZ 和错误工程
+  资产；当前抓取种子保留
+  `full_hand_mcc/assets/fr3_capsule_100x170_bottom_grasp_high_clearance_v4.npz`；
+- 已删除 `full_hand_mcc/outputs/debug/10_legacy_surface_methods/` 与
+  `full_hand_mcc/outputs/reference/accepted_xarm6/`，不把它们迁入交付目录；
+- 已删除根目录生成物/旧笔记 `mjmodel.mjb`、空的 `mjmodel.xml`、`MJDATA.TXT`、
+  `CLAUDE_old.md` 和 `HandContactRe-location.md`；
+- GitHub 已核对：#1、#3、#6 已删除；只剩 #2（closed）和 #4/#7/#8
+  （open），且 #4/#7/#8 正文已改为当前 FR3/direct-force/短暂失联语义。
+
+明确保留：
+
+- `PROPOSAL.md`：主方法与实验设计的权威范围；
+- `CONTROL_STRATEGIES.md`：两版底层控制与真实力传感器语义；
+- `full_hand_mcc/`：唯一活动的显式 whole-hand optimization Baseline-2 子项目；
+- `minimalist_compliance_control/`：只读 upstream/reference，不作为当前 demo；
+- 根/子 `PROCESS.md` 和 Git 历史：保留失败原因与设计演进，防止未来重复踩坑。
+
+清理后验证已经完成：全量 unittest `17/17`；demo、grasp-search、
+grasp-optimization 三个 CLI 均 exit 0，demo help 不含 `--variant`。同一
+5 mm/750-step CUDA headless exit 0 且未生成视频：contact
+`[0.9975,1,1,0.99]`、majority `1.0`、average `3.9875/4`、minimum `3/4`、
+loss `[1,0,0,1]`、terminal `4/4=65`；raw force peaks
+`[14.936,10.963,26.132,9.721] N`，filtered normal peaks
+`[13.158,8.862,20.480,8.029] N`；FR3 contact、self/tip penetration 和
+incidental hand contact 均为 0，maximum pad angle `41.44 deg`，travel
+`5 mm`。按 `BASELINE2_ACCEPTANCE.md` 标为 `PASS-NUMERICAL-L1`。
+本轮验收分级、Level-1 结果和后续 0.48 m 诊断计划已同步到 issue #7
+评论 `5232599733`；多物体课程与视频门槛已同步到 issue #4 评论
+`5232599929`。
+
+清理不改变高等级结论：完整 0.48 m、顶部到达、Oracle/time-capped、
+多物体泛化和交付视频仍为 `NOT RUN`。
+
+### 已完成：冻结 Baseline-2 分级验收（2026-08-10）
+
+新增 `full_hand_mcc/BASELINE2_ACCEPTANCE.md`，把后续工作拆为五级：底层闭环、
+canonical 单物体 0.48 m 长程、Oracle 与 50/100/200 ms time-capped variants、
+多物体泛化、视频交付。统一硬门槛沿用：majority contact `>=80%`、平均
+`>=3/4`、每指 `>=75%`、末段恢复 `4/4`、FR3/object 零接触、filtered
+normal force `<25 N`、raw 3-D force `<40 N`；同时固化 recovery、穿透、
+pad angle、joint、route progress 和 non-tip contact 限制。
+
+泛化课程现明确覆盖 plane、大半径 cylinder/capsule、完整 capsule 顶部、
+大曲率 sphere/ellipsoid、rounded box 曲率突变以及 superquadric/irregular
+mesh，并加入 0.8/1.0/1.2 尺度、0.3/0.6/1.0 摩擦、姿态扰动和 held-out
+组合。视频继续执行 headless-first，只有同一 plan/config 的数值复跑和逐帧/
+抽帧视觉检查都通过才能交付。
+
+规范、README 链接和清理后 Level-1 复验均已完成。Level 1 当前为
+`PASS-NUMERICAL-L1`；0.48 m、timing、泛化和视频对应 Level 2–5，仍为
+`NOT RUN`。
+
+### 下一步正在做：0.48 m 局部拒绝诊断与 Level 2 规划
+
+旧 v106 在约 `269.8 mm` 停止，现有证据指向局部 URDF 可达分支和一个尚未
+拆解的 moving-recovery 合取失败；当前日志没有明确指出 progress、接触、真实
+关节运动、forward progress、collision、pad angle、budget 等子条件中究竟哪一
+项首先拒绝，因此不能直接继续放宽阈值。
+
+下一步计划尚未实现或验证：
+
+1. 为 strict/static/moving candidate 输出结构化逐条件 rejection diagnostics，
+   保留 first-failing clause、实际值、阈值和 last feasible state；
+2. 利用 palm-root 只是 soft guide，在保持四指 targets 与 FR3 零碰撞的前提下，
+   加入 arm/palm pose 与 FR3 Jacobian nullspace multistart；
+3. 只在 `269.8 mm` 附近求解 3–5 个 keyframe 的局部窗口，并尝试顺序单指
+   rephase：一次只调整一指，其余至少三指继续支撑，再恢复四指共同分支；
+4. 不扩大 static dwell（仍为单段 1.5 mm、累计 2%）或总 recovery budget；
+5. 先运行结构测试和 headless，Level 2 全数值通过前不生成视频。

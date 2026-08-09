@@ -46,24 +46,21 @@
 - 当前 demo 完成前继续使用此前验证的项目 `.venv`（基础解释器为 `DMtactile`）；
   按用户 2026-07-28 的决定，完整 `handcomp` 迁移推迟到项目完成后，再提供手动
   配置步骤。不得在同一验收序列中途切换环境。
-- 视频按 `outputs/debug/00_smoke_and_probes/`、
-  `outputs/debug/10_legacy_surface_methods/`、
-  `outputs/debug/20_fr3_planning/`、`outputs/reference/accepted_xarm6/`
-  与 `outputs/deliverables/fr3/` 分级。只有完整数值和视觉验收通过的 FR3 视频
-  才能进入 `deliverables/fr3/`。
+- 视频按现行三类分级：`outputs/debug/00_smoke_and_probes/` 保存冒烟/探针，
+  `outputs/debug/20_fr3_planning/` 保存 FR3 规划调试，只有完整数值和视觉验收
+  通过的结果才能进入 `outputs/deliverables/fr3/`。已删除的 legacy/xArm
+  目录不得在后续 session 中重建为活动入口。
 
 ## 相关 issue
 
-- [#8 主方法：逆向示范 + finger DP + wrist-only ER-GPIS](https://github.com/FerryRain/Hand_Compliance_Control/issues/8)
+- [#8（open）主方法：逆向示范 + finger DP + wrist-only ER-GPIS](https://github.com/FerryRain/Hand_Compliance_Control/issues/8)
   —— 主研究路线；本目录只能作为 teacher/oracle 与显式优化对照为其服务。
-- [#7 FR3 迁移与滑到顶部](https://github.com/FerryRain/Hand_Compliance_Control/issues/7)
+- [#7（open）FR3 迁移与滑到顶部](https://github.com/FerryRain/Hand_Compliance_Control/issues/7)
   —— 本目录 Baseline 2 的当前实现与验收。
-- [#4 多物体和大曲率泛化](https://github.com/FerryRain/Hand_Compliance_Control/issues/4)
+- [#4（open）多物体和大曲率泛化](https://github.com/FerryRain/Hand_Compliance_Control/issues/4)
   —— FR3 主 demo 通过后继续。
-- [#1 硬件力矩符号](https://github.com/FerryRain/Hand_Compliance_Control/issues/1)
-  —— 仿真结果移植硬件前必须解决。
-- [#6 xArm6 指腹/碰撞审核](https://github.com/FerryRain/Hand_Compliance_Control/issues/6)
-  —— 可复用的验收方法与历史结果。
+- [#2（closed，保留的历史记录）](https://github.com/FerryRain/Hand_Compliance_Control/issues/2)
+  —— 不再作为活动任务；当前活动 issues 为 #4、#7、#8。
 
 ## 基线（已合并 main）
 
@@ -79,7 +76,10 @@
 基线视频：
 `full_hand_mcc/outputs/reference/accepted_xarm6/capsule_100x170_bottom_to_top_280mm.mp4`
 
-## 当前正在做（2026-07-25）
+> 2026-08-10 状态注：上面的路径只记录当时的历史证据；该 xArm 视频和目录
+> 已在错误产物清理中删除，不能作为当前文件入口或 Baseline-2 验收结果。
+
+## 历史实现过程（始于 2026-07-25）
 
 ### 1. FR3 资产与装配
 
@@ -142,7 +142,6 @@ FivePointReachabilitySolver: lower.shape=(23,), points.shape=(5,3)
   明确忽略；全局 seed 改为 FR3 joint1/joint3/joint7 冗余扰动。
 - `search_long_route_arm_branch.py` 改为 7 DoF FR3 null-space seed，默认行程
   从 0.28 m 提高到 0.40 m。
-- `diagnose_finger_normal_mapping.py` 完成 23/7 切片。
 - 10 个 `test_full_hand_mcc_core.py` unittest 通过。
 
 GPU smoke（2026-07-25）：
@@ -1313,3 +1312,87 @@ self penetration、tip penetration 和 incidental LEAP contact 全为 0，
 完整 0.48 m 规划/4700-step 动力学、顶部曲面和多物体泛化仍未完成，不能把
 本次短程结果或旧 v1–v106 视频当作最终交付。实现、回归和本文档已由
 `192ae9c` 提交并推送 `main`；issue #7 对应评论为 `5128133855`。
+
+## 2026-08-10：Baseline-2 子项目清理检查点（已完成）
+
+用户确认删除错误代码、错误工程文件、旧视频和旧 issues。此次清理不改写前文
+的历史事实；前文仍用于追踪失败原因，但旧 xArm、motor-residual、静态位移、
+五个兼容标签和旧视频均不再是本子项目的运行入口或验收证据。
+
+当前唯一活动目标是：FR3 + LEAP 的显式 whole-hand optimizer 输出 wrist 与
+四条 fingertip Cartesian 轨迹，底层由较低带宽 Wrist MCC 和四路真实指尖力
+驱动的 normal-only Finger MCC 执行。`minimalist_compliance_control/` 只保留
+为 MCC upstream/reference；proposal 的 DP + wrist-only ER-GPIS 主方法不在
+本子目录中实现。
+
+已完成的删除与解耦边界：
+
+- 已删除旧独立工程 `finger_compliance_control/`、
+  `mcc_finger_compliance_control/`、`palm_compliance_control/`；
+- 已将 FR3 当前需要的 LEAP 模型、常量和四路 force sensor 解耦到独立
+  direct-force module，并删除五个旧 task cfg：
+  `leaphand_finger_adhesion_env_cfg.py`、`leaphand_finger_env_cfg.py`、
+  `leaphand_mcc_finger_env_cfg.py`、`leaphand_palm_env_cfg.py`、
+  `leaphand_palm_mcc_env_cfg.py`；
+- 已删除旧 motor-force compatibility API、五个旧 variant 和 `--variant`；
+  motor load 仅保留 read-only diagnostic；
+- 已删除旧 xArm、motor-force/five-variant 资产和无效 NPZ，只保留当前 FR3
+  抓取种子 `assets/fr3_capsule_100x170_bottom_grasp_high_clearance_v4.npz`；
+- 已删除 `outputs/debug/10_legacy_surface_methods/`、
+  `outputs/reference/accepted_xarm6/` 及其中旧视频；
+- GitHub 已核对只剩 #2（closed）、#4/#7/#8（open）；#1/#3/#6 已删除，
+  #4/#7/#8 正文已更新。
+
+清理后全量 unittest `17/17`，demo/search/optimize CLI 均 exit 0，demo help
+中没有 `--variant`。5 mm/750-step CUDA headless exit 0、无视频：contact
+`[0.9975,1,1,0.99]`、majority `1.0`、average `3.9875/4`、minimum `3/4`、
+loss `[1,0,0,1]`、terminal `4/4=65`；raw
+`[14.936,10.963,26.132,9.721] N`、filtered
+`[13.158,8.862,20.480,8.029] N`；FR3/self/tip penetration/incidental
+contact 均为 0，pad angle `41.44 deg`，travel `5 mm`。当前正式状态为
+`PASS-NUMERICAL-L1`。
+本轮验收分级、Level-1 结果和后续 0.48 m 诊断计划已同步到 issue #7
+评论 `5232599733`；多物体课程与视频门槛已同步到 issue #4 评论
+`5232599929`。
+
+### 分级验收状态（2026-08-10）
+
+新增 `BASELINE2_ACCEPTANCE.md` 作为本子项目的执行门槛，不再根据某个视频、
+版本号或单次 seed 临时判断成功：
+
+1. Level 1 已完成清理后的 tests/CLI 与 5 mm direct-force headless 闭环；
+2. Level 2 下一步用固定参数完成五个 seeds 的 canonical 0.48 m bottom-to-top，四指
+   跨 upper-cap seam、到达顶部坐标并在末段恢复稳定 `4/4`；
+3. Level 3 在相同初态比较 unlimited Oracle 和 50/100/200 ms budgets，分别
+   报告 convergence、latency、deadline/fallback 与 contact loss；
+4. Level 4 冻结控制参数后执行 plane、large-radius cylinder/capsule、full
+   capsule、high-curvature sphere/ellipsoid、rounded box 和
+   superquadric/irregular 的 120-run 尺度/摩擦/姿态矩阵；
+5. Level 5 只为 numerical PASS 的同一 plan/config 录像，并审核物理指腹、
+   thumb 可见、FR3 clearance、top arrival、穿模、停顿和播放速度。
+
+所有动态等级继续使用 majority contact `>=80%`、平均 `>=3/4`、每指
+`>=75%`、FR3/object 零接触、filtered normal `<25 N`、raw 3-D `<40 N`
+等硬门槛。掌根仍只是宽松 guide；掌部/其他 LEAP contact 不计为 tip support，
+并受单点/总力、穿透和冲量占比约束。
+
+清理后 Level 1 已通过；0.48 m、顶部、Oracle/time-capped、泛化和视频交付
+仍为 `NOT RUN`。
+
+### 下一步正在做：v106 269.8 mm 局部失败拆解
+
+旧 v106 在约 `269.8 mm` 的拒绝目前只能定位到局部可达分支与尚未诊断的
+moving-recovery 合取；不能从旧汇总日志确认是哪一个子条件首先失败。下一轮
+计划如下，当前均未实现/未通过：
+
+1. 输出 strict/static/moving candidate 的结构化 rejection diagnostics，逐项
+   记录 progress、normal/tangential error、contact count、nonzero joint
+   motion、three-finger forward progress、FR3/hand/self collision、pad angle、
+   recovery budget 和 terminal margin；
+2. 因 palm-root 是 soft guide，增加 arm/palm pose 与 FR3 nullspace multistart，
+   但不放宽四个 fingertip targets、joint limits 或 FR3/object zero-contact；
+3. 在失败点前后建立 3–5 keyframe 局部窗口，尝试顺序单指 rephase：每次只
+   重定位一指，至少三指保持支撑，再恢复共同四指分支；
+4. 不扩大 static dwell 或 recovery total budget，防止用更长原地等待掩盖
+   reachability failure；
+5. 先做结构回归与 headless 规划/动力学；完整 Level 2 通过前不生成视频。

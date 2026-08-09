@@ -5,9 +5,9 @@ from mjlab.tasks.leaphand.leaphand_full_hand_mcc_env_cfg import (
     ARM_COLLISION_GEOM_PATTERN,
     FivePointReachabilitySolver,
 )
-from mjlab.tasks.leaphand.leaphand_mcc_finger_env_cfg import (
+from mjlab.tasks.leaphand.leaphand_direct_force_env import (
     MCC_NON_TIP_HAND_GEOM_PATTERN,
-    _tip_sensor_cfgs,
+    direct_force_contact_sensor_cfgs,
 )
 
 
@@ -48,7 +48,9 @@ class FullHandContactPolicyTest(unittest.TestCase):
         )
 
     def test_runtime_sensors_separate_strict_arm_depth_and_hand_force(self) -> None:
-        sensors = {cfg.name: cfg for cfg in _tip_sensor_cfgs()}
+        sensors = {
+            cfg.name: cfg for cfg in direct_force_contact_sensor_cfgs()
+        }
 
         self.assertEqual(sensors["arm_object_collision"].reduce, "mindist")
         self.assertEqual(

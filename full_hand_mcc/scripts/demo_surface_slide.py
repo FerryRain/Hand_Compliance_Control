@@ -1,9 +1,9 @@
-"""Five reachable surface points + full-hand MCC surface-sliding demo.
+"""FR3 + LEAP Baseline-2 direct-force surface-sliding demo.
 
 Run from the repository root:
 
     python full_hand_mcc/scripts/demo_surface_slide.py \
-        --variant hybrid_force_position --viewer native
+        --viewer native
 
 The five target points are kept on the capsule analytically.  Every proposed
 slide increment is then accepted only after the real 23-DoF model reaches all
@@ -34,7 +34,6 @@ from scipy.spatial.transform import Rotation as R
 
 from mjlab.envs import ManagerBasedRlEnv
 from mjlab.rl import RslRlVecEnvWrapper
-from mjlab.tasks.leaphand.full_hand_mcc_core import MCC_VARIANTS
 from mjlab.tasks.leaphand.full_hand_mcc_geometry import (
     capsule_meridian_curvature,
     capsule_meridian_coordinates,
@@ -57,7 +56,7 @@ from mjlab.tasks.leaphand.leaphand_full_hand_mcc_env_cfg import (
     FullHandMCCControlCfg,
     full_hand_mcc_env_cfg,
 )
-from mjlab.tasks.leaphand.leaphand_mcc_finger_env_cfg import MCC_TIP_NAMES
+from mjlab.tasks.leaphand.leaphand_direct_force_env import MCC_TIP_NAMES
 import mjlab.tasks.leaphand.leaphand_full_hand_mcc_env_cfg as full_hand_env_module
 from mjlab.viewer import NativeMujocoViewer, ViserPlayViewer
 
@@ -113,7 +112,6 @@ def main() -> None:
     global capsule_project, capsule_meridian_coordinates
     global capsule_meridian_targets, surface_meridian_curvature
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--variant", choices=MCC_VARIANTS, default="hybrid_force_position")
     parser.add_argument(
         "--viewer",
         choices=("native", "viser", "headless", "video"),
@@ -1387,17 +1385,16 @@ def main() -> None:
         "--output",
         type=Path,
         default=Path(
-            "full_hand_mcc/outputs/debug/"
-            "10_legacy_surface_methods/"
-            "thick_object_slow_surface_slide.mp4"
+            "full_hand_mcc/outputs/debug/20_fr3_planning/"
+            "baseline2_candidate.mp4"
         ),
     )
     parser.add_argument(
         "--plan-output",
         type=Path,
         default=Path(
-            "full_hand_mcc/outputs/"
-            "thick_object_slow_surface_slide_plan.npz"
+            "full_hand_mcc/outputs/debug/20_fr3_planning/"
+            "baseline2_plan.npz"
         ),
     )
     parser.add_argument(
@@ -2138,7 +2135,6 @@ def main() -> None:
     )
     wrapped = RslRlVecEnvWrapper(env)
     cfg = FullHandMCCControlCfg(
-        variant=args.variant,
         device=device,
         finger_desired_force=args.finger_force_n,
         finger_virtual_mass=args.finger_admittance_mass_kg,
@@ -8114,7 +8110,7 @@ def main() -> None:
                 )
                 wrist_wrench_error = debug["arm_wrench_error"][0]
                 print(
-                    f"[FULL-HAND-MCC] step={self.step:05d} variant={args.variant} "
+                    f"[FULL-HAND-MCC] step={self.step:05d} "
                     f"reachable_err_mm={(self.last_residual * 1000).round(2).tolist()} "
                     f"actual_tip_surface_mm="
                     f"{(self.surface_error[1:] * 1000).round(2).tolist()} "
@@ -8182,7 +8178,7 @@ def main() -> None:
 
     env.update_visualizers = update_demo_visualizers
     print(
-        f"[INFO] Full-hand MCC demo | variant={args.variant} "
+        f"[INFO] Baseline-2 full-hand MCC demo | "
         f"device={device} viewer={args.viewer} "
         f"object_shape={args.object_shape} "
         f"object_radius_m={CAPSULE_RADIUS:.4f} "
