@@ -24,6 +24,122 @@ from mjlab.tasks.leaphand.leaphand_direct_force_env import (
 import mjlab.tasks.leaphand.leaphand_full_hand_mcc_env_cfg as env_module
 
 
+JOINT_MARGIN_RESIDUAL_SCALE_RAD = 0.05
+
+
+def _select_physical_reference_q(
+    nominal_reference_q: np.ndarray,
+    *,
+    seed_only: bool,
+    seed_q: np.ndarray | None,
+) -> np.ndarray:
+    """Select the posture prior used by the physical refinement stage."""
+
+    nominal = np.asarray(nominal_reference_q, dtype=np.float64).reshape(-1)
+    if not seed_only:
+        return nominal.copy()
+    if seed_q is None:
+        raise ValueError("seed-only physical refinement requires a seed q")
+    seed = np.asarray(seed_q, dtype=np.float64).reshape(-1)
+    if seed.shape != nominal.shape:
+        raise ValueError(
+            "seed q and nominal reference q must have the same shape: "
+            f"{seed.shape} != {nominal.shape}"
+        )
+    return seed.copy()
+
+
+def _joint_margin_rad(
+    q: np.ndarray,
+    lower: np.ndarray,
+    upper: np.ndarray,
+) -> np.ndarray:
+    """Return each joint's signed distance to its nearest position limit."""
+
+    joint_position = np.asarray(q, dtype=np.float64)
+    lower_limit = np.asarray(lower, dtype=np.float64)
+    upper_limit = np.asarray(upper, dtype=np.float64)
+    return np.minimum(
+        joint_position - lower_limit,
+        upper_limit - joint_position,
+    )
+
+
+def _joint_margin_soft_residual(
+    q: np.ndarray,
+    lower: np.ndarray,
+    upper: np.ndarray,
+    target_margin_rad: float,
+) -> np.ndarray:
+    """Return a dimensionless per-joint hinge below the soft margin."""
+
+    target = float(target_margin_rad)
+    if not np.isfinite(target) or target < 0.0:
+        raise ValueError("target joint margin must be finite and non-negative")
+    if target == 0.0:
+        # Preserve the exact legacy residual shape as well as its value.
+        return np.zeros(0, dtype=np.float64)
+    return np.maximum(
+        target - _joint_margin_rad(q, lower, upper),
+        0.0,
+    ) / JOINT_MARGIN_RESIDUAL_SCALE_RAD
+
+
+def _joint_margin_hard_ok(
+    joint_margin_rad: np.ndarray,
+    minimum_accepted_margin_rad: float,
+) -> bool:
+    """Audit the hard joint-margin threshold without rejecting +inf."""
+
+    margins = np.asarray(joint_margin_rad, dtype=np.float64).reshape(-1)
+    return bool(
+        margins.size
+        and not np.any(np.isnan(margins))
+        and float(np.min(margins))
+        >= float(minimum_accepted_margin_rad)
+    )
+
+
+def _least_squares_result_is_acceptable(result: object) -> bool:
+    """Accept finite convergence or a finite max-evaluation candidate.
+
+    SciPy reports ``status == 0`` and ``success == False`` when the evaluation
+    budget is exhausted.  Such a state may still satisfy every independent
+    physical hard gate below, so retain it for that audit.  Non-finite state
+    and actual solver failures remain unusable.
+    """
+
+    try:
+        finite = bool(
+            np.all(np.isfinite(np.asarray(getattr(result, "x"))))
+            and np.all(np.isfinite(np.asarray(getattr(result, "fun"))))
+            and np.isfinite(float(getattr(result, "cost")))
+            and np.isfinite(float(getattr(result, "optimality")))
+        )
+        if not finite:
+            return False
+        if bool(getattr(result, "success")):
+            return True
+        return int(getattr(result, "status")) == 0
+    except (AttributeError, TypeError, ValueError):
+        return False
+
+
+def _optimizer_and_joint_margin_hard_ok(
+    result: object,
+    joint_margin_rad: np.ndarray,
+    minimum_accepted_margin_rad: float,
+) -> bool:
+    """Return whether a candidate may pass the final solver/margin gate."""
+
+    return _least_squares_result_is_acceptable(
+        result
+    ) and _joint_margin_hard_ok(
+        joint_margin_rad,
+        minimum_accepted_margin_rad,
+    )
+
+
 def main() -> None:
     global capsule_project
     parser = argparse.ArgumentParser(description=__doc__)
@@ -82,6 +198,24 @@ def main() -> None:
         help=(
             "Tighter pad cone used as the optimizer target, leaving margin "
             "inside --max-pad-angle-deg for physical collision refinement."
+        ),
+    )
+    parser.add_argument(
+        "--optimization-joint-margin-rad",
+        type=float,
+        default=0.0,
+        help=(
+            "Soft per-joint distance-to-limit target used by both grasp "
+            "refinement stages. Zero preserves the legacy objective."
+        ),
+    )
+    parser.add_argument(
+        "--minimum-accepted-joint-margin-rad",
+        type=float,
+        default=0.0,
+        help=(
+            "Hard minimum distance of every saved joint from its nearest "
+            "position limit. Zero preserves the legacy feasibility gate."
         ),
     )
     parser.add_argument(
@@ -170,6 +304,17 @@ def main() -> None:
         raise ValueError(
             "--optimization-pad-angle-deg must be in "
             "(0, --max-pad-angle-deg]"
+        )
+    if not (
+        np.isfinite(args.optimization_joint_margin_rad)
+        and np.isfinite(args.minimum_accepted_joint_margin_rad)
+        and 0.0 <= args.minimum_accepted_joint_margin_rad
+        <= args.optimization_joint_margin_rad
+    ):
+        raise ValueError(
+            "joint margins must satisfy 0 <= "
+            "--minimum-accepted-joint-margin-rad <= "
+            "--optimization-joint-margin-rad"
         )
     if not 0.0 <= args.minimum_accepted_clearance_mm <= args.clearance_mm:
         raise ValueError(
@@ -322,6 +467,11 @@ def main() -> None:
             )
         starts = [starts[args.start_index]]
         q_starts = [q_starts[args.start_index]]
+    physical_reference_q = _select_physical_reference_q(
+        reference_q,
+        seed_only=args.seed_only,
+        seed_q=q_starts[0] if args.seed_only else None,
+    )
     lower = np.concatenate(
         (solver.lower, np.asarray((0.30, -0.50, 0.30)))
     )
@@ -432,6 +582,12 @@ def main() -> None:
                         ),
                         0.0,
                     ),
+                    _joint_margin_soft_residual(
+                        q,
+                        solver.lower,
+                        solver.upper,
+                        args.optimization_joint_margin_rad,
+                    ),
                     0.001 * (q - q0),
                     0.001 * (center - start_center),
                 )
@@ -447,6 +603,20 @@ def main() -> None:
             gtol=1.0e-9,
             x_scale="jac",
         )
+        if not _least_squares_result_is_acceptable(smooth_result):
+            print(
+                f"start={start_index} optimizer_rejected_stage=smooth "
+                f"success={bool(getattr(smooth_result, 'success', False))} "
+                f"status={getattr(smooth_result, 'status', 'missing')}",
+                flush=True,
+            )
+            continue
+        if not smooth_result.success:
+            print(
+                f"start={start_index} optimizer_max_nfev_stage=smooth "
+                "continuing_with_finite_seed=true",
+                flush=True,
+            )
         x0 = smooth_result.x
         (
             _,
@@ -529,7 +699,13 @@ def main() -> None:
                         ),
                         0.0,
                     ),
-                    0.015 * (q - reference_q),
+                    _joint_margin_soft_residual(
+                        q,
+                        solver.lower,
+                        solver.upper,
+                        args.optimization_joint_margin_rad,
+                    ),
+                    0.015 * (q - physical_reference_q),
                     0.01 * (center - start_center),
                 )
             )
@@ -541,7 +717,7 @@ def main() -> None:
         object_clearance_weight = 260.0
         result = None
         for collision_pass in range(10):
-            result = least_squares(
+            candidate_result = least_squares(
                 residual,
                 physical_seed,
                 bounds=(lower, upper),
@@ -551,6 +727,27 @@ def main() -> None:
                 gtol=1.0e-10,
                 verbose=1 if collision_pass == 0 else 0,
             )
+            if not _least_squares_result_is_acceptable(candidate_result):
+                print(
+                    f"start={start_index} "
+                    "optimizer_rejected_stage=physical "
+                    f"pass={collision_pass + 1} "
+                    "success="
+                    f"{bool(getattr(candidate_result, 'success', False))} "
+                    f"status={getattr(candidate_result, 'status', 'missing')}",
+                    flush=True,
+                )
+                result = None
+                break
+            if not candidate_result.success:
+                print(
+                    f"start={start_index} "
+                    "optimizer_max_nfev_stage=physical "
+                    f"pass={collision_pass + 1} "
+                    "continuing_to_hard_audit=true",
+                    flush=True,
+                )
+            result = candidate_result
             remaining_pairs, remaining_distances = (
                 solver.self_collision_contacts(result.x[:TOTAL_DOF])
             )
@@ -573,6 +770,11 @@ def main() -> None:
                     protected_self_pairs,
                 )
             )
+            restore_joint_margin = _joint_margin_rad(
+                result.x[:TOTAL_DOF],
+                solver.lower,
+                solver.upper,
+            )
             tip_error = float(
                 np.max(
                     np.abs(
@@ -591,7 +793,9 @@ def main() -> None:
                 f"object_clearance_mm="
                 f"{restore_non_tip_distance.min() * 1000:.3f} "
                 f"protected_self_clearance_mm="
-                f"{(restore_protected_self_distance * 1000).round(3).tolist()}",
+                f"{(restore_protected_self_distance * 1000).round(3).tolist()} "
+                f"min_joint_margin_rad="
+                f"{float(np.min(restore_joint_margin)):.6f}",
                 flush=True,
             )
             contact_and_pad_restored = bool(
@@ -602,6 +806,10 @@ def main() -> None:
                 >= minimum_accepted_clearance
                 and float(restore_protected_self_distance.min())
                 >= minimum_accepted_self_clearance
+                and _joint_margin_hard_ok(
+                    restore_joint_margin,
+                    args.minimum_accepted_joint_margin_rad,
+                )
             )
             if not remaining_pairs and contact_and_pad_restored:
                 break
@@ -622,7 +830,8 @@ def main() -> None:
                 pad_barrier_weight = 40.0
                 object_clearance_weight = 5000.0
             physical_seed = result.x
-        assert result is not None
+        if result is None:
+            continue
         q = result.x[:TOTAL_DOF]
         center = result.x[TOTAL_DOF : TOTAL_DOF + 3]
         tip_distance, non_tip_distance, non_tip_names = (
@@ -660,6 +869,16 @@ def main() -> None:
             q,
             protected_self_pairs,
         )
+        joint_margin = _joint_margin_rad(
+            q,
+            solver.lower,
+            solver.upper,
+        )
+        optimizer_and_joint_margin_ok = _optimizer_and_joint_margin_hard_ok(
+            result,
+            joint_margin,
+            args.minimum_accepted_joint_margin_rad,
+        )
         feasible = bool(
             np.max(np.abs(tip_distance - desired_tip_distance))
             <= args.tip_distance_tolerance_mm / 1000.0
@@ -668,6 +887,7 @@ def main() -> None:
             and len(remaining_self_pairs) == 0
             and float(protected_self_distances.min())
             >= minimum_accepted_self_clearance
+            and optimizer_and_joint_margin_ok
         )
         score = float(
             np.max(np.abs(tip_distance - desired_tip_distance))
@@ -686,6 +906,12 @@ def main() -> None:
                 0.0,
             )
             + 0.01 * (1.0 - float(pad_alignment.min()))
+            + 10.0
+            * max(
+                args.minimum_accepted_joint_margin_rad
+                - float(np.min(joint_margin)),
+                0.0,
+            )
         )
         if not feasible:
             score += 100.0
@@ -706,6 +932,7 @@ def main() -> None:
             f"self_collision_pairs={len(remaining_self_pairs)} "
             f"protected_self_clearance_mm="
             f"{(protected_self_distances * 1000).round(3).tolist()} "
+            f"min_joint_margin_rad={float(np.min(joint_margin)):.6f} "
             f"deepest_self_mm="
             f"{(remaining_self_distances.min() * 1000 if len(remaining_self_distances) else 0.0):.3f} "
             f"nearest={non_tip_names[nearest_index]}"
@@ -747,6 +974,11 @@ def main() -> None:
         best_q,
         protected_self_pairs,
     )
+    best_joint_margin = _joint_margin_rad(
+        best_q,
+        solver.lower,
+        solver.upper,
+    )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(
         args.output,
@@ -775,8 +1007,24 @@ def main() -> None:
             protected_self_pair_names,
         ),
         protected_self_distance_m=best_protected_self_distances,
+        joint_margin_rad=best_joint_margin,
+        minimum_joint_margin_rad=np.asarray(
+            float(np.min(best_joint_margin))
+        ),
+        optimization_joint_margin_rad=np.asarray(
+            args.optimization_joint_margin_rad
+        ),
+        minimum_accepted_joint_margin_rad=np.asarray(
+            args.minimum_accepted_joint_margin_rad
+        ),
         optimizer_cost=np.asarray(best_result.cost),
         optimizer_optimality=np.asarray(best_result.optimality),
+        optimizer_success=np.asarray(bool(best_result.success)),
+        optimizer_status=np.asarray(int(best_result.status)),
+        optimizer_nfev=np.asarray(int(best_result.nfev)),
+        optimizer_hard_feasible_max_nfev_override=np.asarray(
+            not best_result.success and int(best_result.status) == 0
+        ),
     )
     nearest_index = int(np.argmin(non_tip_distance))
     print(
@@ -788,6 +1036,7 @@ def main() -> None:
         f"{non_tip_distance[nearest_index] * 1000:.3f} "
         f"protected_self_clearance_mm="
         f"{(best_protected_self_distances * 1000).round(3).tolist()} "
+        f"min_joint_margin_rad={float(np.min(best_joint_margin)):.6f} "
         f"pad_alignment={best_pad_alignment.round(4).tolist()} "
         f"pad_angle_deg="
         f"{np.degrees(np.arccos(np.clip(best_pad_alignment, -1, 1))).round(2).tolist()} "
