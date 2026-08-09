@@ -1743,3 +1743,93 @@ pad deficit、任务误差、进度与连续性排序。同时把 physical finge
 distance `>= -1 mm` 加入逐段 publish/dynamics 前硬门。完成定向与全量 CPU 回归后，
 使用上述完全相同的 seed 42、0--50 mm Acceptance 配置重跑；只有规划、低运动、
 物理几何、dynamics 和审计全部通过后才进入其它 seeds/0.48 m，更不会提前录像。
+
+### 基于 `be64e90` 的 online 23-DoF orientation + physical-tip 实现检查点（2026-08-10，待 GPU）
+
+#### 冻结姿态门与候选排序
+
+上一节确定的修复现已进入代码，但本节记录时尚未产生新的 GPU 证据。两个 runner
+都把 planner hard cone 固定为同一 `40 deg`：
+
+- Diagnostic：runtime max pad=`50 deg`，planner margin=`10 deg`；
+- Acceptance：runtime max pad=`45 deg`，planner margin=`5 deg`。
+
+因此两者都是 `max-pad-angle - planner-margin = 40 deg`，不存在 Diagnostic 继续以
+`50 deg` 规划后再声称可用于 Acceptance 的旁路。online 23-DoF residual 另加入
+soft cone=`35 deg`、soft-pad weight=`24` 与 smooth softplus tau=`0.02`
+（alignment units）；hard `40 deg` 仍由候选审计独立执行，soft cost 不能代替硬门。
+
+候选生成/选择已作以下统一：
+
+- 从 surface-IK、外推和 previous-q 分支各生成一个 posture-oriented seed，共三个；
+  posture solve 使用 `4 * 24` 的 soft-pad 权重，保持原 23 DoF joint-space solver，
+  没有另造一个无法审计的新求解器；
+- raw surface-IK 与 rigid seed 不再带旧的 score=`-2/-1` 特权；它们与 ordinary
+  optimized、posture candidates 一样，先通过相同 hard feasibility，再参与排序；
+- 候选 fallback 首先比较 soft-pad deficit，然后才比较任务误差、进度、连续性和
+  solver cost，避免一个接近 `40 deg` 的 raw seed 永远压过具有姿态余量的解；
+- ordinary、repair 与 rephase 的 numerical differentiation 明确使用
+  `diff_step=1e-5`，避免 capsule arc 梯度再次被默认步长/float32 投影吞掉。
+
+#### physical fingertip collision geom 目标与全路径门禁
+
+四指 physical collision geom 的优选 signed-distance target 固定为
+`[-0.25,-0.25,-0.50,-0.25] mm`（index/middle/ring/thumb），residual weight=`2200`。
+为了在到达冻结 `-1 mm` 拒绝线前形成足够梯度，`-0.8 mm` inner cap 另用
+weight=`18000`；独立 hard gate 对任何 tip `<-1 mm` 直接拒绝，不受 normal band、
+contact schedule 或 recovery 宽容影响。
+
+审计覆盖面不是只补 failure endpoint：
+
+- 初始抓取/接触校准状态；
+- 每个 joint-space segment 至少 `9` 个插值采样，较长 runtime 段仍按原公式增加；
+- adaptive planner 的 raw surface-IK、rigid、ordinary optimized、posture、repair、
+  rephase、static bridge、moving bridge 与最终 selected candidate；
+- full-plan publish/save/dynamics 前 validation；
+- 独立 circumferential planner 及其整段 validation。
+
+换言之，上一节中 `6.25 mm` 起便出现而被旧 planner 接受的 tip penetration 现在会
+在最早对应 candidate/segment fail-fast，不能等到 dynamics 才发现。failure-prefix
+和成功 plan NPZ 均增加 physical-tip distance/limit/margin 与最近/最坏 tip 等字段，
+使后续 session 和 standalone audit 可以区分 pad orientation、non-tip hand contact
+与真实 fingertip geom penetration。
+
+现有 moving bridge 的 tip-only `12D` local-preserve residual 仍只含 arc、anchor
+standoff、anchor azimuth 和 weak q prior，**没有 physical-tip distance gradient**。
+本轮没有悄悄改变其数学定义；moving candidate 会接受完整逐段 physical-tip hard
+audit，不安全即拒绝。这提供 fail-safe，但不保证 12D branch 主动远离 `-0.8 mm`
+inner cap，可能造成可修复 bridge 被拒后回退到 ordinary/posture 分支，属于必须由
+GPU 路径验证的残余风险。
+
+#### 旧 `40.625 mm` 失败点的 CPU 可行性 probe
+
+为了验证新增硬门没有把真实 URDF 可行域错误删空，在旧 failure-prefix 的
+`40.625 mm` 目标上做了只读 CPU probe。找到的候选具有：
+
+- physical tip signed distance=
+  `[-0.183,-0.786,-0.908,-0.240] mm`，四指均高于 `-1 mm`；
+- maximum progress error=`4.498 mm`，scheduled contact=`3/4`；
+- minimum tangent margin=`0.194 mm`，monotonic margin=`0.170 mm`；
+- palm guide error=`13.22 mm <30 mm`；
+- FR3 clearance=`8.336 mm >2 mm`；
+- non-tip hand clearance=`-0.882 mm >-1 mm`；
+- self collision=`0`，所有 pad angle `<40 deg`；
+- `max|dq|=0.029918 rad <0.03 rad`。
+
+这组数值证明旧局部拒绝点存在同时满足姿态、tip penetration、接触、碰撞与 joint
+step 的 23-DoF 候选；它不证明从初始抓取到此点的连续路径已完成。probe 接近
+`0.03 rad` step 上限，且没有经过前 40 mm 的统一候选选择，故严禁把它直接拼接到
+旧 failure-prefix 或保存成成功 plan；必须从 initial state 全程重新规划。
+
+#### 回归/审查状态与下一步
+
+主代理和独立 review 均运行了全量 `75/75`，并检查 demo/runner CLI、Python AST、
+PowerShell AST 与 `git diff --check`；结果均通过。独立 review 未发现 P0、P1 或 P2
+问题。以上只是 CPU、结构和静态 MuJoCo 级证据；本实现尚未运行 GPU，因此没有新
+plan、没有 dynamics、没有 standalone/full plan audit、没有 debug/交付视频，
+Level 2 仍是 **NOT PASS**。
+
+**正在执行：**提交并 push 此代码检查点后，复用上一节完全相同的 seed 42、
+0--50 mm Acceptance headless 配置重跑。若规划完成，先过 low-motion 与新增
+physical-tip full-plan gate，再进入 dynamics；只有该短程全链条通过后才扩展其它
+seeds 和 0.48 m，更不会提前生成视频。

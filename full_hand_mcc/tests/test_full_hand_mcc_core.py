@@ -54,9 +54,97 @@ ADAPTER_PATH = (
     Path(__file__).resolve().parents[2]
     / "src/mjlab/tasks/leaphand/leaphand_full_hand_mcc_env_cfg.py"
 )
+RUNNER_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "scripts/run_baseline2_capsule_level2.ps1"
+)
 
 
 class PlannerDiagnosticsTest(unittest.TestCase):
+    @staticmethod
+    def _candidate_rank(
+        angle_deg: float,
+        *,
+        hard_feasible: bool = True,
+        task_error: float = 0.0,
+    ) -> tuple[float, ...]:
+        return DIAGNOSTICS.orientation_aware_candidate_rank(
+            hard_feasible=hard_feasible,
+            hard_violation_score=0.0,
+            minimum_pad_alignment=float(np.cos(np.deg2rad(angle_deg))),
+            hard_pad_alignment=float(np.cos(np.deg2rad(40.0))),
+            soft_pad_alignment=float(np.cos(np.deg2rad(35.0))),
+            task_error_score=task_error,
+            continuity_error=0.0,
+            solver_cost=0.0,
+        )
+
+    def test_soft_pad_residual_has_gradient_before_hard_cone(self) -> None:
+        target = float(np.cos(np.deg2rad(35.0)))
+        alignment_38 = float(np.cos(np.deg2rad(38.0)))
+        alignment_39 = float(np.cos(np.deg2rad(39.0)))
+        residual = DIAGNOSTICS.smooth_pad_alignment_residual(
+            np.asarray([alignment_38, alignment_39]),
+            target_alignment=target,
+            tau=0.02,
+        )
+        self.assertGreater(residual[1], residual[0])
+        epsilon = 1.0e-6
+        plus = DIAGNOSTICS.smooth_pad_alignment_residual(
+            np.asarray([alignment_39 + epsilon]),
+            target_alignment=target,
+            tau=0.02,
+        )[0]
+        minus = DIAGNOSTICS.smooth_pad_alignment_residual(
+            np.asarray([alignment_39 - epsilon]),
+            target_alignment=target,
+            tau=0.02,
+        )[0]
+        self.assertLess((plus - minus) / (2.0 * epsilon), -0.5)
+
+    def test_posture_candidate_beats_privileged_raw_outside_soft_cone(
+        self,
+    ) -> None:
+        raw_39 = self._candidate_rank(39.0, task_error=0.0)
+        posture_34 = self._candidate_rank(34.0, task_error=100.0)
+        self.assertLess(posture_34, raw_39)
+
+    def test_34_degree_fallback_beats_39_9_degree_fallback(self) -> None:
+        fallback_39_9 = self._candidate_rank(39.9, task_error=0.0)
+        fallback_34 = self._candidate_rank(34.0, task_error=1000.0)
+        self.assertLess(fallback_34, fallback_39_9)
+
+    def test_task_error_regains_priority_inside_soft_cone(self) -> None:
+        task_accurate_34 = self._candidate_rank(34.0, task_error=0.1)
+        task_worse_20 = self._candidate_rank(20.0, task_error=0.2)
+        self.assertLess(task_accurate_34, task_worse_20)
+
+    def test_midsegment_41_degree_pad_state_is_hard_infeasible(self) -> None:
+        endpoint_safe = self._candidate_rank(39.0, task_error=10.0)
+        midpoint_unsafe = self._candidate_rank(41.0, task_error=0.0)
+        self.assertLess(endpoint_safe, midpoint_unsafe)
+        self.assertEqual(midpoint_unsafe[0], 1.0)
+
+    def test_midsegment_tip_penetration_rejects_safe_endpoints(self) -> None:
+        tip_clearance = np.full((3, 4), -0.0005, dtype=np.float64)
+        tip_clearance[1, 2] = -0.0012
+        passed, minimum, index = (
+            DIAGNOSTICS.segment_tip_clearance_status(
+                tip_clearance,
+                maximum_penetration_m=0.001,
+            )
+        )
+        self.assertFalse(passed)
+        self.assertAlmostEqual(minimum, -0.0012)
+        self.assertEqual(index, (1, 2))
+        tip_clearance[1, 2] = -0.001
+        self.assertTrue(
+            DIAGNOSTICS.segment_tip_clearance_status(
+                tip_clearance,
+                maximum_penetration_m=0.001,
+            )[0]
+        )
+
     @staticmethod
     def _stationary_plan_inputs(
         sample_count: int,
@@ -924,6 +1012,169 @@ class SurfaceGeometryTest(unittest.TestCase):
 
 
 class AdaptiveMPCSourceStructureTest(unittest.TestCase):
+    def test_fallback_candidates_share_soft_pad_first_rank(self) -> None:
+        source = DEMO_PATH.read_text(encoding="utf-8")
+        fallback_start = source.index("def fallback_orientation_rank")
+        fallback_end = source.index(
+            "# Before launching another non-convex",
+            fallback_start,
+        )
+        fallback = source[fallback_start:fallback_end]
+        self.assertIn("orientation_aware_candidate_rank(", fallback)
+        self.assertIn("soft_pad_alignment=planner_soft_pad_alignment", fallback)
+        self.assertGreaterEqual(
+            source.count("fallback_orientation_rank("),
+            4,
+        )
+        self.assertIn(
+            "static_bridge_candidate = (\n"
+            "                            fallback_orientation_rank(",
+            source,
+        )
+        self.assertIn(
+            "key=lambda item: item[0]",
+            source,
+        )
+
+    def test_all_central_23dof_solves_use_explicit_finite_difference_step(
+        self,
+    ) -> None:
+        source = DEMO_PATH.read_text(encoding="utf-8")
+        for start_marker, end_marker in (
+            ("result = least_squares(", "result.candidate_kind"),
+            ("repaired = least_squares(", "repaired.candidate_kind"),
+            ("rephased = least_squares(", "rephased.candidate_kind"),
+        ):
+            start = source.index(start_marker)
+            end = source.index(end_marker, start)
+            self.assertIn("diff_step=1.0e-5", source[start:end])
+
+    def test_circumferential_plan_runs_full_robot_audit_before_save(
+        self,
+    ) -> None:
+        source = DEMO_PATH.read_text(encoding="utf-8")
+        start = source.index("def _build_circumferential_surface_mpc_plan")
+        end = source.index("def _build_adaptive_surface_mpc_plan", start)
+        planner = source[start:end]
+        audit = planner.index("self._validate_full_robot_plan_clearance(")
+        save = planner.index("np.savez(")
+        self.assertLess(audit, save)
+        self.assertIn('label="circumferential_surface_mpc"', planner)
+
+    def test_orientation_candidates_share_rank_without_raw_privilege(
+        self,
+    ) -> None:
+        source = DEMO_PATH.read_text(encoding="utf-8")
+        ordinary_start = source.index(
+            "candidates = []",
+            source.index("rigid_arm_seed = rigid_arm_result.joint_position"),
+        )
+        ordinary_end = source.index(
+            "preliminary_progress =",
+            ordinary_start,
+        )
+        ordinary = source[ordinary_start:ordinary_end]
+        self.assertNotIn("(-2.0,", ordinary)
+        self.assertNotIn("(-1.0,", ordinary)
+        self.assertGreaterEqual(
+            ordinary.count("orientation_aware_candidate_rank("),
+            3,
+        )
+        for required_seed in (
+            '"orientation_posture_surface"',
+            '"orientation_posture_extrapolated"',
+            '"orientation_posture_previous"',
+            "4.0 * args.planner_soft_pad_weight",
+        ):
+            self.assertIn(required_seed, ordinary)
+        posture_start = ordinary.index("orientation_posture_seed_specs")
+        posture_end = ordinary.index(
+            "local_seed_specs.extend(orientation_posture_seed_specs)",
+            posture_start,
+        )
+        posture_block = ordinary[posture_start:posture_end]
+        self.assertNotIn("feasibility_bridge_selected = True", posture_block)
+        self.assertNotIn("recovery_bridge_selected = True", posture_block)
+        self.assertNotIn("static_feasibility_bridge_selected = True", posture_block)
+
+    def test_segment_audit_samples_pad_and_physical_tips_nine_times(
+        self,
+    ) -> None:
+        source = DEMO_PATH.read_text(encoding="utf-8")
+        segment_start = source.index("def segment_collision_status")
+        segment_end = source.index("transported_offset =", segment_start)
+        segment = source[segment_start:segment_end]
+        self.assertIn("sample_count = max(\n                        9,", segment)
+        self.assertIn("reachability.geometry_group_clearances", segment)
+        self.assertIn("segment_tip_clearance_status", segment)
+        self.assertIn("args.max_contact_penetration_mm", segment)
+
+    def test_level2_runner_freezes_both_planner_cones_at_40_degrees(
+        self,
+    ) -> None:
+        source = RUNNER_PATH.read_text(encoding="utf-8")
+        acceptance_start = source.index('if ($Mode -eq "Acceptance")')
+        diagnostic_start = source.index("else {", acceptance_start)
+        arguments_start = source.index("$pythonArguments", diagnostic_start)
+        acceptance = source[acceptance_start:diagnostic_start]
+        diagnostic = source[diagnostic_start:arguments_start]
+        self.assertIn('$maxPadAngleDeg = "45"', acceptance)
+        self.assertIn('$plannerPadAngleMarginDeg = "5"', acceptance)
+        self.assertIn('$maxPadAngleDeg = "50"', diagnostic)
+        self.assertIn('$plannerPadAngleMarginDeg = "10"', diagnostic)
+        self.assertIn('"--planner-soft-pad-angle-deg", "35"', source)
+        self.assertIn('"--planner-soft-pad-weight", "24"', source)
+        self.assertIn(
+            '"--planner-soft-pad-softplus-tau", "0.02"',
+            source,
+        )
+        self.assertIn(
+            '"--planner-tip-geom-target-mm", "-0.25", "-0.25", '
+            '"-0.50", "-0.25"',
+            source,
+        )
+        self.assertIn('"--planner-tip-geom-weight", "2200"', source)
+        self.assertIn(
+            '"--planner-tip-geom-inner-cap-mm", "-0.8"',
+            source,
+        )
+        self.assertIn(
+            '"--planner-tip-geom-inner-weight", "18000"',
+            source,
+        )
+
+    def test_physical_tip_objective_and_full_plan_audit_are_distinct(
+        self,
+    ) -> None:
+        source = DEMO_PATH.read_text(encoding="utf-8")
+        residual_start = source.index("def residual(")
+        residual_end = source.index("candidates = []", residual_start)
+        residual = source[residual_start:residual_end]
+        for required_term in (
+            "tip_geom_clearance",
+            "planner_tip_geom_target_m",
+            "planner_tip_geom_inner_cap_m",
+            "args.planner_tip_geom_weight * tip_geom_error",
+            "args.planner_tip_geom_inner_weight",
+        ):
+            self.assertIn(required_term, residual)
+        audit_start = source.index(
+            "def _validate_full_robot_plan_clearance"
+        )
+        audit_end = source.index("def _object_pose", audit_start)
+        audit = source[audit_start:audit_end]
+        self.assertIn("minimum_tip = np.full(4", audit)
+        self.assertIn("minimum_tip < -allowed_tip_penetration", audit)
+        self.assertIn("per_tip_minimum_mm", audit)
+        self.assertIn("self.min_planned_tip_clearance_m", audit)
+        self.assertIn(
+            "args.max_pad_angle_deg\n"
+            "                        - args.planner_pad_angle_margin_deg",
+            audit,
+        )
+        self.assertIn("planner_limit_deg=", audit)
+        self.assertIn("[INITIAL-PHYSICAL-TIP-AUDIT]", source)
+
     def test_dynamic_refinement_uses_a_mutable_keyframe_loop(self) -> None:
         tree = ast.parse(DEMO_PATH.read_text(encoding="utf-8"))
         planner = next(

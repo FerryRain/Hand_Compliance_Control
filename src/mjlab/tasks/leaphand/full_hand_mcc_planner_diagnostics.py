@@ -36,6 +36,122 @@ LOW_MOTION_DEFAULT_WINDOW_FRAMES = 20
 LOW_MOTION_NUMERICAL_TOLERANCE = 1.0e-8
 
 
+def smooth_pad_alignment_residual(
+    pad_alignment: np.ndarray,
+    *,
+    target_alignment: float,
+    tau: float,
+) -> np.ndarray:
+    """Return a stable softplus penalty below a preferred pad alignment."""
+
+    alignment = np.asarray(pad_alignment, dtype=np.float64)
+    if not np.all(np.isfinite(alignment)):
+        raise ValueError("pad_alignment must be finite")
+    if not np.isfinite(target_alignment) or not -1.0 <= target_alignment <= 1.0:
+        raise ValueError("target_alignment must be finite and in [-1, 1]")
+    if not np.isfinite(tau) or tau <= 0.0:
+        raise ValueError("tau must be finite and positive")
+    return tau * np.logaddexp(
+        0.0,
+        (float(target_alignment) - alignment) / tau,
+    )
+
+
+def orientation_aware_candidate_rank(
+    *,
+    hard_feasible: bool,
+    hard_violation_score: float,
+    minimum_pad_alignment: float,
+    hard_pad_alignment: float,
+    soft_pad_alignment: float,
+    task_error_score: float,
+    continuity_error: float,
+    solver_cost: float,
+) -> tuple[float, ...]:
+    """Build the common lexicographic rank for ordinary MPC candidates.
+
+    Hard feasibility always wins.  Among hard-feasible states, candidates
+    outside the preferred soft cone are ordered by their worst interpolated
+    pad deficit.  Once the full segment is inside that cone, task tracking,
+    continuity, and solver cost regain priority.
+    """
+
+    scalars = np.asarray(
+        [
+            hard_violation_score,
+            minimum_pad_alignment,
+            hard_pad_alignment,
+            soft_pad_alignment,
+            task_error_score,
+            continuity_error,
+            solver_cost,
+        ],
+        dtype=np.float64,
+    )
+    if not np.all(np.isfinite(scalars)):
+        raise ValueError("candidate rank inputs must be finite")
+    if soft_pad_alignment < hard_pad_alignment:
+        raise ValueError(
+            "soft_pad_alignment must describe a tighter cone than the hard "
+            "alignment"
+        )
+    hard_pad_deficit = max(
+        float(hard_pad_alignment) - float(minimum_pad_alignment),
+        0.0,
+    )
+    effective_hard_feasible = bool(
+        hard_feasible and hard_pad_deficit <= 1.0e-12
+    )
+    soft_pad_deficit = max(
+        float(soft_pad_alignment) - float(minimum_pad_alignment),
+        0.0,
+    )
+    outside_soft_cone = soft_pad_deficit > 1.0e-12
+    return (
+        float(not effective_hard_feasible),
+        (
+            0.0
+            if effective_hard_feasible
+            else max(float(hard_violation_score), 0.0)
+            + hard_pad_deficit
+        ),
+        float(outside_soft_cone),
+        soft_pad_deficit if outside_soft_cone else 0.0,
+        float(task_error_score),
+        float(continuity_error),
+        float(solver_cost),
+    )
+
+
+def segment_tip_clearance_status(
+    tip_clearance_m: np.ndarray,
+    *,
+    maximum_penetration_m: float,
+) -> tuple[bool, float, tuple[int, int]]:
+    """Audit all four physical tip geoms over sampled segment states."""
+
+    clearances = np.asarray(tip_clearance_m, dtype=np.float64)
+    if clearances.ndim != 2 or clearances.shape[1] != 4:
+        raise ValueError("tip_clearance_m must have shape (samples, 4)")
+    if clearances.shape[0] == 0 or not np.all(np.isfinite(clearances)):
+        raise ValueError("tip_clearance_m must contain finite samples")
+    if not np.isfinite(maximum_penetration_m) or maximum_penetration_m < 0.0:
+        raise ValueError(
+            "maximum_penetration_m must be finite and non-negative"
+        )
+    flat_index = int(np.argmin(clearances))
+    sample_index, finger_index = np.unravel_index(
+        flat_index,
+        clearances.shape,
+    )
+    minimum = float(clearances[sample_index, finger_index])
+    return (
+        minimum >= -float(maximum_penetration_m) - 1.0e-12,
+        minimum,
+        (int(sample_index), int(finger_index)),
+    )
+
+
 @dataclass(frozen=True)
 class RejectedMovingBridgeCandidate:
     """State paired with one moving-bridge rejection record."""
@@ -430,6 +546,8 @@ def build_bridge_rejection_metrics(
     arm_clearance_limit_m: float,
     hand_clearance_m: float,
     hand_clearance_limit_m: float,
+    tip_clearance_m: float,
+    tip_clearance_limit_m: float,
     self_collision_count: int,
     pad_alignment: float,
     pad_alignment_limit: float,
@@ -529,6 +647,7 @@ def build_bridge_rejection_metrics(
         "collision_mode": collision_mode,
         "arm_clearance_limit_m": arm_clearance_limit_m,
         "hand_clearance_limit_m": hand_clearance_limit_m,
+        "tip_clearance_limit_m": tip_clearance_limit_m,
         "self_collision_count": self_collision_count,
         "self_collision_limit": 0,
         "self_collision_margin": -self_collision_count,
@@ -584,6 +703,10 @@ def build_bridge_rejection_metrics(
                 "hand_clearance_margin_m": (
                     hand_clearance_m - hand_clearance_limit_m
                 ),
+                "tip_clearance_m": tip_clearance_m,
+                "tip_clearance_margin_m": (
+                    tip_clearance_m - tip_clearance_limit_m
+                ),
             }
         )
     return metrics
@@ -612,6 +735,9 @@ def build_candidate_failure_metrics(
     hand_clearance_m: float,
     hand_clearance_limit_m: float,
     hand_nearest_geometry: str,
+    tip_clearance_m: float,
+    tip_clearance_limit_m: float,
+    tip_nearest_geometry: str,
     self_collision_count: int,
     pad_alignment: float,
     pad_alignment_limit: float,
@@ -641,6 +767,7 @@ def build_candidate_failure_metrics(
         or (
             arm_clearance_m >= arm_clearance_limit_m
             and hand_clearance_m >= hand_clearance_limit_m
+            and tip_clearance_m >= tip_clearance_limit_m
             and self_collision_count == 0
             and pad_alignment >= pad_alignment_limit
         )
@@ -683,6 +810,10 @@ def build_candidate_failure_metrics(
         "hand_clearance_limit_m": hand_clearance_limit_m,
         "hand_clearance_margin_m": hand_clearance_m - hand_clearance_limit_m,
         "hand_nearest_geometry": hand_nearest_geometry,
+        "tip_clearance_m": tip_clearance_m,
+        "tip_clearance_limit_m": tip_clearance_limit_m,
+        "tip_clearance_margin_m": tip_clearance_m - tip_clearance_limit_m,
+        "tip_nearest_geometry": tip_nearest_geometry,
         "self_collision_count": self_collision_count,
         "self_collision_limit": 0,
         "self_collision_margin": -self_collision_count,

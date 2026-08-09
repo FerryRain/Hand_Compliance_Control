@@ -51,8 +51,9 @@ $failurePrefixPath = Join-Path $debugDirectory (
     $runStem + "_failure_prefix.npz"
 )
 
-# Diagnostic reproduces the cleaned, direct-force v106-equivalent settings.
-# Acceptance changes only the frozen Level-2 acceptance thresholds below.
+# Both modes freeze the planner pad cone at 40 degrees. Diagnostic retains a
+# 50-degree runtime audit with a 10-degree planning margin; Acceptance retains
+# its 45-degree runtime audit with a 5-degree planning margin.
 if ($Mode -eq "Acceptance") {
     $maxPadAngleDeg = "45"
     $plannerPadAngleMarginDeg = "5"
@@ -64,7 +65,7 @@ if ($Mode -eq "Acceptance") {
 }
 else {
     $maxPadAngleDeg = "50"
-    $plannerPadAngleMarginDeg = "0"
+    $plannerPadAngleMarginDeg = "10"
     $tangentialToleranceMm = "3"
     $maxRuntimeSelfPenetrationMm = "0.05"
     $finalContactRecoveryFrames = "20"
@@ -172,6 +173,13 @@ $pythonArguments = @(
     "--max-incidental-hand-total-force-n", "36"
     "--max-pad-angle-deg", $maxPadAngleDeg
     "--planner-pad-angle-margin-deg", $plannerPadAngleMarginDeg
+    "--planner-soft-pad-angle-deg", "35"
+    "--planner-soft-pad-weight", "24"
+    "--planner-soft-pad-softplus-tau", "0.02"
+    "--planner-tip-geom-target-mm", "-0.25", "-0.25", "-0.50", "-0.25"
+    "--planner-tip-geom-weight", "2200"
+    "--planner-tip-geom-inner-cap-mm", "-0.8"
+    "--planner-tip-geom-inner-weight", "18000"
     "--contact-failure-window", "20"
     "--min-contact-ratio", "0.75"
     "--min-runtime-contact-fingers", "3"

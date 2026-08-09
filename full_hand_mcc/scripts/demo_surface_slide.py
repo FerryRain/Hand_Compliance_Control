@@ -61,8 +61,11 @@ from mjlab.tasks.leaphand.full_hand_mcc_planner_diagnostics import (
     format_bridge_rejection_record,
     make_bridge_rejection_record,
     moving_bridge_local_residual,
+    orientation_aware_candidate_rank,
     save_mpc_failure_prefix,
     save_npz_no_overwrite,
+    segment_tip_clearance_status,
+    smooth_pad_alignment_residual,
 )
 from mjlab.tasks.leaphand.leaphand_full_hand_mcc_env_cfg import (
     ARM_DOF,
@@ -716,6 +719,59 @@ def main() -> None:
             "Extra fingertip-pad angle margin enforced at every MPC segment "
             "to leave room for dynamic force-control and gait corrections."
         ),
+    )
+    parser.add_argument(
+        "--planner-soft-pad-angle-deg",
+        type=float,
+        default=35.0,
+        help=(
+            "Preferred interpolated finger-pad cone used by the smooth MPC "
+            "posture objective. The hard planner cone is unchanged."
+        ),
+    )
+    parser.add_argument(
+        "--planner-soft-pad-weight",
+        type=float,
+        default=24.0,
+        help="Default weight of the smooth preferred-pad-cone residual.",
+    )
+    parser.add_argument(
+        "--planner-soft-pad-softplus-tau",
+        type=float,
+        default=0.02,
+        help="Softplus temperature in dimensionless pad-alignment units.",
+    )
+    parser.add_argument(
+        "--planner-tip-geom-target-mm",
+        type=float,
+        nargs=4,
+        default=(-0.25, -0.25, -0.50, -0.25),
+        metavar=("INDEX", "MIDDLE", "RING", "THUMB"),
+        help=(
+            "Preferred signed distances from the four physical fingertip "
+            "collision geoms to the object surface."
+        ),
+    )
+    parser.add_argument(
+        "--planner-tip-geom-weight",
+        type=float,
+        default=2200.0,
+        help="Weight of the four physical fingertip distance residuals.",
+    )
+    parser.add_argument(
+        "--planner-tip-geom-inner-cap-mm",
+        type=float,
+        default=-0.8,
+        help=(
+            "Soft inner signed-distance cap, kept inside the immutable hard "
+            "tip penetration limit."
+        ),
+    )
+    parser.add_argument(
+        "--planner-tip-geom-inner-weight",
+        type=float,
+        default=18000.0,
+        help="Weight of physical-tip penetration beyond the soft inner cap.",
     )
     parser.add_argument("--motion-start", type=int, default=1000)
     parser.add_argument("--ik-tolerance-mm", type=float, default=5.0)
@@ -1941,6 +1997,66 @@ def main() -> None:
             "--planner-pad-angle-margin-deg must be in "
             "[0, --max-pad-angle-deg)"
         )
+    planner_hard_pad_angle_deg = (
+        args.max_pad_angle_deg - args.planner_pad_angle_margin_deg
+    )
+    if (
+        not np.isfinite(args.planner_soft_pad_angle_deg)
+        or not 0.0
+        < args.planner_soft_pad_angle_deg
+        <= planner_hard_pad_angle_deg
+    ):
+        raise ValueError(
+            "--planner-soft-pad-angle-deg must be positive and no larger "
+            "than the hard planner cone"
+        )
+    if (
+        not np.isfinite(args.planner_soft_pad_weight)
+        or args.planner_soft_pad_weight <= 0.0
+    ):
+        raise ValueError("--planner-soft-pad-weight must be positive")
+    if (
+        not np.isfinite(args.planner_soft_pad_softplus_tau)
+        or args.planner_soft_pad_softplus_tau <= 0.0
+    ):
+        raise ValueError(
+            "--planner-soft-pad-softplus-tau must be positive"
+        )
+    planner_tip_geom_target_mm = np.asarray(
+        args.planner_tip_geom_target_mm,
+        dtype=np.float64,
+    )
+    if (
+        not np.all(np.isfinite(planner_tip_geom_target_mm))
+        or np.any(planner_tip_geom_target_mm > 0.0)
+        or np.any(
+            planner_tip_geom_target_mm
+            < args.planner_tip_geom_inner_cap_mm
+        )
+    ):
+        raise ValueError(
+            "--planner-tip-geom-target-mm must be finite and lie between "
+            "the soft inner cap and zero"
+        )
+    if (
+        not np.isfinite(args.planner_tip_geom_inner_cap_mm)
+        or args.planner_tip_geom_inner_cap_mm > 0.0
+        or args.planner_tip_geom_inner_cap_mm
+        < -args.max_contact_penetration_mm
+    ):
+        raise ValueError(
+            "--planner-tip-geom-inner-cap-mm must stay inside the hard "
+            "tip penetration band"
+        )
+    for option, value in (
+        ("--planner-tip-geom-weight", args.planner_tip_geom_weight),
+        (
+            "--planner-tip-geom-inner-weight",
+            args.planner_tip_geom_inner_weight,
+        ),
+    ):
+        if not np.isfinite(value) or value <= 0.0:
+            raise ValueError(f"{option} must be finite and positive")
     if not 0.0 <= args.palm_surface_frame_gain <= 1.0:
         raise ValueError("--palm-surface-frame-gain must be in [0, 1]")
     if (
@@ -2290,6 +2406,8 @@ def main() -> None:
             self.nearest_planned_arm_geom = ""
             self.min_planned_hand_clearance_m = np.inf
             self.nearest_planned_hand_geom = ""
+            self.min_planned_tip_clearance_m = np.full(4, np.inf)
+            self.min_planned_tip_clearance_frame = np.full(4, -1)
             self.min_planned_pad_alignment = 1.0
             self.min_runtime_pad_alignment = 1.0
             self.planned_curvature_min_inv_m = 0.0
@@ -2359,24 +2477,40 @@ def main() -> None:
             minimum_hand = np.inf
             nearest_hand = ""
             minimum_hand_frame = -1
+            minimum_tip = np.full(4, np.inf, dtype=np.float64)
+            minimum_tip_frame = np.full(4, -1, dtype=np.int32)
             minimum_pad_alignment = 1.0
             minimum_pad_frame = -1
             minimum_pad_finger = -1
             for frame, q in enumerate(joint_plan):
-                arm_clearance, arm_geom_name = (
-                    reachability.minimum_arm_clearance(q, center, rotation)
+                (
+                    tip_clearances,
+                    arm_clearances,
+                    arm_geom_names,
+                    hand_clearances,
+                    hand_geom_names,
+                ) = reachability.geometry_group_clearances(
+                    q,
+                    center,
+                    rotation,
                 )
+                arm_index = int(np.argmin(arm_clearances))
+                arm_clearance = float(arm_clearances[arm_index])
+                arm_geom_name = arm_geom_names[arm_index]
                 if arm_clearance < minimum_arm:
                     minimum_arm = arm_clearance
                     nearest_arm = arm_geom_name
                     minimum_arm_frame = frame
-                hand_clearance, hand_geom_name = (
-                    reachability.minimum_hand_clearance(q, center, rotation)
-                )
+                hand_index = int(np.argmin(hand_clearances))
+                hand_clearance = float(hand_clearances[hand_index])
+                hand_geom_name = hand_geom_names[hand_index]
                 if hand_clearance < minimum_hand:
                     minimum_hand = hand_clearance
                     nearest_hand = hand_geom_name
                     minimum_hand_frame = frame
+                tip_update = tip_clearances < minimum_tip
+                minimum_tip[tip_update] = tip_clearances[tip_update]
+                minimum_tip_frame[tip_update] = frame
                 points = reachability.forward_points(q)
                 _, surface_normals = capsule_project(
                     points,
@@ -2434,8 +2568,34 @@ def main() -> None:
                     f"{args.max_incidental_hand_penetration_mm:.3f} "
                     f"nearest={nearest_hand}"
                 )
+            allowed_tip_penetration = (
+                args.max_contact_penetration_mm / 1000.0
+            )
+            if np.any(minimum_tip < -allowed_tip_penetration):
+                finger = int(np.argmin(minimum_tip))
+                tip_name = (
+                    reachability.model.geom(
+                        int(reachability.tip_geom_ids[finger])
+                    ).name
+                    or ""
+                )
+                raise RuntimeError(
+                    "Full-robot trajectory exceeds allowed physical "
+                    "fingertip/object penetration: "
+                    f"label={label} frame={minimum_tip_frame[finger]}/"
+                    f"{len(joint_plan)} finger={finger} "
+                    f"penetration_mm={-minimum_tip[finger] * 1000:.3f} "
+                    f"allowed_mm={args.max_contact_penetration_mm:.3f} "
+                    f"nearest={tip_name} per_tip_minimum_mm="
+                    f"{(minimum_tip * 1000).round(3).tolist()}"
+                )
             required_pad_alignment = float(
-                np.cos(np.deg2rad(args.max_pad_angle_deg))
+                np.cos(
+                    np.deg2rad(
+                        args.max_pad_angle_deg
+                        - args.planner_pad_angle_margin_deg
+                    )
+                )
             )
             if minimum_pad_alignment < required_pad_alignment:
                 raise RuntimeError(
@@ -2445,12 +2605,15 @@ def main() -> None:
                     f"{len(joint_plan)} finger={minimum_pad_finger} "
                     f"pad_angle_deg="
                     f"{np.degrees(np.arccos(np.clip(minimum_pad_alignment, -1, 1))):.2f} "
-                    f"limit_deg={args.max_pad_angle_deg:.2f}"
+                    "planner_limit_deg="
+                    f"{args.max_pad_angle_deg - args.planner_pad_angle_margin_deg:.2f}"
                 )
             self.min_planned_arm_clearance_m = float(minimum_arm)
             self.nearest_planned_arm_geom = nearest_arm
             self.min_planned_hand_clearance_m = float(minimum_hand)
             self.nearest_planned_hand_geom = nearest_hand
+            self.min_planned_tip_clearance_m = minimum_tip.copy()
+            self.min_planned_tip_clearance_frame = minimum_tip_frame.copy()
             self.min_planned_pad_alignment = minimum_pad_alignment
             print(
                 "[FULL-ROBOT-PLAN-CLEARANCE] "
@@ -2464,8 +2627,15 @@ def main() -> None:
                 f"{args.max_incidental_hand_penetration_mm:.3f} "
                 f"hand_frame={minimum_hand_frame} "
                 f"nearest_hand={nearest_hand} "
+                f"minimum_tip_mm="
+                f"{(minimum_tip * 1000).round(3).tolist()} "
+                f"allowed_tip_penetration_mm="
+                f"{args.max_contact_penetration_mm:.3f} "
+                f"tip_frames={minimum_tip_frame.tolist()} "
                 f"max_pad_angle_deg="
                 f"{np.degrees(np.arccos(np.clip(minimum_pad_alignment, -1, 1))):.2f} "
+                f"planner_limit_deg="
+                f"{args.max_pad_angle_deg - args.planner_pad_angle_margin_deg:.2f} "
                 f"pad_frame={minimum_pad_frame} "
                 f"pad_finger={minimum_pad_finger}",
                 flush=True,
@@ -3293,6 +3463,13 @@ def main() -> None:
                     f"{(residual_plan[-1] * 1000).round(2).tolist()}mm"
                 )
 
+            self._validate_full_robot_plan_clearance(
+                center,
+                rotation,
+                joint_plan,
+                label="circumferential_surface_mpc",
+            )
+
             self.plan_surface = surface_plan
             self.plan_kinematic = kinematic_plan
             self.plan_normals = normal_plan
@@ -3493,6 +3670,19 @@ def main() -> None:
                     )
                 )
             )
+            planner_soft_pad_alignment = float(
+                np.cos(np.deg2rad(args.planner_soft_pad_angle_deg))
+            )
+            planner_tip_geom_target_m = (
+                np.asarray(
+                    args.planner_tip_geom_target_mm,
+                    dtype=np.float64,
+                )
+                / 1000.0
+            )
+            planner_tip_geom_inner_cap_m = (
+                args.planner_tip_geom_inner_cap_mm / 1000.0
+            )
 
             def contact_state(
                 q: np.ndarray,
@@ -3538,6 +3728,32 @@ def main() -> None:
                 )
 
             start_q = coarse_q[0].copy()
+            if args.collision_mode == "full_robot":
+                initial_tip_clearance = (
+                    reachability.geometry_group_clearances(
+                        start_q,
+                        center,
+                        rotation,
+                    )[0]
+                )
+                if np.any(
+                    initial_tip_clearance
+                    < -args.max_contact_penetration_mm / 1000.0
+                ):
+                    raise RuntimeError(
+                        "Initial grasp violates the physical fingertip "
+                        "penetration invariant: per_tip_mm="
+                        f"{(initial_tip_clearance * 1000).round(3).tolist()} "
+                        f"allowed_mm={args.max_contact_penetration_mm:.3f}"
+                    )
+                print(
+                    "[INITIAL-PHYSICAL-TIP-AUDIT] "
+                    f"clearance_mm="
+                    f"{(initial_tip_clearance * 1000).round(3).tolist()} "
+                    f"allowed_penetration_mm="
+                    f"{args.max_contact_penetration_mm:.3f}",
+                    flush=True,
+                )
             initial_palm_position, initial_palm_rotation = (
                 reachability.forward_palm_pose(start_q)
             )
@@ -4677,7 +4893,7 @@ def main() -> None:
                     progress_scale: float,
                     normal_scale: float,
                     monotonic_scale: float = 150.0,
-                    pad_scale: float = 8.0,
+                    pad_scale: float | None = None,
                     palm_scale: float = 30.0,
                 ) -> np.ndarray:
                     points, _, surface_normals, arc, auxiliary = contact_state(q)
@@ -4749,9 +4965,14 @@ def main() -> None:
                         )
                         palm_guide_error = palm_position_error
                     clearance_violation = np.zeros(1, dtype=np.float64)
+                    tip_geom_error = np.zeros(4, dtype=np.float64)
+                    tip_geom_inner_violation = np.zeros(
+                        4,
+                        dtype=np.float64,
+                    )
                     if args.collision_mode == "full_robot":
                         (
-                            _,
+                            tip_geom_clearance,
                             arm_clearance,
                             _,
                             hand_clearance,
@@ -4786,14 +5007,28 @@ def main() -> None:
                                 ),
                             )
                         )
+                        tip_geom_error = (
+                            tip_geom_clearance - planner_tip_geom_target_m
+                        )
+                        tip_geom_inner_violation = np.minimum(
+                            tip_geom_clearance
+                            - planner_tip_geom_inner_cap_m,
+                            0.0,
+                        )
                     pad_alignment = np.einsum(
                         "ij,ij->i",
                         reachability.fingertip_pad_normals(q),
                         -surface_normals[1:],
                     )
-                    pad_alignment_violation = np.maximum(
-                        planner_pad_alignment - pad_alignment,
-                        0.0,
+                    pad_alignment_violation = smooth_pad_alignment_residual(
+                        pad_alignment,
+                        target_alignment=planner_soft_pad_alignment,
+                        tau=args.planner_soft_pad_softplus_tau,
+                    )
+                    active_pad_scale = (
+                        args.planner_soft_pad_weight
+                        if pad_scale is None
+                        else pad_scale
                     )
                     return np.concatenate(
                         (
@@ -4814,7 +5049,10 @@ def main() -> None:
                             joint_regularization * (q - previous_q),
                             0.0008 * (q - previous_q - previous_delta),
                             1000.0 * clearance_violation,
-                            pad_scale * pad_alignment_violation,
+                            args.planner_tip_geom_weight * tip_geom_error,
+                            args.planner_tip_geom_inner_weight
+                            * tip_geom_inner_violation,
+                            active_pad_scale * pad_alignment_violation,
                         )
                     )
 
@@ -4826,19 +5064,38 @@ def main() -> None:
 
                 def segment_collision_status(
                     candidate_q: np.ndarray,
-                ) -> tuple[float, str, float, str, int, float]:
-                    """Audit collision and pad angle through a keyframe."""
+                ) -> tuple[
+                    float,
+                    str,
+                    float,
+                    str,
+                    float,
+                    str,
+                    int,
+                    float,
+                ]:
+                    """Audit distinct arm, hand, tip, self, and pad gates."""
 
                     if args.collision_mode != "full_robot":
-                        return np.inf, "", np.inf, "", 0, 1.0
+                        return (
+                            np.inf,
+                            "",
+                            np.inf,
+                            "",
+                            np.inf,
+                            "",
+                            0,
+                            1.0,
+                        )
                     sample_count = max(
-                        4,
+                        9,
                         int(np.ceil(frame_count / keyframe_count)),
                     )
                     minimum_arm = np.inf
                     nearest_arm = ""
                     minimum_hand = np.inf
                     nearest_hand = ""
+                    sampled_tip_clearances: list[np.ndarray] = []
                     self_pair_count = 0
                     minimum_pad_alignment = 1.0
                     for fraction in np.linspace(
@@ -4850,26 +5107,30 @@ def main() -> None:
                             (1.0 - fraction) * previous_q
                             + fraction * candidate_q
                         )
-                        arm_clearance, arm_geom_name = (
-                            reachability.minimum_arm_clearance(
-                                sample_q,
-                                center,
-                                rotation,
-                            )
+                        (
+                            tip_clearances,
+                            arm_clearances,
+                            arm_geom_names,
+                            hand_clearances,
+                            hand_geom_names,
+                        ) = reachability.geometry_group_clearances(
+                            sample_q,
+                            center,
+                            rotation,
                         )
+                        arm_index = int(np.argmin(arm_clearances))
+                        arm_clearance = float(arm_clearances[arm_index])
+                        arm_geom_name = arm_geom_names[arm_index]
                         if arm_clearance < minimum_arm:
                             minimum_arm = arm_clearance
                             nearest_arm = arm_geom_name
-                        hand_clearance, hand_geom_name = (
-                            reachability.minimum_hand_clearance(
-                                sample_q,
-                                center,
-                                rotation,
-                            )
-                        )
+                        hand_index = int(np.argmin(hand_clearances))
+                        hand_clearance = float(hand_clearances[hand_index])
+                        hand_geom_name = hand_geom_names[hand_index]
                         if hand_clearance < minimum_hand:
                             minimum_hand = hand_clearance
                             nearest_hand = hand_geom_name
+                        sampled_tip_clearances.append(tip_clearances.copy())
                         sample_self_pairs, sample_self_distances = (
                             reachability.self_collision_contacts(sample_q)
                         )
@@ -4888,11 +5149,29 @@ def main() -> None:
                             minimum_pad_alignment,
                             float(sample_pad_alignment.min()),
                         )
+                    (
+                        _,
+                        minimum_tip,
+                        (_, nearest_tip_index),
+                    ) = segment_tip_clearance_status(
+                        np.stack(sampled_tip_clearances),
+                        maximum_penetration_m=(
+                            args.max_contact_penetration_mm / 1000.0
+                        ),
+                    )
+                    nearest_tip = (
+                        reachability.model.geom(
+                            int(reachability.tip_geom_ids[nearest_tip_index])
+                        ).name
+                        or ""
+                    )
                     return (
                         minimum_arm,
                         nearest_arm,
                         minimum_hand,
                         nearest_hand,
+                        minimum_tip,
+                        nearest_tip,
                         self_pair_count,
                         minimum_pad_alignment,
                     )
@@ -5067,6 +5346,8 @@ def main() -> None:
                     surface_ik_arm_nearest,
                     surface_ik_hand_clearance,
                     surface_ik_hand_nearest,
+                    surface_ik_tip_clearance,
+                    surface_ik_tip_nearest,
                     surface_ik_self_count,
                     surface_ik_pad_alignment,
                 ) = segment_collision_status(surface_ik_seed)
@@ -5095,6 +5376,9 @@ def main() -> None:
                     f"hand_clearance_mm="
                     f"{surface_ik_hand_clearance * 1000:.2f} "
                     f"nearest_hand={surface_ik_hand_nearest or 'none'} "
+                    f"tip_clearance_mm="
+                    f"{surface_ik_tip_clearance * 1000:.2f} "
+                    f"nearest_tip={surface_ik_tip_nearest or 'none'} "
                     f"self_collision_pairs={surface_ik_self_count} "
                     f"max_pad_angle_deg="
                     f"{np.degrees(np.arccos(np.clip(surface_ik_pad_alignment, -1, 1))):.2f}",
@@ -5116,9 +5400,13 @@ def main() -> None:
                 )
                 rigid_arm_seed = rigid_arm_result.joint_position
                 candidates = []
-                _, _, _, surface_ik_arc, surface_ik_aux = contact_state(
-                    surface_ik_seed
-                )
+                (
+                    surface_ik_points_actual,
+                    _,
+                    _,
+                    surface_ik_arc,
+                    surface_ik_aux,
+                ) = contact_state(surface_ik_seed)
                 surface_ik_progress_error = np.abs(
                     direction * (surface_ik_arc - desired_arc)
                 )
@@ -5126,17 +5414,34 @@ def main() -> None:
                 surface_ik_normal_error = np.abs(
                     surface_ik_aux[:, 1] - desired_standoff
                 )
+                surface_ik_tangential_error = (
+                    (
+                        surface_ik_aux[:, 0]
+                        - desired_azimuth
+                        + np.pi
+                    )
+                    % (2.0 * np.pi)
+                    - np.pi
+                ) * CAPSULE_RADIUS
                 surface_ik_monotonic_error = np.maximum(
                     minimum_progress
                     - direction * (surface_ik_arc - start_arc),
                     0.0,
                 )
                 surface_ik_monotonic_error[0] = 0.0
+                surface_ik_palm_error = float(
+                    np.linalg.norm(surface_ik_points_actual[0] - palm_target)
+                )
+                surface_ik_joint_step = float(
+                    np.max(np.abs(surface_ik_seed - previous_q))
+                )
                 surface_ik_collision_safe = bool(
                     surface_ik_arm_clearance
                     >= args.min_arm_clearance_mm / 1000.0
                     and surface_ik_hand_clearance
                     >= -args.max_incidental_hand_penetration_mm / 1000.0
+                    and surface_ik_tip_clearance
+                    >= -args.max_contact_penetration_mm / 1000.0
                     and surface_ik_self_count == 0
                     and surface_ik_pad_alignment
                     >= planner_pad_alignment
@@ -5145,36 +5450,74 @@ def main() -> None:
                     surface_ik_normal_error[1:],
                     desired_distance,
                 )
-                if (
+                surface_ik_hard_feasible = bool(
                     float(surface_ik_progress_error.max())
                     <= active_progress_tolerance_mm / 1000.0
                     and surface_ik_normal_ok
+                    and np.all(
+                        np.abs(surface_ik_tangential_error[1:])
+                        <= tip_tangential_tolerances
+                    )
                     and float(surface_ik_monotonic_error.max())
                     <= args.mpc_monotonic_tolerance_mm / 1000.0
+                    and surface_ik_palm_error <= palm_tracking_limit_m
+                    and surface_ik_joint_step
+                    <= args.max_plan_joint_step_rad + 1.0e-12
                     and surface_ik_collision_safe
-                ):
+                )
+                if surface_ik_hard_feasible:
                     # A tightly solved hierarchical IK state already
                     # satisfies the hard path constraints.  Keep it as a raw
                     # candidate so the subsequent unconstrained local least
                     # squares pass cannot destroy a collision-free solution.
+                    surface_ik_cost = float(
+                        np.sum(surface_ik_result.residual_m**2)
+                    )
+                    surface_ik_task_score = (
+                        8.0 * float(surface_ik_progress_error.max())
+                        + 5.0
+                        * float(surface_ik_normal_error[1:].max())
+                        + 5.0
+                        * float(
+                            np.abs(
+                                surface_ik_tangential_error[1:]
+                            ).max()
+                        )
+                    )
                     candidates.append(
                         (
-                            -2.0,
+                            orientation_aware_candidate_rank(
+                                hard_feasible=True,
+                                hard_violation_score=0.0,
+                                minimum_pad_alignment=(
+                                    surface_ik_pad_alignment
+                                ),
+                                hard_pad_alignment=planner_pad_alignment,
+                                soft_pad_alignment=(
+                                    planner_soft_pad_alignment
+                                ),
+                                task_error_score=surface_ik_task_score,
+                                continuity_error=surface_ik_joint_step,
+                                solver_cost=surface_ik_cost,
+                            ),
                             SimpleNamespace(
                                 x=surface_ik_seed,
-                                cost=float(
-                                    np.sum(
-                                        surface_ik_result.residual_m**2
-                                    )
-                                ),
+                                cost=surface_ik_cost,
                                 nfev=surface_ik_result.iterations,
+                                candidate_kind="raw_surface_ik",
                             ),
                             surface_ik_progress_error,
                             surface_ik_normal_error,
                             surface_ik_arc,
                         )
                     )
-                _, _, _, rigid_arc, rigid_aux = contact_state(rigid_arm_seed)
+                (
+                    rigid_points,
+                    _,
+                    _,
+                    rigid_arc,
+                    rigid_aux,
+                ) = contact_state(rigid_arm_seed)
                 rigid_progress_error = np.abs(
                     direction * (rigid_arc - desired_arc)
                 )
@@ -5182,16 +5525,31 @@ def main() -> None:
                 rigid_normal_error = np.abs(
                     rigid_aux[:, 1] - desired_standoff
                 )
+                rigid_tangential_error = (
+                    (
+                        rigid_aux[:, 0] - desired_azimuth + np.pi
+                    )
+                    % (2.0 * np.pi)
+                    - np.pi
+                ) * CAPSULE_RADIUS
                 rigid_monotonic_error = np.maximum(
                     minimum_progress
                     - direction * (rigid_arc - start_arc),
                     0.0,
                 )
                 rigid_monotonic_error[0] = 0.0
+                rigid_palm_error = float(
+                    np.linalg.norm(rigid_points[0] - palm_target)
+                )
+                rigid_joint_step = float(
+                    np.max(np.abs(rigid_arm_seed - previous_q))
+                )
                 (
                     rigid_arm_clearance,
                     _,
                     rigid_hand_clearance,
+                    _,
+                    rigid_tip_clearance,
                     _,
                     rigid_self_collision_count,
                     rigid_pad_alignment,
@@ -5201,6 +5559,8 @@ def main() -> None:
                     >= args.min_arm_clearance_mm / 1000.0
                     and rigid_hand_clearance
                     >= -args.max_incidental_hand_penetration_mm / 1000.0
+                    and rigid_tip_clearance
+                    >= -args.max_contact_penetration_mm / 1000.0
                     and rigid_self_collision_count == 0
                     and rigid_pad_alignment >= planner_pad_alignment
                 )
@@ -5214,17 +5574,44 @@ def main() -> None:
                     float(rigid_progress_error.max())
                     <= active_progress_tolerance_mm / 1000.0
                     and rigid_normal_ok
+                    and np.all(
+                        np.abs(rigid_tangential_error[1:])
+                        <= tip_tangential_tolerances
+                    )
                     and float(rigid_monotonic_error.max())
                     <= args.mpc_monotonic_tolerance_mm / 1000.0
+                    and rigid_palm_error <= palm_tracking_limit_m
+                    and rigid_joint_step
+                    <= args.max_plan_joint_step_rad + 1.0e-12
                     and rigid_collision_safe
                 ):
+                    rigid_task_score = (
+                        8.0 * float(rigid_progress_error.max())
+                        + 5.0 * float(rigid_normal_error[1:].max())
+                        + 5.0
+                        * float(
+                            np.abs(rigid_tangential_error[1:]).max()
+                        )
+                    )
                     candidates.append(
                         (
-                            -1.0,
+                            orientation_aware_candidate_rank(
+                                hard_feasible=True,
+                                hard_violation_score=0.0,
+                                minimum_pad_alignment=rigid_pad_alignment,
+                                hard_pad_alignment=planner_pad_alignment,
+                                soft_pad_alignment=(
+                                    planner_soft_pad_alignment
+                                ),
+                                task_error_score=rigid_task_score,
+                                continuity_error=rigid_joint_step,
+                                solver_cost=0.0,
+                            ),
                             SimpleNamespace(
                                 x=rigid_arm_seed,
                                 cost=0.0,
                                 nfev=rigid_arm_result.iterations,
+                                candidate_kind="rigid_palm_seed",
                             ),
                             rigid_progress_error,
                             rigid_normal_error,
@@ -5247,35 +5634,127 @@ def main() -> None:
                         f"{rigid_arm_clearance * 1000:.2f} "
                         f"hand_clearance_mm="
                         f"{rigid_hand_clearance * 1000:.2f} "
+                        f"tip_clearance_mm="
+                        f"{rigid_tip_clearance * 1000:.2f} "
                         f"self_collision_pairs="
                         f"{rigid_self_collision_count}",
                         flush=True,
                     )
                 local_seed_specs = [
-                    (surface_ik_seed, 0.0001, 32.0, 32.0),
-                    (surface_ik_seed, 0.0, 48.0, 48.0),
-                    (rigid_arm_seed, 0.0001, 24.0, 24.0),
-                    (extrapolated_seed, 0.0003, 24.0, 24.0),
-                    (previous_q, 0.0001, 32.0, 20.0),
-                    (previous_q, 0.0001, 20.0, 32.0),
-                    (previous_q, 0.0, 40.0, 40.0),
+                    (
+                        "task_surface_balanced",
+                        surface_ik_seed,
+                        0.0001,
+                        32.0,
+                        32.0,
+                        args.planner_soft_pad_weight,
+                    ),
+                    (
+                        "task_surface_strict",
+                        surface_ik_seed,
+                        0.0,
+                        48.0,
+                        48.0,
+                        args.planner_soft_pad_weight,
+                    ),
+                    (
+                        "task_rigid_seed",
+                        rigid_arm_seed,
+                        0.0001,
+                        24.0,
+                        24.0,
+                        args.planner_soft_pad_weight,
+                    ),
+                    (
+                        "task_extrapolated",
+                        extrapolated_seed,
+                        0.0003,
+                        24.0,
+                        24.0,
+                        args.planner_soft_pad_weight,
+                    ),
+                    (
+                        "task_previous_progress",
+                        previous_q,
+                        0.0001,
+                        32.0,
+                        20.0,
+                        args.planner_soft_pad_weight,
+                    ),
+                    (
+                        "task_previous_normal",
+                        previous_q,
+                        0.0001,
+                        20.0,
+                        32.0,
+                        args.planner_soft_pad_weight,
+                    ),
+                    (
+                        "task_previous_strict",
+                        previous_q,
+                        0.0,
+                        40.0,
+                        40.0,
+                        args.planner_soft_pad_weight,
+                    ),
                 ]
                 local_seed_specs.extend(
-                    (seed, 0.0001, 48.0, 48.0)
+                    (
+                        "task_palm_multistart",
+                        seed,
+                        0.0001,
+                        48.0,
+                        48.0,
+                        args.planner_soft_pad_weight,
+                    )
                     for seed in palm_multistart_surface_seeds
                 )
+                # These are independent full-23-DoF posture solves, not a
+                # moving/static bridge.  Their stronger smooth cone objective
+                # gives the arm, palm, and finger joints room to rotate the
+                # pads before the immutable 40-degree segment gate is hit.
+                orientation_posture_seed_specs = [
+                    (
+                        "orientation_posture_surface",
+                        surface_ik_seed,
+                        0.0001,
+                        32.0,
+                        32.0,
+                        4.0 * args.planner_soft_pad_weight,
+                    ),
+                    (
+                        "orientation_posture_extrapolated",
+                        extrapolated_seed,
+                        0.0003,
+                        32.0,
+                        32.0,
+                        4.0 * args.planner_soft_pad_weight,
+                    ),
+                    (
+                        "orientation_posture_previous",
+                        previous_q,
+                        0.0001,
+                        32.0,
+                        32.0,
+                        4.0 * args.planner_soft_pad_weight,
+                    ),
+                ]
+                local_seed_specs.extend(orientation_posture_seed_specs)
                 for (
+                    candidate_kind,
                     seed,
                     regularization,
                     progress_scale,
                     normal_scale,
+                    pad_scale,
                 ) in local_seed_specs:
                     result = least_squares(
-                        lambda q, reg=regularization, ps=progress_scale, ns=normal_scale: residual(
+                        lambda q, reg=regularization, ps=progress_scale, ns=normal_scale, pads=pad_scale: residual(
                             q,
                             joint_regularization=reg,
                             progress_scale=ps,
                             normal_scale=ns,
+                            pad_scale=pads,
                         ),
                         seed,
                         bounds=(lower, upper),
@@ -5284,7 +5763,9 @@ def main() -> None:
                         ftol=1.0e-8,
                         gtol=1.0e-8,
                         x_scale="jac",
+                        diff_step=1.0e-5,
                     )
+                    result.candidate_kind = candidate_kind
                     (
                         candidate_points,
                         _,
@@ -5314,7 +5795,7 @@ def main() -> None:
                         0.0,
                     )
                     monotonic_error[0] = 0.0
-                    score = (
+                    candidate_task_score = (
                         1000.0 * float(monotonic_error.max())
                         +
                         1000.0
@@ -5353,11 +5834,16 @@ def main() -> None:
                                 candidate_tangential_error[1:]
                             ).max()
                         )
-                        + 0.02 * float(
-                            np.max(np.abs(result.x - previous_q))
-                        )
+                    )
+                    candidate_joint_step = float(
+                        np.max(np.abs(result.x - previous_q))
+                    )
+                    score = (
+                        candidate_task_score
+                        + 0.02 * candidate_joint_step
                         + 1.0e-3 * float(result.cost)
                     )
+                    candidate_hard_feasible = True
                     progress_excess = max(
                         float(progress_error.max())
                         - active_progress_tolerance_mm / 1000.0,
@@ -5400,8 +5886,10 @@ def main() -> None:
                         monotonic_excess,
                     ):
                         if hard_excess > 0.0:
+                            candidate_hard_feasible = False
                             score += 1.0e6 + 1.0e6 * hard_excess
                     if not candidate_normal_ok:
+                        candidate_hard_feasible = False
                         score += (
                             1.0e6
                             + 1.0e6 * normal_excess
@@ -5423,6 +5911,7 @@ def main() -> None:
                         candidate_palm_error
                         > palm_tracking_limit_m
                     ):
+                        candidate_hard_feasible = False
                         score += (
                             1.0e6
                             + 1.0e6
@@ -5431,11 +5920,26 @@ def main() -> None:
                                 - palm_tracking_limit_m
                             )
                         )
+                    candidate_joint_step_excess = max(
+                        candidate_joint_step
+                        - args.max_plan_joint_step_rad,
+                        0.0,
+                    )
+                    if candidate_joint_step_excess > 0.0:
+                        candidate_hard_feasible = False
+                        score += (
+                            1.0e6
+                            + 1.0e6 * candidate_joint_step_excess
+                        )
+                    candidate_pad_alignment = 1.0
+                    candidate_tip_clearance = np.inf
                     if args.collision_mode == "full_robot":
                         (
                             arm_clearance,
                             _,
                             hand_clearance,
+                            _,
+                            candidate_tip_clearance,
                             _,
                             candidate_self_count,
                             candidate_pad_alignment,
@@ -5451,18 +5955,27 @@ def main() -> None:
                             - hand_clearance,
                             0.0,
                         )
+                        tip_penetration_violation = max(
+                            -args.max_contact_penetration_mm / 1000.0
+                            - candidate_tip_clearance,
+                            0.0,
+                        )
                         for collision_violation in (
                             arm_clearance_violation,
                             hand_penetration_violation,
+                            tip_penetration_violation,
                         ):
                             if collision_violation > 0.0:
+                                candidate_hard_feasible = False
                                 score += (
                                     1.0e6
                                     + 1.0e6 * collision_violation
                                 )
                         if candidate_self_count:
+                            candidate_hard_feasible = False
                             score += 1.0e6 + candidate_self_count
                         if candidate_pad_alignment < planner_pad_alignment:
+                            candidate_hard_feasible = False
                             score += (
                                 1.0e6
                                 + 1.0e6
@@ -5473,7 +5986,23 @@ def main() -> None:
                             )
                     candidates.append(
                         (
-                            score,
+                            orientation_aware_candidate_rank(
+                                hard_feasible=candidate_hard_feasible,
+                                hard_violation_score=max(
+                                    score - candidate_task_score,
+                                    0.0,
+                                ),
+                                minimum_pad_alignment=(
+                                    candidate_pad_alignment
+                                ),
+                                hard_pad_alignment=planner_pad_alignment,
+                                soft_pad_alignment=(
+                                    planner_soft_pad_alignment
+                                ),
+                                task_error_score=candidate_task_score,
+                                continuity_error=candidate_joint_step,
+                                solver_cost=float(result.cost),
+                            ),
                             result,
                             progress_error,
                             normal_error,
@@ -5498,12 +6027,15 @@ def main() -> None:
                 preliminary_pad_alignment = 1.0
                 preliminary_arm_clearance = np.inf
                 preliminary_hand_clearance = np.inf
+                preliminary_tip_clearance = np.inf
                 preliminary_self_count = 0
                 if args.collision_mode == "full_robot":
                     (
                         preliminary_arm_clearance,
                         _,
                         preliminary_hand_clearance,
+                        _,
+                        preliminary_tip_clearance,
                         _,
                         preliminary_self_count,
                         preliminary_pad_alignment,
@@ -5547,6 +6079,10 @@ def main() -> None:
                     < args.min_arm_clearance_mm / 1000.0
                     or preliminary_hand_clearance
                     < -args.max_incidental_hand_penetration_mm / 1000.0
+                    or preliminary_tip_clearance
+                    < -args.max_contact_penetration_mm / 1000.0
+                    or float(np.max(np.abs(best.x - previous_q)))
+                    > args.max_plan_joint_step_rad + 1.0e-12
                     or preliminary_self_count > 0
                     or preliminary_pad_alignment < planner_pad_alignment
                 ):
@@ -5597,7 +6133,9 @@ def main() -> None:
                             ftol=1.0e-9,
                             gtol=1.0e-9,
                             x_scale="jac",
+                            diff_step=1.0e-5,
                         )
+                        repaired.candidate_kind = "constraint_repair"
                         (
                             repaired_points,
                             _,
@@ -5627,7 +6165,7 @@ def main() -> None:
                             0.0,
                         )
                         repaired_monotonic_error[0] = 0.0
-                        repaired_score = (
+                        repaired_task_score = (
                             1000.0
                             * float(repaired_monotonic_error.max())
                             +
@@ -5668,12 +6206,16 @@ def main() -> None:
                                     repaired_tangential_error[1:]
                                 ).max()
                             )
-                            + 0.02
-                            * float(
-                                np.max(np.abs(repaired.x - previous_q))
-                            )
+                        )
+                        repaired_joint_step = float(
+                            np.max(np.abs(repaired.x - previous_q))
+                        )
+                        repaired_score = (
+                            repaired_task_score
+                            + 0.02 * repaired_joint_step
                             + 1.0e-3 * float(repaired.cost)
                         )
+                        repaired_hard_feasible = True
                         repaired_progress_excess = max(
                             float(repaired_progress_error.max())
                             - active_progress_tolerance_mm / 1000.0,
@@ -5718,10 +6260,12 @@ def main() -> None:
                             repaired_monotonic_excess,
                         ):
                             if hard_excess > 0.0:
+                                repaired_hard_feasible = False
                                 repaired_score += (
                                     1.0e6 + 1.0e6 * hard_excess
                                 )
                         if not repaired_normal_ok:
+                            repaired_hard_feasible = False
                             repaired_score += (
                                 1.0e6
                                 + 1.0e6 * repaired_normal_excess
@@ -5743,6 +6287,7 @@ def main() -> None:
                             repaired_palm_error
                             > palm_tracking_limit_m
                         ):
+                            repaired_hard_feasible = False
                             repaired_score += (
                                 1.0e6
                                 + 1.0e6
@@ -5751,11 +6296,26 @@ def main() -> None:
                                     - palm_tracking_limit_m
                                 )
                             )
+                        repaired_joint_step_excess = max(
+                            repaired_joint_step
+                            - args.max_plan_joint_step_rad,
+                            0.0,
+                        )
+                        if repaired_joint_step_excess > 0.0:
+                            repaired_hard_feasible = False
+                            repaired_score += (
+                                1.0e6
+                                + 1.0e6 * repaired_joint_step_excess
+                            )
+                        repaired_pad_alignment = 1.0
+                        repaired_tip_clearance = np.inf
                         if args.collision_mode == "full_robot":
                             (
                                 arm_clearance,
                                 _,
                                 hand_clearance,
+                                _,
+                                repaired_tip_clearance,
                                 _,
                                 repaired_self_count,
                                 repaired_pad_alignment,
@@ -5771,20 +6331,29 @@ def main() -> None:
                                 - hand_clearance,
                                 0.0,
                             )
+                            tip_penetration_violation = max(
+                                -args.max_contact_penetration_mm / 1000.0
+                                - repaired_tip_clearance,
+                                0.0,
+                            )
                             for collision_violation in (
                                 arm_clearance_violation,
                                 hand_penetration_violation,
+                                tip_penetration_violation,
                             ):
                                 if collision_violation > 0.0:
+                                    repaired_hard_feasible = False
                                     repaired_score += (
                                         1.0e6
                                         + 1.0e6 * collision_violation
                                     )
                             if repaired_self_count:
+                                repaired_hard_feasible = False
                                 repaired_score += (
                                     1.0e6 + repaired_self_count
                                 )
                             if repaired_pad_alignment < planner_pad_alignment:
+                                repaired_hard_feasible = False
                                 repaired_score += (
                                     1.0e6
                                     + 1.0e6
@@ -5795,7 +6364,28 @@ def main() -> None:
                                 )
                         candidates.append(
                             (
-                                repaired_score,
+                                orientation_aware_candidate_rank(
+                                    hard_feasible=repaired_hard_feasible,
+                                    hard_violation_score=max(
+                                        repaired_score
+                                        - repaired_task_score,
+                                        0.0,
+                                    ),
+                                    minimum_pad_alignment=(
+                                        repaired_pad_alignment
+                                    ),
+                                    hard_pad_alignment=(
+                                        planner_pad_alignment
+                                    ),
+                                    soft_pad_alignment=(
+                                        planner_soft_pad_alignment
+                                    ),
+                                    task_error_score=(
+                                        repaired_task_score
+                                    ),
+                                    continuity_error=repaired_joint_step,
+                                    solver_cost=float(repaired.cost),
+                                ),
                                 repaired,
                                 repaired_progress_error,
                                 repaired_normal_error,
@@ -5850,6 +6440,8 @@ def main() -> None:
                         _,
                         pre_rephase_hand_clearance,
                         _,
+                        pre_rephase_tip_clearance,
+                        _,
                         pre_rephase_self_count,
                         pre_rephase_pad_alignment,
                     ) = segment_collision_status(best.x)
@@ -5859,6 +6451,8 @@ def main() -> None:
                         and pre_rephase_hand_clearance
                         >= -args.max_incidental_hand_penetration_mm
                         / 1000.0
+                        and pre_rephase_tip_clearance
+                        >= -args.max_contact_penetration_mm / 1000.0
                         and pre_rephase_self_count == 0
                         and pre_rephase_pad_alignment
                         >= planner_pad_alignment
@@ -5971,6 +6565,29 @@ def main() -> None:
                         auto_rephase_limit_m
                     )
                     accepted_rephase_candidates = []
+
+                    def fallback_orientation_rank(
+                        *,
+                        minimum_pad_alignment: float,
+                        offset_norm_m: float,
+                        progress_error_m: float,
+                        solver_cost: float,
+                    ) -> tuple[float, ...]:
+                        """Rank hard-feasible fallback states by pad first."""
+
+                        return orientation_aware_candidate_rank(
+                            hard_feasible=True,
+                            hard_violation_score=0.0,
+                            minimum_pad_alignment=minimum_pad_alignment,
+                            hard_pad_alignment=planner_pad_alignment,
+                            soft_pad_alignment=planner_soft_pad_alignment,
+                            # Preserve the historical offset/progress/cost
+                            # tie-break once the entire segment is <=35 deg.
+                            task_error_score=offset_norm_m,
+                            continuity_error=progress_error_m,
+                            solver_cost=solver_cost,
+                        )
+
                     # Before launching another non-convex least-squares solve,
                     # audit the last accepted URDF state itself.  Across a
                     # very short shooting interval it can remain physically
@@ -6076,11 +6693,14 @@ def main() -> None:
                         )
                     )
                     bridge_collision_ok = True
+                    bridge_pad_alignment = 1.0
                     if args.collision_mode == "full_robot":
                         (
                             bridge_arm_clearance,
                             _,
                             bridge_hand_clearance,
+                            _,
+                            bridge_tip_clearance,
                             _,
                             bridge_self_count,
                             bridge_pad_alignment,
@@ -6091,6 +6711,8 @@ def main() -> None:
                             and bridge_hand_clearance
                             >= -args.max_incidental_hand_penetration_mm
                             / 1000.0
+                            and bridge_tip_clearance
+                            >= -args.max_contact_penetration_mm / 1000.0
                             and bridge_self_count == 0
                             and bridge_pad_alignment
                             >= planner_pad_alignment
@@ -6168,15 +6790,30 @@ def main() -> None:
                             x=previous_q.copy(),
                             cost=0.0,
                             nfev=0,
+                            candidate_kind="static_bridge",
+                        )
+                        static_offset_norm_m = float(
+                            np.linalg.norm(
+                                bridge_rephase_offset_m
+                                - starting_rephase_offset_m
+                            )
+                        )
+                        static_progress_error_m = float(
+                            bridge_progress_error.max()
                         )
                         static_bridge_candidate = (
-                            float(
-                                np.linalg.norm(
-                                    bridge_rephase_offset_m
-                                    - starting_rephase_offset_m
+                            fallback_orientation_rank(
+                                minimum_pad_alignment=(
+                                    bridge_pad_alignment
                                 ),
+                                offset_norm_m=static_offset_norm_m,
+                                progress_error_m=(
+                                    static_progress_error_m
+                                ),
+                                solver_cost=0.0,
                             ),
-                            float(bridge_progress_error.max()),
+                            static_offset_norm_m,
+                            static_progress_error_m,
                             0.0,
                             bridge_result,
                             bridge_progress_error,
@@ -6233,6 +6870,10 @@ def main() -> None:
                                         ftol=1.0e-9,
                                         gtol=1.0e-9,
                                         x_scale="jac",
+                                        diff_step=1.0e-5,
+                                    )
+                                    rephased.candidate_kind = (
+                                        "single_finger_rephase"
                                     )
                                     (
                                         rephased_points,
@@ -6283,11 +6924,14 @@ def main() -> None:
                                         )
                                     )
                                     rephased_collision_ok = True
+                                    rephased_pad_alignment = 1.0
                                     if args.collision_mode == "full_robot":
                                         (
                                             rephased_arm_clearance,
                                             _,
                                             rephased_hand_clearance,
+                                            _,
+                                            rephased_tip_clearance,
                                             _,
                                             rephased_self_count,
                                             rephased_pad_alignment,
@@ -6300,6 +6944,9 @@ def main() -> None:
                                             / 1000.0
                                             and rephased_hand_clearance
                                             >= -args.max_incidental_hand_penetration_mm
+                                            / 1000.0
+                                            and rephased_tip_clearance
+                                            >= -args.max_contact_penetration_mm
                                             / 1000.0
                                             and rephased_self_count == 0
                                             and rephased_pad_alignment
@@ -6324,21 +6971,46 @@ def main() -> None:
                                         / 1000.0
                                         and rephased_palm_error
                                         <= palm_tracking_limit_m
+                                        and float(
+                                            np.max(
+                                                np.abs(
+                                                    rephased.x - previous_q
+                                                )
+                                            )
+                                        )
+                                        <= args.max_plan_joint_step_rad
+                                        + 1.0e-12
                                         and rephased_collision_ok
                                     )
                                     if not rephased_hard_ok:
                                         continue
+                                    rephased_offset_norm_m = float(
+                                        np.linalg.norm(
+                                            trial_rephase_offset_m
+                                            - starting_rephase_offset_m
+                                        )
+                                    )
+                                    rephased_progress_max_m = float(
+                                        rephased_progress_error.max()
+                                    )
                                     accepted_rephase_candidates.append(
                                         (
-                                            float(
-                                                np.linalg.norm(
-                                                    trial_rephase_offset_m
-                                                    - starting_rephase_offset_m
-                                                )
+                                            fallback_orientation_rank(
+                                                minimum_pad_alignment=(
+                                                    rephased_pad_alignment
+                                                ),
+                                                offset_norm_m=(
+                                                    rephased_offset_norm_m
+                                                ),
+                                                progress_error_m=(
+                                                    rephased_progress_max_m
+                                                ),
+                                                solver_cost=float(
+                                                    rephased.cost
+                                                ),
                                             ),
-                                            float(
-                                                rephased_progress_error.max()
-                                            ),
+                                            rephased_offset_norm_m,
+                                            rephased_progress_max_m,
                                             float(rephased.cost),
                                             rephased,
                                             rephased_progress_error,
@@ -6421,6 +7093,7 @@ def main() -> None:
                             x_scale="jac",
                             diff_step=1.0e-5,
                         )
+                        moving_bridge.candidate_kind = "moving_bridge"
                         (
                             moving_bridge_points,
                             _,
@@ -6476,6 +7149,7 @@ def main() -> None:
                         moving_bridge_collision_ok = True
                         moving_bridge_arm_clearance = np.inf
                         moving_bridge_hand_clearance = np.inf
+                        moving_bridge_tip_clearance = np.inf
                         moving_bridge_self_count = 0
                         moving_bridge_pad_alignment = 1.0
                         if args.collision_mode == "full_robot":
@@ -6483,6 +7157,8 @@ def main() -> None:
                                 moving_bridge_arm_clearance,
                                 _,
                                 moving_bridge_hand_clearance,
+                                _,
+                                moving_bridge_tip_clearance,
                                 _,
                                 moving_bridge_self_count,
                                 moving_bridge_pad_alignment,
@@ -6493,6 +7169,8 @@ def main() -> None:
                                 and moving_bridge_hand_clearance
                                 >= -args.max_incidental_hand_penetration_mm
                                 / 1000.0
+                                and moving_bridge_tip_clearance
+                                >= -args.max_contact_penetration_mm / 1000.0
                                 and moving_bridge_self_count == 0
                                 and moving_bridge_pad_alignment
                                 >= planner_pad_alignment
@@ -6657,6 +7335,12 @@ def main() -> None:
                                     args.max_incidental_hand_penetration_mm
                                     / 1000.0
                                 ),
+                                tip_clearance_m=(
+                                    moving_bridge_tip_clearance
+                                ),
+                                tip_clearance_limit_m=-(
+                                    args.max_contact_penetration_mm / 1000.0
+                                ),
                                 self_collision_count=(
                                     moving_bridge_self_count
                                 ),
@@ -6739,18 +7423,29 @@ def main() -> None:
                                 emit_bridge_rejection(
                                     last_bridge_rejection_record
                                 )
+                        moving_offset_norm_m = float(
+                            np.linalg.norm(
+                                bridge_rephase_offset_m
+                                - starting_rephase_offset_m
+                            )
+                        )
+                        moving_progress_max_m = float(
+                            moving_bridge_progress_error.max()
+                        )
+                        moving_orientation_rank = fallback_orientation_rank(
+                            minimum_pad_alignment=(
+                                moving_bridge_pad_alignment
+                            ),
+                            offset_norm_m=moving_offset_norm_m,
+                            progress_error_m=moving_progress_max_m,
+                            solver_cost=float(moving_bridge.cost),
+                        )
                         if moving_bridge_hard_ok:
                             accepted_rephase_candidates.append(
                                 (
-                                    float(
-                                        np.linalg.norm(
-                                            bridge_rephase_offset_m
-                                            - starting_rephase_offset_m
-                                        )
-                                    ),
-                                    float(
-                                        moving_bridge_progress_error.max()
-                                    ),
+                                    moving_orientation_rank,
+                                    moving_offset_norm_m,
+                                    moving_progress_max_m,
                                     float(moving_bridge.cost),
                                     moving_bridge,
                                     moving_bridge_progress_error,
@@ -6774,15 +7469,9 @@ def main() -> None:
                         elif moving_recovery_hard_ok:
                             accepted_rephase_candidates.append(
                                 (
-                                    float(
-                                        np.linalg.norm(
-                                            bridge_rephase_offset_m
-                                            - starting_rephase_offset_m
-                                        )
-                                    ),
-                                    float(
-                                        moving_bridge_progress_error.max()
-                                    ),
+                                    moving_orientation_rank,
+                                    moving_offset_norm_m,
+                                    moving_progress_max_m,
                                     float(moving_bridge.cost),
                                     moving_bridge,
                                     moving_bridge_progress_error,
@@ -6824,6 +7513,7 @@ def main() -> None:
                             _,
                             _,
                             _,
+                            _,
                             best,
                             progress_error,
                             normal_error,
@@ -6832,7 +7522,7 @@ def main() -> None:
                             accepted_desired_arc,
                         ) = min(
                             accepted_rephase_candidates,
-                            key=lambda item: item[:3],
+                            key=lambda item: item[0],
                         )
                         desired_arc[:] = accepted_desired_arc
                         coarse_target_progress[keyframe] = direction * (
@@ -6943,6 +7633,8 @@ def main() -> None:
                 best_arm_nearest = ""
                 best_hand_clearance = np.inf
                 best_hand_nearest = ""
+                best_tip_clearance = np.inf
+                best_tip_nearest = ""
                 best_self_count = 0
                 best_pad_alignment = 1.0
                 if args.collision_mode == "full_robot":
@@ -6951,6 +7643,8 @@ def main() -> None:
                         best_arm_nearest,
                         best_hand_clearance,
                         best_hand_nearest,
+                        best_tip_clearance,
+                        best_tip_nearest,
                         best_self_count,
                         best_pad_alignment,
                     ) = segment_collision_status(best.x)
@@ -6959,6 +7653,9 @@ def main() -> None:
                 )
                 hand_clearance_limit_m = -(
                     args.max_incidental_hand_penetration_mm / 1000.0
+                )
+                tip_clearance_limit_m = -(
+                    args.max_contact_penetration_mm / 1000.0
                 )
                 best_joint_margin_rad = float(
                     np.min(
@@ -6995,6 +7692,9 @@ def main() -> None:
                         hand_clearance_m=best_hand_clearance,
                         hand_clearance_limit_m=hand_clearance_limit_m,
                         hand_nearest_geometry=best_hand_nearest,
+                        tip_clearance_m=best_tip_clearance,
+                        tip_clearance_limit_m=tip_clearance_limit_m,
+                        tip_nearest_geometry=best_tip_nearest,
                         self_collision_count=best_self_count,
                         pad_alignment=best_pad_alignment,
                         pad_alignment_limit=planner_pad_alignment,
@@ -7193,6 +7893,11 @@ def main() -> None:
                             "allowed_hand_penetration_mm="
                             f"{args.max_incidental_hand_penetration_mm:.3f} "
                             f"nearest_hand={best_hand_nearest} "
+                            f"tip_clearance_mm="
+                            f"{best_tip_clearance * 1000:.3f} "
+                            "allowed_tip_penetration_mm="
+                            f"{args.max_contact_penetration_mm:.3f} "
+                            f"nearest_tip={best_tip_nearest} "
                             f"self_collision_pairs={best_self_count} "
                             "max_pad_angle_deg="
                             f"{np.degrees(np.arccos(np.clip(best_pad_alignment, -1, 1))):.2f} "
@@ -7266,6 +7971,12 @@ def main() -> None:
                     f"{(np.abs(tangential_error[1:]) * 1000).round(2).tolist()} "
                     f"palm_position_error_mm="
                     f"{best_palm_position_error * 1000:.2f} "
+                    f"candidate_kind="
+                    f"{getattr(best, 'candidate_kind', 'rephase_or_bridge')} "
+                    f"segment_tip_clearance_mm="
+                    f"{best_tip_clearance * 1000:.3f} "
+                    f"segment_max_pad_angle_deg="
+                    f"{np.degrees(np.arccos(np.clip(best_pad_alignment, -1, 1))):.2f} "
                     f"nfev={best.nfev}",
                     flush=True,
                 )
@@ -7854,6 +8565,37 @@ def main() -> None:
                 ),
                 max_incidental_hand_penetration_mm=np.asarray(
                     args.max_incidental_hand_penetration_mm
+                ),
+                max_contact_penetration_mm=np.asarray(
+                    args.max_contact_penetration_mm
+                ),
+                planner_soft_pad_angle_deg=np.asarray(
+                    args.planner_soft_pad_angle_deg
+                ),
+                planner_soft_pad_weight=np.asarray(
+                    args.planner_soft_pad_weight
+                ),
+                planner_soft_pad_softplus_tau=np.asarray(
+                    args.planner_soft_pad_softplus_tau
+                ),
+                planner_tip_geom_target_mm=np.asarray(
+                    args.planner_tip_geom_target_mm,
+                    dtype=np.float64,
+                ),
+                planner_tip_geom_weight=np.asarray(
+                    args.planner_tip_geom_weight
+                ),
+                planner_tip_geom_inner_cap_mm=np.asarray(
+                    args.planner_tip_geom_inner_cap_mm
+                ),
+                planner_tip_geom_inner_weight=np.asarray(
+                    args.planner_tip_geom_inner_weight
+                ),
+                planned_tip_geom_minimum_clearance_m=(
+                    self.min_planned_tip_clearance_m
+                ),
+                planned_tip_geom_minimum_clearance_frame=(
+                    self.min_planned_tip_clearance_frame
                 ),
                 max_incidental_hand_contact_force_n=np.asarray(
                     args.max_incidental_hand_contact_force_n

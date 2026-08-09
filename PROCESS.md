@@ -1156,3 +1156,34 @@ Level 2 **NOT PASS**。不得放宽 `40 deg` 或 `1 mm`。
 `40 deg` 的 orientation-aware 姿态候选和统一候选排序，同时把逐段 physical tip
 penetration `<=1 mm` 设为 publish/dynamics 前硬门；完成 CPU 回归后，用完全相同的
 seed 42、0--50 mm 配置重跑。数值与物理门全部通过前仍不录像。
+
+### online 23-DoF 姿态与 physical-tip 硬门代码检查点（2026-08-10，待 GPU）
+
+已基于 `be64e90` 实现上一节的 online orientation/physical-tip 修复。Diagnostic
+现在使用 `50-10=40 deg`、Acceptance 使用 `45-5=40 deg`，两种 runner 的 planner
+hard cone 完全相同；soft cone=`35 deg`、weight=`24`、softplus tau=`0.02`，没有
+提高冻结的 `40 deg`。三个 posture-oriented seeds 使用四倍 soft-pad 权重，所有
+raw/rigid/ordinary/repair/rephase/bridge 候选取消旧的特殊 `-2/-1` 排名并先经过
+统一 hard audit；fallback 也先比较 soft-pad deficit。
+
+physical tip 的优选 signed-distance target 为
+`[-0.25,-0.25,-0.50,-0.25] mm`，权重 `2200`；`-0.8 mm` inner cap 使用权重
+`18000`，任何采样 `<-1 mm` 直接拒绝。初始状态、每段至少 9 点、adaptive 的
+raw/rigid/ordinary/repair/rephase/static/moving 分支、full-plan validation 和
+circumferential planner 均已接入该审计。failure/plan NPZ 也增加对应 tip 距离字段。
+moving 12D local residual 本身仍没有 physical-tip 梯度，但现在至少有逐段 hard
+fail-safe；这是明确保留的残余风险，不应写成已经由 12D 优化解决。
+
+对旧失败点 `40.625 mm` 的只读 CPU feasibility probe 找到满足全部硬门的姿态：tip
+distance=`[-0.183,-0.786,-0.908,-0.240] mm`，最大 progress error=`4.498 mm`、
+support=`3/4`、最小 tangent margin=`0.194 mm`、monotonic margin=`0.170 mm`、
+palm error=`13.22 mm`、FR3 clearance=`8.336 mm`、hand clearance=`-0.882 mm`、
+self collision=`0`、pad `<40 deg`、`max|dq|=0.029918 rad <0.03 rad`。这只证明该
+局部状态可达，不能拼接到旧前缀冒充连续计划；必须从初始抓取重新规划。
+
+主代理与独立审查均完成 `75/75` 回归、CLI、Python AST、PowerShell AST 和
+`git diff --check`；独立审查未发现 P0--P2 问题。新代码尚未运行 GPU，仍无成功
+plan、dynamics 或视频，Level 2 继续为 **NOT PASS**。
+
+**正在执行：**提交并 push 该检查点后，以完全相同的 seed 42、0--50 mm
+Acceptance headless 配置重跑；完整物理/数值通过前不录像。
