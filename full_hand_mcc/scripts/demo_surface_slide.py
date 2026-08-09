@@ -45,6 +45,18 @@ from mjlab.tasks.leaphand.full_hand_mcc_geometry import (
     ellipsoid_meridian_total_length,
     ellipsoid_project,
 )
+from mjlab.tasks.leaphand.full_hand_mcc_planner_diagnostics import (
+    MOVING_BRIDGE_FORWARD_FINGER_COUNT,
+    RejectedMovingBridgeCandidate,
+    build_bridge_rejection_metrics,
+    build_candidate_failure_metrics,
+    build_palm_guide_multistart_specs,
+    evaluate_bridge_conditions,
+    evaluate_moving_bridge_motion,
+    format_bridge_rejection_record,
+    make_bridge_rejection_record,
+    save_mpc_failure_prefix,
+)
 from mjlab.tasks.leaphand.leaphand_full_hand_mcc_env_cfg import (
     ARM_DOF,
     ARM_JOINT_NAMES,
@@ -921,6 +933,21 @@ def main() -> None:
         help=(
             "Maximum midpoint shooting keyframes inserted after hard "
             "feasibility failures. Zero disables automatic refinement."
+        ),
+    )
+    parser.add_argument(
+        "--mpc-failure-prefix-output",
+        type=Path,
+        default=Path(
+            "full_hand_mcc/outputs/debug/20_fr3_planning/"
+            "adaptive_mpc_failure_prefix.npz"
+        ),
+        help=(
+            "Stable NPZ written only when adaptive surface MPC coarse "
+            "shooting exhausts its local refinement/recovery options. It "
+            "contains the last feasible coarse prefix, rejected candidate, "
+            "constraint metrics, and current rephase/recovery budgets; no "
+            "video is produced. An existing file is never overwritten."
         ),
     )
     parser.add_argument("--mpc-max-nfev", type=int, default=120)
@@ -3565,6 +3592,136 @@ def main() -> None:
             static_bridge_total_m = 0.0
             recovery_bridge_total_m = 0.0
 
+            def emit_bridge_rejection(
+                record: dict[str, object],
+            ) -> None:
+                """Emit one compact record only at a real fallback boundary."""
+
+                print(
+                    "[BRIDGE-REJECTION] "
+                    + format_bridge_rejection_record(record),
+                    flush=True,
+                )
+
+            def raise_adaptive_planner_failure(
+                *,
+                reason: str,
+                message: str,
+                keyframe: int,
+                desired_distance: float,
+                desired_arc: np.ndarray,
+                final_best_q: np.ndarray,
+                final_best_points: np.ndarray,
+                final_best_arc: np.ndarray,
+                failure_metrics: dict[str, object],
+                bridge_record: dict[str, object] | None,
+                rejected_moving_bridge: (
+                    RejectedMovingBridgeCandidate | None
+                ),
+            ) -> None:
+                """Save an exhausted coarse-shooting prefix, then raise."""
+
+                # TODO: define a separate snapshot schema for interpolation
+                # and route-level audits; this artifact intentionally captures
+                # the non-convex coarse shooting bottleneck and its candidate.
+
+                prefix_q = coarse_q[:keyframe].copy()
+                prefix_points: list[np.ndarray] = []
+                prefix_arcs: list[np.ndarray] = []
+                for feasible_q in prefix_q:
+                    feasible_state = contact_state(feasible_q)
+                    prefix_points.append(feasible_state[0])
+                    prefix_arcs.append(feasible_state[3])
+                previous_index = max(keyframe - 1, 0)
+                recovery_total_limit_m = (
+                    args.mpc_recovery_bridge_max_total_ratio
+                    * args.axial_travel_m
+                )
+                static_total_limit_m = (
+                    args.mpc_static_bridge_max_total_ratio
+                    * args.axial_travel_m
+                )
+                budget_values: dict[str, object] = {
+                    "auto_rephase_offset_m": auto_rephase_offset_m.copy(),
+                    "auto_rephase_max_m": (
+                        args.mpc_auto_rephase_max_mm / 1000.0
+                    ),
+                    "feasibility_bridge_rephase_max_m": (
+                        args.mpc_feasibility_bridge_max_mm / 1000.0
+                    ),
+                    "static_bridge_dwell_m": float(
+                        coarse_static_bridge_dwell_m[previous_index]
+                    ),
+                    "static_bridge_dwell_max_m": (
+                        args.mpc_static_bridge_max_dwell_mm / 1000.0
+                    ),
+                    "static_bridge_total_m": static_bridge_total_m,
+                    "static_bridge_total_max_m": static_total_limit_m,
+                    "static_bridge_total_remaining_m": (
+                        static_total_limit_m - static_bridge_total_m
+                    ),
+                    "recovery_bridge_dwell_m": float(
+                        coarse_recovery_bridge_dwell_m[previous_index]
+                    ),
+                    "recovery_bridge_dwell_max_m": (
+                        args.mpc_recovery_bridge_max_span_mm / 1000.0
+                    ),
+                    "recovery_bridge_total_m": recovery_bridge_total_m,
+                    "recovery_bridge_total_max_m": recovery_total_limit_m,
+                    "recovery_bridge_total_remaining_m": (
+                        recovery_total_limit_m - recovery_bridge_total_m
+                    ),
+                    "recovery_terminal_cutoff_m": (
+                        args.axial_travel_m
+                        - args.mpc_recovery_bridge_terminal_margin_mm
+                        / 1000.0
+                    ),
+                    "auto_refine_insertions_used": len(
+                        auto_refine_inserted_distance_m
+                    ),
+                    "auto_refine_insertions_max": (
+                        args.mpc_auto_refine_max_insertions
+                    ),
+                }
+                if (
+                    bridge_record is not None
+                    and bridge_record.get("fallback") == "planner_failure"
+                ):
+                    emit_bridge_rejection(bridge_record)
+                try:
+                    saved_path = save_mpc_failure_prefix(
+                        args.mpc_failure_prefix_output,
+                        reason=reason,
+                        keyframe=keyframe,
+                        keyframe_count=keyframe_count,
+                        failure_distance_m=desired_distance,
+                        last_feasible_distance_m=coarse_distance[:keyframe],
+                        last_feasible_q_rad=prefix_q,
+                        last_feasible_points_m=np.stack(prefix_points),
+                        last_feasible_arcs_m=np.stack(prefix_arcs),
+                        final_best_desired_arcs_m=desired_arc,
+                        final_best_q_rad=final_best_q,
+                        final_best_points_m=final_best_points,
+                        final_best_arcs_m=final_best_arc,
+                        rephase_offset_m=auto_rephase_offset_m,
+                        budget_values=budget_values,
+                        failure_metrics=failure_metrics,
+                        bridge_record=bridge_record,
+                        rejected_moving_bridge=rejected_moving_bridge,
+                    )
+                    print(
+                        "[MPC-FAILURE-PREFIX] "
+                        f"reason={reason} saved={saved_path.resolve()}",
+                        flush=True,
+                    )
+                except Exception as error:
+                    print(
+                        "[MPC-FAILURE-PREFIX-WRITE-ERROR] "
+                        f"reason={reason} error={error!r}",
+                        flush=True,
+                    )
+                raise RuntimeError(message)
+
             def insert_auto_refinement(
                 *,
                 keyframe: int,
@@ -3915,6 +4072,10 @@ def main() -> None:
 
             keyframe = 1
             while keyframe <= keyframe_count:
+                last_bridge_rejection_record: dict[str, object] | None = None
+                last_rejected_moving_bridge: (
+                    RejectedMovingBridgeCandidate | None
+                ) = None
                 feasibility_bridge_selected = False
                 static_feasibility_bridge_selected = False
                 recovery_bridge_selected = False
@@ -4766,89 +4927,112 @@ def main() -> None:
                     ),
                     upper,
                 )
-                # The palm root is a non-contact MPC point with a spherical
-                # feasibility tolerance. A single exact-palm hierarchical IK
-                # seed can sit outside the coupled fingertip workspace even
-                # though a nearby collision-safe palm pose is feasible. Search
-                # several deterministic normal/tangent offsets inside the
-                # same hard ball and use them as local-optimization starts.
-                # Tangential seeds are essential when the lower palm must go
-                # around the object rather than move radially through the
-                # fingertip workspace. The final candidate is still checked
-                # against the original palm target and radius.
-                palm_ball_surface_seeds: list[np.ndarray] = []
-                palm_ball_radius_m = (
-                    args.mpc_palm_position_tolerance_mm / 1000.0
-                )
+                # A single exact-palm hierarchical IK seed can sit outside the
+                # coupled fingertip workspace even when another collision-safe
+                # FR3 branch is feasible. Ordinary mode samples only inside its
+                # hard palm ball. Guide-only mode instead spans bounded layers
+                # of the actual guide-drift region and pairs them with small
+                # FR3 redundancy seeds. Every optimized endpoint is still
+                # checked against the original guide, joint, collision, pad,
+                # and fingertip constraints.
+                palm_multistart_surface_seeds: list[np.ndarray] = []
                 palm_ball_normal = palm_target_local_normal
                 palm_ball_azimuth = palm_target_local_azimuth
                 palm_ball_meridian = palm_target_local_meridian
-                palm_ball_offset_fractions = (
-                    -0.25 * palm_ball_normal,
-                    -0.50 * palm_ball_normal,
-                    -0.75 * palm_ball_normal,
-                    0.50 * palm_ball_normal,
-                    0.50 * palm_ball_azimuth,
-                    -0.50 * palm_ball_azimuth,
-                    0.50 * palm_ball_meridian,
-                    -0.50 * palm_ball_meridian,
-                    -0.40 * palm_ball_normal
-                    + 0.50 * palm_ball_azimuth,
-                    -0.40 * palm_ball_normal
-                    - 0.50 * palm_ball_azimuth,
-                )
-                if terminal_palm_offset_phase > 0.0:
-                    palm_ball_offset_fractions += (
-                        0.75 * palm_ball_normal,
-                        0.90 * palm_ball_normal,
-                        0.40 * palm_ball_normal
+                if args.palm_guide_only:
+                    (
+                        palm_multistart_offsets_m,
+                        palm_multistart_arm_deltas_rad,
+                    ) = build_palm_guide_multistart_specs(
+                        palm_ball_normal,
+                        palm_ball_azimuth,
+                        palm_ball_meridian,
+                        args.palm_guide_max_drift_mm / 1000.0,
+                    )
+                else:
+                    palm_ball_radius_m = (
+                        args.mpc_palm_position_tolerance_mm / 1000.0
+                    )
+                    palm_ball_offset_fractions = (
+                        -0.25 * palm_ball_normal,
+                        -0.50 * palm_ball_normal,
+                        -0.75 * palm_ball_normal,
+                        0.50 * palm_ball_normal,
+                        0.50 * palm_ball_azimuth,
+                        -0.50 * palm_ball_azimuth,
+                        0.50 * palm_ball_meridian,
+                        -0.50 * palm_ball_meridian,
+                        -0.40 * palm_ball_normal
                         + 0.50 * palm_ball_azimuth,
-                        0.40 * palm_ball_normal
+                        -0.40 * palm_ball_normal
                         - 0.50 * palm_ball_azimuth,
-                        0.40 * palm_ball_normal
-                        + 0.50 * palm_ball_meridian,
-                        0.40 * palm_ball_normal
-                        - 0.50 * palm_ball_meridian,
-                        0.50 * palm_ball_normal
-                        + 0.35 * palm_ball_azimuth
-                        + 0.35 * palm_ball_meridian,
-                        0.50 * palm_ball_normal
-                        - 0.35 * palm_ball_azimuth
-                        + 0.35 * palm_ball_meridian,
-                        0.75 * palm_ball_normal
-                        + 0.30 * palm_ball_azimuth,
-                        0.75 * palm_ball_normal
-                        - 0.30 * palm_ball_azimuth,
-                        0.75 * palm_ball_normal
-                        + 0.30 * palm_ball_meridian,
-                        0.75 * palm_ball_normal
-                        - 0.30 * palm_ball_meridian,
-                        0.70 * palm_ball_normal
-                        + 0.35 * palm_ball_azimuth
-                        + 0.35 * palm_ball_meridian,
-                        0.70 * palm_ball_normal
-                        + 0.35 * palm_ball_azimuth
-                        - 0.35 * palm_ball_meridian,
-                        0.70 * palm_ball_normal
-                        - 0.35 * palm_ball_azimuth
-                        + 0.35 * palm_ball_meridian,
-                        0.70 * palm_ball_normal
-                        - 0.35 * palm_ball_azimuth
-                        - 0.35 * palm_ball_meridian,
                     )
-                for offset_fraction in palm_ball_offset_fractions:
-                    shifted_palm_target = (
-                        palm_target
-                        + palm_ball_radius_m * offset_fraction
+                    if terminal_palm_offset_phase > 0.0:
+                        palm_ball_offset_fractions += (
+                            0.75 * palm_ball_normal,
+                            0.90 * palm_ball_normal,
+                            0.40 * palm_ball_normal
+                            + 0.50 * palm_ball_azimuth,
+                            0.40 * palm_ball_normal
+                            - 0.50 * palm_ball_azimuth,
+                            0.40 * palm_ball_normal
+                            + 0.50 * palm_ball_meridian,
+                            0.40 * palm_ball_normal
+                            - 0.50 * palm_ball_meridian,
+                            0.50 * palm_ball_normal
+                            + 0.35 * palm_ball_azimuth
+                            + 0.35 * palm_ball_meridian,
+                            0.50 * palm_ball_normal
+                            - 0.35 * palm_ball_azimuth
+                            + 0.35 * palm_ball_meridian,
+                            0.75 * palm_ball_normal
+                            + 0.30 * palm_ball_azimuth,
+                            0.75 * palm_ball_normal
+                            - 0.30 * palm_ball_azimuth,
+                            0.75 * palm_ball_normal
+                            + 0.30 * palm_ball_meridian,
+                            0.75 * palm_ball_normal
+                            - 0.30 * palm_ball_meridian,
+                            0.70 * palm_ball_normal
+                            + 0.35 * palm_ball_azimuth
+                            + 0.35 * palm_ball_meridian,
+                            0.70 * palm_ball_normal
+                            + 0.35 * palm_ball_azimuth
+                            - 0.35 * palm_ball_meridian,
+                            0.70 * palm_ball_normal
+                            - 0.35 * palm_ball_azimuth
+                            + 0.35 * palm_ball_meridian,
+                            0.70 * palm_ball_normal
+                            - 0.35 * palm_ball_azimuth
+                            - 0.35 * palm_ball_meridian,
+                        )
+                    palm_multistart_offsets_m = palm_ball_radius_m * np.stack(
+                        palm_ball_offset_fractions
                     )
+                    palm_multistart_arm_deltas_rad = np.zeros(
+                        (len(palm_ball_offset_fractions), ARM_DOF),
+                        dtype=np.float64,
+                    )
+                for palm_offset_m, arm_seed_delta_rad in zip(
+                    palm_multistart_offsets_m,
+                    palm_multistart_arm_deltas_rad,
+                    strict=True,
+                ):
+                    shifted_palm_target = palm_target + palm_offset_m
                     shifted_palm_body_position = (
                         shifted_palm_target
                         - desired_palm_rotation @ palm_site_offset_local
                     )
+                    shifted_arm_seed = previous_q.copy()
+                    shifted_arm_seed[:ARM_DOF] += arm_seed_delta_rad
+                    shifted_arm_seed = np.minimum(
+                        np.maximum(shifted_arm_seed, lower),
+                        upper,
+                    )
                     shifted_arm_result = reachability.solve_palm_pose(
                         shifted_palm_body_position,
                         desired_palm_rotation,
-                        previous_q,
+                        shifted_arm_seed,
                         position_tolerance=2.5e-4,
                         orientation_tolerance=1.0e-3,
                         max_iterations=args.mpc_max_nfev,
@@ -4862,7 +5046,7 @@ def main() -> None:
                             tolerance=2.5e-4,
                         )
                     )
-                    palm_ball_surface_seeds.append(
+                    palm_multistart_surface_seeds.append(
                         np.minimum(
                             np.maximum(
                                 shifted_finger_result.joint_position,
@@ -5071,7 +5255,7 @@ def main() -> None:
                 ]
                 local_seed_specs.extend(
                     (seed, 0.0001, 48.0, 48.0)
-                    for seed in palm_ball_surface_seeds
+                    for seed in palm_multistart_surface_seeds
                 )
                 for (
                     seed,
@@ -6250,16 +6434,16 @@ def main() -> None:
                         moving_bridge_monotonic_error[0] = 0.0
                         (
                             moving_bridge_normal_ok,
-                            _,
-                            _,
+                            moving_bridge_contact_mask,
+                            moving_bridge_normal_tolerances,
                         ) = scheduled_contact_status(
                             moving_bridge_normal_error[1:],
                             desired_distance,
                         )
                         (
                             moving_bridge_recovery_normal_ok,
-                            _,
-                            _,
+                            moving_bridge_recovery_contact_mask,
+                            moving_bridge_recovery_normal_tolerances,
                         ) = recovery_contact_status(
                             moving_bridge_normal_error[1:]
                         )
@@ -6269,6 +6453,10 @@ def main() -> None:
                             )
                         )
                         moving_bridge_collision_ok = True
+                        moving_bridge_arm_clearance = np.inf
+                        moving_bridge_hand_clearance = np.inf
+                        moving_bridge_self_count = 0
+                        moving_bridge_pad_alignment = 1.0
                         if args.collision_mode == "full_robot":
                             (
                                 moving_bridge_arm_clearance,
@@ -6292,6 +6480,14 @@ def main() -> None:
                             np.all(moving_bridge.x >= lower - 1.0e-12)
                             and np.all(moving_bridge.x <= upper + 1.0e-12)
                         )
+                        moving_bridge_joint_margin_rad = float(
+                            np.min(
+                                np.minimum(
+                                    moving_bridge.x - lower,
+                                    upper - moving_bridge.x,
+                                )
+                            )
+                        )
                         moving_tip_motion_m = direction * (
                             moving_bridge_arc[1:] - bridge_arc[1:]
                         )
@@ -6302,85 +6498,221 @@ def main() -> None:
                         bridge_active_fingers = (
                             np.abs(bridge_offset_delta_m) > 1.0e-12
                         )
-                        moving_bridge_motion_ok = bool(
-                            float(
-                                np.max(
-                                    np.abs(
-                                        moving_bridge.x - previous_q
-                                    )
-                                )
-                            )
-                            > 1.0e-6
-                            and int(
-                                np.count_nonzero(
-                                    moving_tip_motion_m
-                                    >= minimum_bridge_motion_m
-                                    - 1.0e-12
-                                )
-                            )
-                            >= args.min_planner_contact_fingers
-                            and (
-                                not np.any(bridge_active_fingers)
-                                or np.all(
-                                    moving_tip_motion_m[
-                                        bridge_active_fingers
-                                    ]
-                                    >= minimum_bridge_motion_m
-                                    - 1.0e-12
-                                )
+                        moving_joint_motion_rad = float(
+                            np.max(
+                                np.abs(moving_bridge.x - previous_q)
                             )
                         )
-                        moving_bridge_hard_ok = bool(
-                            float(
-                                moving_bridge_progress_error.max()
-                            )
-                            <= progress_limit_m
-                            and moving_bridge_normal_ok
-                            and np.all(
-                                np.abs(
-                                    moving_bridge_tangential_error[1:]
-                                )
-                                <= tip_tangential_tolerances
-                            )
-                            and float(
-                                moving_bridge_monotonic_error.max()
-                            )
-                            <= args.mpc_monotonic_tolerance_mm / 1000.0
-                            and moving_bridge_palm_error
-                            <= palm_tracking_limit_m
-                            and moving_bridge_collision_ok
-                            and moving_bridge_joint_limits_ok
-                            and moving_bridge_motion_ok
+                        (
+                            moving_bridge_motion_ok,
+                            moving_progressing_finger_count,
+                        ) = evaluate_moving_bridge_motion(
+                            max_joint_motion_rad=moving_joint_motion_rad,
+                            tip_motion_m=moving_tip_motion_m,
+                            minimum_tip_motion_m=minimum_bridge_motion_m,
+                            active_fingers=bridge_active_fingers,
                         )
                         moving_recovery_progress_limit_m = max(
                             progress_limit_m,
                             args.mpc_recovery_bridge_progress_tolerance_mm
                             / 1000.0,
                         )
+                        moving_bridge_conditions = evaluate_bridge_conditions(
+                            progress_error_m=moving_bridge_progress_error,
+                            progress_limit_m=progress_limit_m,
+                            normal_ok=moving_bridge_normal_ok,
+                            tangential_error_m=(
+                                moving_bridge_tangential_error[1:]
+                            ),
+                            tangential_limit_m=tip_tangential_tolerances,
+                            monotonic_error_m=(
+                                moving_bridge_monotonic_error
+                            ),
+                            monotonic_limit_m=(
+                                args.mpc_monotonic_tolerance_mm / 1000.0
+                            ),
+                            palm_error_m=moving_bridge_palm_error,
+                            palm_limit_m=palm_tracking_limit_m,
+                            collision_ok=moving_bridge_collision_ok,
+                            joint_ok=moving_bridge_joint_limits_ok,
+                            motion_ok=moving_bridge_motion_ok,
+                            budget_ok=True,
+                        )
+                        moving_recovery_conditions = evaluate_bridge_conditions(
+                            progress_error_m=moving_bridge_progress_error,
+                            progress_limit_m=moving_recovery_progress_limit_m,
+                            normal_ok=moving_bridge_recovery_normal_ok,
+                            tangential_error_m=(
+                                moving_bridge_tangential_error[1:]
+                            ),
+                            tangential_limit_m=tip_tangential_tolerances,
+                            monotonic_error_m=(
+                                moving_bridge_monotonic_error
+                            ),
+                            monotonic_limit_m=(
+                                args.mpc_monotonic_tolerance_mm / 1000.0
+                            ),
+                            palm_error_m=moving_bridge_palm_error,
+                            palm_limit_m=palm_tracking_limit_m,
+                            collision_ok=moving_bridge_collision_ok,
+                            joint_ok=moving_bridge_joint_limits_ok,
+                            motion_ok=moving_bridge_motion_ok,
+                            budget_ok=recovery_bridge_budget_ok,
+                        )
+                        moving_bridge_hard_ok = all(
+                            moving_bridge_conditions.values()
+                        )
                         moving_recovery_hard_ok = bool(
                             not moving_bridge_hard_ok
-                            and float(
-                                moving_bridge_progress_error.max()
-                            )
-                            <= moving_recovery_progress_limit_m
-                            and moving_bridge_recovery_normal_ok
-                            and np.all(
-                                np.abs(
-                                    moving_bridge_tangential_error[1:]
-                                )
-                                <= tip_tangential_tolerances
-                            )
-                            and float(
-                                moving_bridge_monotonic_error.max()
-                            )
-                            <= args.mpc_monotonic_tolerance_mm / 1000.0
-                            and moving_bridge_palm_error
-                            <= palm_tracking_limit_m
-                            and moving_bridge_collision_ok
-                            and moving_bridge_joint_limits_ok
-                            and moving_bridge_motion_ok
-                            and recovery_bridge_budget_ok
+                            and all(moving_recovery_conditions.values())
                         )
+                        if (
+                            not moving_bridge_hard_ok
+                            and not moving_recovery_hard_ok
+                        ):
+                            bridge_metrics = build_bridge_rejection_metrics(
+                                bridge_interval_m=bridge_interval_m,
+                                bridge_interval_limit_m=(
+                                    bridge_interval_limit_m
+                                ),
+                                progress_error_m=(
+                                    moving_bridge_progress_error
+                                ),
+                                strict_progress_limit_m=progress_limit_m,
+                                recovery_progress_limit_m=(
+                                    moving_recovery_progress_limit_m
+                                ),
+                                normal_error_m=(
+                                    moving_bridge_normal_error[1:]
+                                ),
+                                strict_normal_tolerance_m=(
+                                    moving_bridge_normal_tolerances
+                                ),
+                                strict_contact_mask=(
+                                    moving_bridge_contact_mask
+                                ),
+                                strict_contact_count_required=(
+                                    args.min_planner_contact_fingers
+                                ),
+                                recovery_normal_tolerance_m=(
+                                    moving_bridge_recovery_normal_tolerances
+                                ),
+                                recovery_contact_mask=(
+                                    moving_bridge_recovery_contact_mask
+                                ),
+                                recovery_contact_count_required=(
+                                    args.mpc_recovery_bridge_min_contact_fingers
+                                ),
+                                tangential_error_m=(
+                                    moving_bridge_tangential_error[1:]
+                                ),
+                                tangential_tolerance_m=(
+                                    tip_tangential_tolerances
+                                ),
+                                monotonic_error_m=(
+                                    moving_bridge_monotonic_error
+                                ),
+                                monotonic_limit_m=(
+                                    args.mpc_monotonic_tolerance_mm / 1000.0
+                                ),
+                                palm_error_m=moving_bridge_palm_error,
+                                palm_limit_m=palm_tracking_limit_m,
+                                collision_mode=args.collision_mode,
+                                arm_clearance_m=(
+                                    moving_bridge_arm_clearance
+                                ),
+                                arm_clearance_limit_m=(
+                                    args.min_arm_clearance_mm / 1000.0
+                                ),
+                                hand_clearance_m=(
+                                    moving_bridge_hand_clearance
+                                ),
+                                hand_clearance_limit_m=-(
+                                    args.max_incidental_hand_penetration_mm
+                                    / 1000.0
+                                ),
+                                self_collision_count=(
+                                    moving_bridge_self_count
+                                ),
+                                pad_alignment=(
+                                    moving_bridge_pad_alignment
+                                ),
+                                pad_alignment_limit=planner_pad_alignment,
+                                joint_min_margin_rad=(
+                                    moving_bridge_joint_margin_rad
+                                ),
+                                max_joint_motion_rad=(
+                                    moving_joint_motion_rad
+                                ),
+                                tip_motion_m=moving_tip_motion_m,
+                                minimum_tip_motion_m=(
+                                    minimum_bridge_motion_m
+                                ),
+                                bridge_active_fingers=(
+                                    bridge_active_fingers
+                                ),
+                                progressing_finger_count=(
+                                    moving_progressing_finger_count
+                                ),
+                                progressing_finger_count_required=(
+                                    MOVING_BRIDGE_FORWARD_FINGER_COUNT
+                                ),
+                                recovery_dwell_m=(
+                                    proposed_recovery_bridge_dwell_m
+                                ),
+                                recovery_dwell_limit_m=(
+                                    args.mpc_recovery_bridge_max_span_mm
+                                    / 1000.0
+                                ),
+                                recovery_total_m=(
+                                    proposed_recovery_bridge_total_m
+                                ),
+                                recovery_total_limit_m=(
+                                    args.mpc_recovery_bridge_max_total_ratio
+                                    * args.axial_travel_m
+                                ),
+                                distance_m=desired_distance,
+                                recovery_terminal_cutoff_m=(
+                                    args.axial_travel_m
+                                    - args.mpc_recovery_bridge_terminal_margin_mm
+                                    / 1000.0
+                                ),
+                                solver_cost=float(moving_bridge.cost),
+                                solver_nfev=int(moving_bridge.nfev),
+                            )
+                            last_bridge_rejection_record = (
+                                make_bridge_rejection_record(
+                                    keyframe=keyframe,
+                                    keyframe_count=keyframe_count,
+                                    distance_m=desired_distance,
+                                    fallback=(
+                                        "static_bridge"
+                                        if static_bridge_candidate is not None
+                                        else "planner_failure"
+                                    ),
+                                    strict_conditions=(
+                                        moving_bridge_conditions
+                                    ),
+                                    recovery_conditions=(
+                                        moving_recovery_conditions
+                                    ),
+                                    metrics=bridge_metrics,
+                                )
+                            )
+                            last_rejected_moving_bridge = (
+                                RejectedMovingBridgeCandidate(
+                                    q_rad=moving_bridge.x.copy(),
+                                    points_m=moving_bridge_points.copy(),
+                                    arcs_m=moving_bridge_arc.copy(),
+                                    desired_arcs_m=(
+                                        bridge_desired_arc.copy()
+                                    ),
+                                )
+                            )
+                            if static_bridge_candidate is not None:
+                                emit_bridge_rejection(
+                                    last_bridge_rejection_record
+                                )
                         if moving_bridge_hard_ok:
                             accepted_rephase_candidates.append(
                                 (
@@ -6525,37 +6857,15 @@ def main() -> None:
                 best_palm_position_error = float(
                     np.linalg.norm(best_points[0] - palm_target)
                 )
-                if (
-                    best_palm_position_error
-                    > palm_tracking_limit_m
-                ):
-                    if insert_auto_refinement(
-                        keyframe=keyframe,
-                        desired_distance=desired_distance,
-                        reason="palm_drift",
-                    ):
-                        continue
-                    palm_error_vector = best_points[0] - palm_target
-                    palm_error_local = np.asarray(
-                        (
-                            np.dot(palm_error_vector, palm_ball_normal),
-                            np.dot(palm_error_vector, palm_ball_azimuth),
-                            np.dot(palm_error_vector, palm_ball_meridian),
-                        ),
-                        dtype=np.float64,
-                    )
-                    raise RuntimeError(
-                        "Adaptive surface MPC exceeded the non-contact palm "
-                        f"{'guide drift guard' if args.palm_guide_only else 'feasibility ball'}: "
-                        f"keyframe={keyframe}/"
-                        f"{keyframe_count} error_mm="
-                        f"{best_palm_position_error * 1000:.3f} "
-                        f"limit_mm={palm_tracking_limit_m * 1000:.3f} "
-                        "offset_world_mm="
-                        f"{(palm_error_vector * 1000).round(3).tolist()} "
-                        "offset_normal_azimuth_meridian_mm="
-                        f"{(palm_error_local * 1000).round(3).tolist()}"
-                    )
+                palm_error_vector = best_points[0] - palm_target
+                palm_error_local = np.asarray(
+                    (
+                        np.dot(palm_error_vector, palm_ball_normal),
+                        np.dot(palm_error_vector, palm_ball_azimuth),
+                        np.dot(palm_error_vector, palm_ball_meridian),
+                    ),
+                    dtype=np.float64,
+                )
                 tangential_error = (
                     (
                         best_auxiliary[:, 0]
@@ -6573,22 +6883,6 @@ def main() -> None:
                     0.0,
                 )
                 monotonic_error[0] = 0.0
-                if (
-                    float(monotonic_error.max())
-                    > args.mpc_monotonic_tolerance_mm / 1000.0
-                ):
-                    if insert_auto_refinement(
-                        keyframe=keyframe,
-                        desired_distance=desired_distance,
-                        reason="monotonic_progress",
-                    ):
-                        continue
-                    raise RuntimeError(
-                        "Adaptive surface MPC violated monotonic progress: "
-                        f"keyframe={keyframe}/{keyframe_count} "
-                        f"error_mm="
-                        f"{(monotonic_error * 1000).round(2).tolist()}"
-                    )
                 accepted_progress_limit_m = (
                     max(
                         args.mpc_static_bridge_progress_tolerance_mm,
@@ -6598,19 +6892,6 @@ def main() -> None:
                     if recovery_bridge_selected
                     else active_progress_tolerance_mm / 1000.0
                 )
-                if float(progress_error.max()) > accepted_progress_limit_m:
-                    if insert_auto_refinement(
-                        keyframe=keyframe,
-                        desired_distance=desired_distance,
-                        reason="longitudinal_progress",
-                    ):
-                        continue
-                    raise RuntimeError(
-                        "Adaptive surface MPC missed longitudinal progress: "
-                        f"keyframe={keyframe}/{keyframe_count} "
-                        f"distance_m={desired_distance:.4f} "
-                        f"error_mm={(progress_error * 1000).round(2).tolist()}"
-                    )
                 if recovery_bridge_selected:
                     (
                         normal_contact_ok,
@@ -6632,6 +6913,167 @@ def main() -> None:
                     required_contact_fingers = (
                         args.min_planner_contact_fingers
                     )
+                best_arm_clearance = np.inf
+                best_arm_nearest = ""
+                best_hand_clearance = np.inf
+                best_hand_nearest = ""
+                best_self_count = 0
+                best_pad_alignment = 1.0
+                if args.collision_mode == "full_robot":
+                    (
+                        best_arm_clearance,
+                        best_arm_nearest,
+                        best_hand_clearance,
+                        best_hand_nearest,
+                        best_self_count,
+                        best_pad_alignment,
+                    ) = segment_collision_status(best.x)
+                arm_clearance_limit_m = (
+                    args.min_arm_clearance_mm / 1000.0
+                )
+                hand_clearance_limit_m = -(
+                    args.max_incidental_hand_penetration_mm / 1000.0
+                )
+                best_joint_margin_rad = float(
+                    np.min(
+                        np.minimum(
+                            best.x - lower,
+                            upper - best.x,
+                        )
+                    )
+                )
+                candidate_failure_metrics = (
+                    build_candidate_failure_metrics(
+                        progress_error_m=progress_error,
+                        progress_limit_m=accepted_progress_limit_m,
+                        normal_error_m=normal_error[1:],
+                        normal_tolerance_m=active_normal_tolerances,
+                        contact_mask=nominal_contact_mask,
+                        contact_count_required=required_contact_fingers,
+                        tangential_error_m=tangential_error[1:],
+                        tangential_tolerance_m=(
+                            tip_tangential_tolerances
+                        ),
+                        monotonic_error_m=monotonic_error,
+                        monotonic_limit_m=(
+                            args.mpc_monotonic_tolerance_mm / 1000.0
+                        ),
+                        palm_error_m=best_palm_position_error,
+                        palm_limit_m=palm_tracking_limit_m,
+                        palm_error_world_m=palm_error_vector,
+                        palm_error_local_m=palm_error_local,
+                        collision_mode=args.collision_mode,
+                        arm_clearance_m=best_arm_clearance,
+                        arm_clearance_limit_m=arm_clearance_limit_m,
+                        arm_nearest_geometry=best_arm_nearest,
+                        hand_clearance_m=best_hand_clearance,
+                        hand_clearance_limit_m=hand_clearance_limit_m,
+                        hand_nearest_geometry=best_hand_nearest,
+                        self_collision_count=best_self_count,
+                        pad_alignment=best_pad_alignment,
+                        pad_alignment_limit=planner_pad_alignment,
+                        joint_min_margin_rad=best_joint_margin_rad,
+                        solver_cost=float(best.cost),
+                        solver_nfev=int(best.nfev),
+                    )
+                )
+                best_collision_ok = bool(
+                    candidate_failure_metrics["condition_collision_ok"]
+                )
+                if (
+                    best_palm_position_error
+                    > palm_tracking_limit_m
+                ):
+                    if insert_auto_refinement(
+                        keyframe=keyframe,
+                        desired_distance=desired_distance,
+                        reason="palm_drift",
+                    ):
+                        continue
+                    raise_adaptive_planner_failure(
+                        reason="palm_drift",
+                        message=(
+                            "Adaptive surface MPC exceeded the non-contact "
+                            "palm "
+                            f"{'guide drift guard' if args.palm_guide_only else 'feasibility ball'}: "
+                            f"keyframe={keyframe}/{keyframe_count} "
+                            f"error_mm={best_palm_position_error * 1000:.3f} "
+                            f"limit_mm={palm_tracking_limit_m * 1000:.3f} "
+                            "offset_world_mm="
+                            f"{(palm_error_vector * 1000).round(3).tolist()} "
+                            "offset_normal_azimuth_meridian_mm="
+                            f"{(palm_error_local * 1000).round(3).tolist()}"
+                        ),
+                        keyframe=keyframe,
+                        desired_distance=desired_distance,
+                        desired_arc=desired_arc,
+                        final_best_q=best.x,
+                        final_best_points=best_points,
+                        final_best_arc=achieved_arc,
+                        failure_metrics=candidate_failure_metrics,
+                        bridge_record=last_bridge_rejection_record,
+                        rejected_moving_bridge=(
+                            last_rejected_moving_bridge
+                        ),
+                    )
+                if (
+                    float(monotonic_error.max())
+                    > args.mpc_monotonic_tolerance_mm / 1000.0
+                ):
+                    if insert_auto_refinement(
+                        keyframe=keyframe,
+                        desired_distance=desired_distance,
+                        reason="monotonic_progress",
+                    ):
+                        continue
+                    raise_adaptive_planner_failure(
+                        reason="monotonic_progress",
+                        message=(
+                            "Adaptive surface MPC violated monotonic "
+                            f"progress: keyframe={keyframe}/{keyframe_count} "
+                            "error_mm="
+                            f"{(monotonic_error * 1000).round(2).tolist()}"
+                        ),
+                        keyframe=keyframe,
+                        desired_distance=desired_distance,
+                        desired_arc=desired_arc,
+                        final_best_q=best.x,
+                        final_best_points=best_points,
+                        final_best_arc=achieved_arc,
+                        failure_metrics=candidate_failure_metrics,
+                        bridge_record=last_bridge_rejection_record,
+                        rejected_moving_bridge=(
+                            last_rejected_moving_bridge
+                        ),
+                    )
+                if float(progress_error.max()) > accepted_progress_limit_m:
+                    if insert_auto_refinement(
+                        keyframe=keyframe,
+                        desired_distance=desired_distance,
+                        reason="longitudinal_progress",
+                    ):
+                        continue
+                    raise_adaptive_planner_failure(
+                        reason="longitudinal_progress",
+                        message=(
+                            "Adaptive surface MPC missed longitudinal "
+                            f"progress: keyframe={keyframe}/{keyframe_count} "
+                            f"distance_m={desired_distance:.4f} "
+                            "error_mm="
+                            f"{(progress_error * 1000).round(2).tolist()}"
+                        ),
+                        keyframe=keyframe,
+                        desired_distance=desired_distance,
+                        desired_arc=desired_arc,
+                        final_best_q=best.x,
+                        final_best_points=best_points,
+                        final_best_arc=achieved_arc,
+                        failure_metrics=candidate_failure_metrics,
+                        bridge_record=last_bridge_rejection_record,
+                        rejected_moving_bridge=(
+                            last_rejected_moving_bridge
+                        ),
+                    )
                 if not normal_contact_ok:
                     if insert_auto_refinement(
                         keyframe=keyframe,
@@ -6639,17 +7081,32 @@ def main() -> None:
                         reason="fingertip_support",
                     ):
                         continue
-                    raise RuntimeError(
-                        "Adaptive surface MPC violated the scheduled "
-                        "fingertip support set: "
-                        f"keyframe={keyframe}/{keyframe_count} "
-                        f"distance_m={desired_distance:.4f} "
-                        f"contacts={int(np.count_nonzero(nominal_contact_mask))}/4 "
-                        f"required={required_contact_fingers} "
-                        f"error_mm="
-                        f"{(normal_error[1:] * 1000).round(2).tolist()} "
-                        f"tolerance_mm="
-                        f"{(active_normal_tolerances * 1000).round(2).tolist()}"
+                    raise_adaptive_planner_failure(
+                        reason="fingertip_support",
+                        message=(
+                            "Adaptive surface MPC violated the scheduled "
+                            "fingertip support set: "
+                            f"keyframe={keyframe}/{keyframe_count} "
+                            f"distance_m={desired_distance:.4f} "
+                            "contacts="
+                            f"{int(np.count_nonzero(nominal_contact_mask))}/4 "
+                            f"required={required_contact_fingers} "
+                            "error_mm="
+                            f"{(normal_error[1:] * 1000).round(2).tolist()} "
+                            "tolerance_mm="
+                            f"{(active_normal_tolerances * 1000).round(2).tolist()}"
+                        ),
+                        keyframe=keyframe,
+                        desired_distance=desired_distance,
+                        desired_arc=desired_arc,
+                        final_best_q=best.x,
+                        final_best_points=best_points,
+                        final_best_arc=achieved_arc,
+                        failure_metrics=candidate_failure_metrics,
+                        bridge_record=last_bridge_rejection_record,
+                        rejected_moving_bridge=(
+                            last_rejected_moving_bridge
+                        ),
                     )
                 if np.any(
                     np.abs(tangential_error[1:])
@@ -6661,44 +7118,49 @@ def main() -> None:
                         reason="tangential_gait",
                     ):
                         continue
-                    raise RuntimeError(
-                        "Adaptive surface MPC missed fingertip tangential "
-                        f"gait: keyframe={keyframe}/{keyframe_count} "
-                        f"distance_m={desired_distance:.4f} "
-                        f"error_mm="
-                        f"{(np.abs(tangential_error[1:]) * 1000).round(2).tolist()} "
-                        f"tolerance_mm="
-                        f"{(tip_tangential_tolerances * 1000).round(2).tolist()}"
+                    raise_adaptive_planner_failure(
+                        reason="tangential_gait",
+                        message=(
+                            "Adaptive surface MPC missed fingertip "
+                            f"tangential gait: keyframe={keyframe}/"
+                            f"{keyframe_count} "
+                            f"distance_m={desired_distance:.4f} "
+                            "error_mm="
+                            f"{(np.abs(tangential_error[1:]) * 1000).round(2).tolist()} "
+                            "tolerance_mm="
+                            f"{(tip_tangential_tolerances * 1000).round(2).tolist()}"
+                        ),
+                        keyframe=keyframe,
+                        desired_distance=desired_distance,
+                        desired_arc=desired_arc,
+                        final_best_q=best.x,
+                        final_best_points=best_points,
+                        final_best_arc=achieved_arc,
+                        failure_metrics=candidate_failure_metrics,
+                        bridge_record=last_bridge_rejection_record,
+                        rejected_moving_bridge=(
+                            last_rejected_moving_bridge
+                        ),
                     )
-                if args.collision_mode == "full_robot":
-                    (
-                        best_arm_clearance,
-                        best_arm_nearest,
-                        best_hand_clearance,
-                        best_hand_nearest,
-                        best_self_count,
-                        best_pad_alignment,
-                    ) = segment_collision_status(best.x)
-                    if (
-                        best_arm_clearance
-                        < args.min_arm_clearance_mm / 1000.0
-                        or best_hand_clearance
-                        < -args.max_incidental_hand_penetration_mm / 1000.0
-                        or best_self_count
-                        or best_pad_alignment < planner_pad_alignment
+                if (
+                    args.collision_mode == "full_robot"
+                    and not best_collision_ok
+                ):
+                    if insert_auto_refinement(
+                        keyframe=keyframe,
+                        desired_distance=desired_distance,
+                        reason="contact_policy",
                     ):
-                        if insert_auto_refinement(
-                            keyframe=keyframe,
-                            desired_distance=desired_distance,
-                            reason="contact_policy",
-                        ):
-                            continue
-                        raise RuntimeError(
-                            "Adaptive surface MPC has no contact-policy-safe "
-                            f"candidate at keyframe={keyframe}/"
+                        continue
+                    raise_adaptive_planner_failure(
+                        reason="contact_policy",
+                        message=(
+                            "Adaptive surface MPC has no contact-policy-"
+                            f"safe candidate at keyframe={keyframe}/"
                             f"{keyframe_count}: arm_clearance_mm="
                             f"{best_arm_clearance * 1000:.3f} "
-                            f"required_arm_mm={args.min_arm_clearance_mm:.3f} "
+                            "required_arm_mm="
+                            f"{args.min_arm_clearance_mm:.3f} "
                             f"nearest_arm={best_arm_nearest} "
                             f"hand_clearance_mm="
                             f"{best_hand_clearance * 1000:.3f} "
@@ -6706,11 +7168,23 @@ def main() -> None:
                             f"{args.max_incidental_hand_penetration_mm:.3f} "
                             f"nearest_hand={best_hand_nearest} "
                             f"self_collision_pairs={best_self_count} "
-                            f"max_pad_angle_deg="
+                            "max_pad_angle_deg="
                             f"{np.degrees(np.arccos(np.clip(best_pad_alignment, -1, 1))):.2f} "
-                            f"planner_limit_deg="
+                            "planner_limit_deg="
                             f"{args.max_pad_angle_deg - args.planner_pad_angle_margin_deg:.2f}"
-                        )
+                        ),
+                        keyframe=keyframe,
+                        desired_distance=desired_distance,
+                        desired_arc=desired_arc,
+                        final_best_q=best.x,
+                        final_best_points=best_points,
+                        final_best_arc=achieved_arc,
+                        failure_metrics=candidate_failure_metrics,
+                        bridge_record=last_bridge_rejection_record,
+                        rejected_moving_bridge=(
+                            last_rejected_moving_bridge
+                        ),
+                    )
                 q = best.x
                 coarse_feasibility_bridge[keyframe] = (
                     feasibility_bridge_selected

@@ -1393,10 +1393,49 @@ moving-recovery 合取；不能从旧汇总日志确认是哪一个子条件首�
    记录 progress、normal/tangential error、contact count、nonzero joint
    motion、three-finger forward progress、FR3/hand/self collision、pad angle、
    recovery budget 和 terminal margin；
-2. 因 palm-root 是 soft guide，增加 arm/palm pose 与 FR3 nullspace multistart，
+2. 因 palm-root 是 soft guide，增加 arm/palm pose 与 FR3 redundancy multistart，
    但不放宽四个 fingertip targets、joint limits 或 FR3/object zero-contact；
 3. 在失败点前后建立 3–5 keyframe 局部窗口，尝试顺序单指 rephase：每次只
    重定位一指，至少三指保持支撑，再恢复共同四指分支；
 4. 不扩大 static dwell 或 recovery total budget，防止用更长原地等待掩盖
    reachability failure；
 5. 先做结构回归与 headless 规划/动力学；完整 Level 2 通过前不生成视频。
+
+### 正在执行：清理后 v106-equivalent Level-2 runner（2026-08-10）
+
+本轮从原 session JSONL 中直接提取了产生
+`_debug_fr3_seed42_v106.log` / `_debug_fr3_seed42_v106_plan.npz` 的完整实际命令。
+因此下述入口保留的 385→400 关键帧网格、三个早期局部指尖相位、bounded
+rephase、1.5 mm feasibility bridge、static/recovery 预算、掌根 frame/lift/
+soft-guide 和碰撞阈值均来自当时真实调用，不依赖后来的简化 README 命令。
+在该参数集上只做以下控制语义迁移：删除不再生效的
+`--finger-normal-preload-mm/scales`；把 Finger MCC 显式设为 direct-force
+3 N / loaded setpoint max 12 N、100 Hz、M/B/K=`0.08/18/1000`、EMA/hysteresis
+和 3 mm/10 mm/s/0.2 m/s^2 限幅；把 Wrist MCC 显式设为 25 Hz、0.003 rad
+joint correction 和 5 N/0.8 Nm wrench 限幅。filtered normal 25 N 与 raw
+3-D 40 N 两级安全审计保持启用，`finger-servo-load-scale=0.5`、
+`motion-start=600`、`steps=4700` 保持原运行值。
+
+新增的 `scripts/run_baseline2_capsule_level2.ps1` 具有两种模式：
+
+- 默认 `Diagnostic`：pad `50 deg`、planner margin `0 deg`、切向 `3 mm`、
+  self penetration `0.05 mm`、末段 `20` 帧、表面行程 `0.45 m`、手指关节
+  excursion `0.05 rad`，用于复现并拆解 269.8 mm 局部拒绝；
+- `Acceptance`：仅将上述正式项目门槛收紧到 `45+5 deg`、`2 mm`、
+  `0.01 mm`、`50` 帧、`0.456 m` 和 `0.08 rad`，其它规划、控制、初态、
+  seed 与安全参数完全相同。
+
+脚本从自身位置解析仓库根，运行前严格检查 `.venv/Scripts/python.exe`、demo
+和 v4 initial-grasp；以 PowerShell argument array 调用 Python，用
+`Tee-Object` 保存按 mode/seed/timestamp 命名的 log，并将同 stem 的 plan 与
+只在失败时写出的 failure-prefix NPZ 放入
+`outputs/debug/20_fr3_planning/`，因此同 seed 重跑不会覆盖已有证据。log
+头部同时记录当前 Git commit 和可直接复制执行的完整 Python 参数命令。
+viewer 固定为 `headless`，脚本没有视频输出参数或 video 分支。
+
+并行完成的诊断补丁现在提供逐条件 rejection record、候选/预算数值、稳定
+failure-prefix 和 30 mm palm-guide 区间内的确定性 FR3 redundancy multistart；
+全量 unittest discover 为 `23/23`，CLI/AST 通过。当前尚未运行新的 GPU
+Diagnostic，故 Level 2 仍是 `NOT RUN`，没有新 plan 或视频。下一步先用
+`-Mode Diagnostic -Seed 42` headless 运行；若数值全程通过，再用相同 seed
+运行 Acceptance，仍然不录像，直到正式数值门槛通过。

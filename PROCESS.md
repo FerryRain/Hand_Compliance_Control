@@ -963,8 +963,36 @@ mesh，并加入 0.8/1.0/1.2 尺度、0.3/0.6/1.0 摩擦、姿态扰动和 held-
 1. 为 strict/static/moving candidate 输出结构化逐条件 rejection diagnostics，
    保留 first-failing clause、实际值、阈值和 last feasible state；
 2. 利用 palm-root 只是 soft guide，在保持四指 targets 与 FR3 零碰撞的前提下，
-   加入 arm/palm pose 与 FR3 Jacobian nullspace multistart；
+   加入 arm/palm pose 与 FR3 redundancy multistart；
 3. 只在 `269.8 mm` 附近求解 3–5 个 keyframe 的局部窗口，并尝试顺序单指
    rephase：一次只调整一指，其余至少三指继续支撑，再恢复四指共同分支；
 4. 不扩大 static dwell（仍为单段 1.5 mm、累计 2%）或总 recovery budget；
 5. 先运行结构测试和 headless，Level 2 全数值通过前不生成视频。
+
+### 正在执行：Level 2 可复现入口与首轮诊断（2026-08-10）
+
+已从原 Codex session 的实际 `exec_command.arguments` 精确恢复旧 v106 的完整
+headless 命令，而不是从历史文字摘要反推。恢复配置包含 seed 42、规划状态
+`0.0005 rad` 量化、385 帧基础网格与两个局部加密区、bounded rephase / static /
+moving recovery、全部局部指尖相位、掌根 soft-guide、FR3/LEAP 碰撞审计、
+`motion-start=600` 和 `steps=4700`。清理后等价配置删除两组已经不参与控制的
+static preload 参数，并显式固定 direct-force Finger MCC（3 N 初始目标、
+12 N 有载 setpoint 上限、100 Hz、M/B/K=`0.08/18/1000`）和 25 Hz Wrist MCC
+及其滤波、滞回、限幅、25 N filtered / 40 N raw 安全阈值。
+
+正在加入 `full_hand_mcc/scripts/run_baseline2_capsule_level2.ps1` 作为唯一可复现
+Level-2 headless 入口：默认 `-Mode Diagnostic -Seed 42` 保持清理后的
+v106-equivalent 诊断门槛；`-Mode Acceptance` 只把正式门槛改为 pad angle
+`45 deg` + planner margin `5 deg`、切向 `2 mm`、动态自穿透 `0.01 mm`、
+末段四指恢复 `50` 帧、最小表面行程 `0.456 m`、最小手指关节行程
+`0.08 rad`。两种模式都按 mode/seed/timestamp 将 log、plan 和
+failure-prefix NPZ 写入 `outputs/debug/20_fr3_planning/`，避免同 seed 重跑
+覆盖已有证据；log 头部记录当前 Git commit 和可直接复制执行的完整参数命令。
+viewer 固定为 `--viewer headless`，不会生成视频。
+
+同一工作区的局部拒绝诊断补丁已经加入结构化 constraint metrics、失败前缀
+NPZ 和 palm-guide FR3 redundancy multistart；全量 unittest discover 当前
+`23/23`、CLI/AST 通过。此检查点仍处于执行中：尚未启动新的 GPU Level-2
+Diagnostic，也没有成功 plan、Acceptance 结果或候选视频。下一步先运行默认
+Diagnostic 并用新的 failure-prefix 定位首个硬拒绝；只有数值通过后才进入
+Acceptance 和后续录像。
