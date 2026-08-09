@@ -48,6 +48,8 @@ from mjlab.tasks.leaphand.full_hand_mcc_geometry import (
 from mjlab.tasks.leaphand.full_hand_mcc_planner_diagnostics import (
     MOVING_BRIDGE_FORWARD_FINGER_COUNT,
     RejectedMovingBridgeCandidate,
+    bounded_incremental_arc_targets,
+    bounded_moving_bridge_trust_radius,
     build_bridge_rejection_metrics,
     build_candidate_failure_metrics,
     build_palm_guide_multistart_specs,
@@ -55,6 +57,7 @@ from mjlab.tasks.leaphand.full_hand_mcc_planner_diagnostics import (
     evaluate_moving_bridge_motion,
     format_bridge_rejection_record,
     make_bridge_rejection_record,
+    moving_bridge_local_residual,
     save_mpc_failure_prefix,
 )
 from mjlab.tasks.leaphand.leaphand_full_hand_mcc_env_cfg import (
@@ -6353,10 +6356,20 @@ def main() -> None:
                         # without accumulating zero-motion planning pauses.
                         desired_arc[:] = bridge_desired_arc
                         moving_bridge_target_arc = (
-                            bridge_arc[1:] + direction * bridge_interval_m
+                            bounded_incremental_arc_targets(
+                                current_arc_m=bridge_arc[1:],
+                                desired_arc_m=bridge_desired_arc[1:],
+                                direction=direction,
+                                interval_m=bridge_interval_m,
+                            )
                         )
+                        bridge_anchor_standoff_m = bridge_aux[1:, 1].copy()
+                        bridge_anchor_azimuth_rad = bridge_aux[1:, 0].copy()
                         bridge_trust_radius = (
-                            args.mpc_feasibility_bridge_trust_radius_rad
+                            bounded_moving_bridge_trust_radius(
+                                args.mpc_feasibility_bridge_trust_radius_rad,
+                                args.max_plan_joint_step_rad,
+                            )
                         )
                         bridge_lower = np.maximum(
                             lower,
@@ -6366,25 +6379,28 @@ def main() -> None:
                             upper,
                             previous_q + bridge_trust_radius,
                         )
+
                         def moving_bridge_residual(
                             q: np.ndarray,
                         ) -> np.ndarray:
-                            moving_arc = contact_state(q)[3][1:]
-                            return np.concatenate(
-                                (
-                                    residual(
-                                        q,
-                                        joint_regularization=0.0,
-                                        progress_scale=3200.0,
-                                        normal_scale=2400.0,
-                                        monotonic_scale=12000.0,
-                                        pad_scale=360.0,
-                                        palm_scale=1200.0,
-                                    ),
+                            _, _, _, moving_arc, moving_aux = contact_state(q)
+                            return moving_bridge_local_residual(
+                                arc_m=moving_arc[1:],
+                                target_arc_m=moving_bridge_target_arc,
+                                standoff_m=moving_aux[1:, 1],
+                                anchor_standoff_m=(
+                                    bridge_anchor_standoff_m
+                                ),
+                                azimuth_rad=moving_aux[1:, 0],
+                                anchor_azimuth_rad=(
+                                    bridge_anchor_azimuth_rad
+                                ),
+                                q_rad=q,
+                                anchor_q_rad=previous_q,
+                                capsule_radius_m=CAPSULE_RADIUS,
+                                task_weight=(
                                     args.mpc_feasibility_bridge_target_weight
-                                    * direction
-                                    * (moving_arc - moving_bridge_target_arc),
-                                )
+                                ),
                             )
 
                         moving_bridge = least_squares(
@@ -6399,6 +6415,7 @@ def main() -> None:
                             ftol=1.0e-10,
                             gtol=1.0e-10,
                             x_scale="jac",
+                            diff_step=1.0e-5,
                         )
                         (
                             moving_bridge_points,
@@ -6476,7 +6493,7 @@ def main() -> None:
                                 and moving_bridge_pad_alignment
                                 >= planner_pad_alignment
                             )
-                        moving_bridge_joint_limits_ok = bool(
+                        moving_bridge_within_joint_limits = bool(
                             np.all(moving_bridge.x >= lower - 1.0e-12)
                             and np.all(moving_bridge.x <= upper + 1.0e-12)
                         )
@@ -6502,6 +6519,11 @@ def main() -> None:
                             np.max(
                                 np.abs(moving_bridge.x - previous_q)
                             )
+                        )
+                        moving_bridge_joint_limits_ok = bool(
+                            moving_bridge_within_joint_limits
+                            and moving_joint_motion_rad
+                            <= args.max_plan_joint_step_rad + 1.0e-12
                         )
                         (
                             moving_bridge_motion_ok,

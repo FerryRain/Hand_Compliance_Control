@@ -1465,9 +1465,34 @@ Diagnostic，故 Level 2 仍是 `NOT RUN`，没有新 plan 或视频。下一步
 分支：coarse best 因三对自碰撞拒绝，而无自碰撞 moving bridge 因实际运动为零
 拒绝；不能通过延长 static dwell、允许穿透或弱化 FR3 安全来掩盖。
 
-当前正在实现 `5-keyframe strict horizon`：窗口从最后 strict-feasible 状态跨过
-现有 static chain 到失败点，对每个 knot 和插值逐项审计，只有整窗原子通过才
-提交。若该窗口仍无解，下一层才启用顺序单指 rephase：一次移动一指、保持至少
-三指支撑，再恢复四指共同分支，原有 recovery 预算不变。工作区已经新增 CPU
-plan audit 脚本和测试，但它们尚未提交，也尚未对 plan 执行；目前仍没有可供
-audit 的成功 plan。下一轮仍是 headless 数值验证，完整 Level 2 PASS 前不录像。
+CPU 精确复现随后推翻了“只把 global target 改为 bounded target 就能修复”的
+中间判断。只做该替换时，四指 arc 位移为
+`[-0.0204,-0.0393,-0.0535,-0.0398] mm`，即全部轻微后退；
+`capsule_project` 的 `float32` 精度吞掉了默认 finite-difference 的 arc 梯度，
+而 full/global normal inner-band residual 在局部求解中占主导。保留 full
+residual 并调整 `diff_step` 和 band 虽可让指尖前进，但 9 段插值审计中检测到
+`self_collision_count=4`（存在自碰），安全审计正确拒绝，不能作为修复。
+
+当前已实现的最小方法是 tip-only `12D` local-preserve residual：
+
+- 4 个 arc bounded target、4 个 anchor standoff、4 个 wrapped anchor azimuth；
+- 三组统一 weight=`3200`，`q` prior=`1e-4`，`diff_step=1e-5`；
+- trust cap=`min(0.05, formal 0.03)=0.03 rad`，求解后仍显式检查 joint hard gate；
+- FR3/hand/self collision、pad、normal/tangent、motion 与 recovery budget 的
+  既有硬门槛全部不变。
+
+在 seed 42 failure-prefix 上做 CPU 反例验证，局部桥得到
+`max|dq|=0.006876 rad`，3 个 active fingers 各前进 `0.156 mm`；normal error
+最大 `2.106 mm < 3 mm`，tangent error 最大 `2.610 mm < 3 mm`，FR3 净距
+`106.262 mm`，hand 净距 `+8.971 mm`，self collision=`0`，pad angle
+`49.774 deg`，9 个插值段全部通过原有硬审计。最小修复后的全量测试为
+`49/49`，CLI、AST、diff check 均通过。CPU plan auditor 尚未对真实 plan
+运行；GPU 尚未重跑，仍没有成功 plan 或视频。
+
+`H=5` strict horizon 现已推迟：只有 local bridge 在 GPU 同点仍失败才启用，
+再失败才进入 sequential single-finger rephase。Acceptance 的 planner limit
+`40 deg` 风险不变；当前 `49.774 deg` 只通过 Diagnostic 姿态门槛，即使
+Diagnostic 全程完成也不等于 Level 2 PASS，之后仍需姿态优化。`float64`
+全局重构作为独立回归项，不夹带进这次最小修复。
+
+**正在执行：提交/push 后运行 Diagnostic seed 42。** 完整数值 PASS 前不录像。

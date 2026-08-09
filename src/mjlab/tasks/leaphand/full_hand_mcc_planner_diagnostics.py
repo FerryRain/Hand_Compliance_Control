@@ -68,6 +68,117 @@ def evaluate_moving_bridge_motion(
     return motion_ok, progressing_count
 
 
+def bounded_incremental_arc_targets(
+    *,
+    current_arc_m: np.ndarray,
+    desired_arc_m: np.ndarray,
+    direction: float,
+    interval_m: float,
+) -> np.ndarray:
+    """Advance locally without overshooting a possibly rephased hard target."""
+
+    if not np.isfinite(direction) or direction not in (-1.0, 1.0):
+        raise ValueError("direction must be -1 or +1")
+    if not np.isfinite(interval_m) or interval_m < 0.0:
+        raise ValueError("interval_m must be finite and non-negative")
+    current = np.asarray(current_arc_m, dtype=np.float64)
+    desired = np.asarray(desired_arc_m, dtype=np.float64)
+    if current.shape != desired.shape:
+        raise ValueError("current_arc_m and desired_arc_m must have equal shape")
+    if not np.all(np.isfinite(current)) or not np.all(np.isfinite(desired)):
+        raise ValueError("Arc targets must be finite")
+    remaining_forward = np.maximum(direction * (desired - current), 0.0)
+    advance = np.minimum(remaining_forward, float(interval_m))
+    return current + direction * advance
+
+
+def bounded_moving_bridge_trust_radius(
+    configured_radius_rad: float,
+    maximum_plan_step_rad: float,
+) -> float:
+    """Cap a local bridge solve by the plan's formal joint-step limit."""
+
+    if (
+        not np.isfinite(configured_radius_rad)
+        or not np.isfinite(maximum_plan_step_rad)
+        or configured_radius_rad <= 0.0
+        or maximum_plan_step_rad <= 0.0
+    ):
+        raise ValueError("Bridge and plan joint radii must be positive")
+    return min(float(configured_radius_rad), float(maximum_plan_step_rad))
+
+
+def moving_bridge_local_residual(
+    *,
+    arc_m: np.ndarray,
+    target_arc_m: np.ndarray,
+    standoff_m: np.ndarray,
+    anchor_standoff_m: np.ndarray,
+    azimuth_rad: np.ndarray,
+    anchor_azimuth_rad: np.ndarray,
+    q_rad: np.ndarray,
+    anchor_q_rad: np.ndarray,
+    capsule_radius_m: float,
+    task_weight: float,
+    joint_regularization: float = 1.0e-4,
+) -> np.ndarray:
+    """Return the anchor-local four-tip bridge task and weak joint prior.
+
+    The first twelve entries are exactly four meridian, four normal, and four
+    wrapped circumferential errors.  No palm, global route, or posture target
+    is permitted in this local branch-preserving solve.
+    """
+
+    if not np.isfinite(capsule_radius_m) or capsule_radius_m <= 0.0:
+        raise ValueError("capsule_radius_m must be positive")
+    if not np.isfinite(task_weight) or task_weight <= 0.0:
+        raise ValueError("task_weight must be positive")
+    if not np.isfinite(joint_regularization) or joint_regularization < 0.0:
+        raise ValueError("joint_regularization cannot be negative")
+
+    tip_values = {
+        "arc_m": arc_m,
+        "target_arc_m": target_arc_m,
+        "standoff_m": standoff_m,
+        "anchor_standoff_m": anchor_standoff_m,
+        "azimuth_rad": azimuth_rad,
+        "anchor_azimuth_rad": anchor_azimuth_rad,
+    }
+    normalized: dict[str, np.ndarray] = {}
+    for name, value in tip_values.items():
+        array = np.asarray(value, dtype=np.float64)
+        if array.shape != (4,):
+            raise ValueError(f"{name} must have shape (4,)")
+        if not np.all(np.isfinite(array)):
+            raise ValueError(f"{name} must be finite")
+        normalized[name] = array
+
+    q = np.asarray(q_rad, dtype=np.float64).reshape(-1)
+    anchor_q = np.asarray(anchor_q_rad, dtype=np.float64).reshape(-1)
+    if q.shape != anchor_q.shape:
+        raise ValueError("q_rad and anchor_q_rad must have equal shape")
+    if not np.all(np.isfinite(q)) or not np.all(np.isfinite(anchor_q)):
+        raise ValueError("Joint vectors must be finite")
+    wrapped_azimuth_error = (
+        normalized["azimuth_rad"]
+        - normalized["anchor_azimuth_rad"]
+        + np.pi
+    ) % (2.0 * np.pi) - np.pi
+    return np.concatenate(
+        (
+            task_weight
+            * (normalized["arc_m"] - normalized["target_arc_m"]),
+            task_weight
+            * (
+                normalized["standoff_m"]
+                - normalized["anchor_standoff_m"]
+            ),
+            task_weight * capsule_radius_m * wrapped_azimuth_error,
+            joint_regularization * (q - anchor_q),
+        )
+    )
+
+
 def evaluate_bridge_conditions(
     *,
     progress_error_m: np.ndarray,

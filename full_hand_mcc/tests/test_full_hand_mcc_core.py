@@ -162,6 +162,144 @@ class PlannerDiagnosticsTest(unittest.TestCase):
         self.assertEqual(progressing_count, 2)
         self.assertFalse(two_tip_ok)
 
+    def test_moving_bridge_local_targets_advance_without_overshoot(self) -> None:
+        forward = DIAGNOSTICS.bounded_incremental_arc_targets(
+            current_arc_m=np.asarray([0.10, 0.20, 0.30, 0.40]),
+            desired_arc_m=np.asarray([0.10005, 0.25, 0.30, 0.39]),
+            direction=1.0,
+            interval_m=0.0002,
+        )
+        np.testing.assert_allclose(
+            forward,
+            np.asarray([0.10005, 0.2002, 0.30, 0.40]),
+        )
+        reverse = DIAGNOSTICS.bounded_incremental_arc_targets(
+            current_arc_m=np.asarray([0.40, 0.30]),
+            desired_arc_m=np.asarray([0.39995, 0.20]),
+            direction=-1.0,
+            interval_m=0.0002,
+        )
+        np.testing.assert_allclose(reverse, np.asarray([0.39995, 0.2998]))
+        with self.assertRaisesRegex(ValueError, "direction"):
+            DIAGNOSTICS.bounded_incremental_arc_targets(
+                current_arc_m=np.zeros(1),
+                desired_arc_m=np.ones(1),
+                direction=0.0,
+                interval_m=0.1,
+            )
+        with self.assertRaisesRegex(ValueError, "finite"):
+            DIAGNOSTICS.bounded_incremental_arc_targets(
+                current_arc_m=np.asarray([np.nan]),
+                desired_arc_m=np.zeros(1),
+                direction=1.0,
+                interval_m=0.1,
+            )
+
+    def test_moving_bridge_local_residual_is_tip_only_and_wraps_azimuth(
+        self,
+    ) -> None:
+        epsilon = 1.0e-4
+        residual = DIAGNOSTICS.moving_bridge_local_residual(
+            arc_m=np.asarray([1.0, 2.0, 3.0, 4.0]),
+            target_arc_m=np.asarray([0.9, 2.0, 3.1, 4.0]),
+            standoff_m=np.asarray([0.01, 0.02, 0.03, 0.04]),
+            anchor_standoff_m=np.asarray([0.01, 0.01, 0.03, 0.05]),
+            azimuth_rad=np.asarray(
+                [np.pi - epsilon, 0.1, -0.2, -np.pi + epsilon]
+            ),
+            anchor_azimuth_rad=np.asarray(
+                [-np.pi + epsilon, 0.0, -0.1, np.pi - epsilon]
+            ),
+            q_rad=np.ones(23),
+            anchor_q_rad=np.zeros(23),
+            capsule_radius_m=0.1,
+            task_weight=3200.0,
+        )
+        self.assertEqual(residual.shape, (12 + 23,))
+        np.testing.assert_allclose(
+            residual[:4],
+            3200.0 * np.asarray([0.1, 0.0, -0.1, 0.0]),
+        )
+        np.testing.assert_allclose(
+            residual[4:8],
+            3200.0 * np.asarray([0.0, 0.01, 0.0, -0.01]),
+        )
+        np.testing.assert_allclose(
+            residual[8:12],
+            3200.0
+            * 0.1
+            * np.asarray([-2.0 * epsilon, 0.1, -0.1, 2.0 * epsilon]),
+            atol=1.0e-10,
+        )
+        np.testing.assert_allclose(residual[12:], 1.0e-4)
+        with self.assertRaisesRegex(ValueError, "shape"):
+            DIAGNOSTICS.moving_bridge_local_residual(
+                arc_m=np.zeros(3),
+                target_arc_m=np.zeros(4),
+                standoff_m=np.zeros(4),
+                anchor_standoff_m=np.zeros(4),
+                azimuth_rad=np.zeros(4),
+                anchor_azimuth_rad=np.zeros(4),
+                q_rad=np.zeros(23),
+                anchor_q_rad=np.zeros(23),
+                capsule_radius_m=0.1,
+                task_weight=3200.0,
+            )
+
+    def test_moving_bridge_trust_radius_never_exceeds_plan_step(self) -> None:
+        self.assertEqual(
+            DIAGNOSTICS.bounded_moving_bridge_trust_radius(0.05, 0.03),
+            0.03,
+        )
+        self.assertEqual(
+            DIAGNOSTICS.bounded_moving_bridge_trust_radius(0.02, 0.03),
+            0.02,
+        )
+        with self.assertRaisesRegex(ValueError, "positive"):
+            DIAGNOSTICS.bounded_moving_bridge_trust_radius(0.0, 0.03)
+        with self.assertRaisesRegex(ValueError, "positive"):
+            DIAGNOSTICS.bounded_moving_bridge_trust_radius(np.nan, 0.03)
+
+    def test_seed42_380mm_bridge_regression_has_three_forward_targets(
+        self,
+    ) -> None:
+        # Exact fingertip arcs from the 380.103896 mm failure prefix.  The
+        # previous implementation returned an approximately zero-motion
+        # least-squares state even though fingers 1/2/3 each had a feasible
+        # 0.155844 mm local increment.
+        anchor_arc = np.asarray(
+            [
+                0.4835175065198217,
+                0.47134945670750483,
+                0.47752682248738154,
+                0.5058588851551499,
+            ]
+        )
+        hard_desired_arc = np.asarray(
+            [
+                0.48343811,
+                0.47628215,
+                0.48273124,
+                0.50985539,
+            ]
+        )
+        interval_m = 0.00015584415584413147
+        target = DIAGNOSTICS.bounded_incremental_arc_targets(
+            current_arc_m=anchor_arc,
+            desired_arc_m=hard_desired_arc,
+            direction=1.0,
+            interval_m=interval_m,
+        )
+        forward = target - anchor_arc
+        np.testing.assert_allclose(forward[0], 0.0, atol=1.0e-15)
+        np.testing.assert_allclose(
+            forward[1:],
+            interval_m,
+            atol=1.0e-15,
+        )
+        self.assertEqual(int(np.count_nonzero(forward >= 0.1 * interval_m)), 3)
+        self.assertTrue(np.all(target[1:] <= hard_desired_arc[1:]))
+
     def test_failure_prefix_never_overwrites_and_loads_without_pickle(
         self,
     ) -> None:
@@ -714,7 +852,13 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             "bridge_active_fingers",
             "minimum_tip_motion_m",
             "moving_bridge_target_arc",
+            "bounded_incremental_arc_targets",
+            "bounded_moving_bridge_trust_radius",
             "moving_bridge_residual",
+            "moving_bridge_local_residual",
+            "bridge_anchor_standoff_m",
+            "bridge_anchor_azimuth_rad",
+            "diff_step=1.0e-5",
             "bridge_active_fingers",
             "mpc_feasibility_bridge_trust_radius_rad",
             "mpc_feasibility_bridge_min_progress_ratio",
@@ -745,6 +889,37 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             "MOVING-FEASIBILITY-BRIDGE",
         ):
             self.assertIn(required_term, source)
+        moving_residual_start = source.index("def moving_bridge_residual")
+        moving_residual_end = source.index(
+            "moving_bridge = least_squares",
+            moving_residual_start,
+        )
+        moving_residual_source = source[
+            moving_residual_start:moving_residual_end
+        ]
+        self.assertIn(
+            "return moving_bridge_local_residual(",
+            moving_residual_source,
+        )
+        self.assertNotIn("return np.concatenate", moving_residual_source)
+        self.assertNotIn("bridge_base_residual", source)
+        self.assertNotIn("progress_target_arc", source)
+        self.assertNotIn("palm_target", moving_residual_source)
+        self.assertNotIn("desired_azimuth", moving_residual_source)
+        self.assertNotIn("start_q", moving_residual_source)
+        self.assertIn(
+            "moving_bridge_arc - bridge_desired_arc",
+            source,
+        )
+        self.assertIn(
+            "moving_joint_motion_rad\n"
+            "                            <= args.max_plan_joint_step_rad",
+            source,
+        )
+        self.assertNotIn(
+            "bridge_arc[1:] + direction * bridge_interval_m",
+            source,
+        )
 
     def test_bridge_failure_diagnostics_and_prefix_are_failure_scoped(
         self,

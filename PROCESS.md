@@ -1016,9 +1016,29 @@ monotonic、palm、collision、joint 和 budget 均为 true，只有 `motion=fal
 手部穿透、误差超限或 budget 耗尽，而是局部候选分支的自碰撞与 moving bridge
 无真实关节/指尖前进不能同时解决。
 
-正在执行的下一步是不放宽停顿、穿透、FR3 零碰撞或 recovery budget：先在最后
-strict-feasible 状态到失败点之间加入 `5-keyframe strict horizon`，对窗口内
-每个 knot 和插值状态做原有硬约束审计；若仍不可行，再进入顺序单指 rephase，
-一次只重定位一指并要求其余至少三指支撑，最后恢复四指共同分支。CPU plan audit
-脚本及其测试已加入工作区，但尚未提交，也尚未对任何 plan 运行；只有产生完整
-数值 PASS 的 0.48 m plan 后才继续 Acceptance，更不会提前录像。
+后续 CPU 精确复现纠正了上一版“只改 bounded global target 即可”的判断：仅把
+global target 换为 bounded target 时，四个指尖沿 arc 反而分别后退
+`[-0.0204,-0.0393,-0.0535,-0.0398] mm`。原因是 `capsule_project` 的
+`float32` 计算吞掉默认 finite-difference 的 arc 梯度，同时 full/global normal
+inner-band residual 主导局部优化。保留 full residual 并调整 `diff_step`/band
+虽能得到前进候选，但 9 段插值审计中检测到 `self_collision_count=4`（存在自碰），
+必须拒绝。
+
+最终已实现 tip-only `12D` local-preserve residual：4 个 arc bounded targets、
+4 个 anchor standoff 和 4 个 wrapped anchor azimuth 统一使用 weight `3200`，
+`q` prior=`1e-4`、`diff_step=1e-5`。每步 trust cap 显式取
+`min(0.05, formal 0.03)=0.03 rad`，并在求解后继续显式执行 joint hard gate，
+没有以 residual 替代硬限。对 seed 42 failure-prefix 的 CPU 反例验证得到
+`max|dq|=0.006876 rad`，3 个 active fingers 均前进 `0.156 mm`，最大 normal
+error=`2.106 mm < 3 mm`、tangent error=`2.610 mm < 3 mm`、FR3 净距
+`106.262 mm`、hand 净距 `+8.971 mm`、self collision=`0`、pad angle
+`49.774 deg`；9 个插值段全部通过硬审计。
+
+最小修复后的全量测试为 `49/49`，CLI、AST 和 diff check 均通过；CPU plan
+auditor 尚未对真实 plan 运行，GPU 尚未重跑，仍无成功 plan 或视频。`H=5`
+已推迟，仅当 local bridge 在 GPU 上仍失败时才启用，之后才考虑 sequential
+single-finger rephase。Acceptance planner limit `40 deg` 的风险不变：当前
+`49.774 deg` 只够 Diagnostic，Diagnostic 完成也不等于 Level 2 PASS，后续仍
+需姿态优化。`float64` 全局重构另行回归，不夹带进本次最小修复。
+
+**正在执行：提交/push 后运行 Diagnostic seed 42。** 完整数值 PASS 前不录像。
