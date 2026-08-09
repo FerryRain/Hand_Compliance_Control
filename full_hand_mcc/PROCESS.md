@@ -1587,3 +1587,159 @@ PermissionError 只是沙箱拒绝 `D:\Code` 输出；授权后同参数 exit 0 
 `steps=1400`、`mpc-keyframes=40`，正式 pad planner 40 deg/tangent 2 mm/self
 0.01 mm 不放宽）；通过后仍需 orientation-aware 全 23-DoF 姿态保持、完整
 0.48 m/五 seeds、CPU plan audit 和 dynamics。数值全部通过前不生成视频。
+
+### `480c4c9` GPU 0--50 mm 资格测试：pad 拒绝与 physical tip 穿透缺口（2026-08-10，正在修复）
+
+#### 运行身份与外层编排
+
+本轮使用提交 `480c4c9`、seed `42` 和上段 debug candidate；candidate SHA256
+仍为
+`29E95FEE0E287FF30CB1EF77F81F032838744CA31843C567736B4B19CFC97046`。
+配置为 capsule `radius=0.10 m`、`half-height=0.17 m`、`axial-travel=0.05 m`、
+`motion-start=600`、`steps=1400`、base keyframes=`40`，Acceptance planner
+hard cone=`40 deg`、tangent=`2 mm`、FR3 clearance=`2 mm`、non-tip hand
+penetration=`1 mm`、self penetration=`0.01 mm`；这些门槛均未放宽。
+
+前两次启动没有形成控制器结果：
+
+- `04:40:46` 使用了当前 PowerShell 不支持的 `Tee-Object -LiteralPath`，Python
+  未启动；
+- `04:41:14` 把全局 `$ErrorActionPreference` 设为 `Stop`，环境初始化时普通的
+  stderr warning 被 PowerShell 当成终止错误，planner 未开始。
+
+两者只是外层 wrapper 编排失败，不是 controller/planner/GPU 物理失败。真实运行
+从 `04:42:05` 开始，exit 1、墙钟时间约 `406.2 s`。wrapper 的 header 与
+`Tee-Object` 追加编码不同，使 log 混合 UTF-8 与 UTF-16LE；内容仍完整可审计，
+以后应由固定 runner 直接统一编码。
+
+真实运行只产生以下两份证据：
+
+- log：
+  `outputs/debug/20_fr3_planning/baseline2_capsule_joint08_0to50_acceptance_seed42_20260810_044205_239.log`，
+  SHA256=`6432A2B6B67774B9CAF17EACF9208F72F16DB2F5AFF5BB8A572DDDE7651E6D98`；
+- failure-prefix：
+  `outputs/debug/20_fr3_planning/baseline2_capsule_joint08_0to50_acceptance_seed42_20260810_044205_239_failure_prefix.npz`，
+  SHA256=`C704BDA24F2F57363E22D1A3A12F10BCBC23A35EA464EF73F449851FC2CA0E14`。
+
+没有 `_plan.npz`，没有进入 dynamics，没有运行成功计划的 standalone/full audit，
+也没有 debug 或交付视频。
+
+#### coarse failure 与 `failure_final_best`
+
+最后接受的 coarse state 为 `40.46875 mm`；下一目标 `40.625 mm`，间隔仅
+`0.15625 mm`，最终在 keyframe `36/44` 以 `contact_policy` 退出。自动加密只用
+`4/96`，不是预算耗尽：依次为 longitudinal-progress@`39.375 mm`、
+contact-policy@`40.625 mm`、monotonic-progress@`40.3125 mm` 和
+contact-policy@`40.46875 mm`。
+
+独立 CPU MuJoCo/FK 使用真实规划胶囊 `r=0.10 m, h=0.17 m` 和 GPU calibration
+的 float32 center；重算 points 与 NPZ 逐位一致，四个 fingertip arcs 也逐位一致。
+`failure_final_best` 的 endpoint pad alignment 与角度为：
+
+- index：`0.766289583` / `39.978144 deg`；
+- middle：`0.854660710` / `31.277728 deg`；
+- ring：`0.765884270` / `40.014275 deg`；
+- thumb：`0.977869722` / `12.076338 deg`。
+
+hard alignment=`cos(40 deg)=0.766044443`，只有 ring finger 低
+`0.000160173`，即超角 `0.014275 deg`。从最后接受点到该候选做明确的 9 段插值，
+每指最坏角为 `[39.978144,31.294706,40.014275,12.076338] deg`，全局最坏仍是
+ring endpoint。在线代码本轮实际使用
+`ceil((1400-600)/44)=19` 个 segment samples，结论相同。
+
+其它现行硬门全部通过：
+
+- FR3/物体最小净距=`10.760815 mm`，最近 `fr3v2_link5_collision`，相对
+  `2 mm` 门槛余量=`8.760815 mm`；
+- LEAP non-tip/物体最小净距=`+1.589751 mm`，最近
+  `palm_lower_collision`，相对允许 `-1 mm` 余量=`2.589751 mm`；
+- 9 段和在线 19 段的 severe self collision count 均为 `0`；
+- 相邻 coarse 最大 joint step=`0.000417372 rad`（FR3 joint 3），远小于
+  `0.03 rad`；有效 joint-limit minimum margin=`0.051296153 rad`；
+- progress error=`[0,5.303541,4.587984,3.817465,3.603894] mm`，最大值小于
+  当前 transient limit=`6.392578 mm`；
+- four-tip normal error=`[1.898481,1.066377,0.282431,1.465027] mm`，对应
+  tolerance=`[5.392578,3,3,3] mm`，nominal support=`4/4`；
+- tangential error=`[2.082306,0.487211,0.884267,1.130652] mm`，对应
+  tolerance=`[3.025391,2,2,2] mm`；
+- monotonic maximum error=`0.066491 mm < 0.2 mm`；
+- palm guide error=`20.233770 mm < 30 mm`；
+- solver `nfev=17`、cost=`3.751484`。
+
+因此按实际检查顺序，palm、monotonic、progress、normal、tangent、joint 都先通过；
+collision bundle 中 arm、non-tip hand、self 也通过，**首个且唯一现行硬失败是
+ring pad orientation**。错误消息中的 `40.01 deg` 指的是这个
+`failure_final_best`。
+
+#### `bridge_rejected` 是独立候选，不得混用
+
+failure-prefix 另存的 moving `bridge_rejected` 不是上述 final-best。它的 endpoint
+及 9 段每指最坏 pad angle 为
+`[40.056408,31.488528,40.186860,12.125606] deg`；index 与 ring 都越过
+`40 deg`，全局最坏是 ring=`40.186860 deg`、alignment=`0.763944033`。
+
+该 bridge 确实移动而不是假 moving：四指 Cartesian motion=
+`[0.156144,0.156309,0.156255,0.156298] mm`，`4/4` 达到最少
+`0.015625 mm`，最大 joint motion=`0.004650387 rad`，joint margin=
+`0.051227739 rad`。在线 19 段的 FR3 minimum=`10.781676 mm`、hand
+minimum=`+1.731453 mm`、self=`0`；progress maximum=`5.109320 mm`，normal=
+`[1.720777,0.890789,0.413461,1.351886] mm`，tangent=
+`[2.101317,0.400915,1.059673,1.227832] mm`，palm=`20.050570 mm`。
+
+strict 九条件只有 `collision=false`，strict `budget=true`。recovery 则同时
+`collision=false` 与 `budget=false`：目标 `40.625 mm` 已超过
+`recovery_terminal_cutoff=30 mm`，terminal margin=`-10.625 mm`。其它 recovery
+预算没有耗尽：bridge interval=`0.15625 < 0.3 mm`、dwell=
+`0.15625 < 3 mm`、total=`0.15625 < 1.5 mm`。所以既不能把 bridge 的
+`40.186860 deg` 写成 final-best 的 `40.014275 deg`，也不能把它解释为
+adaptive/recovery 总预算耗尽。
+
+#### 独立发现：已接受前缀缺少 physical fingertip geom penetration 硬门
+
+现有 planner 用 fingertip site standoff 约束接触，但 `segment_collision_status`
+只审 FR3、non-tip hand、self collision 与 pad orientation；物理 fingertip collision
+geom 被有意排除。这导致规划可在 site normal error 合格时，仍让倾斜的 rounded
+tip geom 深入物体。独立 `mj_geomDistance` 重算显示：
+
+- `failure_final_best` 四指 endpoint signed distance=
+  `[-6.824274,-5.804308,-5.333097,-3.094506] mm`；
+- `bridge_rejected` endpoint signed distance=
+  `[-6.671720,-5.683806,-5.260689,-2.986450] mm`。
+
+两者都远超 Level-2 runtime 冻结的 `1 mm` 最大 tip penetration。更重要的是，这
+不是只在失败 endpoint 才出现：36 个 `last_feasible_coarse` 状态逐一重算后，首个
+`< -1 mm` 是 ring finger，index `5`、route=`6.25 mm`、distance=
+`-1.122080 mm`；index/middle 首次在 index `8`、route=`10 mm`，分别为
+`-2.398559/-3.098742 mm`；thumb 首次在 index `12`、route=`15 mm`，为
+`-1.552393 mm`。
+
+0--`40.46875 mm` 已接受前缀中的离散占比为：
+
+- 任一 tip 越过 1 mm：`31/36=86.11%`，coarse checkpoints 从 `6.25 mm` 起
+  连续到最后；
+- index=`27/36=75%`，middle=`27/36=75%`，ring=`30/36=83.33%`，
+  thumb=`15/36=41.67%`；
+- 至少三指同时越界=`27/36=75%`，四指同时越界=`14/36=38.89%`。
+
+每指最深值及位置为：index=`-6.647503 mm` @ index `35` / `40.46875 mm`；
+middle=`-6.271251 mm` @ index `32` / `39.375 mm`；ring=`-7.364261 mm` @
+index `32` / `39.375 mm`；thumb=`-2.965357 mm` @ index `35` /
+`40.46875 mm`。
+
+这些是 planned-q 的静态 MuJoCo 几何距离，不能伪称 dynamics 已经失败，因为
+dynamics 根本没有运行；但它足以证明当前计划即使修过 pad gate，也很可能在真实
+接触解析中产生大力、跟踪偏差或 runtime penetration 拒绝。因此应在下一次 GPU
+前成为 pre-dynamics fail-fast，而不是继续消耗 GPU 生成注定不可验收的 plan。
+
+#### 当前结论与下一步
+
+本轮状态为 Level 2 **NOT PASS**：无成功 plan、无 dynamics、无 standalone/full
+plan audit、无视频。不得把 `40 deg` 提高，也不得把 `1 mm` penetration 放宽。
+
+**正在执行：**为 online 全 `23 DoF` least-squares planner 增加 orientation-aware
+候选族与统一硬筛选/排序：soft cone=`35 deg`、hard cone=`40 deg`；raw surface IK、
+rigid seed 与 optimized posture 一律先过同一 endpoint/逐段 hard audit，再按 soft
+pad deficit、任务误差、进度与连续性排序。同时把 physical fingertip geom signed
+distance `>= -1 mm` 加入逐段 publish/dynamics 前硬门。完成定向与全量 CPU 回归后，
+使用上述完全相同的 seed 42、0--50 mm Acceptance 配置重跑；只有规划、低运动、
+物理几何、dynamics 和审计全部通过后才进入其它 seeds/0.48 m，更不会提前录像。

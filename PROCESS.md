@@ -1115,3 +1115,44 @@ NPZ **没有提升为正式 asset，也不是 PASS**。第一次保存因沙箱�
 penetration 均不放宽），再加入 orientation-aware 全 23-DoF continuation；
 短程通过仍不等于 Level 2，完整 `0.48 m`、seeds 42--46、CPU auditor、动力学
 和视频均未通过/未生成。完整数值 PASS 前不录像。
+
+### `480c4c9` 的 0--50 mm GPU 资格测试与物理指尖缺口（2026-08-10，正在修复）
+
+上段 SHA256 为
+`29E95FEE0E287FF30CB1EF77F81F032838744CA31843C567736B4B19CFC97046`
+的 low-pad debug candidate 已在提交 `480c4c9` 上执行 Acceptance 参数的 seed 42
+GPU headless 资格测试。`04:40:46` 的 `Tee-Object -LiteralPath` 参数错误和
+`04:41:14` 的全局 `ErrorActionPreference=Stop` 把普通 stderr 当成终止错误，均为
+外层 PowerShell 编排失败，planner 没有运行。真实运行是 `04:42:05` 这一轮，
+exit 1、耗时约 `406.2 s`；wrapper 令日志成为 UTF-8/UTF-16LE 混合编码，但不改变
+控制器或规划结果。
+
+真实证据为：
+
+- `full_hand_mcc/outputs/debug/20_fr3_planning/baseline2_capsule_joint08_0to50_acceptance_seed42_20260810_044205_239.log`，SHA256
+  `6432A2B6B67774B9CAF17EACF9208F72F16DB2F5AFF5BB8A572DDDE7651E6D98`；
+- `full_hand_mcc/outputs/debug/20_fr3_planning/baseline2_capsule_joint08_0to50_acceptance_seed42_20260810_044205_239_failure_prefix.npz`，SHA256
+  `C704BDA24F2F57363E22D1A3A12F10BCBC23A35EA464EF73F449851FC2CA0E14`。
+
+规划最后接受 `40.46875 mm`，在 `40.625 mm`、keyframe `36/44` 失败；adaptive
+refinement 只用了 `4/96`。必须区分两个候选：`failure_final_best` 只有 ring
+finger pad=`40.014275 deg > 40 deg` 这一项触发硬拒绝；FR3 净距
+`10.760815 mm`、LEAP non-tip 净距 `+1.589751 mm`、self collision=`0`、
+joint step=`0.000417372 rad`、joint margin=`0.051296153 rad`，progress、normal、
+tangent 与 palm 也均在固定门槛内。另一个 `bridge_rejected` 候选最坏 pad 是
+ring finger `40.186860 deg`，虽四指都真实前进约 `0.156 mm`，仍因 collision/pad
+失败；其 recovery 还因 `40.625 mm` 已越过 `30 mm` terminal cutoff 而
+budget=false。不能用 bridge 的 `40.186860 deg` 解释 final-best 日志中的
+`40.014275 deg`。
+
+独立 MuJoCo 审计同时发现一个更早的 pre-dynamics 缺口：现有 planner 没有把
+physical fingertip geom penetration 纳入硬门。36 个已接受 coarse states 中，
+`31/36=86.11%` 至少一指超过冻结的 `1 mm` 穿透门槛，最早是 ring finger 在
+`6.25 mm`；每指最深分别为 `[-6.648,-6.271,-7.364,-2.965] mm`。所以本轮没有
+成功 plan、没有进入 dynamics、没有运行完整 plan audit，也没有生成视频；状态为
+Level 2 **NOT PASS**。不得放宽 `40 deg` 或 `1 mm`。
+
+**正在执行：**在 online 全 `23 DoF` planner 中加入 soft `35 deg` / hard
+`40 deg` 的 orientation-aware 姿态候选和统一候选排序，同时把逐段 physical tip
+penetration `<=1 mm` 设为 publish/dynamics 前硬门；完成 CPU 回归后，用完全相同的
+seed 42、0--50 mm 配置重跑。数值与物理门全部通过前仍不录像。
