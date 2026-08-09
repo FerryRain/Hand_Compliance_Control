@@ -1070,3 +1070,48 @@ stagnation gate，不能让长停滞靠最终总行程掩盖。`H=5` 继续推�
 bridge 已在 GPU 真实工作。Acceptance 的 planner limit 仍为 `40 deg`；应使用
 orientation-aware 的全 `23 DoF` 姿态规划降低 pad angle，而不是放宽 Diagnostic
 或 Acceptance 阈值。当前仍为 Level 2 `NOT PASS`，在完整数值通过前不录像。
+
+### 低运动硬门与低指腹角初始候选（2026-08-10，正在执行）
+
+两个窄代码检查点已经直接提交并推送 `main`：
+
+- `dab1f8b` 修正 `optimize_full_robot_grasp.py` 的 seed-only 姿态先验，使
+  physical refinement 以真实 seed q 而不是旧 22-DoF stage-1 回退姿态为参考；
+  新增默认关闭的 joint-margin 软目标/硬门。有限的 `max_nfev` 候选只允许进入
+  独立物理硬审，不能绕过 tip、pad、FR3/hand/self collision 和 joint margin
+  后保存。定向回归 `7/7` 通过。
+- `3914c7d` 把冻结的 plan-level 低运动定义放入单一 NumPy helper：连续
+  `20` 个 interval（`21` 个采样）内至少 `3/4` 指尖各前进
+  `10% * route_delta`；`19` 个 interval 的短暂停顿仍允许，显式
+  static/recovery 窗口按原预算豁免。门禁位于 plan publish、成功 NPZ 和
+  dynamics 之前；失败证据写独立 `_low_motion.npz`，使用 exclusive-create 和
+  递增后缀，绝不覆盖 coarse failure-prefix。standalone auditor 同用该 helper，
+  且不再因导入 MJLab 包向 JSON stdout 打印 Warp 信息。
+
+主代理在两个提交组合后复跑全量 CPU regression=`62/62`，demo/auditor CLI 与
+`git diff --check` 均通过。随后用 `dab1f8b` 生成了仅供资格验证的 debug 候选：
+
+`full_hand_mcc/outputs/debug/20_fr3_planning/fr3_capsule_initial_soft32_joint08_candidate.npz`
+
+生成门槛为 pad soft/hard=`32/40 deg`、joint-margin soft/hard=`0.10/0.08 rad`、
+protected-self soft/hard=`0.7/0.5 mm`、tip-distance tolerance=`0.25 mm`。
+文件 SHA256=`29E95FEE0E287FF30CB1EF77F81F032838744CA31843C567736B4B19CFC97046`。
+独立 MuJoCo 重算得到：pad angle=`[31.428,28.384,32.361,6.020] deg`，tip
+collision distance=`[-0.237,-0.249,-0.751,-0.250] mm`，FR3 minimum
+clearance=`16.571 mm`，LEAP non-tip minimum clearance=`4.975 mm`，active
+self collision=`0`，protected pair clearances=`[0.669,0.712,0.673] mm`，
+minimum joint margin=`0.126969 rad`。四指从各自 start arc 再前进 `0.48 m`
+均未越出 `654.159 mm` 子午线域，最紧的 thumb 尚余 `23.799 mm`。
+
+固定候选 q、沿 `-90 deg` retreat 的 `0.20 m` object approach 做 `251` 点
+CPU 碰撞采样，FR3/hand 最小净距仍为终点的 `16.571/4.975 mm`，最大 tip
+penetration=`0.861 mm < 1 mm`。但优化器虽 `success=true/status=3/nfev=24`，
+其 optimality=`192163.30`，且该检查未包含 GPU 接触力、伺服超调和恢复，故该
+NPZ **没有提升为正式 asset，也不是 PASS**。第一次保存因沙箱无权写 `D:\Code`
+而报 PermissionError；相同参数在授权写入后 exit 0，算法本身没有失败。
+
+**正在执行：**先用该 debug 候选做 GPU object-approach + `0--50 mm` headless
+资格测试（Acceptance 的 40 deg planner cone、2 mm tangent、0.01 mm self
+penetration 均不放宽），再加入 orientation-aware 全 23-DoF continuation；
+短程通过仍不等于 Level 2，完整 `0.48 m`、seeds 42--46、CPU auditor、动力学
+和视频均未通过/未生成。完整数值 PASS 前不录像。

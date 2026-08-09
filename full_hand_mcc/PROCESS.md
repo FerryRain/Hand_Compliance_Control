@@ -1538,3 +1538,52 @@ tip-only `12D` local-preserve solve 在真实在线规划中多次被采用：
 必须由 orientation-aware 全 `23 DoF`（FR3/palm + four fingers）姿态规划解决，
 不得提高 Diagnostic `50 deg` 或 Acceptance `40 deg` 阈值。完整数值 PASS 前
 仍不录像。
+
+### `dab1f8b` / `3914c7d` 与 low-pad initial candidate（2026-08-10，正在执行）
+
+已直接提交并推送 `main` 的两个检查点：
+
+- `dab1f8b`：seed-only physical reference 改为真实 seed q；增加默认关闭的
+  joint-margin soft target / final hard gate；finite `status=0/max_nfev` 只能在
+  tip、pad、object/self collision、clearance 和 margin 全部硬审通过后保存。
+  定向测试 `7/7`。
+- `3914c7d`：计划插值完成后、publish/save/dynamics 前执行统一 low-motion
+  hard gate。`20` intervals 内必须至少 `3/4` tips 达到
+  `0.10 * route_delta`；`19` intervals 允许，static/recovery 仍使用原显式标记
+  和预算。失败保存独立、不可覆盖的 `_low_motion.npz`。CPU auditor 复用同一
+  helper，并消除 import 时污染 JSON stdout 的 Warp 输出。
+
+组合后的全量 CPU regression=`62/62`，demo/auditor CLI 和 diff check 通过。
+当前 low-motion gate 是 fail-fast，不会掩盖 `421.714 mm` 仍需解决的姿态分支；
+等 coarse planner 能产出完整计划后，历史约 `54.9--57.2 mm` 的首个未标记
+平台将被拒绝，不能进入 dynamics 冒充滑动。
+
+新的 debug 初始候选为：
+
+`outputs/debug/20_fr3_planning/fr3_capsule_initial_soft32_joint08_candidate.npz`
+
+其生成参数固定为 pad soft/hard=`32/40 deg`、joint-margin
+soft/hard=`0.10/0.08 rad`、protected-self soft/hard=`0.7/0.5 mm` 和
+tip-distance tolerance=`0.25 mm`；SHA256 为
+`29E95FEE0E287FF30CB1EF77F81F032838744CA31843C567736B4B19CFC97046`。
+独立重算：
+
+- pad=`[31.428,28.384,32.361,6.020] deg`；40 deg 内最小余量 `7.639 deg`；
+- tip geom distance=`[-0.237,-0.249,-0.751,-0.250] mm`，最深穿入小于 1 mm；
+- FR3 clearance=`16.571 mm`（最近 link4），LEAP non-tip=`4.975 mm`
+  （最近 palm_lower），active self contacts=`0`；
+- protected self clearances=`[0.669,0.712,0.673] mm`；
+- 23 DoF 最小 joint margin=`0.126969 rad`；
+- 四指 `start_arc + 0.48 m` 全在 `654.159 mm` surface domain，最紧 thumb
+  剩余 `23.799 mm`。
+
+固定 q 的 `0.20 m`、`251` 点 object-approach CPU sampling 仍保持 FR3/hand
+正净距，最大 tip penetration=`0.861 mm`。NPZ 优化器状态为
+`success=true/status=3/nfev=24`，但 optimality=`192163.30`；因此它只能作为
+GPU approach/短程候选，**尚未复制或重命名为 `assets/` 正式抓取**。第一次写盘
+PermissionError 只是沙箱拒绝 `D:\Code` 输出；授权后同参数 exit 0 并保存。
+
+**正在执行：**以此候选跑 `0--50 mm` headless（`motion-start=600`、
+`steps=1400`、`mpc-keyframes=40`，正式 pad planner 40 deg/tangent 2 mm/self
+0.01 mm 不放宽）；通过后仍需 orientation-aware 全 23-DoF 姿态保持、完整
+0.48 m/五 seeds、CPU plan audit 和 dynamics。数值全部通过前不生成视频。
