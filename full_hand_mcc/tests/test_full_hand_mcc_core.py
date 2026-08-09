@@ -57,6 +57,140 @@ ADAPTER_PATH = (
 
 
 class PlannerDiagnosticsTest(unittest.TestCase):
+    @staticmethod
+    def _stationary_plan_inputs(
+        sample_count: int,
+        *,
+        route_length_m: float = 0.02,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        target = np.linspace(0.0, route_length_m, sample_count)
+        progress = np.zeros((sample_count, 5), dtype=np.float64)
+        points = np.zeros((sample_count, 5, 3), dtype=np.float64)
+        axial = target.copy()
+        return progress, points, target, axial
+
+    def test_low_motion_window_allows_19_intervals_and_rejects_20(
+        self,
+    ) -> None:
+        progress, points, target, axial = self._stationary_plan_inputs(20)
+        allowed = DIAGNOSTICS.find_unmarked_low_motion_windows(
+            progress,
+            points,
+            target,
+            np.zeros(20, dtype=bool),
+            axial,
+            window_frames=20,
+        )
+        self.assertEqual(allowed, [])
+
+        progress, points, target, axial = self._stationary_plan_inputs(21)
+        rejected = DIAGNOSTICS.find_unmarked_low_motion_windows(
+            progress,
+            points,
+            target,
+            np.zeros(21, dtype=bool),
+            axial,
+            window_frames=20,
+        )
+        self.assertEqual(len(rejected), 1)
+        self.assertEqual(
+            rejected[0]["worst_window"]["forward_finger_count"],
+            0,
+        )
+
+    def test_nonzero_joint_motion_does_not_hide_tip_stall_evidence(
+        self,
+    ) -> None:
+        progress, points, target, axial = self._stationary_plan_inputs(21)
+        joint_positions = np.zeros((21, 23), dtype=np.float64)
+        joint_positions[:, 0] = np.linspace(0.0, 0.02, 21)
+        regions = DIAGNOSTICS.find_unmarked_low_motion_windows(
+            progress,
+            points,
+            target,
+            np.zeros(21, dtype=bool),
+            axial,
+            window_frames=20,
+        )
+        self.assertEqual(len(regions), 1)
+        self.assertGreater(
+            float(np.max(np.abs(np.diff(joint_positions, axis=0)))),
+            0.0,
+        )
+        self.assertEqual(
+            regions[0]["first_window"]["forward_finger_count"],
+            0,
+        )
+
+    def test_explicit_static_or_recovery_frame_exempts_window(self) -> None:
+        progress, points, target, axial = self._stationary_plan_inputs(21)
+        for bridge_kind in ("static", "recovery"):
+            with self.subTest(bridge_kind=bridge_kind):
+                marked = np.zeros(21, dtype=bool)
+                marked[10] = True
+                regions = DIAGNOSTICS.find_unmarked_low_motion_windows(
+                    progress,
+                    points,
+                    target,
+                    marked,
+                    axial,
+                    window_frames=20,
+                )
+                self.assertEqual(regions, [])
+
+    def test_seed42_historical_350mm_platform_is_rejected(self) -> None:
+        progress, points, target, axial = self._stationary_plan_inputs(
+            33,
+            route_length_m=0.35407792207792205 - 0.35033766233766234,
+        )
+        target += 0.35033766233766234
+        axial += 0.35033766233766234
+        regions = DIAGNOSTICS.find_unmarked_low_motion_windows(
+            progress,
+            points,
+            target,
+            np.zeros(33, dtype=bool),
+            axial,
+            window_frames=20,
+        )
+        self.assertEqual(len(regions), 1)
+        worst = regions[0]["worst_window"]
+        self.assertEqual(worst["forward_finger_count"], 0)
+        self.assertAlmostEqual(
+            worst["required_tip_progress_m"],
+            0.1 * worst["route_delta_m"],
+        )
+
+    def test_low_motion_gate_precedes_plan_publish_and_success_archive(
+        self,
+    ) -> None:
+        source = DEMO_PATH.read_text(encoding="utf-8")
+        gate = source.index(
+            "low_motion_regions = find_unmarked_low_motion_windows"
+        )
+        publish = source.index("self.plan_surface = surface_plan", gate)
+        success_archive = source.index(
+            "np.savez_compressed(\n                args.plan_output",
+            gate,
+        )
+        self.assertLess(gate, publish)
+        self.assertLess(gate, success_archive)
+        gate_source = source[gate:publish]
+        self.assertIn("save_npz_no_overwrite", gate_source)
+        self.assertIn("failure_prefix_path.with_name", gate_source)
+        self.assertIn(
+            "if args.mpc_failure_prefix_output is not None",
+            gate_source,
+        )
+        self.assertIn("evidence_joint_positions_rad", gate_source)
+        self.assertIn("first_window_tip_progress_delta_m", gate_source)
+        self.assertIn("raise RuntimeError", gate_source)
+        self.assertIn(
+            "static_bridge_mask_plan | recovery_bridge_mask_plan",
+            source,
+        )
+
+
     def test_bridge_conditions_and_json_keep_all_named_gates(self) -> None:
         strict = DIAGNOSTICS.evaluate_bridge_conditions(
             progress_error_m=np.asarray([0.0, 0.003]),

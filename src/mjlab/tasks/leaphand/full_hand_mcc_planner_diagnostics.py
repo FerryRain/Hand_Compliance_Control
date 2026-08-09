@@ -27,6 +27,14 @@ BRIDGE_CONDITION_NAMES = (
 # the current contact schedule requires two or all four nominal contacts.
 MOVING_BRIDGE_FORWARD_FINGER_COUNT = 3
 
+# This is the frozen Level-2 plan-audit definition.  Keep the online
+# pre-dynamics guard and the standalone auditor on this single NumPy
+# implementation so a plan cannot pass one interpretation and fail the other.
+LOW_MOTION_REQUIRED_FORWARD_FINGERS = 3
+LOW_MOTION_FORWARD_PROGRESS_RATIO = 0.10
+LOW_MOTION_DEFAULT_WINDOW_FRAMES = 20
+LOW_MOTION_NUMERICAL_TOLERANCE = 1.0e-8
+
 
 @dataclass(frozen=True)
 class RejectedMovingBridgeCandidate:
@@ -36,6 +44,116 @@ class RejectedMovingBridgeCandidate:
     points_m: np.ndarray
     arcs_m: np.ndarray
     desired_arcs_m: np.ndarray
+
+
+def find_unmarked_low_motion_windows(
+    progress_m: np.ndarray,
+    kinematic_points_m: np.ndarray,
+    frame_target_distance_m: np.ndarray,
+    marked_bridge_mask: np.ndarray,
+    axial_distance_m: np.ndarray,
+    *,
+    window_frames: int = LOW_MOTION_DEFAULT_WINDOW_FRAMES,
+    forward_progress_ratio: float = LOW_MOTION_FORWARD_PROGRESS_RATIO,
+) -> list[dict[str, object]]:
+    """Find frozen-window stalls not covered by an explicit bridge mask."""
+
+    progress = np.asarray(progress_m, dtype=np.float64)
+    points = np.asarray(kinematic_points_m, dtype=np.float64)
+    target = np.asarray(frame_target_distance_m, dtype=np.float64)
+    marked = np.asarray(marked_bridge_mask, dtype=bool)
+    axial = np.asarray(axial_distance_m, dtype=np.float64)
+    if window_frames <= 0:
+        raise ValueError("window_frames must be positive")
+    if not np.isfinite(forward_progress_ratio) or forward_progress_ratio < 0.0:
+        raise ValueError("forward_progress_ratio must be finite and non-negative")
+    if progress.ndim != 2 or progress.shape[1] != 5:
+        raise ValueError("progress_m must have shape (frames, 5)")
+    frame_count = progress.shape[0]
+    if points.shape != (frame_count, 5, 3):
+        raise ValueError("kinematic_points_m must have shape (frames, 5, 3)")
+    for name, values in (
+        ("frame_target_distance_m", target),
+        ("marked_bridge_mask", marked),
+        ("axial_distance_m", axial),
+    ):
+        if values.shape != (frame_count,):
+            raise ValueError(f"{name} must have shape (frames,)")
+    if not (
+        np.all(np.isfinite(progress))
+        and np.all(np.isfinite(points))
+        and np.all(np.isfinite(target))
+        and np.all(np.isfinite(axial))
+    ):
+        raise ValueError("low-motion audit inputs must be finite")
+
+    raw: list[dict[str, object]] = []
+    for start in range(0, frame_count - window_frames):
+        end = start + window_frames
+        if np.any(marked[start : end + 1]):
+            continue
+        route_delta = float(target[end] - target[start])
+        if route_delta <= LOW_MOTION_NUMERICAL_TOLERANCE:
+            continue
+        required = forward_progress_ratio * route_delta
+        tip_delta = progress[end, 1:] - progress[start, 1:]
+        forward = tip_delta >= required - 1.0e-12
+        if (
+            int(np.count_nonzero(forward))
+            >= LOW_MOTION_REQUIRED_FORWARD_FINGERS
+        ):
+            continue
+        cartesian = np.linalg.norm(
+            points[end, 1:] - points[start, 1:], axis=1
+        )
+        raw.append(
+            {
+                "start": start,
+                "end": end,
+                "forward_finger_count": int(np.count_nonzero(forward)),
+                "forward_finger_required": (
+                    LOW_MOTION_REQUIRED_FORWARD_FINGERS
+                ),
+                "forward_mask": forward.tolist(),
+                "route_delta_m": route_delta,
+                "required_tip_progress_m": required,
+                "tip_progress_delta_m": tip_delta.tolist(),
+                "tip_cartesian_delta_m": cartesian.tolist(),
+                "target_distance_start_m": float(target[start]),
+                "target_distance_end_m": float(target[end]),
+                "axial_distance_start_m": float(axial[start]),
+                "axial_distance_end_m": float(axial[end]),
+            }
+        )
+    if not raw:
+        return []
+
+    groups: list[list[dict[str, object]]] = [[raw[0]]]
+    for item in raw[1:]:
+        if int(item["start"]) <= int(groups[-1][-1]["end"]) + 1:
+            groups[-1].append(item)
+        else:
+            groups.append([item])
+
+    summaries: list[dict[str, object]] = []
+    for group in groups:
+        worst = min(
+            group,
+            key=lambda item: (
+                int(item["forward_finger_count"]),
+                min(item["tip_progress_delta_m"]),
+            ),
+        )
+        summaries.append(
+            {
+                "frame_start": int(group[0]["start"]),
+                "frame_end": int(group[-1]["end"]),
+                "overlapping_window_count": len(group),
+                "first_window": group[0],
+                "worst_window": worst,
+            }
+        )
+    return summaries
 
 
 def evaluate_moving_bridge_motion(
@@ -664,6 +782,54 @@ def build_palm_guide_multistart_specs(
     return offsets, arm_patterns
 
 
+def save_npz_no_overwrite(
+    path: Path,
+    payload: Mapping[str, object],
+    *,
+    field_label: str = "NPZ",
+) -> Path:
+    """Save a pickle-free NPZ with exclusive creation and stable suffixes."""
+
+    requested_output = Path(path)
+    if requested_output.suffix.lower() != ".npz":
+        requested_output = requested_output.with_suffix(".npz")
+    requested_output.parent.mkdir(parents=True, exist_ok=True)
+    arrays: dict[str, np.ndarray] = {}
+    for name, value in payload.items():
+        array = np.asarray(value)
+        if array.dtype.hasobject:
+            raise TypeError(
+                f"{field_label} field {name!r} has object dtype and cannot "
+                "be replayed with allow_pickle=False"
+            )
+        arrays[name] = array
+
+    # Opening with ``xb`` is the no-overwrite guarantee.  A preceding
+    # exists() check alone would race when deterministic runs share a path.
+    suffix_index = 0
+    while True:
+        output = (
+            requested_output
+            if suffix_index == 0
+            else requested_output.with_name(
+                f"{requested_output.stem}_{suffix_index:03d}"
+                f"{requested_output.suffix}"
+            )
+        )
+        created_output = False
+        try:
+            with output.open("xb") as output_file:
+                created_output = True
+                np.savez_compressed(output_file, **arrays)
+            return output
+        except FileExistsError:
+            suffix_index += 1
+        except Exception:
+            if created_output:
+                output.unlink(missing_ok=True)
+            raise
+
+
 def save_mpc_failure_prefix(
     path: Path,
     *,
@@ -693,10 +859,6 @@ def save_mpc_failure_prefix(
             "together so their metrics and state cannot be mispaired"
         )
 
-    requested_output = Path(path)
-    if requested_output.suffix.lower() != ".npz":
-        requested_output = requested_output.with_suffix(".npz")
-    requested_output.parent.mkdir(parents=True, exist_ok=True)
     payload: dict[str, np.ndarray] = {
         "schema_version": np.asarray(2, dtype=np.int32),
         "reason": np.asarray(str(reason)),
@@ -771,37 +933,8 @@ def save_mpc_failure_prefix(
             [bool(recovery[name]) for name in BRIDGE_CONDITION_NAMES],
             dtype=np.bool_,
         )
-    for name, value in payload.items():
-        array = np.asarray(value)
-        if array.dtype.hasobject:
-            raise TypeError(
-                f"Failure-prefix field {name!r} has object dtype and cannot "
-                "be replayed with allow_pickle=False"
-            )
-        payload[name] = array
-
-    # Opening with ``xb`` is the no-overwrite guarantee.  A preceding
-    # exists() check alone would race when several deterministic seeds fail
-    # concurrently and choose the same suffix.
-    suffix_index = 0
-    while True:
-        output = (
-            requested_output
-            if suffix_index == 0
-            else requested_output.with_name(
-                f"{requested_output.stem}_{suffix_index:03d}"
-                f"{requested_output.suffix}"
-            )
-        )
-        created_output = False
-        try:
-            with output.open("xb") as output_file:
-                created_output = True
-                np.savez_compressed(output_file, **payload)
-            return output
-        except FileExistsError:
-            suffix_index += 1
-        except Exception:
-            if created_output:
-                output.unlink(missing_ok=True)
-            raise
+    return save_npz_no_overwrite(
+        path,
+        payload,
+        field_label="Failure-prefix",
+    )

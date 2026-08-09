@@ -686,6 +686,26 @@ class Level2PlanAuditTest(unittest.TestCase):
         self.assertIn("--initial-grasp", completed.stdout)
         self.assertIn("no GPU environment", completed.stdout)
 
+    def test_module_import_emits_no_stdout(self) -> None:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-B",
+                "-c",
+                (
+                    "import runpy; "
+                    f"runpy.run_path({str(AUDIT_PATH)!r}, "
+                    "run_name='audit_import_only')"
+                ),
+            ],
+            cwd=REPO_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(completed.stdout, "")
+
     def test_cli_emits_json_and_zero_only_when_all_conclusions_pass(self) -> None:
         plan, grasp, solver = _make_valid_inputs()
         output = io.StringIO()

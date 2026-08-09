@@ -46,6 +46,8 @@ from mjlab.tasks.leaphand.full_hand_mcc_geometry import (
     ellipsoid_project,
 )
 from mjlab.tasks.leaphand.full_hand_mcc_planner_diagnostics import (
+    LOW_MOTION_DEFAULT_WINDOW_FRAMES,
+    LOW_MOTION_FORWARD_PROGRESS_RATIO,
     MOVING_BRIDGE_FORWARD_FINGER_COUNT,
     RejectedMovingBridgeCandidate,
     bounded_incremental_arc_targets,
@@ -55,10 +57,12 @@ from mjlab.tasks.leaphand.full_hand_mcc_planner_diagnostics import (
     build_palm_guide_multistart_specs,
     evaluate_bridge_conditions,
     evaluate_moving_bridge_motion,
+    find_unmarked_low_motion_windows,
     format_bridge_rejection_record,
     make_bridge_rejection_record,
     moving_bridge_local_residual,
     save_mpc_failure_prefix,
+    save_npz_no_overwrite,
 )
 from mjlab.tasks.leaphand.leaphand_full_hand_mcc_env_cfg import (
     ARM_DOF,
@@ -7292,6 +7296,10 @@ def main() -> None:
                 frame_count,
                 dtype=np.bool_,
             )
+            static_bridge_mask_plan = np.zeros(
+                frame_count,
+                dtype=np.bool_,
+            )
             palm_position_error_plan = np.zeros(
                 frame_count, dtype=np.float32
             )
@@ -7346,8 +7354,14 @@ def main() -> None:
                 interpolation_recovery_bridge = bool(
                     coarse_recovery_bridge[left + 1]
                 )
+                interpolation_static_bridge = bool(
+                    coarse_static_feasibility_bridge[left + 1]
+                )
                 recovery_bridge_mask_plan[frame] = (
                     interpolation_recovery_bridge
+                )
+                static_bridge_mask_plan[frame] = (
+                    interpolation_static_bridge
                 )
                 if interpolation_recovery_bridge:
                     (
@@ -7400,6 +7414,158 @@ def main() -> None:
                     np.linalg.norm(points[0] - palm_target)
                 )
                 distance_plan[frame] = float(np.min(progress[1:]))
+
+            marked_bridge_mask_plan = (
+                static_bridge_mask_plan | recovery_bridge_mask_plan
+            )
+            low_motion_regions = find_unmarked_low_motion_windows(
+                progress_plan,
+                kinematic_plan,
+                frame_target_distance,
+                marked_bridge_mask_plan,
+                distance_plan,
+                window_frames=LOW_MOTION_DEFAULT_WINDOW_FRAMES,
+                forward_progress_ratio=LOW_MOTION_FORWARD_PROGRESS_RATIO,
+            )
+            if low_motion_regions:
+                first_window = low_motion_regions[0]["first_window"]
+                assert isinstance(first_window, dict)
+                first_start = int(first_window["start"])
+                first_end = int(first_window["end"])
+                first_tip_delta_m = np.asarray(
+                    first_window["tip_progress_delta_m"]
+                )
+                first_forward_mask = np.asarray(
+                    first_window["forward_mask"], dtype=np.bool_
+                )
+                evidence_path = None
+                evidence_error = "disabled"
+                try:
+                    if args.mpc_failure_prefix_output is not None:
+                        failure_prefix_path = Path(
+                            args.mpc_failure_prefix_output
+                        )
+                        low_motion_evidence_path = (
+                            failure_prefix_path.with_name(
+                                f"{failure_prefix_path.stem}_low_motion"
+                                f"{failure_prefix_path.suffix or '.npz'}"
+                            )
+                        )
+                        evidence_start = max(first_start - 1, 0)
+                        evidence_stop = min(first_end + 2, frame_count)
+                        evidence_slice = slice(evidence_start, evidence_stop)
+                        evidence_payload: dict[str, object] = {
+                            "schema_version": np.asarray(1, np.int32),
+                            "reason": np.asarray("unmarked_low_motion"),
+                            "window_frames": np.asarray(
+                                LOW_MOTION_DEFAULT_WINDOW_FRAMES, np.int32
+                            ),
+                            "forward_progress_ratio": np.asarray(
+                                LOW_MOTION_FORWARD_PROGRESS_RATIO
+                            ),
+                            "region_frame_ranges": np.asarray(
+                                [
+                                    [
+                                        int(region["frame_start"]),
+                                        int(region["frame_end"]),
+                                    ]
+                                    for region in low_motion_regions
+                                ],
+                                dtype=np.int32,
+                            ),
+                            "first_window_frame_start": np.asarray(
+                                first_start, np.int32
+                            ),
+                            "first_window_frame_end": np.asarray(
+                                first_end, np.int32
+                            ),
+                            "first_window_route_delta_m": np.asarray(
+                                first_window["route_delta_m"]
+                            ),
+                            "first_window_required_tip_progress_m": (
+                                np.asarray(
+                                    first_window["required_tip_progress_m"]
+                                )
+                            ),
+                            "first_window_tip_progress_delta_m": (
+                                first_tip_delta_m
+                            ),
+                            "first_window_tip_cartesian_delta_m": np.asarray(
+                                first_window["tip_cartesian_delta_m"]
+                            ),
+                            "first_window_forward_mask": first_forward_mask,
+                            "evidence_frame_start": np.asarray(
+                                evidence_start, np.int32
+                            ),
+                            "evidence_frame_stop_exclusive": np.asarray(
+                                evidence_stop, np.int32
+                            ),
+                            "evidence_joint_positions_rad": joint_plan[
+                                evidence_slice
+                            ],
+                        }
+                        for name, values in (
+                            (
+                                "frame_target_distance_m",
+                                frame_target_distance,
+                            ),
+                            ("axial_distance_m", distance_plan),
+                            ("kinematic_points_m", kinematic_plan),
+                            ("progress_m", progress_plan),
+                            ("static_bridge_mask", static_bridge_mask_plan),
+                            ("recovery_bridge_mask", recovery_bridge_mask_plan),
+                        ):
+                            evidence_payload[f"evidence_{name}"] = values[
+                                evidence_slice
+                            ]
+                        for name, values in (
+                            ("distance_m", coarse_distance),
+                            ("joint_positions_rad", coarse_q),
+                            (
+                                "static_bridge_mask",
+                                coarse_static_feasibility_bridge,
+                            ),
+                            ("recovery_bridge_mask", coarse_recovery_bridge),
+                        ):
+                            evidence_payload[f"coarse_{name}"] = values
+                        evidence_path = save_npz_no_overwrite(
+                            low_motion_evidence_path,
+                            evidence_payload,
+                            field_label="Low-motion evidence",
+                        )
+                except Exception as exc:
+                    evidence_error = f"{type(exc).__name__}: {exc}"
+                evidence_summary = (
+                    f"saved={evidence_path}"
+                    if evidence_path is not None
+                    else f"save_error={evidence_error}"
+                )
+                print(
+                    "[MPC-LOW-MOTION-FAILURE] "
+                    f"regions={len(low_motion_regions)} "
+                    f"frame_window={first_start}:{first_end} "
+                    "target_distance_m="
+                    f"[{first_window['target_distance_start_m']:.9f},"
+                    f"{first_window['target_distance_end_m']:.9f}] "
+                    f"route_delta_mm="
+                    f"{first_window['route_delta_m'] * 1000:.6f} "
+                    f"required_tip_progress_mm="
+                    f"{first_window['required_tip_progress_m'] * 1000:.6f} "
+                    "tip_progress_delta_mm="
+                    f"{(first_tip_delta_m * 1000).round(6).tolist()} "
+                    f"forward_mask={first_forward_mask.tolist()} "
+                    f"{evidence_summary}",
+                    flush=True,
+                )
+                raise RuntimeError(
+                    "Adaptive surface MPC rejected an unmarked low-motion "
+                    "plan before dynamics: "
+                    f"regions={len(low_motion_regions)} "
+                    f"first_frame_window={first_start}:{first_end} "
+                    f"forward_fingers="
+                    f"{int(np.count_nonzero(first_forward_mask))}/4 "
+                    f"evidence={evidence_path or evidence_error}"
+                )
 
             planned_contact_ratio = np.mean(
                 scheduled_contact_mask_plan,

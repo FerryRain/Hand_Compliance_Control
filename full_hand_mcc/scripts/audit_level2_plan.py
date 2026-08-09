@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 from contextlib import redirect_stdout
 import io
+import importlib.util
 import json
 from pathlib import Path
 import sys
@@ -20,10 +21,42 @@ from typing import Any, Callable, Mapping, Sequence
 import numpy as np
 
 
+def _load_planner_diagnostics() -> Any:
+    """Load the NumPy diagnostics module without importing the MJLab package."""
+
+    path = (
+        Path(__file__).resolve().parents[2]
+        / "src/mjlab/tasks/leaphand/full_hand_mcc_planner_diagnostics.py"
+    )
+    module_name = "_full_hand_mcc_planner_diagnostics_for_audit"
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Cannot load planner diagnostics from {path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_PLANNER_DIAGNOSTICS = _load_planner_diagnostics()
+LOW_MOTION_DEFAULT_WINDOW_FRAMES = (
+    _PLANNER_DIAGNOSTICS.LOW_MOTION_DEFAULT_WINDOW_FRAMES
+)
+LOW_MOTION_FORWARD_PROGRESS_RATIO = (
+    _PLANNER_DIAGNOSTICS.LOW_MOTION_FORWARD_PROGRESS_RATIO
+)
+LOW_MOTION_REQUIRED_FORWARD_FINGERS = (
+    _PLANNER_DIAGNOSTICS.LOW_MOTION_REQUIRED_FORWARD_FINGERS
+)
+find_unmarked_low_motion_windows = (
+    _PLANNER_DIAGNOSTICS.find_unmarked_low_motion_windows
+)
+
+
 FINGER_NAMES = ("if_tip", "mf_tip", "rf_tip", "th_tip")
-REQUIRED_FORWARD_FINGERS = 3
-FORWARD_PROGRESS_RATIO = 0.10
-DEFAULT_WINDOW_FRAMES = 20
+REQUIRED_FORWARD_FINGERS = LOW_MOTION_REQUIRED_FORWARD_FINGERS
+FORWARD_PROGRESS_RATIO = LOW_MOTION_FORWARD_PROGRESS_RATIO
+DEFAULT_WINDOW_FRAMES = LOW_MOTION_DEFAULT_WINDOW_FRAMES
 DEFAULT_HZ = 100.0
 MAX_PLAN_JOINT_STEP_RAD = 0.03
 DIAGNOSTIC_PAD_LIMIT_DEG = 50.0
@@ -448,86 +481,6 @@ def _contiguous_runs(mask: np.ndarray) -> list[tuple[int, int]]:
     starts = np.flatnonzero(changes == 1)
     ends = np.flatnonzero(changes == -1) - 1
     return list(zip(starts.tolist(), ends.tolist(), strict=True))
-
-
-def find_unmarked_low_motion_windows(
-    progress_m: np.ndarray,
-    kinematic_points_m: np.ndarray,
-    frame_target_distance_m: np.ndarray,
-    marked_bridge_mask: np.ndarray,
-    axial_distance_m: np.ndarray,
-    *,
-    window_frames: int = DEFAULT_WINDOW_FRAMES,
-    forward_progress_ratio: float = FORWARD_PROGRESS_RATIO,
-) -> list[dict[str, Any]]:
-    """Find overlapping windows with fewer than three progressing tips."""
-
-    progress = np.asarray(progress_m, dtype=np.float64)
-    points = np.asarray(kinematic_points_m, dtype=np.float64)
-    target = np.asarray(frame_target_distance_m, dtype=np.float64)
-    marked = np.asarray(marked_bridge_mask, dtype=bool)
-    axial = np.asarray(axial_distance_m, dtype=np.float64)
-    raw: list[dict[str, Any]] = []
-    for start in range(0, progress.shape[0] - window_frames):
-        end = start + window_frames
-        if np.any(marked[start : end + 1]):
-            continue
-        route_delta = float(target[end] - target[start])
-        if route_delta <= NUMERICAL_TOLERANCE:
-            continue
-        required = forward_progress_ratio * route_delta
-        tip_delta = progress[end, 1:] - progress[start, 1:]
-        forward = tip_delta >= required - 1.0e-12
-        if int(np.count_nonzero(forward)) >= REQUIRED_FORWARD_FINGERS:
-            continue
-        cartesian = np.linalg.norm(
-            points[end, 1:] - points[start, 1:], axis=1
-        )
-        raw.append(
-            {
-                "start": start,
-                "end": end,
-                "forward_finger_count": int(np.count_nonzero(forward)),
-                "forward_finger_required": REQUIRED_FORWARD_FINGERS,
-                "forward_mask": forward.tolist(),
-                "route_delta_m": route_delta,
-                "required_tip_progress_m": required,
-                "tip_progress_delta_m": tip_delta.tolist(),
-                "tip_cartesian_delta_m": cartesian.tolist(),
-                "target_distance_start_m": float(target[start]),
-                "target_distance_end_m": float(target[end]),
-                "axial_distance_start_m": float(axial[start]),
-                "axial_distance_end_m": float(axial[end]),
-            }
-        )
-    if not raw:
-        return []
-
-    groups: list[list[dict[str, Any]]] = [[raw[0]]]
-    for item in raw[1:]:
-        if int(item["start"]) <= int(groups[-1][-1]["end"]) + 1:
-            groups[-1].append(item)
-        else:
-            groups.append([item])
-
-    summaries: list[dict[str, Any]] = []
-    for group in groups:
-        worst = min(
-            group,
-            key=lambda item: (
-                int(item["forward_finger_count"]),
-                min(item["tip_progress_delta_m"]),
-            ),
-        )
-        summaries.append(
-            {
-                "frame_start": int(group[0]["start"]),
-                "frame_end": int(group[-1]["end"]),
-                "overlapping_window_count": len(group),
-                "worst_window": worst,
-            }
-        )
-    return summaries
 
 
 def audit_nominal_three_of_four_runs(
