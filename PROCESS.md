@@ -1042,3 +1042,31 @@ single-finger rephase。Acceptance planner limit `40 deg` 的风险不变：当�
 需姿态优化。`float64` 全局重构另行回归，不夹带进本次最小修复。
 
 **正在执行：提交/push 后运行 Diagnostic seed 42。** 完整数值 PASS 前不录像。
+
+### `86d9654` GPU Diagnostic seed 42 结果（2026-08-10）
+
+已用提交 `86d9654` 和固定 Level-2 runner 完成新的 GPU headless Diagnostic。
+日志与失败前缀分别为：
+
+- `full_hand_mcc/outputs/debug/20_fr3_planning/baseline2_capsule_level2_diagnostic_seed42_20260810_025944_122.log`
+- `full_hand_mcc/outputs/debug/20_fr3_planning/baseline2_capsule_level2_diagnostic_seed42_20260810_025944_122_failure_prefix.npz`
+
+此前 `380.103896 mm` 的零运动瓶颈已经越过；新的 tip-only `12D` local bridge
+在 GPU 中真实触发并提交，包括 `116.3 mm` 的 moving-recovery，以及
+`345.5`、`394.9`、`413.3`、`414.9`、`421.247 mm` 的 moving-feasibility
+bridge。最后一次在 `421.247 mm` 使三个 active fingertips 分别前进约
+`0.154/0.156/0.156 mm`，`max|dq|=0.004715 rad`，说明该修复不是只对离线
+CPU failure-prefix 有效。
+
+本轮最终在 `421.714 mm` 因 `contact_policy` 失败，adaptive insertions 已用满
+`96/96`。final candidate 的 `max_pad_angle=50.16 deg` 超过 Diagnostic
+`50 deg`；同时 FR3 净距=`122.007 mm`、hand 净距=`+15.195 mm`、
+self collision=`0`，所以不能把失败归因于机械臂/物体碰撞、手部穿透或自碰撞。
+没有成功 plan，因而没有进入 dynamics、没有运行真实 plan auditor，也没有视频。
+
+日志还存在多段约 `2.5--7.5 mm` 的普通、未标记 fingertip 停滞；它们没有被
+static/moving bridge 标签覆盖。下一步必须增加 plan-level 连续 `20-frame`
+stagnation gate，不能让长停滞靠最终总行程掩盖。`H=5` 继续推迟，因为新的 local
+bridge 已在 GPU 真实工作。Acceptance 的 planner limit 仍为 `40 deg`；应使用
+orientation-aware 的全 `23 DoF` 姿态规划降低 pad angle，而不是放宽 Diagnostic
+或 Acceptance 阈值。当前仍为 Level 2 `NOT PASS`，在完整数值通过前不录像。

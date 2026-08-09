@@ -1496,3 +1496,45 @@ Diagnostic 全程完成也不等于 Level 2 PASS，之后仍需姿态优化。`f
 全局重构作为独立回归项，不夹带进这次最小修复。
 
 **正在执行：提交/push 后运行 Diagnostic seed 42。** 完整数值 PASS 前不录像。
+
+### `86d9654` GPU Diagnostic seed 42：local bridge 已验证，新失败在 421.714 mm（2026-08-10）
+
+已实际运行固定入口 `scripts/run_baseline2_capsule_level2.ps1 -Mode Diagnostic
+-Seed 42`，headless 输出为：
+
+- log：`outputs/debug/20_fr3_planning/baseline2_capsule_level2_diagnostic_seed42_20260810_025944_122.log`；
+- failure-prefix：`outputs/debug/20_fr3_planning/baseline2_capsule_level2_diagnostic_seed42_20260810_025944_122_failure_prefix.npz`；
+- plan：未生成；dynamics、CPU plan audit 和 video：均未运行/未生成。
+
+本次 GPU 结果已越过旧的 `380.103896 mm` failure-prefix。提交 `86d9654` 的
+tip-only `12D` local-preserve solve 在真实在线规划中多次被采用：
+
+- `116.3 mm` 的 `[MOVING-RECOVERY-BRIDGE]`：tip motion 约
+  `[0.038,0.138,0.146,0.143] mm`，`max|dq|=0.001737 rad`；
+- `345.5`、`394.9`、`413.3`、`414.9 mm` 均有已提交的
+  `[MOVING-FEASIBILITY-BRIDGE]`；
+- `421.247 mm` 的最后一次 moving-feasibility bridge 使三个 active tips 前进
+  `[0.154,0.156,0.156] mm`，第四指约 `0.001 mm`，
+  `max|dq|=0.004715 rad`，随后规划继续到下一帧。
+
+因此 12D 修复已通过 GPU 路径级反例，不再只是 CPU 局部样本；`H=5` 不应在
+此时抢先加入。新终点为 `421.714 mm`、keyframe `448/496`，失败原因仍是
+`contact_policy`，且 adaptive-refine 已用满 `96/96`。最终错误报告中的候选为：
+
+- `max_pad_angle=50.16 deg > 50.00 deg` Diagnostic planner limit；
+- FR3 clearance=`122.007 mm > 2 mm`；
+- hand clearance=`+15.195 mm`（无穿透）；
+- self-collision pairs=`0`。
+
+所以本次不能生成成功 NPZ plan，也没有进入 4700-step dynamics；更没有调试或
+交付视频。此结果只说明 380.1 mm 局部 moving bridge 已修复，不构成
+`PASS-DIAGNOSTIC`，更不构成 Level 2 PASS。
+
+另一个必须补上的验收缺口是：日志中可见多段约 `2.5--7.5 mm` 的普通 fingertip
+停滞，但这些帧没有 static/moving bridge 标签，现有 recovery budget 因而不能
+完整覆盖它们。下一步加入 plan-level 连续 `20-frame` stagnation hard gate，
+按真实 fingertip arc/joint motion 计数，而不是只看 recovery 标签或最终总行程。
+与此同时，Acceptance planner limit 仍是 `40 deg`；当前接近 `50 deg` 的姿态
+必须由 orientation-aware 全 `23 DoF`（FR3/palm + four fingers）姿态规划解决，
+不得提高 Diagnostic `50 deg` 或 Acceptance `40 deg` 阈值。完整数值 PASS 前
+仍不录像。
