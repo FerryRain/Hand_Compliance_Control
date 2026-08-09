@@ -1342,6 +1342,10 @@ self penetration、tip penetration 和 incidental LEAP contact 全为 0，
   `outputs/reference/accepted_xarm6/` 及其中旧视频；
 - GitHub 已核对只剩 #2（closed）、#4/#7/#8（open）；#1/#3/#6 已删除，
   #4/#7/#8 正文已更新。
+- 推送前发现 `origin/main` 并行新增 `7aa27b8`、`c26e01f`；其内容经审查仍是
+  已废弃的 Linux/xArm/FSR、旧 `mcc_finger_compliance_control/`、
+  `leaphand_mcc_finger` 和 `copy.py` 路径。历史已由 merge `ce737d8` 纳入，
+  当前文件树不恢复这些与 Baseline-2 direct-force 边界冲突的入口。
 
 清理后全量 unittest `17/17`，demo/search/optimize CLI 均 exit 0，demo help
 中没有 `--variant`。5 mm/750-step CUDA headless exit 0、无视频：contact

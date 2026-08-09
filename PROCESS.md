@@ -903,6 +903,10 @@ Baseline-2 传感器语义、控制律和验收规则被这样定义，但不能
   `CLAUDE_old.md` 和 `HandContactRe-location.md`；
 - GitHub 已核对：#1、#3、#6 已删除；只剩 #2（closed）和 #4/#7/#8
   （open），且 #4/#7/#8 正文已改为当前 FR3/direct-force/短暂失联语义。
+- 推送前发现 `origin/main` 并行新增 `7aa27b8`、`c26e01f`；逐文件审查确认它们
+  只重新加入已废弃的 Linux/xArm/FSR、`mcc_finger_compliance_control/`、
+  旧 `leaphand_mcc_finger` 与 `copy.py` 路径。提交历史已由 merge `ce737d8`
+  纳入，但最终文件树按用户已确认的清理边界保留，不恢复这些过期入口。
 
 明确保留：
 
