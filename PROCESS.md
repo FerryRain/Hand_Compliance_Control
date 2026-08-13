@@ -1650,3 +1650,16 @@ PowerShell AST、`git diff --check` 全部exit0。既知 wandb TemporaryDirector
 **正在执行/下一步：**按用户要求直接提交并push `main`（不建branch/PR），发布implementation checkpoint，
 再用完全相同 Acceptance seed42 0--50 mm headless 参数GPU终审。新的partial证据必须同时包含两条
 protected sources；完整plan/collision/terminal/low-motion/dynamics未过前仍不录像。
+
+### `4b498b6` double-protected seed42 GPU 终审启动（2026-08-13 17:15 CST）
+
+已直接推送`main`并启动 stem=
+`baseline2_capsule_doubleprotected_0to50_acceptance_seed42_20260813_171547_405`；`.venv` shim PID=`47048`，
+真实 DMtactile Python PID=`36052`。配置仍为 Acceptance seed42、100x170 mm capsule、0--50 mm、
+40 base keyframes、800 motion frames、`cuda:0`、headless；只替换plan/failure输出路径，不生成视频。
+初始 physical-tip=`[-0.451,-0.186,-0.260,-0.058] mm`，protected-self=
+`[0.537514,0.721975,0.598799] mm`，均通过。issue #7启动记录：
+[comment 5278392450](https://github.com/FerryRain/Hand_Compliance_Control/issues/7#issuecomment-5278392450)。
+
+**正在执行：**低频只读监控 accepted path；首次H5核对3条rollout source是否为best overall + 两条
+protected basins，并读取各自reached/prune/first gate。完整数值物理验收前不录像。

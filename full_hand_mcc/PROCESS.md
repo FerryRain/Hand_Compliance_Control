@@ -2949,3 +2949,19 @@ PowerShell AST、diff-check全部exit0。没有plan/dynamics/audit/video；Level
 **正在执行/下一步：**commit/push main -> issue #7 implementation checkpoint -> 完全相同seed42 GPU。
 若H仍失败，必须比较两个`rollout_partial_protected_self`的prune node/first gate与best overall；不得降低
 50 um interior、motion3、hand/tip/self/pad/joint/terminal/low-motion门。
+
+#### `4b498b6` double-protected seed42 GPU 终审启动（2026-08-13 17:15 CST）
+
+- remote/main=`4b498b6`；stem=`baseline2_capsule_doubleprotected_0to50_acceptance_seed42_20260813_171547_405`；
+- `.venv` shim PID=`47048`，真实DMtactile Python PID=`36052`；
+- Acceptance、seed42、capsule=`0.10/0.17 m`、route=`0.05 m`、base keyframes=`40`、motion frames=`800`、
+  device=`cuda:0`、viewer=`headless`；
+- 完全复用上一轮arguments，只替换`--plan-output`与`--mpc-failure-prefix-output`；
+- initial physical-tip=`[-0.451,-0.186,-0.260,-0.058] mm`；initial protected-self=
+  `[0.537514,0.721975,0.598799] mm`，active self=0；
+- launch/stdout/stderr已分类保存，不生成视频；issue checkpoint=
+  [5278392450](https://github.com/FerryRain/Hand_Compliance_Control/issues/7#issuecomment-5278392450)。
+
+**正在执行：**低频只读监控。早段先检查ordinary路径无回归；首次H5必须确认candidate source集合同时
+保留两条protected basins，以及4x feasibility repair是否使node0同时满足motion3与50 um interior。
+plan/full collision/terminal/rolling-low-motion/dynamics未全部通过前Level 2仍 **NOT PASS**。
