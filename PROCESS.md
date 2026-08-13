@@ -1549,3 +1549,16 @@ certified cache，再用普通 nullspace seeds 填余量；总数仍为6，没�
 Acceptance seed42 0--50 mm headless。首先核对6个实际 seed kinds 是否含 protected-self，以及
 publisher `45.125 mm` 的 ring pair 是否清零；完整 plan/collision/terminal/low-motion/dynamics 通过前
 仍不生成视频。
+
+### `8b7dada` protected-self GPU 终审正在运行（2026-08-13 15:28 CST）
+
+已推送 `8b7dada` 到 `main`，并启动 stem=
+`baseline2_capsule_selfseed_0to50_acceptance_seed42_20260813_152728_314`。配置仍为 Acceptance
+seed42、100x170 mm capsule、0--50 mm、40个基础关键帧、800个运动帧、`cuda:0`、headless，未生成视频。
+初始 physical-tip=`[-0.451,-0.253,-0.197,-0.058] mm`，protected-self=
+`[0.537514,0.721975,0.598799] mm`，均通过冻结门；首帧1.3 mm已4/4 accepted，segment tip=
+`-0.515 mm`、pad=`29.03 deg`。issue #7 已同步：
+[comment 5277361030](https://github.com/FerryRain/Hand_Compliance_Control/issues/7#issuecomment-5277361030)。
+
+**正在执行：**低频只读监控到首次 H5；先核对实际 seed kinds 包含 protected-self，再验 publisher
+45.125 mm 的 exact self collision。没有 plan/full audit/dynamics 前仍为 **NOT PASS**。

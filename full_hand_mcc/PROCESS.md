@@ -2748,3 +2748,25 @@ plan、dynamics、standalone/full audit 或视频；Level 2 继续 **NOT PASS**�
 Acceptance seed42 0--50 mm headless 参数终审。新的首个 H5 必须实际显示 protected-self seed kind，
 并以 publisher `45.125 mm` 的 exact collision gate 判定是否越过；即使规划越过，也必须继续完成
 plan/full collision/terminal/rolling-low-motion/dynamics 数值验收，之后才允许生成和人工审核视频。
+
+#### `8b7dada` protected-self seed42 0--50 mm GPU 终审启动（2026-08-13 15:28 CST）
+
+- main/remote commit=`8b7dada51a1f7a1ec38a391eef7f866ae234b8ab`；
+- stem=`baseline2_capsule_selfseed_0to50_acceptance_seed42_20260813_152728_314`；
+- `.venv` launcher PID=`41120`，真实 DMtactile Python PID=`45060`；
+- profile=Acceptance、seed=42、capsule=`0.10/0.17 m`、route=`0.05 m`、base keyframes=40、
+  motion frames=800、device=`cuda:0`、viewer=headless；
+- launch JSON、stdout/stderr、expected plan/failure-prefix/exitcode 都分类保存在
+  `full_hand_mcc/outputs/debug/20_fr3_planning/<stem>*`；
+- 初始 physical-tip clearance=`[-0.451,-0.253,-0.197,-0.058] mm`，均高于 `-1 mm`；
+- 初始 protected MCP--DIP clearance=`[0.537514,0.721975,0.598799] mm`，active self=0；
+- keyframe1/40 @1.3 mm accepted：4/4、segment tip minimum=`-0.515 mm`、pad=`29.03 deg`、
+  raw surface IK，未见 Traceback/RuntimeError。
+
+GitHub issue #7 已先发布 `1e-6/5e-7` 更正与 `102/102` 检查点，再发布本次运行启动：
+[implementation correction](https://github.com/FerryRain/Hand_Compliance_Control/issues/7#issuecomment-5277322132)、
+[GPU start](https://github.com/FerryRain/Hand_Compliance_Control/issues/7#issuecomment-5277361030)。
+
+**正在执行：**只读监控 accepted path；首次 H5 到来时检查6个 seed kinds 是否真实保留
+`protected_self*`，并以 publisher `45.125 mm` 的 ring MCP--DIP hard gate作为首要回归。plan、full
+collision、terminal、rolling-low-motion、dynamics 未全部通过前不录像，Level 2 仍为 **NOT PASS**。
