@@ -144,6 +144,49 @@ def self_separation_ascent_seeds(
     return tuple(seeds)
 
 
+def prioritized_suffix_seed_indices(
+    seed_kinds: tuple[str, ...] | list[str],
+    *,
+    maximum_seeds: int,
+) -> tuple[int, ...]:
+    """Retain safety-critical suffix basins before generic nullspace seeds.
+
+    The suffix solver has a deliberately small multistart budget.  Preserve the
+    two baseline seeds, up to two measured protected-self ascent seeds, and an
+    exact certified cache before filling the remaining slots in insertion
+    order.  This prevents a long list of joint-nullspace seeds from silently
+    evicting the only seeds aimed at an observed collision boundary.
+    """
+
+    if not isinstance(maximum_seeds, int) or maximum_seeds <= 0:
+        raise ValueError("maximum_seeds must be a positive integer")
+    kinds = tuple(str(kind) for kind in seed_kinds)
+    selected: list[int] = []
+
+    def append_matching(predicate, *, limit: int | None = None) -> None:
+        appended = 0
+        for index, kind in enumerate(kinds):
+            if index in selected or not predicate(kind):
+                continue
+            selected.append(index)
+            appended += 1
+            if len(selected) >= maximum_seeds:
+                return
+            if limit is not None and appended >= limit:
+                return
+
+    append_matching(lambda kind: kind == "previous", limit=1)
+    if len(selected) < maximum_seeds:
+        append_matching(lambda kind: kind == "extrapolated", limit=1)
+    if len(selected) < maximum_seeds:
+        append_matching(lambda kind: kind.startswith("protected_self"), limit=2)
+    if len(selected) < maximum_seeds:
+        append_matching(lambda kind: kind == "certified_cache", limit=1)
+    if len(selected) < maximum_seeds:
+        append_matching(lambda _kind: True)
+    return tuple(selected[:maximum_seeds])
+
+
 def deduplicated_bridge_multistart_seeds(
     previous_q_rad: np.ndarray,
     separation_seeds_rad: tuple[np.ndarray, ...],

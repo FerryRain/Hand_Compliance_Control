@@ -1495,3 +1495,57 @@ demo CLI、Python AST、PowerShell AST 与 `git diff --check` 通过。
 **正在执行/下一步：**提交并 push main、同步 issue #7，再重跑完全相同 Acceptance seed42 0--50mm
 headless。若仍失败，先使用新 partial-rollout evidence 定位真实 prune node；不得先加入 rollback/SLSQP
 或放宽任何门。完整 plan/collision/terminal/low-motion/dynamics 通过前不录像。
+
+### `f744b43` prefix-preservation GPU 终审正在运行（2026-08-13 14:27 CST）
+
+已推送 `f744b43` 到 `main` 并启动 stem=
+`baseline2_capsule_prefixpreserve_0to50_acceptance_seed42_20260813_142705_851`；真实 GPU Python PID=
+`39756`，Acceptance seed42、0--50 mm、40 base keyframes、800帧、headless，不生成视频。初始
+physical-tip=`[-0.451,-0.253,-0.260,-0.058] mm`，protected-self minimum=`0.537514 mm`，均通过冻结门。
+
+**正在执行：**只读监控 accepted path 与首次 H5；优先确认 `source_preserved` 是否越过44.53125 mm，
+若失败则读取新增 partial reached/prune fields。没有plan/full audit/dynamics前仍为 **NOT PASS**。
+
+### `f744b43` GPU 终审失败：protected-self seed 梯度与保留顺序缺口（2026-08-13）
+
+同 stem 于 `14:59:50` 退出，耗时约 `1965 s`、exit=`1`。最后 accepted 仍是普通 rephase 的
+`45.0 mm`；首次 H5 在 `45.15625 mm` 触发，节点为
+`[45.15625,45.6015625,46.046875,46.4921875,46.9375] mm`。9 次尝试均未通过；三条新增
+partial-rollout 证据全部 `reached_node=-1 / prune_node=0 / reason=prefix_gates`，publisher 首败精确为
+`45.125 mm` 的 `collision` 门，low-motion 本身为 true。fail-close 正确阻止了任何未认证 q 的提交。
+
+产物仅有 log/stderr/failure-prefix：SHA256 分别为
+`611542323E51F8B3CEDB14163530770F159221AF1964C7D5FD35E55613C1981B`、
+`C6E27F417E3D75413F1F11AA82B5D2B30DDF2DEDF5438A5EC4125AB40922A6DA`、
+`ED2A5C501089545B558DA3EF838E40234BD8EFD0951D197A6E64154029E54301`。没有 plan、dynamics、audit
+或视频，Level 2 仍为 **NOT PASS**。
+
+真实 MuJoCo 回放确认 publisher 的 active pair 是
+`mcp_joint_3_geom::dip_3_geom`。根因是两项确定性实现缺口：self-separation central FD 使用
+`1e-4 rad`，该点的负向 MuJoCo 距离样本异常返回0，把真实约 `-5.568 mm/rad` 的梯度算成
+`+253.631 mm/rad`，所以所谓 ascent seeds 反而把 pair clearance 从 `0.051283 mm` 降到
+`0.040154/0.023483 mm`；同时 H 的六 seed 截断保留前置 nullspace seeds，把排在最后的
+protected-self seeds 全部丢弃。
+
+**正在执行/下一步：**保持全部冻结硬门，改用 joint-interior clipping 后全23维均已验证稳定的
+`1e-6 rad` self-clearance FD，并让
+protected-self seeds 在 H seed cap 中得到确定性保留；新增方向性反例与 seed-retention 测试后跑全量 CPU，
+再提交/push 和同参数 GPU。不得以增加穿透、自碰容差或恢复 myopic commit 替代修复；物理通过前不录像。
+
+### protected-self seed 稳定性修复 CPU 终审（2026-08-13）
+
+最小修复现已完成：生产 central FD 使用 `1e-6 rad`，并以 `5e-7 rad` 作为备用；每条 seed 都会用
+真实 MuJoCo pair distance 重新测量，只有严格增距的候选才能进入 H5。seed42 的 ring MCP--DIP 反例中，
+两条保留 seed 将 clearance 从 `0.051283 mm` 提高到约 `0.062455/0.079238 mm`。测试同时固定了
+`1e-4 rad` 的符号翻转以及 `1e-5 rad` 在 clipped 点产生的无关 joint4 全维范数污染，避免再次把
+数值伪梯度误当作分离方向。
+
+H5 seed cap 改为类别优先：固定保留 previous、extrapolated、最多两条 measured protected-self、
+certified cache，再用普通 nullspace seeds 填余量；总数仍为6，没有扩大求解预算或放宽任何门。
+定向 CPU=`72/72`、全量 CPU=`102/102`；demo CLI、4个 Python AST、Level-2 PowerShell runner AST 与
+`git diff --check` 全部通过。仅有既知 wandb 临时目录退出清理噪声，测试进程 exit=`0`。
+
+**正在执行/下一步：**提交并 push main，修正 issue #7 中先前 `1e-5` 的临时判断，然后重跑完全相同
+Acceptance seed42 0--50 mm headless。首先核对6个实际 seed kinds 是否含 protected-self，以及
+publisher `45.125 mm` 的 ring pair 是否清零；完整 plan/collision/terminal/low-motion/dynamics 通过前
+仍不生成视频。

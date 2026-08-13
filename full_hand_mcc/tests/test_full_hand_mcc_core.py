@@ -118,6 +118,49 @@ class PlannerDiagnosticsTest(unittest.TestCase):
         self.assertGreater(float(np.dot(seeds[0], gradient)), 0.0)
         self.assertGreater(float(np.dot(seeds[1], gradient)), 0.0)
 
+    def test_suffix_seed_cap_prioritizes_protected_self_and_cache(self) -> None:
+        kinds = (
+            "previous",
+            "extrapolated",
+            "nullspace_combined",
+            "nullspace_combined",
+            "nullspace_joint_0",
+            "nullspace_joint_1",
+            "protected_self_small",
+            "protected_self_large",
+            "certified_cache",
+        )
+        indices = DIAGNOSTICS.prioritized_suffix_seed_indices(
+            kinds,
+            maximum_seeds=6,
+        )
+        self.assertEqual(indices, (0, 1, 6, 7, 8, 2))
+        retained = tuple(kinds[index] for index in indices)
+        self.assertIn("previous", retained)
+        self.assertIn("extrapolated", retained)
+        self.assertEqual(
+            sum(kind.startswith("protected_self") for kind in retained),
+            2,
+        )
+        self.assertIn("certified_cache", retained)
+
+    def test_suffix_seed_cap_without_cache_still_keeps_two_protected(self) -> None:
+        kinds = (
+            "previous",
+            "extrapolated",
+            "nullspace_combined",
+            "nullspace_combined",
+            "nullspace_joint_0",
+            "nullspace_joint_1",
+            "protected_self_small",
+            "protected_self_large",
+        )
+        indices = DIAGNOSTICS.prioritized_suffix_seed_indices(
+            kinds,
+            maximum_seeds=6,
+        )
+        self.assertEqual(indices, (0, 1, 6, 7, 2, 3))
+
     def test_bridge_multistart_keeps_previous_and_all_unique_seeds(
         self,
     ) -> None:
@@ -1698,6 +1741,8 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             "protected_self_separation_seeds",
             "central_difference_clearance_gradient",
             "self_separation_ascent_seeds",
+            "for fd_step_rad in (1.0e-6, 5.0e-7)",
+            "if improving_seeds:",
             '("surface", surface_ik_seed)',
             '("extrapolated", extrapolated_seed)',
             '("previous", previous_q)',
@@ -1943,7 +1988,7 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             "damped_task_nullspace_directions(",
             "suffix_seed_task_feature",
             '"nullspace_combined"',
-            "if len(suffix_seeds) > 6",
+            "prioritized_suffix_seed_indices(",
             "suffix_horizon_cache",
             "args.max_plan_joint_step_rad",
             "args.max_contact_penetration_mm",

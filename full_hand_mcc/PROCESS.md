@@ -2622,3 +2622,129 @@ candidate 0 node0只失败motion；candidate 4 node0只差很小的interior marg
 **正在执行/下一步：**commit/push main -> issue #7 checkpoint -> 完全相同 Acceptance seed42、0--50mm、
 800帧headless终审。若H仍失败，必须先读新增的partial seed/reached/prune/publisher字段；只有新证据证明
 本地两seed修复不足才考虑更长beam、joint/phase horizon或SLSQP。任何冻结硬门都不放宽，物理通过前不录像。
+
+#### `f744b43` prefix-preservation GPU 终审正在运行（2026-08-13 14:27 CST）
+
+- commit/remote main=`f744b43d5824376e2f4440bfa4cbd1ebd6d3b4f8`；
+- stem=`baseline2_capsule_prefixpreserve_0to50_acceptance_seed42_20260813_142705_851`；
+- stdout/stderr/expected plan/failure-prefix 均位于
+  `full_hand_mcc/outputs/debug/20_fr3_planning/<stem>*`；
+- 真实 DMtactile GPU Python PID=`39756`；设备=`cuda:0` / RTX 4090D；
+- profile=Acceptance、seed=42、travel=0.05m、base keyframes=40、motion frames=800、headless；无视频；
+- initial physical-tip clearance=`[-0.451,-0.253,-0.260,-0.058] mm`；
+- initial protected-self=`[0.537514,0.721975,0.598799] mm`，minimum=`0.537514 mm`。
+
+启动命令沿用已保存的 `baseline2_capsule_bridgetip_0to50...` 完整命令，只替换本轮plan/failure路径并
+显式冻结 bridge tip scale=0.5、H5、joint interior=0.5mrad、task interior=0.05mm、H max_nfev=160；没有
+改动其它参数或任何硬门。
+
+**正在执行：**低频只读监控，先验收早段未回归，再在44.53125 mm附近确认block candidate安全prefix是否
+被`source_preserved`保留；若H未全过，必须由三条`[SUFFIX-ROLLOUT-PRUNED]`及NPZ reached/prune字段给出
+真实剪枝点。没有plan/full collision/terminal/low-motion/dynamics之前Level 2仍为 **NOT PASS**。
+
+#### `f744b43` prefix-preservation GPU 终审失败（2026-08-13 14:59:50 CST）
+
+##### 产物与终止位置
+
+- stem=`baseline2_capsule_prefixpreserve_0to50_acceptance_seed42_20260813_142705_851`；
+- 开始=`14:27:05`、结束=`14:59:50`、墙钟约=`1965 s`、exit=`1`；
+- log SHA256=`611542323E51F8B3CEDB14163530770F159221AF1964C7D5FD35E55613C1981B`；
+- stderr SHA256=`C6E27F417E3D75413F1F11AA82B5D2B30DDF2DEDF5438A5EC4125AB40922A6DA`；
+- failure-prefix SHA256=`ED2A5C501089545B558DA3EF838E40234BD8EFD0951D197A6E64154029E54301`；
+- 最后 accepted=`45.0 mm`，失败目标=`45.15625 mm`，keyframe=`40/46`，auto-refine=`6/96`；
+- 仅生成 `.log`、`.stderr.log`、`_failure_prefix.npz`；无 plan、dynamics、standalone/full audit 或视频。
+
+早段没有发生新的安全门回归：45 mm accepted 状态为4/4、physical-tip segment minimum=`-0.802 mm`、
+pad=`35.69 deg`。首次 H5 的节点精确为
+`[45.15625,45.6015625,46.046875,46.4921875,46.9375] mm`，最后节点仍正确包含 terminal sentinel。
+
+##### 新 partial-rollout 证据与 fail-close
+
+failure-prefix schema-v2 共136键，记录9个候选（6 block + 3 partial）：
+
+- `rollout_partial_extrapolated`、`rollout_partial_nullspace_joint_1`、
+  `rollout_partial_nullspace_combined` 均为 `reached_node=-1`、`prune_node=0`、
+  `reason=prefix_gates`、`rollout_attempt_count=3`；
+- 三者 publisher first failure 均为 index21 / `45.125 mm`，唯一 false gate 是 `collision`；
+- 三者 `low_motion_ok=true`，所以这不是 rolling20-frame 停滞或 terminal off-by-one；
+- 最终 `[SUFFIX-HORIZON] attempts=9 passed=False`，selected index=6、task slack=`-0.966218 mm`、
+  joint slack=`+2.273107 mrad`、failed gates=`10`；随后
+  `[SUFFIX-HORIZON-FAIL-CLOSED] myopic_bridge_commit_allowed=False`，没有状态突变或假 plan。
+
+普通 final-best 与 H 候选必须分开解释：普通 final-best 的首个 collision 原因是
+`palm_lower_collision=-1.625032 mm < -1 mm`；H 中优先 rollout 候选的 node0 则是 active self-contact。
+H candidate0/`previous` 没有 active self pair，但 physical-tip hard margin=`-0.178284 mm` 且 motion仅2指；
+其余主要候选 node0 都出现1个 active self pair。所有候选的 FR3 和40度pad仍有正余量，不能通过放宽这些门处理。
+
+##### 精确 self-pair 与数值梯度根因
+
+用同一个 `FivePointReachabilitySolver` 对 anchor=`45.0 mm` 与所有 node0 H q 做真实 MuJoCo 回放：
+
+- anchor 三组 protected clearance=`[0.283238,0.600986,0.051283] mm`，active self=0；
+- rollout/extrapolated 从 anchor 到 node0 的 active pair 唯一为
+  `mcp_joint_3_geom::dip_3_geom`，连续 crossing 约在插值 fraction=`0.495`；
+- 真实 publisher smoothstep sample `45.125 mm`（raw u=0.8、blend=0.896）该 pair=`-0.041323 mm`；
+- 其它 partial sources 在同一 publisher sample 的该 pair 分别约为 `-0.045365` 与 `-0.047383 mm`；
+  因此 collision gate 拒绝正确，不能放宽 planner self=0。
+
+`protected_self_separation_seeds()` 的 central FD 使用固定 `1e-4 rad`。在 anchor 的 overall joint16：
+
+- 未施加 H joint-interior clipping 时，joint16 的 `h<=1e-5 rad` 局部梯度约为
+  `-5.568126 mm/rad`；但生产态 clipping 后，`h=1e-5` 的全23维梯度又被理论上不应影响该
+  self-pair 的 joint4 伪梯度 `-2564.146 mm/rad` 污染，不能作为生产尺度；
+- `h=1e-4 rad` 时 joint16 负向 `mj_geomDistance` 样本异常变成0，于是计算梯度翻转为
+  `+253.630632 mm/rad`；
+- 当前0.4x/1.0x seeds 因此朝错误方向移动，将 clearance 从 `0.051283 mm` 降为
+  `0.040154/0.023483 mm`。日志中的 `[SELF-SEPARATION-SEED] source=previous` 数值与回放逐值一致。
+
+H seed 还有独立的保留顺序缺口：protected-self seeds 虽在 nullspace seeds 之后生成，但
+`if len(suffix_seeds)>6` 只保留前5再补第6/认证cache；本轮最终 seed kinds 只有
+`previous`、`extrapolated`、两个`nullspace_combined`、`nullspace_joint_0/1`，没有任何
+`protected_self`。所以当前真实 H 从未获得一个方向正确且被保留的 self-separation basin。
+
+##### 正在执行的最小修复
+
+1. 将 self-clearance central FD 的生产首选/备用采样步长改为在 clipped 真实点全23维验证稳定的
+   `1e-6/5e-7 rad`，并实测过滤未增距seed；当前两条有效seed将pair从`0.051283 mm`提高到
+   `0.062455/0.079238 mm`；hard self gate不变；
+2. H seed选择改为确定性类别保留，使 corrected protected-self seeds 不会被 nullspace 顺序截掉；总seed数仍限制为6；
+3. 新增真实数值反例：稳定步长所得seed必须至少提高 `0.001 mm`，同时证明 `1e-4` 符号翻转和
+   `1e-5` 全维范数污染；
+4. 新增 seed-cap 回归：有 protected-self seed 时至少保留一条，同时仍保留 previous/extrapolated 与关键nullspace；
+5. 全量 CPU、CLI、AST、PowerShell AST、diff-check 通过后才 commit/push 并同参数重跑 GPU。
+
+任何 physical-tip、FR3、hand、self、pad、joint/step、task、terminal 或 low-motion 硬门都不放宽；完整
+plan/collision/terminal/low-motion/dynamics PASS 前继续不录像，Level 2 仍为 **NOT PASS**。
+
+#### protected-self 数值梯度与 H seed-cap 最小修复终审（2026-08-13，GPU 待跑）
+
+实现已收敛到上一节证据直接要求的两项改动，没有扩大为 rollback、SLSQP 或硬门修改：
+
+1. `protected_self_separation_seeds()` 在 joint-interior clipping 后依次使用 `1e-6/5e-7 rad` central FD；
+2. 每个 FD 方向分别尝试原 separation step 的 `1.0/0.5/0.25` 倍，并用真实
+   `geometry_pair_distances()` 复核目标 pair，未严格增距的 seed 立即丢弃；
+3. H 的6个 multistart 名额按类别确定性保留：`previous`、`extrapolated`、最多两条
+   `protected_self*`、`certified_cache`，余下才按原插入顺序填普通 nullspace seeds；
+4. H fail-close、publisher collision、自碰零容忍、physical-tip/FR3/hand/pad/joint/task/terminal/
+   low-motion hard gates 均保持原值。
+
+真实 seed42 45 mm fixture 在相同 `FivePointReachabilitySolver` 上验证：
+
+- source ring MCP--DIP clearance=`0.051283 mm`；
+- `h=1e-4 rad` 的 joint16 导数符号错误为正；
+- `h=1e-5 rad` 在 clipped 23-DoF 点受理论无关 joint4 约 `-2564.146 mm/rad` 伪梯度污染，
+  全维范数超过稳定梯度10倍，故不作为生产尺度；
+- `h=1e-6 rad` 恢复 joint16 约 `-5.568126 mm/rad` 的正确方向；两条输出 seed 的实测 clearance
+  约为 `0.062455/0.079238 mm`，均比 source 至少提高 `0.001 mm`；
+- seed-cap 单测分别覆盖有/无 certified cache，证明两条 protected-self 不会再被前置 nullspace seeds
+  静默挤出。
+
+验证结果：定向 `72/72`、全量 `102/102`；demo `--help` exit=`0`；4个修改 Python 文件 AST、
+`run_baseline2_capsule_level2.ps1` PowerShell AST 与 `git diff --check` 全部通过。wandb 临时目录的
+atexit PermissionError 仍是既知环境清理噪声，两个测试命令 exit=`0`。尚未运行新 GPU，也没有
+plan、dynamics、standalone/full audit 或视频；Level 2 继续 **NOT PASS**。
+
+**正在执行/下一步：**commit/push main -> 在 issue #7 更正早先 `1e-5` 的临时判断 -> 用完全相同
+Acceptance seed42 0--50 mm headless 参数终审。新的首个 H5 必须实际显示 protected-self seed kind，
+并以 publisher `45.125 mm` 的 exact collision gate 判定是否越过；即使规划越过，也必须继续完成
+plan/full collision/terminal/rolling-low-motion/dynamics 数值验收，之后才允许生成和人工审核视频。

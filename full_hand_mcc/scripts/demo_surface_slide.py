@@ -69,6 +69,7 @@ from mjlab.tasks.leaphand.full_hand_mcc_planner_diagnostics import (
     moving_bridge_tip_geometry_residual,
     orientation_aware_candidate_rank,
     positive_self_clearance_residual,
+    prioritized_suffix_seed_indices,
     progress_aware_arc_targets,
     save_mpc_failure_prefix,
     save_npz_no_overwrite,
@@ -3928,55 +3929,77 @@ def main() -> None:
                 if minimum_clearance >= planner_protected_self_clearance_m:
                     return ()
                 worst_pair = int(np.argmin(clearances))
-                fd_step_rad = 1.0e-4
-                plus_distance = np.zeros(TOTAL_DOF, dtype=np.float64)
-                minus_distance = np.zeros(TOTAL_DOF, dtype=np.float64)
-                sample_span = np.zeros(TOTAL_DOF, dtype=np.float64)
-                for joint in range(TOTAL_DOF):
-                    plus_q = seed_q.copy()
-                    minus_q = seed_q.copy()
-                    plus_q[joint] = min(
-                        plus_q[joint] + fd_step_rad,
-                        seed_upper[joint],
-                    )
-                    minus_q[joint] = max(
-                        minus_q[joint] - fd_step_rad,
-                        seed_lower[joint],
-                    )
-                    sample_span[joint] = plus_q[joint] - minus_q[joint]
-                    if sample_span[joint] <= 0.0:
-                        sample_span[joint] = 1.0
-                        plus_distance[joint] = clearances[worst_pair]
-                        minus_distance[joint] = clearances[worst_pair]
-                        continue
-                    plus_distance[joint] = (
-                        reachability.geometry_pair_distances(
-                            plus_q,
-                            protected_self_pairs,
-                        )[worst_pair]
-                    )
-                    minus_distance[joint] = (
-                        reachability.geometry_pair_distances(
-                            minus_q,
-                            protected_self_pairs,
-                        )[worst_pair]
-                    )
-                gradient = central_difference_clearance_gradient(
-                    plus_distance,
-                    minus_distance,
-                    sample_span,
-                )
                 maximum_seed_step = min(
                     args.planner_self_separation_seed_step_rad,
                     0.25 * args.max_plan_joint_step_rad,
                 )
-                return self_separation_ascent_seeds(
-                    seed_q,
-                    gradient,
-                    seed_lower,
-                    seed_upper,
-                    maximum_step_rad=maximum_seed_step,
-                )
+                # 1e-4 and 1e-5 rad cross different MuJoCo geom-distance
+                # branches at the seed42 45 mm ring MCP--DIP boundary.  Start
+                # at the empirically stable double-precision scale, fall back
+                # once, and return only seeds whose measured distance
+                # actually increases.  The validation makes this a general
+                # ascent guard rather than relying on one finite-difference
+                # stencil being smooth everywhere.
+                for fd_step_rad in (1.0e-6, 5.0e-7):
+                    plus_distance = np.zeros(TOTAL_DOF, dtype=np.float64)
+                    minus_distance = np.zeros(TOTAL_DOF, dtype=np.float64)
+                    sample_span = np.zeros(TOTAL_DOF, dtype=np.float64)
+                    for joint in range(TOTAL_DOF):
+                        plus_q = seed_q.copy()
+                        minus_q = seed_q.copy()
+                        plus_q[joint] = min(
+                            plus_q[joint] + fd_step_rad,
+                            seed_upper[joint],
+                        )
+                        minus_q[joint] = max(
+                            minus_q[joint] - fd_step_rad,
+                            seed_lower[joint],
+                        )
+                        sample_span[joint] = plus_q[joint] - minus_q[joint]
+                        if sample_span[joint] <= 0.0:
+                            sample_span[joint] = 1.0
+                            plus_distance[joint] = clearances[worst_pair]
+                            minus_distance[joint] = clearances[worst_pair]
+                            continue
+                        plus_distance[joint] = (
+                            reachability.geometry_pair_distances(
+                                plus_q,
+                                protected_self_pairs,
+                            )[worst_pair]
+                        )
+                        minus_distance[joint] = (
+                            reachability.geometry_pair_distances(
+                                minus_q,
+                                protected_self_pairs,
+                            )[worst_pair]
+                        )
+                    gradient = central_difference_clearance_gradient(
+                        plus_distance,
+                        minus_distance,
+                        sample_span,
+                    )
+                    for step_scale in (1.0, 0.5, 0.25):
+                        candidate_seeds = self_separation_ascent_seeds(
+                            seed_q,
+                            gradient,
+                            seed_lower,
+                            seed_upper,
+                            maximum_step_rad=(
+                                step_scale * maximum_seed_step
+                            ),
+                        )
+                        improving_seeds = tuple(
+                            candidate_seed
+                            for candidate_seed in candidate_seeds
+                            if reachability.geometry_pair_distances(
+                                candidate_seed,
+                                protected_self_pairs,
+                            )[worst_pair]
+                            > minimum_clearance + 1.0e-12
+                        )
+                        if improving_seeds:
+                            return improving_seeds
+                return ()
 
             def contact_state(
                 q: np.ndarray,
@@ -8640,25 +8663,18 @@ def main() -> None:
                                             cache_rows.append(cache_knots_q[-1])
                                     cache_seed = np.stack(cache_rows)
                                     append_suffix_seed(cache_seed, "certified_cache")
-                            if len(suffix_seeds) > 6:
-                                retained_seeds = suffix_seeds[:5]
-                                retained_kinds = suffix_seed_kinds[:5]
-                                if cache_seed is not None and not any(
-                                    np.allclose(
-                                        cache_seed,
-                                        retained,
-                                        atol=1.0e-12,
-                                        rtol=0.0,
-                                    )
-                                    for retained in retained_seeds
-                                ):
-                                    retained_seeds.append(cache_seed)
-                                    retained_kinds.append("certified_cache")
-                                else:
-                                    retained_seeds.append(suffix_seeds[5])
-                                    retained_kinds.append(suffix_seed_kinds[5])
-                                suffix_seeds = retained_seeds
-                                suffix_seed_kinds = retained_kinds
+                            retained_seed_indices = prioritized_suffix_seed_indices(
+                                suffix_seed_kinds,
+                                maximum_seeds=6,
+                            )
+                            suffix_seeds = [
+                                suffix_seeds[index]
+                                for index in retained_seed_indices
+                            ]
+                            suffix_seed_kinds = [
+                                suffix_seed_kinds[index]
+                                for index in retained_seed_indices
+                            ]
 
                             def audit_suffix(
                                 q_rows: np.ndarray,
