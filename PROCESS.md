@@ -1595,3 +1595,15 @@ CPU=`71/71`、全量 CPU=`104/104`；demo `--help`、Python AST、PowerShell run
 headless 配置终审。下一次 H 必须确认 protected block candidates 保持真实 motion，并至少一条
 `rollout_*protected_self*` evidence 出现；完整 plan/full collision/terminal/rolling-low-motion/dynamics
 通过前仍不录像，Level 2 仍为 **NOT PASS**。
+
+### `9e27e73` suffix-transport GPU 终审正在运行（2026-08-13 16:17 CST）
+
+已推送 `9e27e73` 到远端 `main` 并启动 stem=
+`baseline2_capsule_suffixtransport_0to50_acceptance_seed42_20260813_161621_794`。配置与上一轮完全相同：
+Acceptance seed42、0--50 mm、40个基础关键帧、800个运动帧、`cuda:0`、headless，不生成视频；仅替换
+plan/failure 输出路径。venv shim PID=`48752`，真实 DMtactile Python PID=`536`。初始 physical-tip=
+`[-0.451,-0.253,-0.197,-0.058] mm`、protected-self=`[0.537514,0.721975,0.598799] mm`，均通过。
+issue #7 已同步：[comment 5277824852](https://github.com/FerryRain/Hand_Compliance_Control/issues/7#issuecomment-5277824852)。
+
+**正在执行：**低频只读监控；首次 H5 优先核对 protected block 的逐节点 motion 与
+`rollout_*protected_self*` evidence。没有完整 plan/full audit/dynamics 前仍为 **NOT PASS**，不录像。

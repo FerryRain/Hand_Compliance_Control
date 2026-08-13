@@ -2850,3 +2850,23 @@ rolling low-motion=`20 intervals/21 samples` 均保持不变。
 0--50 mm headless。首次 H5 需逐项核对：两条 protected block 的 motion 不再因 seed 构造固定为0--2；
 若 full H仍失败，三条 partial 中至少一条必须来自 `protected_self` 并给出真实 reached/prune gate。只有 plan、
 full collision、terminal、rolling-low-motion 与 dynamics 全部通过后才录像；当前 Level 2 仍为 **NOT PASS**。
+
+#### `9e27e73` suffix-transport seed42 GPU 终审启动（2026-08-13 16:17 CST）
+
+- main/remote commit=`9e27e736cf49e0974aace6ef6a12e6fbf497d9f4`；
+- stem=`baseline2_capsule_suffixtransport_0to50_acceptance_seed42_20260813_161621_794`；
+- venv shim PID=`48752`，真实 DMtactile Python PID=`536`；
+- profile=Acceptance、seed=42、capsule=`0.10/0.17 m`、route=`0.05 m`、base keyframes=40、
+  motion frames=800、device=`cuda:0`、viewer=headless；
+- 参数从上一轮 `_launch.json` 原样加载，只替换 `--plan-output` 与
+  `--mpc-failure-prefix-output`，没有调整任何阈值；
+- 初始 physical-tip clearance=`[-0.451,-0.253,-0.197,-0.058] mm`；
+- 初始 protected MCP--DIP clearance=`[0.537514,0.721975,0.598799] mm`，active self=0；
+- 分类目录已保存 launch manifest/stdout/stderr，并预留 plan/failure-prefix；不生成视频；
+- issue #7 启动记录：
+  [comment 5277824852](https://github.com/FerryRain/Hand_Compliance_Control/issues/7#issuecomment-5277824852)。
+
+**正在执行：**低频只读监控 accepted path。首次 H5 到来时必须检查：两条 transported
+`protected_self` block 是否有真实逐节点 motion；若 block 未全过，最多3条 rollout source 中是否包含
+至少一条 protected basin，并读取其 reached/prune/publisher gate。plan、full collision、terminal、
+rolling-low-motion、dynamics 未全部通过前不录像，Level 2 仍为 **NOT PASS**。
