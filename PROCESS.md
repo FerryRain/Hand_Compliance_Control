@@ -1422,3 +1422,25 @@ CPU regression=`97/97`；demo CLI、Python AST、PowerShell AST 与 `git diff --
 **正在执行/下一步：**提交并 push main，同步 issue #7 后，重跑完全相同 Acceptance seed42
 0--50mm headless。若仍失败，新 prefix 必须先按 node/publisher gate arrays 定位真实首败，再决定是否
 加入 phase/逐节点 rollout；不得恢复未认证的 myopic commit，也不得放宽任何硬门。
+
+### `28d7c27` suffix fail-close GPU 终审（2026-08-13，正在修复）
+
+同参数 Acceptance seed42、0--50 mm headless 已真实运行。stem=
+`baseline2_capsule_suffixfailclose_0to50_acceptance_seed42_20260813_123713_298`；log/prefix SHA256 分别为
+`CBE9695A47FF233D3FD2A3502B500B3CE8CD0A48AA4144F7A0C3ED741D8B147F` 与
+`EFAF4FB456392FCBC848BF707E2AE7C9EBB7E8C51E3070157FA3E6B6DC946337`。进程 exit 1；最后 accepted
+仍为普通/rephase 的 `45.0 mm`，首个 H 调用在 `45.15625 mm`、keyframe `40/46`、refine `6/96`。
+
+H5 节点精确为 `[45.15625,45.6015625,46.046875,46.4921875,46.9375] mm`，已包含 terminal
+sentinel。6 个 seeds 全部失败；最佳 previous seed 的 task/joint slack 为 `-1.130124 mm / -0.030079
+mrad`。关键的是 `[SUFFIX-HORIZON-FAIL-CLOSED] myopic_bridge_commit_allowed=False` 已在真实 GPU 路径
+生效：没有再把失败后的单步 bridge 写入 coarse plan，也没有 plan/dynamics/audit/video。
+
+完整 prefix 显示问题不是单一 terminal contact：最佳 seed 的第一个节点已同时失败 progress、
+monotonic、joint-step、motion、collision/interior；只推进 `1/4` 指，non-tip hand hard margin=
+`-0.555 mm`。中间节点出现 active self contact，terminal 节点仅 `3/4`。其余 seeds 多数还触发
+20-frame low-motion。说明当前大块无约束 LS 在硬门间交换代价，不能继续靠调单一权重。
+
+**正在执行/下一步：**保持全部冻结硬门，给 H residual 加 progress/normal/tangent/monotonic/motion
+内带与逐段 collision/self guidance，并增加逐节点 step-bounded hard-audited rollout/beam；完整窗口通过
+才提交 q1。CPU regression 和同 prefix 回归通过后重跑相同 GPU；物理通过前不生成视频。

@@ -2422,3 +2422,76 @@ Level 2 仍为 **NOT PASS**。本实现仍未加入 phase 连续变量、逐节�
 0--50mm、800帧 headless 重跑。首要验收为第一次 H5 的 exact terminal witness、node/publisher gates
 及 fail-close 行；若生成 plan，则先完成 standalone+full collision+terminal+low-motion 数值审计，
 再进入 dynamics，物理通过后才生成视频。
+
+### `28d7c27` suffix-H5 fail-close GPU 终审（2026-08-13，Level 2 NOT PASS）
+
+#### 产物与终止位置
+
+- stem=`baseline2_capsule_suffixfailclose_0to50_acceptance_seed42_20260813_123713_298`；
+- log SHA256=`CBE9695A47FF233D3FD2A3502B500B3CE8CD0A48AA4144F7A0C3ED741D8B147F`；
+- stderr SHA256=`AD6491D13B0E51F4CFC7AE7A65AA19001674A09AE4B4468E1C91770D8362CDA5`；
+- failure-prefix SHA256=`EFAF4FB456392FCBC848BF707E2AE7C9EBB7E8C51E3070157FA3E6B6DC946337`；
+- exit=`1`；最后 accepted=`45.0 mm`，首个未认证目标=`45.15625 mm`，keyframe=`40/46`，
+  adaptive refine=`6/96`；
+- 只有 `.log`、`.stderr.log`、`_failure_prefix.npz`；没有 `_plan.npz`、dynamics、standalone/full
+  collision/terminal/low-motion audit 或视频。
+
+早段行为与旧基线一致且未回归：初始 physical tip clearance=
+`[-0.451,-0.253,-0.260,-0.058] mm`、protected-self minimum=`0.537514 mm`；32.97 mm 旧 self
+瓶颈再次越过；42.5 mm 短暂 `3/4` 后 43.75 mm 恢复 `4/4`；最后普通锚点 45 mm 为 `4/4`、
+segment physical tip=`-0.802 mm`、pad=`35.69 deg`。
+
+#### H5 与 fail-close 的真实结果
+
+第一次 H 调用的不可变节点为：
+
+`[45.15625,45.6015625,46.046875,46.4921875,46.9375] mm`
+
+最后节点精确等于 `frame_target_distance[-50]`，terminal sentinel wiring 通过实测。seeds 为
+`previous`、`extrapolated`、两个 `nullspace_combined`、`nullspace_joint_0/1`；6/6 均未通过，
+failed-gate count=`[11,12,12,12,12,12]`。最佳 `previous` seed 的 minimum task slack=
+`-1.130123819 mm`、minimum joint slack=`-0.030078851 mrad`；其余 seed 的 task slack 为
+`[-2.736905,-3.443780,-2.561963,-2.544035,-2.132149] mm`。
+
+本轮最重要的正确性证据是：日志紧接 H 失败输出
+`[SUFFIX-HORIZON-FAIL-CLOSED] ... myopic_bridge_commit_allowed=False`，随后直接保存 prefix 并失败。
+所以 `28d7c27` 已消除旧 `729556e` 的“0/6 H 后继续提交 myopic bridge”语义错误；45.0 mm 后
+coarse q/phase/budget/flags 没有被未认证状态修改。
+
+#### 最佳 seed 的逐节点首要失败
+
+- node0 @45.15625 mm：progress margin=`-0.395 mm`，monotonic margin=`-0.245 mm`，joint-step
+  margin=`-0.030079 mrad`，motion count=`1/4`；segment self=`0`，但 non-tip hand hard margin=
+  `-0.555 mm`，因此 collision=false；
+- node1 @45.6015625 mm：progress=`-0.456 mm`，hand margin=`-0.642 mm`，active self occurrence=`1`；
+- node2 @46.046875 mm：progress=`-0.757 mm`，hand margin=`-0.634 mm`，active self occurrence=`1`；
+- node3 @46.4921875 mm：progress=`-1.118 mm`，hand margin=`-0.486 mm`；
+- node4 @46.9375 mm：progress=`-1.130 mm`、normal margin=`-0.008 mm`、nominal contacts=`3/4`；
+  terminal hard contract 因此正确失败；
+- publisher 对最佳 seed 的首败在 45.125 mm，gates=`progress+collision`；该 seed 没有 low-motion
+  失败，但另 5 个 seeds 均在跨 prefix 的20-interval窗口内失败 low-motion。
+
+其余 seeds 并不是健康替代：所有 seed 的每个节点 `collision_ok=false`；多数节点有1--2个 active
+self contacts，若无 self 则 hand penetration 越界；部分节点还超 joint step、progress、monotonic、
+motion 或 terminal contact。pad margin 全为正，不是本轮瓶颈；FR3 也保持正余量。不能把这些候选
+解释成“只差一点 terminal contact”，更不能放宽 hand/self/progress/joint/low-motion 门。
+
+#### 结论与正在执行
+
+首版 block least-squares 只有目标等式和较弱 hinge，coupled joint step 也只是软 residual；它会用
+hand penetration、自碰、backtrack、低运动和 near-step states 交换 task cost。projected nullspace seed
+进入求解后同样被拉回不安全 basin，证明继续扫单项权重不是可靠修复。
+
+下一版保持所有 frozen hard gates 不变：
+
+1. 在 H residual 中显式加入 progress/normal/tangent/monotonic 的 interior hinge，以及“至少3指真实
+   前进”的固定维 motion hinge；
+2. 对每一 node transition 的中间 smoothstep samples 加 physical-tip、non-tip hand、FR3、protected
+   self guidance，最终仍由原16-sample任意self/nearest-geom hard audit裁决；
+3. 增加逐节点 `previous +/- 0.03 rad` 的 step-bounded rollout，多 seed 逐节点 exact audit，只有
+   hard+interior 通过的前缀才能扩展；完整 H5/publisher/terminal/rolling-low-motion 全过才提交 q1；
+4. 若逐层 LS 仍只得到近可行解，再对固定身份约束做小规模 SLSQP polish；不先做历史 rollback/splice，
+   不硬编码 joint3/joint11，不恢复 myopic commit。
+
+完成纯 NumPy 单测、全量 CPU、CLI/AST/diff 与 failure-prefix replay 后，再运行完全相同 Acceptance
+seed42 0--50 mm headless。没有 plan/full audit/dynamics PASS 前继续不录像，Level 2 仍为 **NOT PASS**。
