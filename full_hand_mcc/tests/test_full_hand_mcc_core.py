@@ -688,6 +688,47 @@ class PlannerDiagnosticsTest(unittest.TestCase):
         self.assertTrue(np.all(target <= current + 1e-12))
         self.assertTrue(np.all(np.abs(target - desired) <= 0.003 + 1e-12))
 
+    def test_strict_suffix_hinge_keeps_task_gates_separate_and_three_move(
+        self,
+    ) -> None:
+        residual = DIAGNOSTICS.strict_suffix_task_hinge_residual(
+            progress_error_m=np.asarray((0.9, 0.8, 0.7, 0.6)) * 1.0e-3,
+            progress_limit_m=1.0e-3,
+            normal_error_m=np.asarray((0.4, 0.5, 0.6, 0.7)) * 1.0e-3,
+            normal_tolerance_m=np.full(4, 0.8e-3),
+            tangent_error_m=np.asarray((0.1, 0.2, 0.3, 0.4)) * 1.0e-3,
+            tangent_tolerance_m=np.full(4, 0.5e-3),
+            monotonic_error_m=np.asarray((0.0, 0.1, 0.2, 0.3)) * 1.0e-3,
+            monotonic_tolerance_m=0.4e-3,
+            tip_motion_m=np.asarray((0.11, 0.10, 0.09, -0.50)) * 1.0e-3,
+            minimum_tip_motion_m=0.1e-3,
+            interior_guard_m=0.2e-3,
+            weight=1000.0,
+        )
+        self.assertEqual(residual.shape, (19,))
+        np.testing.assert_allclose(
+            residual[:4],
+            np.asarray((0.1, 0.0, 0.0, 0.0)),
+            atol=1.0e-12,
+        )
+        # The worst paused finger is the allowed 1-of-4 exemption.
+        np.testing.assert_allclose(residual[-3:], (0.0, 0.0, 0.01))
+        with self.assertRaisesRegex(ValueError, "shape"):
+            DIAGNOSTICS.strict_suffix_task_hinge_residual(
+                progress_error_m=np.zeros(3),
+                progress_limit_m=1.0,
+                normal_error_m=np.zeros(4),
+                normal_tolerance_m=np.ones(4),
+                tangent_error_m=np.zeros(4),
+                tangent_tolerance_m=np.ones(4),
+                monotonic_error_m=np.zeros(4),
+                monotonic_tolerance_m=1.0,
+                tip_motion_m=np.zeros(4),
+                minimum_tip_motion_m=0.0,
+                interior_guard_m=0.0,
+                weight=1.0,
+            )
+
     def test_terminal_start_matches_published_last_fifty_frames(self) -> None:
         start = DIAGNOSTICS.terminal_contact_start_distance(0.05, 800, 50)
         self.assertAlmostEqual(start, 0.0469375, places=12)
@@ -1841,6 +1882,9 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             "suffix_terminal_start_m",
             "scheduled_fingertip_targets(",
             "progress_aware_arc_targets(",
+            "strict_suffix_task_hinge_residual(",
+            "suffix_transition_fractions",
+            "suffix_node_residual(",
             "least_squares(",
             "diff_step=1.0e-5",
             "segment_collision_status(",
@@ -1874,6 +1918,11 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             '"candidate_node_condition_ok"',
             '"candidate_publisher_first_failure_gate_ok"',
             '"candidate_low_motion_first_window"',
+            "rollout_source_indices",
+            "local_lower = np.maximum(",
+            "prefix_node_ok",
+            "prefix_publisher_ok",
+            '"rollout_"',
         ):
             self.assertIn(required, horizon)
         for forbidden_mutation in (

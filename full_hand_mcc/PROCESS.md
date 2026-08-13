@@ -2495,3 +2495,59 @@ hand penetration、自碰、backtrack、低运动和 near-step states 交换 tas
 
 完成纯 NumPy 单测、全量 CPU、CLI/AST/diff 与 failure-prefix replay 后，再运行完全相同 Acceptance
 seed42 0--50 mm headless。没有 plan/full audit/dynamics PASS 前继续不录像，Level 2 仍为 **NOT PASS**。
+
+#### strict task hinges、段内碰撞引导与逐节点 rollout（2026-08-13，未提交/未跑 GPU）
+
+本轮严格以
+`baseline2_capsule_suffixfailclose_0to50_acceptance_seed42_20260813_123713_298_failure_prefix.npz`
+为输入证据，没有改变任何 Acceptance hard gate。对其中 `candidate_q_rad[6,5,23]` 重新使用真实
+100x170 mm capsule 与 MuJoCo `FivePointReachabilitySolver` 扫描每段18个样本，得到：
+
+- 六组候选的 physical tip 都保持在约 `-0.998..-0.810 mm`，FR3/pad 不是首瓶颈；
+- non-tip 首要失败几何统一是 `palm_lower_collision`，旧最佳 seed 五段最小约为
+  `[-1.555,-1.642,-1.634,-1.486,-1.286] mm`；
+- active self pairs 全落在已登记的三组 protected MCP--DIP pairs，主要是
+  `mcp_joint_3_geom::dip_3_geom`，其它 seeds 还出现 `mcp_joint_2_geom::dip_2_geom` 与
+  `mcp_joint_geom::dip_geom`；
+- 多个 block 结果的 step 只以几十微弧度越过 `0.03 rad`，证明软 step residual 不足，但没有理由
+  放宽正式 step gate。
+
+新增纯 NumPy `strict_suffix_task_hinge_residual()`：输入四指 progress/normal/tangent/monotonic
+误差、各自 hard tolerance、`0.05 mm` inner guard、四指实际 forward motion 与 minimum motion；输出
+固定19维 residual。前16维逐指独立，避免一个手指的大误差被总 cost 掩盖；最后3维取四个 motion
+deficit 中最小的三个，精确对应“至少3指推进、允许1指短暂停顿”。terminal node/samples 从
+`46.9375 mm`（含等号）起仍把四指 normal tolerance 全部置为3 mm。
+
+H5 node residual 现包含：
+
+1. 原 local arc/standoff/azimuth task 与 physical-tip target/inner cap；
+2. progress/normal/tangent/monotonic/motion hard-band 内侧 hinge；
+3. soft35 pad、palm guide、joint interior 与 step interior；
+4. 每个 node transition 的25%/50%/75% smoothstep 样本重算 scheduled target，并加入相同 task
+   内带；
+5. 这些中间样本同时加入 physical-tip、FR3、non-tip hand、三组 protected-self 与 pad 引导。
+
+这些 residual 只负责找 basin。原 node `segment_collision_status(start_q=...)` 的至少16个采样、
+任意 active self pair、nearest FR3/hand geom、publisher 真正 smoothstep 帧、terminal 4/4、20 intervals/
+21 samples low-motion 仍是唯一 hard authority。
+
+若6个 block seeds 都没有 full-window PASS，新路径按原 exact rank 取最好的3个 basin，逐节点执行：
+
+- `local_lower=max(joint_lower+0.5mrad, predecessor-(0.03rad-0.05mrad))`；
+- `local_upper=min(joint_upper-0.5mrad, predecessor+(0.03rad-0.05mrad))`；
+- 每个节点最多100 nfev、`diff_step=1e-5`；
+- 当前节点解出后，用完整 `audit_suffix()` 检查已构建 prefix 的全部 node/interior gate，并确认
+  publisher 的 first-failure distance 尚未进入当前 prefix；不通过就立即停止该 rollout；
+- 五个节点全部通过后再做完整 publisher/terminal/rolling-low-motion 审计，并以
+  `rollout_<source-seed>` 作为普通 H evidence 参与选择；
+- 整个过程不写 coarse q、rephase、static/recovery budget 或 flags。H5 未全过仍沿用已验证的
+  fail-close，绝不恢复 myopic commit。
+
+验证：全量 CPU=`98/98`，新增 helper 的3-of-4/shape反例与 H source ordering 回归通过；demo
+`--help`、Python AST、`git diff --check` 均 exit 0。仅存在既有 wandb temp cleanup atexit 噪声，
+测试命令本身 exit 0。当前没有新 plan/dynamics/audit/video，GPU 也尚未重跑，Level 2 仍为
+**NOT PASS**。
+
+**正在执行/下一步：**commit/push main -> issue #7 checkpoint -> 同命令 Acceptance seed42
+0--50 mm headless。优先比较第一条 `[SUFFIX-HORIZON]` 的 attempts/selected seed/node/publisher margins
+与旧 prefix；若新 H5 PASS 才继续 plan/full collision/terminal/low-motion/dynamics。物理未过不录像。

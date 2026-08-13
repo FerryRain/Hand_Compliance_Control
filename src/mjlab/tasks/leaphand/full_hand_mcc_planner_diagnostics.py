@@ -625,6 +625,88 @@ def progress_aware_arc_targets(
     return float(direction) * signed_target
 
 
+def strict_suffix_task_hinge_residual(
+    *,
+    progress_error_m: np.ndarray,
+    progress_limit_m: float,
+    normal_error_m: np.ndarray,
+    normal_tolerance_m: np.ndarray,
+    tangent_error_m: np.ndarray,
+    tangent_tolerance_m: np.ndarray,
+    monotonic_error_m: np.ndarray,
+    monotonic_tolerance_m: float,
+    tip_motion_m: np.ndarray,
+    minimum_tip_motion_m: float,
+    interior_guard_m: float,
+    weight: float,
+    minimum_progressing_fingers: int = MOVING_BRIDGE_FORWARD_FINGER_COUNT,
+) -> np.ndarray:
+    """Shape a suffix toward the unchanged task gates with an inner margin.
+
+    The four task arrays are kept separate so a least-squares solve cannot
+    trade a large violation on one finger against a small aggregate cost.  A
+    motion residual is emitted only for the best ``minimum_progressing_fingers``
+    deficits, matching the planner's 3-of-4 moving contract while permitting a
+    different finger to pause briefly at each node.
+    """
+
+    arrays = {
+        "progress_error_m": progress_error_m,
+        "normal_error_m": normal_error_m,
+        "normal_tolerance_m": normal_tolerance_m,
+        "tangent_error_m": tangent_error_m,
+        "tangent_tolerance_m": tangent_tolerance_m,
+        "monotonic_error_m": monotonic_error_m,
+        "tip_motion_m": tip_motion_m,
+    }
+    normalized: dict[str, np.ndarray] = {}
+    for name, value in arrays.items():
+        array = np.asarray(value, dtype=np.float64)
+        if array.shape != (4,):
+            raise ValueError(f"{name} must have shape (4,)")
+        if not np.all(np.isfinite(array)):
+            raise ValueError(f"{name} must be finite")
+        normalized[name] = array
+
+    scalars = np.asarray(
+        (
+            progress_limit_m,
+            monotonic_tolerance_m,
+            minimum_tip_motion_m,
+            interior_guard_m,
+            weight,
+        ),
+        dtype=np.float64,
+    )
+    if not np.all(np.isfinite(scalars)) or np.any(scalars < 0.0):
+        raise ValueError(
+            "strict suffix limits, guard, and weight must be non-negative"
+        )
+    if minimum_progressing_fingers < 0 or minimum_progressing_fingers > 4:
+        raise ValueError("minimum_progressing_fingers must lie in [0, 4]")
+
+    guard = float(interior_guard_m)
+    progress_inner = max(float(progress_limit_m) - guard, 0.0)
+    normal_inner = np.maximum(normalized["normal_tolerance_m"] - guard, 0.0)
+    tangent_inner = np.maximum(normalized["tangent_tolerance_m"] - guard, 0.0)
+    monotonic_inner = max(float(monotonic_tolerance_m) - guard, 0.0)
+    residual_rows = [
+        np.maximum(normalized["progress_error_m"] - progress_inner, 0.0),
+        np.maximum(normalized["normal_error_m"] - normal_inner, 0.0),
+        np.maximum(normalized["tangent_error_m"] - tangent_inner, 0.0),
+        np.maximum(normalized["monotonic_error_m"] - monotonic_inner, 0.0),
+    ]
+    if minimum_progressing_fingers:
+        motion_deficit = np.maximum(
+            float(minimum_tip_motion_m) - normalized["tip_motion_m"],
+            0.0,
+        )
+        residual_rows.append(
+            np.sort(motion_deficit)[:minimum_progressing_fingers]
+        )
+    return float(weight) * np.concatenate(residual_rows)
+
+
 def terminal_contact_start_distance(
     axial_travel_m: float,
     frame_count: int,

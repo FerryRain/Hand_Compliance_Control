@@ -1444,3 +1444,26 @@ monotonic、joint-step、motion、collision/interior；只推进 `1/4` 指，non
 **正在执行/下一步：**保持全部冻结硬门，给 H residual 加 progress/normal/tangent/monotonic/motion
 内带与逐段 collision/self guidance，并增加逐节点 step-bounded hard-audited rollout/beam；完整窗口通过
 才提交 q1。CPU regression 和同 prefix 回归通过后重跑相同 GPU；物理通过前不生成视频。
+
+### strict-task/segment-guidance/step-bounded rollout 实现检查点（2026-08-13，GPU 待跑）
+
+已按 `28d7c27` 的真实 failure-prefix 落实下一版 H5 修复，所有冻结硬门不变：新增固定维
+`strict_suffix_task_hinge_residual()`，分别约束四指 progress/normal/tangent/monotonic 内带，并按
+3-of-4 运动契约仅豁免一根暂时停顿的手指；每个 H node 的 25%/50%/75% smoothstep 中间状态现在
+都有 physical-tip、FR3、non-tip hand、三组 protected MCP--DIP self-pair 与 soft-pad 引导，最终裁决
+仍是原 node/16-sample/publisher/terminal/rolling-low-motion exact audit。
+
+CPU 实模重放六组旧 H 候选确认：主要 non-tip 几何为 `palm_lower_collision`；active self 是已登记的
+`mcp_joint_geom::dip_geom`、`mcp_joint_2_geom::dip_2_geom`、`mcp_joint_3_geom::dip_3_geom`，因此这次
+引导针对真实失败身份，不是放宽或盲目权重扫描。若 block H5 没有全窗通过候选，代码会从最优三个
+basin 做逐节点 rollout；每个节点的 LS bounds 直接限定为 predecessor `+/- (0.03 rad-0.05 mrad)`，
+并在扩展下一节点前复用完整 node/segment/publisher prefix audit。失败仍为零 coarse/phase/budget/flag
+修改；完整 H5 通过才允许 q1 进入最终候选审计。
+
+CPU regression=`98/98`；新增 helper 数值反例、结构回归、demo CLI、Python AST 与
+`git diff --check` 均通过。尚未 commit/push，也尚未运行新 GPU、生成 plan、进入 dynamics/audit 或
+录制视频；Level 2 仍为 **NOT PASS**。
+
+**正在执行/下一步：**提交并 push main、同步 issue #7，然后以完全相同的 Acceptance seed42
+0--50 mm headless 命令终审新 H5。若仍失败，只按新 prefix 的首个 exact hard gate 继续修复；
+plan/full collision/terminal/low-motion/dynamics 全过前不录像。
