@@ -3021,3 +3021,50 @@ TemporaryDirectory atexit PermissionError，测试进程exit0。另一次只读�
 Acceptance seed42 0--50 mm headless GPU重跑。重点观察首次`[PROSPECTIVE-LOW-MOTION]`是否在42.5 mm
 commit之前触发、是否先细分再由strict H5恢复；没有完整plan/full collision/terminal/rolling-low-motion/
 dynamics通过前不录像。
+
+### `3d2bdcf` motion-gate GPU run与75/50 um suffix数值分离WIP（2026-08-13）
+
+运行stem=`baseline2_capsule_motiongate_0to50_acceptance_seed42_20260813_180450_314`，runtime commit=
+`3d2bdcf`，Acceptance seed42，capsule radius/half-height=`0.10/0.17 m`，route=`0--50 mm`，
+base keyframes=`40`，motion frames=`800`，`cuda:0` headless且未录像。运行`exit=1`，耗时
+`1935.3 s`；产物只有log、stderr与failure-prefix：
+
+- log SHA256=`BF4DCAC21BC80B4F771FC3872A5787C34AF3FB34225D6BD17508EBC9A17B4516`；
+- stderr SHA256=`C65C6DA49E10ABA8FD2E4E3B321722CF279CFB1BEF70FDA4CBB62EF834CE4DFB`；
+- failure-prefix SHA256=`7BEE3474B492951D2D9DCC8F8F08D5E79579BDD21832B73C06C832797E160FDF`。
+
+#### prospective rolling gate真实GPU证据
+
+目标38.750 mm的发布网格窗口37.250--38.500 mm中，四指真实surface progress为
+`[0.241,0.047,0.113,0.456] mm`，仅2/4达到该窗口`0.125 mm`门。规划器在coarse commit前输出
+`[PROSPECTIVE-LOW-MOTION]`并以`unmarked_low_motion`触发auto-refine，插入38.125 mm；坏前缀未写入。
+修复后的路线继续通过38.125、38.750、40.000、41.250、42.500、43.750、45.000与45.78125 mm，
+已越过上一版42.65625 mm停点。说明门的时序修复在真实GPU planner中有效。
+
+#### 新首败45.9375 mm
+
+最后accepted=`45.78125 mm`；失败目标=`45.9375 mm`，keyframe=`42/46`，auto-refine=`6/96`。
+ordinary final-best的tangent margins=`[-0.294,+1.723,-1.013,+1.351] mm`且non-tip hand clearance=
+`-3.231 mm`，因此被硬门正确拒绝。随后H5节点为
+`[45.9375,46.1875,46.4375,46.6875,46.9375] mm`，共9个候选，全部fail closed；所有候选的
+rolling low-motion均通过，故新失败不再是motion gate。
+
+- `previous`候选node0--3通过task/collision，最小task slack仅约`1.97--49.6 um`；terminal node
+  normal差`39.356 um`且self=`1`，publisher首个progress失败在46.500 mm；
+- `nullspace_combined`全节点4/4、self0，但node2 tangent差`6.879 um`，node3 progress/tangent分别差
+  `2.704/20.473 um`，node4 progress差`11.828 um`，publisher首败progress=46.000 mm；
+- `rollout_partial_nullspace_joint_1`全节点4/4、motion4、self0，node0原硬门可行；但精确robust内带要求
+  50 um时progress/tangent只有`41.058/47.316 um`，publisher首败tangent=46.3125 mm。
+
+根因是suffix LS hinge的求解目标与精确审计都恰为50 um：残差在边界即归零，finite-difference和终止误差
+会让结果停在41--49 um。修复不改审计：新增`suffix_optimization_guard()`，当正式
+`task_guard_m=50 um`时只让smooth basin finder追求`solve_guard_m=75 um`；
+`progress_aware_arc_targets()`及suffix endpoint/transition hinge使用75 um，而node/publisher/terminal、
+collision、joint与rolling-low-motion audit仍使用原50 um及全部原硬门。该改动只作用于strict suffix求解器。
+
+新增helper/source定向测试=`2/2`，全量CPU=`108/108`；demo `--help` exit0，三文件Python AST、
+Level-2 runner PowerShell AST与`git diff --check`均通过。唯一噪声仍为既有wandb TemporaryDirectory
+atexit PermissionError，测试/CLI进程exit0。
+
+**正在执行/下一步：**复核最终diff，提交/push main并更新issue #7，再用完全相同参数GPU重跑。未出现
+plan/dynamics/audit/video；Level 2仍为 **NOT PASS**，完整数值物理验收前不录像。

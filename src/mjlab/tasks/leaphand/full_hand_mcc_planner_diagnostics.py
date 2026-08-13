@@ -826,6 +826,22 @@ def strict_suffix_task_hinge_residual(
     return float(weight) * np.concatenate(residual_rows)
 
 
+def suffix_optimization_guard(required_guard_m: float) -> float:
+    """Return numerical headroom for a suffix solve without changing its audit.
+
+    A least-squares hinge becomes exactly zero at its requested guard.  Asking
+    the solver for the same margin that the exact audit requires therefore
+    leaves finite-difference and termination noise free to land a few microns
+    below the formal boundary.  Keep the frozen audit guard unchanged and ask
+    only the smooth basin finder for an additional deterministic buffer.
+    """
+
+    if not np.isfinite(required_guard_m) or required_guard_m < 0.0:
+        raise ValueError("required_guard_m must be finite and non-negative")
+    required = float(required_guard_m)
+    return required + max(25.0e-6, 0.5 * required)
+
+
 def suffix_rollout_prefix_rank(
     *,
     node_condition_ok: np.ndarray,

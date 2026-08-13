@@ -78,6 +78,7 @@ from mjlab.tasks.leaphand.full_hand_mcc_planner_diagnostics import (
     self_separation_ascent_seeds,
     smooth_pad_alignment_residual,
     smoothstep_joint_interpolation,
+    suffix_optimization_guard,
     suffix_rollout_prefix_rank,
     strict_suffix_task_hinge_residual,
     terminal_contact_sample_mask,
@@ -8022,6 +8023,9 @@ def main() -> None:
                                 args.mpc_suffix_min_task_margin_mm
                                 / 1000.0
                             )
+                            solve_guard_m = suffix_optimization_guard(
+                                task_guard_m
+                            )
                             for node_distance in horizon_distance:
                                 (
                                     node_arc,
@@ -8044,7 +8048,7 @@ def main() -> None:
                                     nominal_advance_m=node_interval,
                                     hard_progress_limit_m=node_progress_limit,
                                     interior_guard_m=min(
-                                        task_guard_m,
+                                        solve_guard_m,
                                         node_progress_limit,
                                     ),
                                 )
@@ -8280,7 +8284,7 @@ def main() -> None:
                                         minimum_tip_motion_m=(
                                             minimum_node_motion_m
                                         ),
-                                        interior_guard_m=task_guard_m,
+                                        interior_guard_m=solve_guard_m,
                                         weight=(
                                             feasibility_weight_scale
                                             * suffix_task_hinge_weight
@@ -8502,7 +8506,7 @@ def main() -> None:
                                                 4, dtype=np.float64
                                             ),
                                             minimum_tip_motion_m=0.0,
-                                            interior_guard_m=task_guard_m,
+                                            interior_guard_m=solve_guard_m,
                                             weight=(
                                                 feasibility_weight_scale
                                                 * suffix_task_hinge_weight

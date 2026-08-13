@@ -1690,3 +1690,24 @@ source-ordering检查；全量CPU=`107/107`，demo `--help`、Python AST、Power
 **正在执行/下一步：**复核diff并提交/push `main`，更新issue #7 implementation checkpoint，然后用完全
 相同Acceptance seed42 0--50 mm参数重跑GPU。所有collision/contact/task/joint/terminal/low-motion硬门
 均不放宽；完整plan/full audit/dynamics通过前不录像。
+
+### `3d2bdcf` prospective-motion GPU终审：门生效，suffix数值余量成为新首败（2026-08-13）
+
+同参数Acceptance seed42 0--50 mm运行
+`baseline2_capsule_motiongate_0to50_acceptance_seed42_20260813_180450_314`在GPU上证明新门按预期工作：
+38.750 mm候选的20-interval窗口仅2/4指达到推进门，规划器在commit前输出
+`[PROSPECTIVE-LOW-MOTION]`并细分至38.125 mm，随后安全越过旧42.656 mm停点。运行最终在
+45.9375 mm fail-close（last accepted=45.78125 mm，keyframe42/46，refine6/96）；仅有
+log/stderr/failure-prefix，无plan、dynamics、audit或视频。SHA256：log=
+`BF4DCAC21BC80B4F771FC3872A5787C34AF3FB34225D6BD17508EBC9A17B4516`，stderr=
+`C65C6DA49E10ABA8FD2E4E3B321722CF279CFB1BEF70FDA4CBB62EF834CE4DFB`，prefix=
+`7BEE3474B492951D2D9DCC8F8F08D5E79579BDD21832B73C06C832797E160FDF`；issue #7已记录。
+
+H5所有候选均通过rolling low-motion；最接近的候选只因精确50 um任务内带出现41--49 um数值欠量而拒绝。
+当前WIP仅把suffix平滑求解目标从50 um提高到75 um，精确验收仍为50 um，所有冻结硬门完全不变。
+
+CPU全回归=`108/108`，新增2项定向测试通过；demo `--help`、三文件Python AST、Level-2 runner
+PowerShell AST与`git diff --check`均通过（仅既有wandb临时目录atexit噪声，进程exit0）。
+
+**正在执行/下一步：**复核最终diff，提交/push `main`并更新issue #7；随后以完全相同参数再次运行GPU
+seed42。未获得完整plan、全碰撞/终端/low-motion audit与dynamics PASS前不录像。

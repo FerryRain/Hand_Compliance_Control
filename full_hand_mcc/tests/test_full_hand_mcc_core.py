@@ -893,6 +893,20 @@ class PlannerDiagnosticsTest(unittest.TestCase):
                 weight=1.0,
             )
 
+    def test_suffix_solve_guard_adds_headroom_without_changing_audit(self) -> None:
+        required = 0.00005
+        solve_guard = DIAGNOSTICS.suffix_optimization_guard(required)
+        self.assertAlmostEqual(solve_guard, 0.000075)
+        self.assertGreater(solve_guard, required)
+        self.assertAlmostEqual(
+            DIAGNOSTICS.suffix_optimization_guard(0.0),
+            0.000025,
+        )
+        with self.assertRaises(ValueError):
+            DIAGNOSTICS.suffix_optimization_guard(float("nan"))
+        with self.assertRaises(ValueError):
+            DIAGNOSTICS.suffix_optimization_guard(-1.0e-6)
+
     def test_suffix_rollout_prefix_rank_preserves_only_exact_prefixes(
         self,
     ) -> None:
@@ -2098,6 +2112,8 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             "scheduled_fingertip_targets(",
             "progress_aware_arc_targets(",
             "strict_suffix_task_hinge_residual(",
+            "solve_guard_m = suffix_optimization_guard(",
+            "interior_guard_m=solve_guard_m",
             "suffix_transition_fractions",
             "suffix_node_residual(",
             "least_squares(",
@@ -2150,6 +2166,14 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             '"rollout_"',
         ):
             self.assertIn(required, horizon)
+        self.assertIn(
+            "progress_margin\n                                        >= task_guard_m",
+            horizon,
+        )
+        self.assertNotIn(
+            "progress_margin\n                                        >= solve_guard_m",
+            horizon,
+        )
         rollout = horizon[horizon.index("rollout_source_indices") :]
         self.assertLess(
             rollout.index('trial_kind="source_preserved"'),
