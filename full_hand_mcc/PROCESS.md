@@ -3174,3 +3174,86 @@ rolling low-motion全部冻结不变。尚未运行新GPU、未生成plan/dynami
 重点读取`[SUFFIX-INTERIOR-POLISH]`的source/node/nfev/prefix结果，以及candidate polish attempt metadata。
 只有重新通过正式50 um node/segment/dense publisher/exact terminal/rolling-low-motion后才允许commit。
 完整plan/full collision/terminal/low-motion/dynamics PASS前Level 2仍 **NOT PASS**，不录像。
+
+### `ae7516b` interior-polish GPU终审结果（2026-08-13）
+
+#### 产物和终止位置
+
+- stem=`baseline2_capsule_interiorpolish_0to50_acceptance_seed42_20260813_193439_840`；
+- started=`19:34:39.8953973+08:00`，ended=`20:07:29.2174044+08:00`，elapsed=`1969.3 s`，exit=`1`；
+- last accepted=`45.78125 mm`，failure target=`45.9375 mm`，keyframe=`42/46`，refine=`6/96`；
+- H5=`[45.9375,46.1875,46.4375,46.6875,46.9375] mm`，9 candidates，全部fail closed；
+- 只有log/stderr/failure-prefix，无plan、dynamics、standalone/full audit或视频；
+- log SHA256=`5331E04DFE2DD0B50BF13CAE777EF46DF838699B87FAF42D413C348E42A4E39F`；
+- stderr SHA256=`5B73ECC97D6DE66F6CCDF0214ACAE939D0202A48185DDBC0A289F72D40C2BFA0`；
+- prefix SHA256=`8C5F293E5FD980B35BA93963A94510A4C47C8D5A21A7FE499D2CE4C626FFAF1E`；
+- issue #7：[comment 5280228823](https://github.com/FerryRain/Hand_Compliance_Control/issues/7#issuecomment-5280228823)。
+
+#### frozen门与polish的真实行为
+
+38.750 mm再次复现prospective窗口37.250--38.500 mm、tip advance=
+`[0.241,0.047,0.113,0.456] mm`、forward=`2/4<3/4`，并在commit前插入38.125 mm；因此新polish没有
+绕过rolling-low-motion。修复路线重新通过38.125、38.750、40、41.25、42.5、43.75、44.375、45、
+45.3125、45.625与45.78125 mm，最后仍4/4、tip=`-0.807 mm`、pad=`35.40 deg`。
+
+polish日志证明代码真实进入GPU路径：
+
+- `nullspace_joint_1` node0：112.5 um polish，nfev17，`prefix_ok=true`；
+- 同source node4：nfev13，`prefix_ok=false`；
+- 一条`nullspace_combined`在node1与node3分别nfev13/11且true，node4仍因publisher terminal失败而prune；
+- 另一条combined在node3/node4各做一次，仍false。
+
+selected index6=`rollout_partial_nullspace_joint_1`，polish attempts=`2`、reached=`3`、prune=`4`。其五节点
+progress/contact/normal/tangent/monotonic/palm/joint-margin/joint-step/motion/collision原hard列全部true；
+contacts=`[4,4,4,4,4]`、motion=`[4,3,4,4,4]`、self全0、publisher六门全true且无首败、low-motion=true。
+唯一false为node4 `interior`：
+
+- progress margin=`63.828 um`；normal=`31.035 um`；tangent=`53.092 um`；monotonic=`200 um`；
+- joint target slack=`0.192504 mrad`；joint-step=`3.478091 mrad`；
+- arm=`14.603205 mm`、hand=`0.487220 mm`、physical tip=`0.131314 mm`；pad alignment=`0.041933222`。
+
+相比上轮terminal normal=`24.059 um`，单次polish提高到`31.035 um`且保住其它原hard gate，但仍比冻结
+50 um少`18.965 um`，所以fail-close正确。candidate8也只差interior，但normal=`29.210 um`、progress=
+`45.420 um`且joint target slack仅`0.018219 mrad`，正确排在candidate6之后。
+
+#### 下一最小修复
+
+不改`task_guard_m=50 um`、112.5 um solve-only目标或任何hard threshold。把目前一次4x polish改为确定性
+constraint-priority continuation：在每一级开始前重新筛选exact-safe/interior-only trials，从最佳q继续，用固定
+scale ladder提高feasibility residual相对tracking的优先级；每个attempt仍由同一node/segment/dense publisher/
+terminal/rolling-low-motion audit裁决，任一级prefix通过立即停止，全部失败则保留所有trial/evidence并0 mutation。
+这比继续全局提高guard更针对当前“normal31、progress/tangent已过”的交换问题，也不会把安全门变成软约束。
+
+**正在执行/下一步：**实现scale continuation及stage/scale metadata/log，补“通过即停、hard失败不可触发、多个
+attempt原子保留”回归；全量CPU/CLI/AST/PowerShell/diff通过后commit/push main并同seed GPU重跑。Level 2仍
+**NOT PASS**，完整plan/full collision/terminal/low-motion/dynamics通过前不录像。
+
+### constraint-priority continuation 已实现并通过CPU终审（2026-08-13，GPU待重跑）
+
+#### 实现边界
+
+- 纯函数`suffix_interior_polish_scale_ladder(4.0)`固定返回`(4,8,16,32)`，拒绝非有限或非正base；
+- `task_guard_m=50 um`、普通suffix `solve_guard_m=75 um`和polish `112.5 um` solve-only目标均保持不变；
+- 每个node先保留原source/普通local trials；若已有`prefix_ok`立即不做polish；
+- 否则每一级都从当前全部trial重新调用`suffix_prefix_needs_interior_polish()`，只允许原hard列全true、
+  publisher未在当前node前失败、rolling-low-motion=true且唯一欠缺为interior的trial成为source；
+- 每一级追加的新q仍由原`append_rollout_node_trial()`完整重算11个node gate、16-sample collision、dense
+  publisher、exact terminal sentinel和20-interval/21-sample low-motion；出现exact PASS立即停止；
+- 某级若把q推成hard-failed，它仍只作为证据保留，下一等级会重新选择之前仍exact-safe的最佳trial；
+- rollout选择前不写coarse q、phase、bridge budget或flags，因此四级均失败仍fail-close/0 mutation；
+- 日志增加`stage/scale`；failure evidence增加`interior_polish_scale_ladder`、每candidate attempt count和
+  `candidate_rollout_interior_polish_max_scale`，可区分“未触发、早停、四级耗尽”。
+
+#### 回归与静态审查
+
+- ladder数值/非法输入回归及source-ordering检查通过；
+- 定向`test_full_hand_mcc_core`=`77/77`；全量`unittest discover`=`110/110`，exit0；
+- demo `--help`、三文件Python AST、`run_baseline2_capsule_level2.ps1` PowerShell AST、
+  `git diff --check`全部exit0；
+- 仅有环境既知wandb TemporaryDirectory atexit PermissionError噪声，测试与CLI进程exit0；
+- 未运行新GPU、未生成plan/dynamics/audit/video；所有40 deg pad、physical-tip/FR3/hand/self、task、
+  joint/step、terminal4/4和rolling-low-motion硬门冻结不变。
+
+**正在执行/下一步：**commit/push main并更新issue #7 implementation checkpoint；随后只替换输出stem，复用
+上一轮Acceptance seed42 0--50 mm launch参数重跑GPU。重点核对45.9375 mm各stage日志、实际max scale与
+正式50 um PASS；若生成plan则立即做Acceptance plan audit、全帧collision audit和dynamics验收。全部通过前不录像。

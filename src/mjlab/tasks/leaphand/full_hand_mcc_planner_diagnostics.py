@@ -888,6 +888,23 @@ def suffix_prefix_needs_interior_polish(
     )
 
 
+def suffix_interior_polish_scale_ladder(
+    base_scale: float,
+) -> tuple[float, ...]:
+    """Return a fixed constraint-priority continuation for local polish.
+
+    Each stage is still exact-audited.  The ladder only changes the relative
+    priority of already existing feasibility residuals and leaves every hard
+    threshold unchanged.  Keeping it pure and deterministic also makes the
+    attempted numerical policy explicit in failure evidence.
+    """
+
+    if not np.isfinite(base_scale) or base_scale <= 0.0:
+        raise ValueError("base_scale must be finite and positive")
+    base = float(base_scale)
+    return tuple(base * multiplier for multiplier in (1.0, 2.0, 4.0, 8.0))
+
+
 def suffix_rollout_prefix_rank(
     *,
     node_condition_ok: np.ndarray,

@@ -78,6 +78,7 @@ from mjlab.tasks.leaphand.full_hand_mcc_planner_diagnostics import (
     self_separation_ascent_seeds,
     smooth_pad_alignment_residual,
     smoothstep_joint_interpolation,
+    suffix_interior_polish_scale_ladder,
     suffix_optimization_guard,
     suffix_prefix_needs_interior_polish,
     suffix_rollout_prefix_rank,
@@ -8030,6 +8031,9 @@ def main() -> None:
                             polish_guard_m = suffix_optimization_guard(
                                 solve_guard_m
                             )
+                            interior_polish_scale_ladder = (
+                                suffix_interior_polish_scale_ladder(4.0)
+                            )
                             for node_distance in horizon_distance:
                                 (
                                     node_arc,
@@ -9725,6 +9729,7 @@ def main() -> None:
                                     rollout_prune_reason = "completed"
                                     rollout_attempt_count = 0
                                     rollout_interior_polish_attempt_count = 0
+                                    rollout_interior_polish_max_scale = 0.0
                                     rollout_prior_q = previous_q.copy()
                                     rollout_prior_arc = bridge_arc.copy()
                                     rollout_prior_delta = previous_delta.copy()
@@ -9788,34 +9793,6 @@ def main() -> None:
                                                     _prior_distance
                                                 ),
                                                 feasibility_weight_scale=4.0,
-                                            )
-
-                                        def rollout_node_polish_residual(
-                                            q_node: np.ndarray,
-                                            *,
-                                            _node_index: int = node_index,
-                                            _prior_q: np.ndarray = (
-                                                rollout_prior_q.copy()
-                                            ),
-                                            _prior_arc: np.ndarray = (
-                                                rollout_prior_arc.copy()
-                                            ),
-                                            _prior_distance: float = (
-                                                rollout_prior_distance
-                                            ),
-                                        ) -> np.ndarray:
-                                            return suffix_node_residual(
-                                                q_node,
-                                                node_index=_node_index,
-                                                prior_q=_prior_q,
-                                                prior_arc=_prior_arc,
-                                                prior_distance=(
-                                                    _prior_distance
-                                                ),
-                                                feasibility_weight_scale=4.0,
-                                                interior_guard_m=(
-                                                    polish_guard_m
-                                                ),
                                             )
 
                                         node_trials: list[SimpleNamespace] = []
@@ -9967,36 +9944,85 @@ def main() -> None:
                                                     trial_order=trial_order,
                                                 )
 
-                                        polish_source_trials = [
-                                            trial
-                                            for trial in node_trials
-                                            if suffix_prefix_needs_interior_polish(
-                                                node_condition_ok=(
-                                                    trial.audit[
-                                                        "node_condition_ok"
-                                                    ]
-                                                ),
-                                                node_index=node_index,
-                                                publisher_first_failure_distance_m=float(
-                                                    trial.audit[
-                                                        "publisher_first_failure_distance_m"
-                                                    ]
-                                                ),
-                                                node_distance_m=float(
-                                                    horizon_distance[node_index]
-                                                ),
-                                                low_motion_ok=bool(
-                                                    trial.audit[
-                                                        "low_motion_ok"
-                                                    ]
-                                                ),
-                                            )
-                                        ]
-                                        if polish_source_trials:
+                                        for (
+                                            polish_stage,
+                                            polish_scale,
+                                        ) in enumerate(
+                                            interior_polish_scale_ladder,
+                                            start=1,
+                                        ):
+                                            if any(
+                                                trial.prefix_ok
+                                                for trial in node_trials
+                                            ):
+                                                break
+                                            polish_source_trials = [
+                                                trial
+                                                for trial in node_trials
+                                                if suffix_prefix_needs_interior_polish(
+                                                    node_condition_ok=(
+                                                        trial.audit[
+                                                            "node_condition_ok"
+                                                        ]
+                                                    ),
+                                                    node_index=node_index,
+                                                    publisher_first_failure_distance_m=float(
+                                                        trial.audit[
+                                                            "publisher_first_failure_distance_m"
+                                                        ]
+                                                    ),
+                                                    node_distance_m=float(
+                                                        horizon_distance[
+                                                            node_index
+                                                        ]
+                                                    ),
+                                                    low_motion_ok=bool(
+                                                        trial.audit[
+                                                            "low_motion_ok"
+                                                        ]
+                                                    ),
+                                                )
+                                            ]
+                                            if not polish_source_trials:
+                                                break
                                             polish_source_trial = min(
                                                 polish_source_trials,
                                                 key=lambda trial: trial.rank,
                                             )
+
+                                            def rollout_node_polish_residual(
+                                                q_node: np.ndarray,
+                                                *,
+                                                _node_index: int = node_index,
+                                                _prior_q: np.ndarray = (
+                                                    rollout_prior_q.copy()
+                                                ),
+                                                _prior_arc: np.ndarray = (
+                                                    rollout_prior_arc.copy()
+                                                ),
+                                                _prior_distance: float = (
+                                                    rollout_prior_distance
+                                                ),
+                                                _polish_scale: float = (
+                                                    polish_scale
+                                                ),
+                                            ) -> np.ndarray:
+                                                return suffix_node_residual(
+                                                    q_node,
+                                                    node_index=_node_index,
+                                                    prior_q=_prior_q,
+                                                    prior_arc=_prior_arc,
+                                                    prior_distance=(
+                                                        _prior_distance
+                                                    ),
+                                                    feasibility_weight_scale=(
+                                                        _polish_scale
+                                                    ),
+                                                    interior_guard_m=(
+                                                        polish_guard_m
+                                                    ),
+                                                )
+
                                             polish_result = least_squares(
                                                 rollout_node_polish_residual,
                                                 polish_source_trial.q_rad,
@@ -10018,10 +10044,17 @@ def main() -> None:
                                                 polish_result.nfev
                                             )
                                             rollout_interior_polish_attempt_count += 1
+                                            rollout_interior_polish_max_scale = max(
+                                                rollout_interior_polish_max_scale,
+                                                float(polish_scale),
+                                            )
                                             polish_trial_order = len(node_trials)
                                             append_rollout_node_trial(
                                                 polish_result.x,
-                                                trial_kind="interior_polish",
+                                                trial_kind=(
+                                                    "interior_polish_"
+                                                    f"{polish_stage}"
+                                                ),
                                                 trial_cost=float(
                                                     polish_result.cost
                                                 ),
@@ -10037,6 +10070,8 @@ def main() -> None:
                                                 "[SUFFIX-INTERIOR-POLISH] "
                                                 f"source={source.suffix_seed_kind} "
                                                 f"node={node_index} "
+                                                f"stage={polish_stage} "
+                                                f"scale={polish_scale:.1f} "
                                                 "solve_guard_um="
                                                 f"{polish_guard_m * 1.0e6:.3f} "
                                                 f"nfev={int(polish_result.nfev)} "
@@ -10129,6 +10164,9 @@ def main() -> None:
                                                 rollout_interior_polish_attempt_count=(
                                                     rollout_interior_polish_attempt_count
                                                 ),
+                                                rollout_interior_polish_max_scale=(
+                                                    rollout_interior_polish_max_scale
+                                                ),
                                             )
                                         )
                                         first_failure_distance = float(
@@ -10194,6 +10232,9 @@ def main() -> None:
                                             rollout_interior_polish_attempt_count=(
                                                 rollout_interior_polish_attempt_count
                                             ),
+                                            rollout_interior_polish_max_scale=(
+                                                rollout_interior_polish_max_scale
+                                            ),
                                         )
                                     )
                             if not horizon_candidates:
@@ -10229,6 +10270,10 @@ def main() -> None:
                                 ),
                                 "polish_guard_m": np.asarray(
                                     polish_guard_m,
+                                    dtype=np.float64,
+                                ),
+                                "interior_polish_scale_ladder": np.asarray(
+                                    interior_polish_scale_ladder,
                                     dtype=np.float64,
                                 ),
                                 "node_distance_m": horizon_distance.copy(),
@@ -10311,6 +10356,17 @@ def main() -> None:
                                         for candidate in horizon_candidates
                                     ],
                                     dtype=np.int16,
+                                ),
+                                "candidate_rollout_interior_polish_max_scale": np.asarray(
+                                    [
+                                        getattr(
+                                            candidate,
+                                            "rollout_interior_polish_max_scale",
+                                            0.0,
+                                        )
+                                        for candidate in horizon_candidates
+                                    ],
+                                    dtype=np.float64,
                                 ),
                                 "candidate_passed": np.asarray(
                                     [

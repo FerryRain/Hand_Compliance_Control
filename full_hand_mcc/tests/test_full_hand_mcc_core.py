@@ -959,6 +959,16 @@ class PlannerDiagnosticsTest(unittest.TestCase):
                 **{**kwargs, "node_index": 5}
             )
 
+    def test_suffix_interior_polish_scale_ladder_is_deterministic(self) -> None:
+        self.assertEqual(
+            DIAGNOSTICS.suffix_interior_polish_scale_ladder(4.0),
+            (4.0, 8.0, 16.0, 32.0),
+        )
+        with self.assertRaises(ValueError):
+            DIAGNOSTICS.suffix_interior_polish_scale_ladder(0.0)
+        with self.assertRaises(ValueError):
+            DIAGNOSTICS.suffix_interior_polish_scale_ladder(float("inf"))
+
     def test_suffix_rollout_prefix_rank_preserves_only_exact_prefixes(
         self,
     ) -> None:
@@ -2166,11 +2176,12 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             "strict_suffix_task_hinge_residual(",
             "solve_guard_m = suffix_optimization_guard(",
             "polish_guard_m = suffix_optimization_guard(",
+            "suffix_interior_polish_scale_ladder(4.0)",
             "interior_guard_m=min(",
             "suffix_prefix_needs_interior_polish(",
             "polish_source_trials = [",
             "rollout_node_polish_residual",
-            'trial_kind="interior_polish"',
+            '"interior_polish_"',
             "[SUFFIX-INTERIOR-POLISH]",
             "suffix_transition_fractions",
             "suffix_node_residual(",
@@ -2222,6 +2233,8 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             '"candidate_rollout_prune_reason"',
             '"candidate_rollout_attempt_count"',
             '"candidate_rollout_interior_polish_attempt_count"',
+            '"candidate_rollout_interior_polish_max_scale"',
+            '"interior_polish_scale_ladder"',
             '"rollout_"',
         ):
             self.assertIn(required, horizon)
@@ -2254,6 +2267,15 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             rollout.index("suffix_prefix_needs_interior_polish("),
             rollout.index("selected_node_trial = min("),
         )
+        continuation = rollout[
+            rollout.index("for (\n                                            polish_stage,") :
+            rollout.index("selected_node_trial = min(")
+        ]
+        self.assertIn("if any(", continuation)
+        self.assertIn("trial.prefix_ok", continuation)
+        self.assertIn("break", continuation)
+        self.assertIn("feasibility_weight_scale=(", continuation)
+        self.assertIn("_polish_scale", continuation)
         for forbidden_mutation in (
             "coarse_q[keyframe] =",
             "coarse_progress[keyframe] =",

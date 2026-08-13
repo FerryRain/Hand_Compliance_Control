@@ -1755,3 +1755,29 @@ Python进程已启动；初始physical-tip=`[-0.451,-0.253,-0.260,-0.058] mm`、
 
 **正在执行：**低频只读监控；先核对38.750 mm prospective低运动细分，再核对45.9375 mm polish日志和正式
 50 um exact audit。完整plan/full collision/terminal/low-motion/dynamics PASS前不录像，Level 2仍 **NOT PASS**。
+
+### `ae7516b` interior-polish GPU终审：polish生效但terminal normal仅31.035 um（2026-08-13）
+
+同stem运行`1969.3 s`、exit1；38.750 mm prospective低运动门再次先细分，last accepted=45.78125 mm，
+H5在45.9375 mm fail-close。polish真实触发：node0/1/3的若干prefix通过正式50 um重审，但selected
+`rollout_partial_nullspace_joint_1`在terminal node4仍只差interior；其原hard task/contact/collision/joint/
+motion、4/4、self0、publisher与low-motion全部通过。正式margin为progress=`63.828 um`、normal=
+`31.035 um`、tangent=`53.092 um`；单次112.5 um solve-only polish把normal从上一轮24.059提高到31.035，
+仍不得冒充通过。无plan/dynamics/audit/video。SHA256：log=`5331E04DFE2DD0B50BF13CAE777EF46DF838699B87FAF42D413C348E42A4E39F`，stderr=
+`5B73ECC97D6DE66F6CCDF0214ACAE939D0202A48185DDBC0A289F72D40C2BFA0`，prefix=
+`8C5F293E5FD980B35BA93963A94510A4C47C8D5A21A7FE499D2CE4C626FFAF1E`；issue #7已同步。
+
+**正在执行/下一步：**正式50 um与全部hard audit不变；把单次polish改为确定性constraint-priority
+continuation，只从exact-safe/interior-only最佳trial逐级提高feasibility scale，每级完整重审、任一级通过即停，
+全部失败仍0 mutation。CPU/静态终审后同seed重跑；完整物理验收前不录像。
+
+### constraint-priority continuation CPU终审（2026-08-13，GPU待重跑）
+
+单次polish已改为固定scale ladder=`[4,8,16,32]`；112.5 um仍仅是solve目标，正式50 um及全部hard gate
+均未改变。每一级开始前重新筛选exact-safe/interior-only trial，从当前rank最佳q继续；任一级出现exact prefix
+PASS立即停止，hard失败不能成为后续source，全部失败仍保留证据且0 mutation。failure evidence新增ladder、attempt count
+和实际最大scale。定向core=`77/77`、全量CPU=`110/110`，demo CLI、Python AST、Level-2 PowerShell AST与
+`git diff --check`均exit0；仅有既知wandb临时目录atexit噪声，不影响exit0。
+
+**正在执行/下一步：**提交并push `main`、同步issue #7，然后复用完全相同Acceptance seed42 0--50 mm参数
+重跑GPU。完整plan/full collision/terminal/rolling-low-motion/dynamics PASS前不录像，Level 2仍 **NOT PASS**。
