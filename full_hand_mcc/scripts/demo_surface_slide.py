@@ -57,6 +57,7 @@ from mjlab.tasks.leaphand.full_hand_mcc_planner_diagnostics import (
     build_candidate_failure_metrics,
     build_palm_guide_multistart_specs,
     central_difference_clearance_gradient,
+    damped_task_nullspace_directions,
     deduplicated_bridge_multistart_seeds,
     evaluate_bridge_conditions,
     evaluate_moving_bridge_motion,
@@ -3845,6 +3846,7 @@ def main() -> None:
             suffix_horizon_attempt_count = 0
             suffix_horizon_success_count = 0
             suffix_horizon_cache: dict[str, np.ndarray | float] | None = None
+            last_suffix_horizon_evidence: dict[str, object] | None = None
             planner_frame_target_distance = np.linspace(
                 0.0,
                 args.axial_travel_m,
@@ -4242,6 +4244,13 @@ def main() -> None:
                         suffix_terminal_start_m
                     ),
                 }
+                if last_suffix_horizon_evidence is not None:
+                    for evidence_name, evidence_value in (
+                        last_suffix_horizon_evidence.items()
+                    ):
+                        budget_values[
+                            f"last_suffix_horizon_{evidence_name}"
+                        ] = evidence_value
                 if (
                     bridge_record is not None
                     and bridge_record.get("fallback") == "planner_failure"
@@ -7797,9 +7806,24 @@ def main() -> None:
                             """Solve and exact-audit an immutable H-node suffix."""
 
                             nonlocal suffix_horizon_attempt_count
+                            nonlocal last_suffix_horizon_evidence
                             if args.mpc_suffix_horizon_nodes <= 0:
                                 return None
                             suffix_horizon_attempt_count += 1
+                            last_suffix_horizon_evidence = {
+                                "invocation_distance_m": np.asarray(
+                                    desired_distance, dtype=np.float64
+                                ),
+                                "anchor_distance_m": np.asarray(
+                                    coarse_distance[keyframe - 1],
+                                    dtype=np.float64,
+                                ),
+                                "terminal_start_m": np.asarray(
+                                    suffix_terminal_start_m,
+                                    dtype=np.float64,
+                                ),
+                                "status": np.asarray("building"),
+                            }
                             horizon_distance = build_receding_horizon_distances(
                                 first_distance_m=desired_distance,
                                 nominal_step_m=bridge_interval_m,
@@ -7807,7 +7831,13 @@ def main() -> None:
                                 route_end_m=args.axial_travel_m,
                                 terminal_start_m=suffix_terminal_start_m,
                             )
+                            last_suffix_horizon_evidence[
+                                "node_distance_m"
+                            ] = horizon_distance.copy()
                             if horizon_distance.size < 2:
+                                last_suffix_horizon_evidence["status"] = (
+                                    np.asarray("insufficient_nodes")
+                                )
                                 return None
                             node_count = int(horizon_distance.size)
                             target_arc_rows: list[np.ndarray] = []
@@ -7899,6 +7929,20 @@ def main() -> None:
                                     f"{float(np.max(np.abs(current_schedule_arc[1:] - bridge_desired_arc[1:]))) * 1000:.6f}",
                                     flush=True,
                                 )
+                                last_suffix_horizon_evidence["status"] = (
+                                    np.asarray("schedule_mismatch")
+                                )
+                                last_suffix_horizon_evidence[
+                                    "schedule_mismatch_max_arc_delta_m"
+                                ] = np.asarray(
+                                    np.max(
+                                        np.abs(
+                                            current_schedule_arc[1:]
+                                            - bridge_desired_arc[1:]
+                                        )
+                                    ),
+                                    dtype=np.float64,
+                                )
                                 return None
 
                             minimum_joint_margin_rad = (
@@ -7908,6 +7952,9 @@ def main() -> None:
                             node_lower = lower + minimum_joint_margin_rad
                             node_upper = upper - minimum_joint_margin_rad
                             if np.any(node_lower >= node_upper):
+                                last_suffix_horizon_evidence["status"] = (
+                                    np.asarray("empty_joint_interior")
+                                )
                                 return None
                             flat_lower = np.tile(node_lower, node_count)
                             flat_upper = np.tile(node_upper, node_count)
@@ -8087,8 +8134,12 @@ def main() -> None:
                                 return np.concatenate(rows)
 
                             suffix_seeds: list[np.ndarray] = []
+                            suffix_seed_kinds: list[str] = []
 
-                            def append_suffix_seed(q_rows: np.ndarray) -> None:
+                            def append_suffix_seed(
+                                q_rows: np.ndarray,
+                                seed_kind: str,
+                            ) -> None:
                                 candidate = np.asarray(
                                     q_rows,
                                     dtype=np.float64,
@@ -8109,9 +8160,11 @@ def main() -> None:
                                 ):
                                     return
                                 suffix_seeds.append(candidate)
+                                suffix_seed_kinds.append(str(seed_kind))
 
                             append_suffix_seed(
-                                np.repeat(previous_q[None, :], node_count, axis=0)
+                                np.repeat(previous_q[None, :], node_count, axis=0),
+                                "previous",
                             )
                             extrapolated_rows = []
                             extrapolated_q = previous_q.copy()
@@ -8127,7 +8180,8 @@ def main() -> None:
                                     node_upper,
                                 )
                                 extrapolated_rows.append(extrapolated_q.copy())
-                            append_suffix_seed(np.stack(extrapolated_rows))
+                            extrapolated_seed = np.stack(extrapolated_rows)
+                            append_suffix_seed(extrapolated_seed, "extrapolated")
                             anchor_joint_margin = np.minimum(
                                 previous_q - lower,
                                 upper - previous_q,
@@ -8140,7 +8194,10 @@ def main() -> None:
                                 node_lower,
                                 node_upper,
                             )
-                            combined_centered_q = centered_q.copy()
+                            raw_inward_directions: list[np.ndarray] = []
+                            combined_inward = np.zeros(
+                                TOTAL_DOF, dtype=np.float64
+                            )
                             for joint_index in critical_joint_indices:
                                 lower_distance = (
                                     centered_q[joint_index]
@@ -8155,47 +8212,95 @@ def main() -> None:
                                     if lower_distance <= upper_distance
                                     else -1.0
                                 )
-                                combined_centered_q[joint_index] = np.clip(
-                                    centered_q[joint_index]
-                                    + inward_sign * 0.005,
-                                    node_lower[joint_index],
-                                    node_upper[joint_index],
+                                combined_inward[joint_index] = inward_sign
+                                individual_inward = np.zeros(
+                                    TOTAL_DOF, dtype=np.float64
                                 )
-                            append_suffix_seed(
-                                np.repeat(
-                                    combined_centered_q[None, :],
-                                    node_count,
-                                    axis=0,
+                                individual_inward[joint_index] = inward_sign
+                                raw_inward_directions.append(individual_inward)
+                            raw_inward_directions.insert(0, combined_inward)
+
+                            def suffix_seed_task_feature(
+                                q_seed: np.ndarray,
+                            ) -> np.ndarray:
+                                _, _, _, seed_arc, seed_aux = contact_state(q_seed)
+                                seed_tip_clearance = np.zeros(
+                                    4, dtype=np.float64
                                 )
-                            )
-                            for joint_index in critical_joint_indices[:2]:
-                                individual_q = centered_q.copy()
-                                lower_distance = (
-                                    individual_q[joint_index]
-                                    - lower[joint_index]
-                                )
-                                upper_distance = (
-                                    upper[joint_index]
-                                    - individual_q[joint_index]
-                                )
-                                inward_sign = (
-                                    1.0
-                                    if lower_distance <= upper_distance
-                                    else -1.0
-                                )
-                                individual_q[joint_index] = np.clip(
-                                    individual_q[joint_index]
-                                    + inward_sign * 0.005,
-                                    node_lower[joint_index],
-                                    node_upper[joint_index],
-                                )
-                                append_suffix_seed(
-                                    np.repeat(
-                                        individual_q[None, :],
-                                        node_count,
-                                        axis=0,
+                                if args.collision_mode == "full_robot":
+                                    seed_tip_clearance = (
+                                        reachability.geometry_group_clearances(
+                                            q_seed,
+                                            center,
+                                            rotation,
+                                        )[0]
+                                    )
+                                seed_azimuth = seed_aux[1:, 0]
+                                return np.concatenate(
+                                    (
+                                        seed_arc[1:],
+                                        seed_aux[1:, 1],
+                                        CAPSULE_RADIUS * np.cos(seed_azimuth),
+                                        CAPSULE_RADIUS * np.sin(seed_azimuth),
+                                        seed_tip_clearance,
                                     )
                                 )
+
+                            fd_step_rad = 1.0e-5
+                            anchor_feature = suffix_seed_task_feature(centered_q)
+                            task_jacobian = np.zeros(
+                                (anchor_feature.size, TOTAL_DOF),
+                                dtype=np.float64,
+                            )
+                            for joint_index in range(TOTAL_DOF):
+                                plus_q = centered_q.copy()
+                                minus_q = centered_q.copy()
+                                plus_q[joint_index] = min(
+                                    plus_q[joint_index] + fd_step_rad,
+                                    node_upper[joint_index],
+                                )
+                                minus_q[joint_index] = max(
+                                    minus_q[joint_index] - fd_step_rad,
+                                    node_lower[joint_index],
+                                )
+                                sample_span = (
+                                    plus_q[joint_index]
+                                    - minus_q[joint_index]
+                                )
+                                if sample_span <= 0.0:
+                                    continue
+                                task_jacobian[:, joint_index] = (
+                                    suffix_seed_task_feature(plus_q)
+                                    - suffix_seed_task_feature(minus_q)
+                                ) / sample_span
+                            projected_directions = (
+                                damped_task_nullspace_directions(
+                                    task_jacobian,
+                                    np.stack(raw_inward_directions),
+                                    damping=1.0e-6,
+                                )
+                            )
+                            for direction_index, projected_direction in enumerate(
+                                projected_directions
+                            ):
+                                if not np.any(projected_direction):
+                                    continue
+                                seed_steps = (
+                                    (0.002, 0.005)
+                                    if direction_index == 0
+                                    else (0.005,)
+                                )
+                                for seed_step in seed_steps:
+                                    projected_rows = extrapolated_seed.copy()
+                                    projected_rows += (
+                                        seed_step * projected_direction[None, :]
+                                    )
+                                    append_suffix_seed(
+                                        projected_rows,
+                                        "nullspace_combined"
+                                        if direction_index == 0
+                                        else f"nullspace_joint_{direction_index - 1}",
+                                    )
                             for separation_seed in protected_self_separation_seeds(
                                 np.clip(previous_q, node_lower, node_upper),
                                 node_lower,
@@ -8206,7 +8311,8 @@ def main() -> None:
                                         separation_seed[None, :],
                                         node_count,
                                         axis=0,
-                                    )
+                                    ),
+                                    "protected_self",
                                 )
                             cache_seed: np.ndarray | None = None
                             if suffix_horizon_cache is not None:
@@ -8261,9 +8367,10 @@ def main() -> None:
                                         else:
                                             cache_rows.append(cache_knots_q[-1])
                                     cache_seed = np.stack(cache_rows)
-                                    append_suffix_seed(cache_seed)
+                                    append_suffix_seed(cache_seed, "certified_cache")
                             if len(suffix_seeds) > 6:
                                 retained_seeds = suffix_seeds[:5]
+                                retained_kinds = suffix_seed_kinds[:5]
                                 if cache_seed is not None and not any(
                                     np.allclose(
                                         cache_seed,
@@ -8274,9 +8381,12 @@ def main() -> None:
                                     for retained in retained_seeds
                                 ):
                                     retained_seeds.append(cache_seed)
+                                    retained_kinds.append("certified_cache")
                                 else:
                                     retained_seeds.append(suffix_seeds[5])
+                                    retained_kinds.append(suffix_seed_kinds[5])
                                 suffix_seeds = retained_seeds
+                                suffix_seed_kinds = retained_kinds
 
                             def audit_suffix(
                                 q_rows: np.ndarray,
@@ -8286,14 +8396,23 @@ def main() -> None:
                                 prior_distance = float(
                                     coarse_distance[keyframe - 1]
                                 )
-                                minimum_slacks_m: list[float] = []
+                                minimum_task_slacks_m: list[float] = []
+                                minimum_joint_slacks_rad: list[float] = []
+                                minimum_pad_slacks: list[float] = []
                                 failed_gate_count = 0
                                 node_contact_counts: list[int] = []
+                                node_motion_counts: list[int] = []
                                 node_progress_margins: list[float] = []
                                 node_normal_margins: list[float] = []
                                 node_tangent_margins: list[float] = []
                                 node_joint_margins: list[float] = []
                                 node_collision_ok: list[bool] = []
+                                node_condition_rows: list[np.ndarray] = []
+                                node_metric_rows_m: list[np.ndarray] = []
+                                node_metric_rows_rad: list[np.ndarray] = []
+                                node_pad_margins: list[float] = []
+                                node_self_counts: list[int] = []
+                                node_interior_ok: list[bool] = []
                                 for node_index, q_node in enumerate(q_rows):
                                     node_distance = float(
                                         horizon_distance[node_index]
@@ -8428,17 +8547,20 @@ def main() -> None:
                                         args.mpc_feasibility_bridge_min_progress_ratio
                                         * (node_distance - prior_distance)
                                     )
-                                    motion_ok, _ = evaluate_moving_bridge_motion(
+                                    motion_ok, motion_count = (
+                                        evaluate_moving_bridge_motion(
                                         max_joint_motion_rad=joint_step,
                                         tip_motion_m=tip_motion,
                                         minimum_tip_motion_m=minimum_motion,
                                         active_fingers=np.zeros(4, dtype=bool),
+                                        )
                                     )
                                     collision_ok = True
                                     arm_margin = np.inf
                                     hand_margin = np.inf
                                     tip_margin = np.inf
                                     pad_margin = np.inf
+                                    self_count = 0
                                     if args.collision_mode == "full_robot":
                                         (
                                             arm_clearance,
@@ -8519,28 +8641,89 @@ def main() -> None:
                                         failed_gate_count += 1
                                     if not interior_ok:
                                         failed_gate_count += 1
-                                    minimum_slacks_m.extend(
+                                    palm_margin = (
+                                        palm_tracking_limit_m - palm_error
+                                    )
+                                    joint_target_margin = (
+                                        joint_margin - minimum_joint_margin_rad
+                                    )
+                                    joint_step_margin = (
+                                        args.max_plan_joint_step_rad
+                                        - joint_step
+                                    )
+                                    minimum_task_slacks_m.extend(
                                         (
                                             progress_margin,
                                             normal_margin,
                                             tangent_margin,
                                             monotonic_margin,
+                                            palm_margin,
                                             arm_margin,
                                             hand_margin,
                                             tip_margin,
-                                            joint_margin,
-                                            args.max_plan_joint_step_rad
-                                            - joint_step,
                                         )
                                     )
+                                    minimum_joint_slacks_rad.extend(
+                                        (
+                                            joint_target_margin,
+                                            joint_step_margin,
+                                        )
+                                    )
+                                    minimum_pad_slacks.append(pad_margin)
                                     node_contact_counts.append(
                                         int(np.count_nonzero(nominal_contact))
                                     )
+                                    node_motion_counts.append(motion_count)
                                     node_progress_margins.append(progress_margin)
                                     node_normal_margins.append(normal_margin)
                                     node_tangent_margins.append(tangent_margin)
                                     node_joint_margins.append(joint_margin)
                                     node_collision_ok.append(collision_ok)
+                                    node_condition_rows.append(
+                                        np.asarray(
+                                            (
+                                                progress_margin >= 0.0,
+                                                contact_ok,
+                                                normal_margin >= 0.0,
+                                                tangent_margin >= 0.0,
+                                                monotonic_margin >= 0.0,
+                                                palm_margin >= 0.0,
+                                                joint_target_margin >= -1.0e-12,
+                                                joint_step_margin >= -1.0e-12,
+                                                motion_ok,
+                                                collision_ok,
+                                                interior_ok,
+                                            ),
+                                            dtype=np.bool_,
+                                        )
+                                    )
+                                    node_metric_rows_m.append(
+                                        np.asarray(
+                                            (
+                                                progress_margin,
+                                                normal_margin,
+                                                tangent_margin,
+                                                monotonic_margin,
+                                                palm_margin,
+                                                arm_margin,
+                                                hand_margin,
+                                                tip_margin,
+                                            ),
+                                            dtype=np.float64,
+                                        )
+                                    )
+                                    node_metric_rows_rad.append(
+                                        np.asarray(
+                                            (
+                                                joint_target_margin,
+                                                joint_step_margin,
+                                            ),
+                                            dtype=np.float64,
+                                        )
+                                    )
+                                    node_pad_margins.append(pad_margin)
+                                    node_self_counts.append(int(self_count))
+                                    node_interior_ok.append(interior_ok)
                                     prior_q = q_node
                                     prior_arc = node_arc
                                     prior_distance = node_distance
@@ -8558,6 +8741,22 @@ def main() -> None:
                                 )
                                 frame_hard_ok = True
                                 low_motion_ok = True
+                                low_motion_failures: list[
+                                    dict[str, object]
+                                ] = []
+                                publisher_gate_names = (
+                                    "progress",
+                                    "contact",
+                                    "tangent",
+                                    "palm",
+                                    "collision",
+                                    "monotonic",
+                                )
+                                publisher_first_failure_index = -1
+                                publisher_first_failure_distance_m = np.nan
+                                publisher_first_failure_gate_ok = np.ones(
+                                    len(publisher_gate_names), dtype=np.bool_
+                                )
                                 if candidate_frame_distance.size:
                                     knot_distance = np.concatenate(
                                         ([anchor_distance], horizon_distance)
@@ -8750,19 +8949,41 @@ def main() -> None:
                                                     <= sample_normal_tolerance
                                                 )
                                             )
-                                        if not (
-                                            float(np.max(sample_progress_error))
-                                            <= sample_progress_limit + 1.0e-12
-                                            and sample_contact_ok
-                                            and np.all(
-                                                sample_tangent_error
-                                                <= sample_tangent_tolerance
-                                                + 1.0e-12
-                                            )
-                                            and sample_palm_ok
-                                            and sample_collision_ok
-                                        ):
+                                        sample_gate_ok = np.asarray(
+                                            (
+                                                float(
+                                                    np.max(
+                                                        sample_progress_error
+                                                    )
+                                                )
+                                                <= sample_progress_limit
+                                                + 1.0e-12,
+                                                sample_contact_ok,
+                                                bool(
+                                                    np.all(
+                                                        sample_tangent_error
+                                                        <= sample_tangent_tolerance
+                                                        + 1.0e-12
+                                                    )
+                                                ),
+                                                sample_palm_ok,
+                                                sample_collision_ok,
+                                                True,
+                                            ),
+                                            dtype=np.bool_,
+                                        )
+                                        if not bool(np.all(sample_gate_ok)):
                                             frame_hard_ok = False
+                                            if publisher_first_failure_index < 0:
+                                                publisher_first_failure_index = (
+                                                    len(audit_progress) - 1
+                                                )
+                                                publisher_first_failure_distance_m = float(
+                                                    sample_distance
+                                                )
+                                                publisher_first_failure_gate_ok = (
+                                                    sample_gate_ok.copy()
+                                                )
                                     audit_progress_array = np.stack(
                                         audit_progress
                                     )
@@ -8781,6 +9002,26 @@ def main() -> None:
                                             + 1.0e-12
                                         ):
                                             frame_hard_ok = False
+                                            if publisher_first_failure_index < 0:
+                                                worst_backtrack = int(
+                                                    np.argmax(
+                                                        np.max(
+                                                            published_backtrack,
+                                                            axis=1,
+                                                        )
+                                                    )
+                                                )
+                                                publisher_first_failure_index = (
+                                                    worst_backtrack + 1
+                                                )
+                                                publisher_first_failure_distance_m = float(
+                                                    audit_distance[
+                                                        worst_backtrack + 1
+                                                    ]
+                                                )
+                                                publisher_first_failure_gate_ok[
+                                                    -1
+                                                ] = False
                                     prefix_right = np.searchsorted(
                                         coarse_distance[:keyframe],
                                         prefix_frame_distance,
@@ -8808,7 +9049,7 @@ def main() -> None:
                                             ),
                                         )
                                     )
-                                    low_motion_ok = not bool(
+                                    low_motion_failures = (
                                         find_unmarked_low_motion_windows(
                                             audit_progress_array,
                                             np.stack(audit_points),
@@ -8826,12 +9067,21 @@ def main() -> None:
                                             ),
                                         )
                                     )
+                                    low_motion_ok = not bool(
+                                        low_motion_failures
+                                    )
                                 if not frame_hard_ok:
                                     failed_gate_count += 1
                                 if not low_motion_ok:
                                     failed_gate_count += 1
-                                minimum_slack = float(
-                                    np.min(minimum_slacks_m)
+                                minimum_task_slack = float(
+                                    np.min(minimum_task_slacks_m)
+                                )
+                                minimum_joint_slack = float(
+                                    np.min(minimum_joint_slacks_rad)
+                                )
+                                minimum_pad_slack = float(
+                                    np.min(minimum_pad_slacks)
                                 )
                                 passed = bool(
                                     failed_gate_count == 0
@@ -8841,12 +9091,60 @@ def main() -> None:
                                 rank = (
                                     0.0 if passed else 1.0,
                                     float(failed_gate_count),
-                                    -minimum_slack,
+                                    -minimum_task_slack,
+                                    -minimum_joint_slack,
+                                    -minimum_pad_slack,
                                 )
                                 details: dict[str, object] = {
                                     "passed": passed,
-                                    "minimum_slack_m": minimum_slack,
+                                    "minimum_slack_m": minimum_task_slack,
+                                    "minimum_task_slack_m": minimum_task_slack,
+                                    "minimum_joint_slack_rad": (
+                                        minimum_joint_slack
+                                    ),
+                                    "minimum_pad_alignment_slack": (
+                                        minimum_pad_slack
+                                    ),
                                     "failed_gate_count": failed_gate_count,
+                                    "node_condition_names": np.asarray(
+                                        (
+                                            "progress",
+                                            "contact",
+                                            "normal",
+                                            "tangent",
+                                            "monotonic",
+                                            "palm",
+                                            "joint_margin",
+                                            "joint_step",
+                                            "motion",
+                                            "collision",
+                                            "interior",
+                                        )
+                                    ),
+                                    "node_condition_ok": np.stack(
+                                        node_condition_rows
+                                    ),
+                                    "node_metric_names_m": np.asarray(
+                                        (
+                                            "progress",
+                                            "normal",
+                                            "tangent",
+                                            "monotonic",
+                                            "palm",
+                                            "arm_clearance",
+                                            "hand_clearance",
+                                            "tip_clearance",
+                                        )
+                                    ),
+                                    "node_metric_margin_m": np.stack(
+                                        node_metric_rows_m
+                                    ),
+                                    "node_metric_names_rad": np.asarray(
+                                        ("joint_margin", "joint_step")
+                                    ),
+                                    "node_metric_margin_rad": np.stack(
+                                        node_metric_rows_rad
+                                    ),
                                     "node_contact_count": np.asarray(
                                         node_contact_counts, dtype=np.int8
                                     ),
@@ -8865,14 +9163,60 @@ def main() -> None:
                                     "node_collision_ok": np.asarray(
                                         node_collision_ok, dtype=bool
                                     ),
+                                    "node_motion_count": np.asarray(
+                                        node_motion_counts, dtype=np.int8
+                                    ),
+                                    "node_self_contact_count": np.asarray(
+                                        node_self_counts, dtype=np.int16
+                                    ),
+                                    "node_pad_alignment_margin": np.asarray(
+                                        node_pad_margins, dtype=np.float64
+                                    ),
+                                    "node_interior_ok": np.asarray(
+                                        node_interior_ok, dtype=np.bool_
+                                    ),
                                     "publisher_hard_ok": frame_hard_ok,
+                                    "publisher_gate_names": np.asarray(
+                                        publisher_gate_names
+                                    ),
+                                    "publisher_first_failure_index": (
+                                        publisher_first_failure_index
+                                    ),
+                                    "publisher_first_failure_distance_m": (
+                                        publisher_first_failure_distance_m
+                                    ),
+                                    "publisher_first_failure_gate_ok": (
+                                        publisher_first_failure_gate_ok
+                                    ),
                                     "low_motion_ok": low_motion_ok,
+                                    "low_motion_first_window_start": (
+                                        int(
+                                            low_motion_failures[0][
+                                                "first_window"
+                                            ]["start"]
+                                        )
+                                        if low_motion_failures
+                                        else -1
+                                    ),
+                                    "low_motion_first_window_end": (
+                                        int(
+                                            low_motion_failures[0][
+                                                "first_window"
+                                            ]["end"]
+                                        )
+                                        if low_motion_failures
+                                        else -1
+                                    ),
                                 }
                                 return passed, rank, details
 
                             horizon_candidates: list[SimpleNamespace] = []
-                            for seed_index, suffix_seed in enumerate(
-                                suffix_seeds
+                            for seed_index, (suffix_seed, suffix_seed_kind) in enumerate(
+                                zip(
+                                    suffix_seeds,
+                                    suffix_seed_kinds,
+                                    strict=True,
+                                )
                             ):
                                 result = least_squares(
                                     suffix_residual,
@@ -8897,6 +9241,7 @@ def main() -> None:
                                         cost=float(result.cost),
                                         nfev=int(result.nfev),
                                         candidate_kind="suffix_horizon",
+                                        suffix_seed_kind=suffix_seed_kind,
                                         suffix_q_rad=q_rows.copy(),
                                         suffix_distance_m=(
                                             horizon_distance.copy()
@@ -8911,18 +9256,260 @@ def main() -> None:
                                     )
                                 )
                             if not horizon_candidates:
+                                last_suffix_horizon_evidence["status"] = (
+                                    np.asarray("no_candidates")
+                                )
                                 return None
-                            selected = min(
-                                horizon_candidates,
-                                key=lambda candidate: candidate.suffix_rank,
+                            selected_index = min(
+                                range(len(horizon_candidates)),
+                                key=lambda candidate_index: (
+                                    horizon_candidates[
+                                        candidate_index
+                                    ].suffix_rank
+                                ),
                             )
+                            selected = horizon_candidates[selected_index]
+                            last_suffix_horizon_evidence = {
+                                "status": np.asarray("completed"),
+                                "invocation_distance_m": np.asarray(
+                                    desired_distance, dtype=np.float64
+                                ),
+                                "anchor_distance_m": np.asarray(
+                                    coarse_distance[keyframe - 1],
+                                    dtype=np.float64,
+                                ),
+                                "terminal_start_m": np.asarray(
+                                    suffix_terminal_start_m,
+                                    dtype=np.float64,
+                                ),
+                                "node_distance_m": horizon_distance.copy(),
+                                "seed_kind": np.asarray(
+                                    [
+                                        candidate.suffix_seed_kind
+                                        for candidate in horizon_candidates
+                                    ]
+                                ),
+                                "candidate_q_rad": np.stack(
+                                    [
+                                        candidate.suffix_q_rad
+                                        for candidate in horizon_candidates
+                                    ]
+                                ),
+                                "candidate_cost": np.asarray(
+                                    [
+                                        candidate.cost
+                                        for candidate in horizon_candidates
+                                    ],
+                                    dtype=np.float64,
+                                ),
+                                "candidate_nfev": np.asarray(
+                                    [
+                                        candidate.nfev
+                                        for candidate in horizon_candidates
+                                    ],
+                                    dtype=np.int32,
+                                ),
+                                "candidate_passed": np.asarray(
+                                    [
+                                        candidate.suffix_passed
+                                        for candidate in horizon_candidates
+                                    ],
+                                    dtype=np.bool_,
+                                ),
+                                "candidate_failed_gate_count": np.asarray(
+                                    [
+                                        candidate.suffix_audit[
+                                            "failed_gate_count"
+                                        ]
+                                        for candidate in horizon_candidates
+                                    ],
+                                    dtype=np.int16,
+                                ),
+                                "candidate_minimum_task_slack_m": np.asarray(
+                                    [
+                                        candidate.suffix_audit[
+                                            "minimum_task_slack_m"
+                                        ]
+                                        for candidate in horizon_candidates
+                                    ],
+                                    dtype=np.float64,
+                                ),
+                                "candidate_minimum_joint_slack_rad": np.asarray(
+                                    [
+                                        candidate.suffix_audit[
+                                            "minimum_joint_slack_rad"
+                                        ]
+                                        for candidate in horizon_candidates
+                                    ],
+                                    dtype=np.float64,
+                                ),
+                                "candidate_minimum_pad_alignment_slack": np.asarray(
+                                    [
+                                        candidate.suffix_audit[
+                                            "minimum_pad_alignment_slack"
+                                        ]
+                                        for candidate in horizon_candidates
+                                    ],
+                                    dtype=np.float64,
+                                ),
+                                "node_condition_names": np.asarray(
+                                    selected.suffix_audit[
+                                        "node_condition_names"
+                                    ]
+                                ),
+                                "candidate_node_condition_ok": np.stack(
+                                    [
+                                        candidate.suffix_audit[
+                                            "node_condition_ok"
+                                        ]
+                                        for candidate in horizon_candidates
+                                    ]
+                                ),
+                                "node_metric_names_m": np.asarray(
+                                    selected.suffix_audit[
+                                        "node_metric_names_m"
+                                    ]
+                                ),
+                                "candidate_node_metric_margin_m": np.stack(
+                                    [
+                                        candidate.suffix_audit[
+                                            "node_metric_margin_m"
+                                        ]
+                                        for candidate in horizon_candidates
+                                    ]
+                                ),
+                                "node_metric_names_rad": np.asarray(
+                                    selected.suffix_audit[
+                                        "node_metric_names_rad"
+                                    ]
+                                ),
+                                "candidate_node_metric_margin_rad": np.stack(
+                                    [
+                                        candidate.suffix_audit[
+                                            "node_metric_margin_rad"
+                                        ]
+                                        for candidate in horizon_candidates
+                                    ]
+                                ),
+                                "candidate_node_contact_count": np.stack(
+                                    [
+                                        candidate.suffix_audit[
+                                            "node_contact_count"
+                                        ]
+                                        for candidate in horizon_candidates
+                                    ]
+                                ),
+                                "candidate_node_motion_count": np.stack(
+                                    [
+                                        candidate.suffix_audit[
+                                            "node_motion_count"
+                                        ]
+                                        for candidate in horizon_candidates
+                                    ]
+                                ),
+                                "candidate_node_collision_ok": np.stack(
+                                    [
+                                        candidate.suffix_audit[
+                                            "node_collision_ok"
+                                        ]
+                                        for candidate in horizon_candidates
+                                    ]
+                                ),
+                                "candidate_node_self_contact_count": np.stack(
+                                    [
+                                        candidate.suffix_audit[
+                                            "node_self_contact_count"
+                                        ]
+                                        for candidate in horizon_candidates
+                                    ]
+                                ),
+                                "candidate_node_pad_alignment_margin": np.stack(
+                                    [
+                                        candidate.suffix_audit[
+                                            "node_pad_alignment_margin"
+                                        ]
+                                        for candidate in horizon_candidates
+                                    ]
+                                ),
+                                "publisher_gate_names": np.asarray(
+                                    selected.suffix_audit[
+                                        "publisher_gate_names"
+                                    ]
+                                ),
+                                "candidate_publisher_hard_ok": np.asarray(
+                                    [
+                                        candidate.suffix_audit[
+                                            "publisher_hard_ok"
+                                        ]
+                                        for candidate in horizon_candidates
+                                    ],
+                                    dtype=np.bool_,
+                                ),
+                                "candidate_publisher_first_failure_index": np.asarray(
+                                    [
+                                        candidate.suffix_audit[
+                                            "publisher_first_failure_index"
+                                        ]
+                                        for candidate in horizon_candidates
+                                    ],
+                                    dtype=np.int32,
+                                ),
+                                "candidate_publisher_first_failure_distance_m": np.asarray(
+                                    [
+                                        candidate.suffix_audit[
+                                            "publisher_first_failure_distance_m"
+                                        ]
+                                        for candidate in horizon_candidates
+                                    ],
+                                    dtype=np.float64,
+                                ),
+                                "candidate_publisher_first_failure_gate_ok": np.stack(
+                                    [
+                                        candidate.suffix_audit[
+                                            "publisher_first_failure_gate_ok"
+                                        ]
+                                        for candidate in horizon_candidates
+                                    ]
+                                ),
+                                "candidate_low_motion_ok": np.asarray(
+                                    [
+                                        candidate.suffix_audit[
+                                            "low_motion_ok"
+                                        ]
+                                        for candidate in horizon_candidates
+                                    ],
+                                    dtype=np.bool_,
+                                ),
+                                "candidate_low_motion_first_window": np.asarray(
+                                    [
+                                        (
+                                            candidate.suffix_audit[
+                                                "low_motion_first_window_start"
+                                            ],
+                                            candidate.suffix_audit[
+                                                "low_motion_first_window_end"
+                                            ],
+                                        )
+                                        for candidate in horizon_candidates
+                                    ],
+                                    dtype=np.int32,
+                                ),
+                                "selected_index": np.asarray(
+                                    selected_index, dtype=np.int32
+                                ),
+                                "selected_passed": np.asarray(
+                                    selected.suffix_passed, dtype=np.bool_
+                                ),
+                            }
                             print(
                                 "[SUFFIX-HORIZON] "
                                 f"distance_m={desired_distance:.9f} "
                                 f"nodes={node_count} attempts={len(horizon_candidates)} "
                                 f"passed={selected.suffix_passed} "
                                 "minimum_slack_mm="
-                                f"{float(selected.suffix_audit['minimum_slack_m']) * 1000:.6f} "
+                                f"{float(selected.suffix_audit['minimum_task_slack_m']) * 1000:.6f} "
+                                "minimum_joint_slack_mrad="
+                                f"{float(selected.suffix_audit['minimum_joint_slack_rad']) * 1000:.6f} "
                                 "failed_gates="
                                 f"{int(selected.suffix_audit['failed_gate_count'])}",
                                 flush=True,
@@ -9263,9 +9850,27 @@ def main() -> None:
                             )
                         )
                         moving_bridge_candidates = []
+                        suffix_horizon_required = bool(
+                            args.mpc_suffix_horizon_nodes > 0
+                        )
                         suffix_horizon_candidate = (
                             build_suffix_horizon_candidate()
                         )
+                        suffix_horizon_failed_closed = bool(
+                            suffix_horizon_required
+                            and suffix_horizon_candidate is None
+                        )
+                        if suffix_horizon_failed_closed:
+                            if last_suffix_horizon_evidence is not None:
+                                last_suffix_horizon_evidence[
+                                    "fail_closed"
+                                ] = np.asarray(True, dtype=np.bool_)
+                            print(
+                                "[SUFFIX-HORIZON-FAIL-CLOSED] "
+                                f"distance_m={desired_distance:.9f} "
+                                "myopic_bridge_commit_allowed=False",
+                                flush=True,
+                            )
                         if suffix_horizon_candidate is not None:
                             suffix_horizon_candidate.bridge_seed_index = -1
                             suffix_horizon_candidate.bridge_multistart_rank = (
@@ -9711,7 +10316,10 @@ def main() -> None:
                                 moving_bridge_protected_clearance
                             ),
                         )
-                        if moving_bridge_hard_ok:
+                        if (
+                            moving_bridge_hard_ok
+                            and not suffix_horizon_failed_closed
+                        ):
                             accepted_rephase_candidates.append(
                                 (
                                     moving_orientation_rank,
@@ -9737,7 +10345,10 @@ def main() -> None:
                                     )
                                 )
                             )
-                        elif moving_recovery_hard_ok:
+                        elif (
+                            moving_recovery_hard_ok
+                            and not suffix_horizon_failed_closed
+                        ):
                             accepted_rephase_candidates.append(
                                 (
                                     moving_orientation_rank,
@@ -9765,7 +10376,10 @@ def main() -> None:
                                     )
                                 )
                             )
-                        elif static_bridge_candidate is not None:
+                        elif (
+                            static_bridge_candidate is not None
+                            and not suffix_horizon_failed_closed
+                        ):
                             accepted_rephase_candidates.append(
                                 static_bridge_candidate
                             )

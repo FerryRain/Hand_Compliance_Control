@@ -714,6 +714,48 @@ class PlannerDiagnosticsTest(unittest.TestCase):
         self.assertAlmostEqual(float(distances[-1]), 0.0469375, places=12)
         self.assertTrue(np.all(np.diff(distances) > 0.0))
 
+    def test_horizon_grid_previews_terminal_from_first_short_bridge(self) -> None:
+        distances = DIAGNOSTICS.build_receding_horizon_distances(
+            first_distance_m=0.04515625,
+            nominal_step_m=0.00015625,
+            horizon_nodes=5,
+            route_end_m=0.05,
+            terminal_start_m=0.0469375,
+        )
+        self.assertEqual(distances.shape, (5,))
+        self.assertAlmostEqual(float(distances[0]), 0.04515625, places=12)
+        self.assertAlmostEqual(float(distances[-1]), 0.0469375, places=12)
+        self.assertTrue(np.all(np.diff(distances) > 0.0))
+
+    def test_damped_nullspace_projection_is_generic_and_task_preserving(
+        self,
+    ) -> None:
+        jacobian = np.asarray(
+            ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
+            dtype=np.float64,
+        )
+        projected = DIAGNOSTICS.damped_task_nullspace_directions(
+            jacobian,
+            np.asarray(((1.0, 1.0, 1.0), (0.0, 0.0, 2.0))),
+            damping=1.0e-12,
+        )
+        self.assertEqual(projected.shape, (2, 3))
+        np.testing.assert_allclose(
+            np.max(np.abs(projected), axis=1),
+            np.ones(2),
+            atol=1.0e-12,
+        )
+        self.assertLess(
+            float(np.max(np.abs(jacobian @ projected.T))),
+            1.0e-9,
+        )
+        self.assertTrue(np.all(projected[:, 2] > 0.99))
+        with self.assertRaisesRegex(ValueError, "one column per joint"):
+            DIAGNOSTICS.damped_task_nullspace_directions(
+                jacobian,
+                np.ones((1, 2)),
+            )
+
     def test_horizon_grid_inserts_route_endpoint_when_in_reach(self) -> None:
         distances = DIAGNOSTICS.build_receding_horizon_distances(
             first_distance_m=0.0494,
@@ -1806,6 +1848,9 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             "minimum_joint_margin_rad",
             "critical_joint_indices",
             "inward_sign",
+            "damped_task_nullspace_directions(",
+            "suffix_seed_task_feature",
+            '"nullspace_combined"',
             "if len(suffix_seeds) > 6",
             "suffix_horizon_cache",
             "args.max_plan_joint_step_rad",
@@ -1826,6 +1871,9 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             "published_backtrack",
             "sample_palm_ok",
             'candidate_kind="suffix_horizon"',
+            '"candidate_node_condition_ok"',
+            '"candidate_publisher_first_failure_gate_ok"',
+            '"candidate_low_motion_first_window"',
         ):
             self.assertIn(required, horizon)
         for forbidden_mutation in (
@@ -1862,6 +1910,37 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
         self.assertIn("mpc_coarse_suffix_horizon=", source)
         self.assertIn("mpc_suffix_horizon_attempt_count=np.asarray(", source)
         self.assertIn("mpc_suffix_horizon_success_count=np.asarray(", source)
+        fail_close = source[
+            source.index("suffix_horizon_failed_closed = bool(") :
+            source.index("desired_arc[:] = nominal_desired_arc", solve_start)
+        ]
+        self.assertIn("[SUFFIX-HORIZON-FAIL-CLOSED]", fail_close)
+        self.assertIn(
+            "and not suffix_horizon_failed_closed",
+            fail_close,
+        )
+        self.assertIn(
+            '"myopic_bridge_commit_allowed=False"',
+            fail_close,
+        )
+
+    def test_failure_prefix_receives_last_suffix_horizon_evidence(self) -> None:
+        source = DEMO_PATH.read_text(encoding="utf-8")
+        failure_start = source.index("def raise_adaptive_planner_failure")
+        failure_end = source.index("def insert_auto_refinement", failure_start)
+        failure = source[failure_start:failure_end]
+        self.assertIn("last_suffix_horizon_evidence", failure)
+        self.assertIn('f"last_suffix_horizon_{evidence_name}"', failure)
+        for expected in (
+            '"candidate_q_rad"',
+            '"seed_kind"',
+            '"node_condition_names"',
+            '"candidate_node_metric_margin_m"',
+            '"candidate_node_metric_margin_rad"',
+            '"candidate_publisher_first_failure_distance_m"',
+            '"selected_index"',
+        ):
+            self.assertIn(expected, source)
 
     def test_level2_runner_freezes_suffix_horizon_contract(self) -> None:
         source = RUNNER_PATH.read_text(encoding="utf-8")

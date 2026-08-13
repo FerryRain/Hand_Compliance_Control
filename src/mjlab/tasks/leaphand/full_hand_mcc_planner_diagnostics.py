@@ -692,8 +692,19 @@ def build_receding_horizon_distances(
         float(route_end_m),
     )
     witness_end = uniform_end
-    lookahead_reach = float(first_distance_m) + float(nominal_step_m) * float(
-        horizon_nodes + 1
+    # Once a receding window enters the terminal-tail lookahead span it must
+    # witness the exact first 4/4 sample.  A short nominal H-step reach alone
+    # can otherwise stop a few micrometres before the terminal contract and
+    # certify a suffix which cannot be continued.
+    terminal_tail_span = 0.0
+    if terminal_start_m is not None:
+        terminal_tail_span = max(
+            float(route_end_m) - float(terminal_start_m),
+            0.0,
+        )
+    lookahead_reach = float(first_distance_m) + max(
+        float(nominal_step_m) * float(horizon_nodes + 1),
+        terminal_tail_span,
     )
     for sentinel in (terminal_start_m, route_end_m):
         if sentinel is None:
@@ -716,6 +727,51 @@ def build_receding_horizon_distances(
     if np.any(np.diff(distances) <= 0.0):
         distances = np.unique(distances)
     return distances
+
+
+def damped_task_nullspace_directions(
+    task_jacobian: np.ndarray,
+    joint_directions: np.ndarray,
+    *,
+    damping: float = 1.0e-6,
+) -> np.ndarray:
+    """Project generic joint-space directions into a damped task nullspace.
+
+    Rows of ``joint_directions`` are projected with
+    ``I - J.T @ inv(J @ J.T + damping * I) @ J`` and normalized by their
+    infinity norm.  The helper deliberately knows nothing about joint names;
+    callers may feed every near-limit inward direction without hard-coding a
+    particular finger or distal joint.
+    """
+
+    jacobian = np.asarray(task_jacobian, dtype=np.float64)
+    directions = np.asarray(joint_directions, dtype=np.float64)
+    if jacobian.ndim != 2 or jacobian.shape[1] == 0:
+        raise ValueError("task_jacobian must be a non-empty matrix")
+    if directions.ndim == 1:
+        directions = directions[None, :]
+    if directions.ndim != 2 or directions.shape[1] != jacobian.shape[1]:
+        raise ValueError("joint_directions must have one column per joint")
+    if not np.all(np.isfinite(jacobian)) or not np.all(np.isfinite(directions)):
+        raise ValueError("nullspace projection inputs must be finite")
+    if not np.isfinite(damping) or damping <= 0.0:
+        raise ValueError("damping must be finite and positive")
+
+    gram = jacobian @ jacobian.T
+    regularized = gram + float(damping) * np.eye(
+        gram.shape[0], dtype=np.float64
+    )
+    task_components = np.linalg.solve(
+        regularized,
+        jacobian @ directions.T,
+    )
+    projected = directions.T - jacobian.T @ task_components
+    projected = projected.T
+    infinity_norm = np.max(np.abs(projected), axis=1)
+    valid = infinity_norm > 1.0e-12
+    projected[valid] /= infinity_norm[valid, None]
+    projected[~valid] = 0.0
+    return projected
 
 
 def smoothstep_joint_interpolation(

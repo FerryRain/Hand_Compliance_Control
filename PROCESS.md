@@ -1370,3 +1370,55 @@ phase/nullspace 变量尚未加入，若真实同-seed GPU 仍停在该局部分
 **正在执行/下一步：**提交并 push main 后，运行 Acceptance seed42 0--50mm headless；
 首先核对 H=5 是否真实触发、是否越过 `46.09375 mm`，再按 plan/full collision/terminal/
 low-motion/dynamics 的实际首失败条件继续修改。
+
+### `729556e` GPU seed42 0--50mm 正在运行（2026-08-13 11:19 CST）
+
+已推送 `729556e` 到 `main`，并启动 stem=
+`baseline2_capsule_suffixh5_0to50_acceptance_seed42_20260813_111954_875`；venv shim
+PID=`34916`，真实 DMtactile Python PID=`30100`。当前为 headless Acceptance，不生成视频；
+正在等待初始审计与首个规划输出。issue #7 已同步 commit/测试/未验收边界：
+[comment 5275537247](https://github.com/FerryRain/Hand_Compliance_Control/issues/7#issuecomment-5275537247)。
+
+**正在执行：**只读监控规划；首先确认初始 physical-tip/FR3/hand/self/pad，再确认 H=5
+是否触发并越过旧 `46.09375 mm`。本次没有 plan/dynamics 结果前仍为 **NOT PASS**。
+
+### `729556e` GPU seed42 0--50mm 失败检查点（2026-08-13 12:09 CST）
+
+同 stem 真实进程已退出并保存 failure-prefix；最后 accepted=`45.78125 mm`，失败目标=
+`45.9375 mm`，无 plan、dynamics、audit 或视频。H=5 在
+`45.15625/45.3125/45.46875/45.625/45.78125/45.9375 mm` 共触发6次，每次6 seeds，
+全部 `passed=False`、`failed_gates=11`；minimum slack 依次为
+`-0.738763/-0.702599/-0.767978/-0.464838/-0.648764/-0.739985 mm`。
+当前实现存在已证实的原子语义缺口：H失败后仍允许 myopic strict moving bridge 被提交，因而
+连续提交了5个旧式 bridge，H success count=`0`。
+
+最终 ordinary candidate 报 monotonic error=`[0,0.07,0.79,0,0] mm`；最佳 moving bridge
+除 tangent 外的 strict gates 全过，ring tangent 仅超限 `0.003993 mm`，但不能放宽接受。
+log SHA256=`64B45828CDF6BC0DC0EFAF653B79B280F5EA330B2061B527F3A93E66EC17C7F7`；
+failure-prefix SHA256=`1AA472958B55B561A9412760C815D31CC9A9D38177653AAD2A0EB1889AB3AE18`。
+Level 2 继续 **NOT PASS**。
+
+**正在执行/下一步：**保存每个 H seed/node/segment/publisher 的逐门 margin 与失败身份；H 已触发
+却未认证未来窗口时禁止提交 myopic bridge；按真实11-gate失败修正窗口 target/phase/nullspace seed，
+不放宽 collision、contact、task、joint、terminal 或 low-motion 硬门，然后先做 failure-prefix CPU
+回归，再重跑同 seed GPU。物理未过前不生成视频。
+
+### suffix-H5 fail-close / 可回放诊断修复（2026-08-13，待 GPU）
+
+已落实上一检查点的两项阻塞修复：short-bridge 区一旦启用 H5 而完整窗口没有通过，当前帧会输出
+`[SUFFIX-HORIZON-FAIL-CLOSED]`，myopic moving/static bridge 均不得修改 coarse q、phase、budget 或
+flags；之后只允许既有 auto-refine，最小步仍无认证 suffix 时保存证据并失败。failure-prefix 现在保存
+每个 seed 的 Hx23 q、seed kind、每节点11个 gate、米制/弧度制 margin、contact/motion/self/pad、
+publisher 首败 gate/distance 和 low-motion 首窗，不再只有 attempt 计数。
+
+H 距离网格也改为：进入 terminal-tail lookahead span 后必须包含精确 `46.9375 mm` 4/4 sentinel，
+接近末端时继续包含 `50 mm` endpoint。近限关节 seeds 不再直接硬推某个 joint；代码以 `1e-5 rad`
+中央差分构造 4-tip arc/standoff/azimuth/physical-tip task Jacobian，将 bottom-4 inward directions
+投影到 damped task nullspace，再生成 deterministic multistart，未硬编码 joint3/joint11。
+
+CPU regression=`97/97`；demo CLI、Python AST、PowerShell AST 与 `git diff --check` 全通过。
+尚未运行新 GPU、生成 plan/dynamics/audit/video，Level 2 仍为 **NOT PASS**。
+
+**正在执行/下一步：**提交并 push main，同步 issue #7 后，重跑完全相同 Acceptance seed42
+0--50mm headless。若仍失败，新 prefix 必须先按 node/publisher gate arrays 定位真实首败，再决定是否
+加入 phase/逐节点 rollout；不得恢复未认证的 myopic commit，也不得放宽任何硬门。

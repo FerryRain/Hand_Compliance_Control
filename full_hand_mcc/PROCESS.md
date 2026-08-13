@@ -2304,3 +2304,121 @@ dynamics 或视频，Level 2 仍为 **NOT PASS**。
 配置重跑；记录第一条 `[SUFFIX-HORIZON]` 的 nodes/attempts/minimum slack/failed gates，确认
 是否越过 `46.09375 mm`。若规划产生 plan，则先跑 standalone+full collision+terminal+
 low-motion 数值审计，再允许 dynamics；只有物理也过才录视频。
+
+#### `729556e` 同 seed GPU 运行检查点（2026-08-13 11:19 CST）
+
+- commit 已直接推送 `main`：`729556e feat: add strict suffix horizon planner`；
+- issue #7 checkpoint：
+  [comment 5275537247](https://github.com/FerryRain/Hand_Compliance_Control/issues/7#issuecomment-5275537247)；
+- stem=`baseline2_capsule_suffixh5_0to50_acceptance_seed42_20260813_111954_875`；
+- stdout=`outputs/debug/20_fr3_planning/<stem>.log`；
+- stderr=`outputs/debug/20_fr3_planning/<stem>.stderr.log`；
+- expected plan=`outputs/debug/20_fr3_planning/<stem>_plan.npz`；
+- expected failure-prefix=`outputs/debug/20_fr3_planning/<stem>_failure_prefix.npz`；
+- venv shim PID=`34916`，真实 DMtactile Python PID=`30100`；
+- profile=Acceptance、seed=42、travel=0.05m、keyframes=40、frames=800、headless；无视频。
+
+当前日志尚未 flush，不能推断初始审计或规划状态。正在只读监控，先核对初始 physical
+tip/FR3/non-tip hand/protected-self，再以第一条真实 `[SUFFIX-HORIZON]`/失败条件决定下一步；
+在 plan/full audit/dynamics 产生前 Level 2 继续 **NOT PASS**。
+
+#### `729556e` suffix-H5 Acceptance seed42 真实失败（2026-08-13 12:09 CST）
+
+产物 stem=
+`baseline2_capsule_suffixh5_0to50_acceptance_seed42_20260813_111954_875`。真实 DMtactile
+进程已退出，stderr 为 planner `RuntimeError`；产物只有 `.log`、`.stderr.log` 与
+`_failure_prefix.npz`，没有 `_plan.npz`、dynamics、standalone/full audit 或视频。
+
+- 最后 accepted=`45.78125 mm`，失败目标=`45.9375 mm`，keyframe=`45/49`，
+  auto-refine=`9/96`；
+- initial physical-tip=`[-0.451,-0.253,-0.260,-0.058] mm`，initial protected-self
+  minimum=`0.537514 mm`；已有路径越过旧 `32.96875 mm` self 瓶颈；
+- H=5 在 `45.15625/45.3125/45.46875/45.625/45.78125/45.9375 mm` 共调用6次；
+  每次均有6个 LS seeds，全部 `passed=False`、`failed_gates=11`；
+- 六次 selected-H minimum slack 分别为
+  `-0.738763/-0.702599/-0.767978/-0.464838/-0.648764/-0.739985 mm`；
+- suffix_horizon_attempt_count=`6`、success_count=`0`；当前 failure-prefix 只保存配置/计数，
+  没有保存各 seed 的 Hx23 q、node/segment/publisher gate arrays，必须补齐诊断后才能精确分解
+  固定的11个失败 gate；
+- 已证实首版的原子语义不完整：`build_suffix_horizon_candidate()` 返回 `None` 后，原有
+  myopic strict moving bridge 仍可进入候选集，因此 H 全窗失败后在45.15625到45.78125仍连续
+  提交5个 bridge；这不会把硬门失败状态直接接受，却会继续消耗未来关节/hand/tangent可行域，
+  与“完整 suffix 认证后才提交 q1”的目标不符。
+
+最终 ordinary `failure_final_best` 的 RuntimeError 为 monotonic progress violation：
+`[0,0.07,0.79,0,0] mm >0.2 mm`。最终 `bridge_rejected` 必须独立解释：
+
+- strict progress max=`4.609565 mm <4.631122 mm`；normal min margin=`0.299271 mm`；
+- monotonic margin=`0.200000 mm`，palm margin=`17.787482 mm`；
+- physical tip=`-0.511289 mm`、FR3=`15.205637 mm`、non-tip hand=`-0.958374 mm`，
+  self unique/occurrence=`0/0`，pad alignment margin=`0.048293`；
+- max joint motion=`0.012107 rad`，joint-limit margin=`0.000336 rad`；3指 motion quorum通过；
+- 唯一 strict failure 是 ring tangent=`2.003993 mm >2.000000 mm`，仅差
+  `0.003993 mm`。recovery 除 tangent 外还因 route超过30mm cutoff而 budget=false；
+  这些微米级差值只说明旧单步路径贴边，不能作为放宽门槛理由。
+
+证据：log SHA256=
+`64B45828CDF6BC0DC0EFAF653B79B280F5EA330B2061B527F3A93E66EC17C7F7`；failure-prefix
+SHA256=`1AA472958B55B561A9412760C815D31CC9A9D38177653AAD2A0EB1889AB3AE18`。
+Level 2 仍为 **NOT PASS**。
+
+**正在执行/下一步：**
+
+1. 将 selected/rejected H attempts 的 distance、seed kind、Hx23 q、node progress/normal/tangent/
+   joint/collision/contact/motion margins、segment/publisher first-fail、terminal/low-motion 状态保存到
+   exclusive-create failure evidence；
+2. 一旦 H 在 short-bridge 区被要求却未通过，禁止 myopic moving bridge 修改 coarse q/phase/budget；
+   可继续安全 auto-refine，但最小步仍无认证 suffix 时 fail closed；
+3. 用本次 failure-prefix 做真实 MuJoCo CPU replay，定位11个固定失败 gate；优先修正 fixed-phase、
+   progress target、terminal 4/4 与近限关节的通用 nullspace seeds，不硬编码 joint3/joint11；
+4. 全量 CPU/CLI/AST/diff/review通过后，重跑相同 Acceptance seed42 0--50mm headless；没有
+   plan/full collision/terminal/low-motion/dynamics 全通过之前不录制视频。
+
+#### suffix-H5 fail-close、terminal witness 与完整失败证据（2026-08-13，待 GPU）
+
+本轮只修正已被 `729556e` GPU 证据证明有问题的 suffix 路径，没有放宽任何原门槛：
+
+- `args.mpc_suffix_horizon_nodes>0` 且 short-bridge H 未通过时，设置
+  `suffix_horizon_failed_closed=true`；代码仍可只读求解 myopic candidate 作为对照，但 strict、
+  recovery 与 static 三个提交分支均显式要求 `not suffix_horizon_failed_closed`，所以不会再出现
+  H=0/6 却连续把单步 bridge 写入 coarse state 的情况；
+- fail-close 后保留普通 candidate 的原审核/auto-refine 路径；若插值已达最小步仍失败，则由原
+  `raise_adaptive_planner_failure()` 写 exclusive-create prefix 并终止，绝不靠 static/recovery mask
+  伪装窗口成功；
+- `last_suffix_horizon_evidence` 在每次 H 调用时覆盖为本次不可变快照，并在 failure-prefix 中以
+  `budget_last_suffix_horizon_*` 保存；主要字段包括：
+  - invocation/anchor/terminal/node distances；
+  - seed kinds、`candidate_q_rad[A,H,23]`、cost/nfev/pass/fail-count；
+  - node gate names 与 `candidate_node_condition_ok[A,H,11]`；
+  - progress/normal/tangent/monotonic/palm/FR3/hand/tip 米制 margin；
+  - joint interior/joint-step 弧度 margin、contact/motion counts、self count、pad alignment margin；
+  - publisher gate names、首个失败 frame/distance/gate vector、low-motion 首窗；
+  - selected index/pass 状态；所有字段均为非 object ndarray，可用 `allow_pickle=False` 回放；
+- 旧 `minimum_slack` 把米与弧度混在一起的问题已拆成
+  `minimum_task_slack_m`、`minimum_joint_slack_rad`、`minimum_pad_alignment_slack`；排序仍先
+  full-window pass、再 failed gate count，日志同时打印 task mm 与 joint mrad；
+- terminal lookahead 不再只用 `H+1` 个 nominal steps。进入尾50帧所覆盖的 terminal-tail span 后，
+  H5 会把精确 `frame_target_distance[-50]=46.9375 mm` 作为最后 witness；从该点（含等号）所有
+  publisher samples 强制 nominal 4/4。再接近 route end 时同一 helper 把 `50 mm` endpoint 纳入；
+- 新 `damped_task_nullspace_directions()` 对任意 joint-space inward directions 应用
+  `I-J^T(JJ^T+lambda I)^-1J` 并按 infinity norm 归一化。生产端以 `1e-5 rad` 中央差分构造
+  `[4 arc,4 standoff,4 Rcos(az),4 Rsin(az),4 physical-tip clearance] x 23` Jacobian；bottom-4
+  near-limit joint 的 combined/individual inward directions 经该投影后生成 `0.002/0.005 rad`
+  multistart。joint 索引由实际 margin 自动排序，未硬编码已知的 joint3/joint11；
+- seed 总数仍最多6，保留 previous、bounded extrapolation、projected nullspace、protected-self 与
+  exact predecessor/distance 匹配的 certified cache，避免无界增加 GPU 规划时间。
+
+新增回归覆盖：第一次困难点 `45.15625 mm` 的 H5 必须已经看见 `46.9375 mm` sentinel；damped
+projection 必须保留 joint 方向同时把 task 一阶变化降到数值零；源码结构断言 fail-close 覆盖
+strict/recovery/static 三类提交，并确认 H evidence 被 failure-prefix 接收。全量 CPU=`97/97`，
+demo `--help`、Python AST、PowerShell runner AST、`git diff --check` 均 exit 0；仅有既有 wandb
+temp cleanup PermissionError atexit 噪声，测试命令本身 exit 0。
+
+尚未运行新 GPU；没有 plan、standalone/full collision/terminal/low-motion audit、dynamics 或视频，
+Level 2 仍为 **NOT PASS**。本实现仍未加入 phase 连续变量、逐节点 rollout seed、历史 rollback/splice
+或 SLSQP；只有新 GPU evidence 表明 projected H5 仍落在错误 basin 时才扩展，不能预先放宽硬门。
+
+**正在执行/下一步：**commit/push main -> issue #7 checkpoint -> 完全相同 seed42、Acceptance、
+0--50mm、800帧 headless 重跑。首要验收为第一次 H5 的 exact terminal witness、node/publisher gates
+及 fail-close 行；若生成 plan，则先完成 standalone+full collision+terminal+low-motion 数值审计，
+再进入 dynamics，物理通过后才生成视频。
