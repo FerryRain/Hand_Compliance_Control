@@ -586,6 +586,74 @@ class PlannerDiagnosticsTest(unittest.TestCase):
             0.1 * worst["route_delta_m"],
         )
 
+    def test_seed42_4125_to_425mm_prefix_stall_is_rejected(self) -> None:
+        target = np.linspace(0.0411875, 0.0424375, 21, dtype=np.float64)
+        progress = np.zeros((21, 5), dtype=np.float64)
+        progress[:, 1:] = np.linspace(
+            np.zeros(4, dtype=np.float64),
+            np.asarray(
+                (0.000033727, 0.000165903, 0.000064609, 0.000203714)
+            ),
+            21,
+        )
+        points = np.zeros((21, 5, 3), dtype=np.float64)
+        axial = np.min(progress[:, 1:], axis=1)
+        regions = DIAGNOSTICS.find_unmarked_low_motion_windows(
+            progress,
+            points,
+            target,
+            np.zeros(21, dtype=bool),
+            axial,
+            window_frames=20,
+        )
+        self.assertEqual(len(regions), 1)
+        first = regions[0]["first_window"]
+        self.assertEqual(first["forward_finger_count"], 2)
+        self.assertEqual(first["forward_mask"], [False, True, False, True])
+        self.assertAlmostEqual(first["route_delta_m"], 0.00125)
+        self.assertAlmostEqual(first["required_tip_progress_m"], 0.000125)
+
+    def test_prospective_low_motion_gate_precedes_coarse_commit(self) -> None:
+        source = DEMO_PATH.read_text(encoding="utf-8")
+        helper_start = source.index("def prospective_low_motion_failures")
+        loop_start = source.index("keyframe = 1", helper_start)
+        helper = source[helper_start:loop_start]
+        self.assertIn("smoothstep_joint_interpolation(", helper)
+        self.assertIn("[-LOW_MOTION_DEFAULT_WINDOW_FRAMES:]", helper)
+        self.assertIn("find_unmarked_low_motion_windows(", helper)
+        self.assertIn("coarse_static_feasibility_bridge", helper)
+        self.assertIn("coarse_recovery_bridge", helper)
+
+        pre_rephase = source.index(
+            "pre_rephase_low_motion_failures = (",
+            loop_start,
+        )
+        auto_rephase = source.index("auto_rephase_needed = bool(", pre_rephase)
+        self.assertLess(pre_rephase, auto_rephase)
+        self.assertIn(
+            "or bool(pre_rephase_low_motion_failures)",
+            source[auto_rephase : auto_rephase + 1200],
+        )
+        rephase_gate = source.index(
+            "if rephased_hard_ok:",
+            auto_rephase,
+        )
+        self.assertIn(
+            "prospective_low_motion_failures(",
+            source[rephase_gate : rephase_gate + 800],
+        )
+        final_gate = source.index(
+            "selected_low_motion_failures = (",
+            rephase_gate,
+        )
+        coarse_commit = source.index("coarse_q[keyframe] = q", final_gate)
+        self.assertLess(final_gate, coarse_commit)
+        final_source = source[final_gate:coarse_commit]
+        self.assertIn('reason="unmarked_low_motion"', final_source)
+        self.assertIn("insert_auto_refinement(", final_source)
+        self.assertIn("raise_adaptive_planner_failure(", final_source)
+        self.assertIn("[PROSPECTIVE-LOW-MOTION]", final_source)
+
     def test_low_motion_gate_precedes_plan_publish_and_success_archive(
         self,
     ) -> None:
@@ -2053,7 +2121,7 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             "self_count == 0",
             "sample_distance\n                                            >= suffix_terminal_start_m",
             "np.all(\n                                                    sample_normal_error",
-            "find_unmarked_low_motion_windows(",
+            "prospective_low_motion_failures(",
             "LOW_MOTION_DEFAULT_WINDOW_FRAMES",
             "prefix_frame_distance",
             "sample_collision_ok",
@@ -2231,6 +2299,7 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             "fingertip_support",
             "tangential_gait",
             "contact_policy",
+            "unmarked_low_motion",
         ):
             self.assertIn(
                 f'reason="{failure_reason}"',
@@ -2248,7 +2317,7 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
         ]
         self.assertEqual(
             coarse_failure_source.count("raise_adaptive_planner_failure("),
-            6,
+            7,
         )
         self.assertNotIn("raise RuntimeError(", coarse_failure_source)
         self.assertIn("coarse-shooting prefix", source)

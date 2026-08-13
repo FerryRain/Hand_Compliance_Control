@@ -2965,3 +2965,59 @@ PowerShell AST、diff-check全部exit0。没有plan/dynamics/audit/video；Level
 **正在执行：**低频只读监控。早段先检查ordinary路径无回归；首次H5必须确认candidate source集合同时
 保留两条protected basins，以及4x feasibility repair是否使node0同时满足motion3与50 um interior。
 plan/full collision/terminal/rolling-low-motion/dynamics未全部通过前Level 2仍 **NOT PASS**。
+
+#### `4b498b6` double-protected seed42 GPU 终审失败（2026-08-13）
+
+##### 终止位置与产物
+- stem=`baseline2_capsule_doubleprotected_0to50_acceptance_seed42_20260813_171547_405`；
+- runtime code=`4b498b627f873af471e6f9b5414156392294c174`，运行中仅追加docs commit `ed3be1c`；
+- 最后accepted=`42.500000 mm`；失败目标=`42.656250 mm`；keyframe=`36/44`；auto-refine=`4/96`；
+- H5=`[42.65625,42.8125,42.96875,43.125,43.28125] mm`；9 attempts，selected index=`8`，
+  `passed=false`，fail-close=`true`；
+- 无plan、dynamics、standalone/full audit或视频；Level 2 **NOT PASS**；
+- log SHA256=`FEE602DACF40C25BF1E3CFE4540EC125E66BC560AED83F972A670461D2C3F943`；
+- stderr SHA256=`906A38ED9C90BE0027E347D4360D7E129F48C63D2A58AF0C44B0104677E0C094`；
+- failure-prefix SHA256=`406FDFCD4922236AABF81D28ADC6B556C4E2DB264CF71F9FEBB931C564C17AC9`；
+- issue #7 failure checkpoint已发布。
+
+##### H5已经几何/任务可行，唯一首败是既有前缀的rolling low-motion
+
+`rollout_extrapolated`与`rollout_nullspace_combined`都完整到达node4，五节点的11项node condition没有
+任何false，publisher六门全true，collision全true、自碰0、每节点4/4 contact。前者min task/joint
+slack=`+0.050244311 mm/+0.706882186 mrad`；后者=`+0.053876396 mm/+0.245587885 mrad`。
+两者`failed_gate_count=1`完全来自`candidate_low_motion_ok=false`，first window=`[0,20]`；所以不能再把
+失败归因于protected basin、self collision、FR3/hand/tip、pad、terminal或H5 task几何。
+
+保存coarse arc的41.25→42.50 mm端点差显示大部分手指近乎停滞。进一步使用真实100x170 mm capsule、
+实际initial center/rotation、23DoF MuJoCo FK及最终publisher smoothstep网格重放，首个窗口精确为
+`41.1875--42.4375 mm`，route delta=`1.25 mm`、required=`0.125 mm`；四指progress delta=
+`[0.033727,0.165903,0.064609,0.203714] mm`，forward mask=`[F,T,F,T]`，只有2/4而要求3/4。
+旧ordinary路径在42.5 mm commit时不运行rolling gate；等42.65625 mm才触发H5时，这个20-frame前缀
+窗口已经不可由未来节点修复。现有fail-close正确拒绝了两条未来完全可行的rollout，证明门本身没错，
+错误在门的触发时序。
+
+##### prospective low-motion WIP
+
+实现仅前移既有语义，不新增/放宽阈值：
+1. 新增局部`prospective_low_motion_failures()`，输入一个或多个未来q knot；使用最终
+   `planner_frame_target_distance`、同一`smoothstep_joint_interpolation()`、accepted prefix最后20帧、
+   right-endpoint static/recovery mask及同一`find_unmarked_low_motion_windows()`；
+2. ordinary/constraint-repair最优candidate若会产生窗口，立即把`auto_rephase_needed=true`；
+3. 每条single-finger rephase也必须通过同一prospective gate，不能用关节运动冒充tip滑动；
+4. H5不再维护第二套low-motion拼装，直接调用同一helper；
+5. 最终coarse写入前再次审计。失败先`AUTO-REFINE reason=unmarked_low_motion`；当interval已短，现有
+   strict H5继续负责恢复；若仍失败则保存`reason=unmarked_low_motion`及窗口start/end、forward count、
+   required progress与per-tip delta后fail closed；
+6. recovery/static候选仍按现有显式mask豁免短暂停顿；strict ordinary/rephase/suffix永不伪造mask；
+7. planner pad40deg、physical tip>=-1mm、FR3>=2mm、non-tip hand>=-1mm、active self=0、
+   progress/normal/tangent/monotonic/palm、joint/step、terminal nominal4/4和20/21 low-motion门全部不变。
+
+回归新增真实窗口数值反例及gate-before-commit/source wiring；全量CPU=`107/107`，demo `--help` exit0，
+两文件Python AST、Level-2 runner PowerShell AST、`git diff --check`均通过。唯一噪声仍是既有wandb
+TemporaryDirectory atexit PermissionError，测试进程exit0。另一次只读真实MuJoCo/FK replay exit0并
+复现forward count2/required3。
+
+**正在执行/下一步：**最终diff复核 -> commit/push main -> issue #7 implementation checkpoint -> 完全相同
+Acceptance seed42 0--50 mm headless GPU重跑。重点观察首次`[PROSPECTIVE-LOW-MOTION]`是否在42.5 mm
+commit之前触发、是否先细分再由strict H5恢复；没有完整plan/full collision/terminal/rolling-low-motion/
+dynamics通过前不录像。

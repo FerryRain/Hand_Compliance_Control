@@ -1663,3 +1663,30 @@ protected sources；完整plan/collision/terminal/low-motion/dynamics未过前�
 
 **正在执行：**低频只读监控 accepted path；首次H5核对3条rollout source是否为best overall + 两条
 protected basins，并读取各自reached/prune/first gate。完整数值物理验收前不录像。
+
+### `4b498b6` double-protected GPU 终审失败：前缀 rolling low-motion 成为唯一首败（2026-08-13）
+
+同一 stem 已在约30分钟后以 planner `RuntimeError` 安全退出。最后 accepted=`42.500000 mm`，失败目标=
+`42.656250 mm`，keyframe=`36/44`，auto-refine=`4/96`；H5节点为
+`[42.65625,42.8125,42.96875,43.125,43.28125] mm`。fail-close保持零未认证状态写入；仅有
+log/stderr/failure-prefix，无plan、dynamics、audit或视频，Level 2仍 **NOT PASS**。证据SHA256：
+log=`FEE602DACF40C25BF1E3CFE4540EC125E66BC560AED83F972A670461D2C3F943`，stderr=
+`906A38ED9C90BE0027E347D4360D7E129F48C63D2A58AF0C44B0104677E0C094`，prefix=
+`406FDFCD4922236AABF81D28ADC6B556C4E2DB264CF71F9FEBB931C564C17AC9`。issue #7已实时记录。
+
+两个完整rollout的五节点node/publisher/collision均全部通过、自碰0、4/4：`rollout_extrapolated`的
+min task/joint slack=`+0.050244 mm/+0.706882 mrad`，`rollout_nullspace_combined`为
+`+0.053876 mm/+0.245588 mrad`。两者唯一失败均是同一个20-interval/21-sample rolling low-motion窗口。
+真实MuJoCo/FK发布帧重放定位窗口=`41.1875--42.4375 mm`，四指前进=
+`[0.033727,0.165903,0.064609,0.203714] mm`，仅2/4达到`0.125 mm`门。根因是普通candidate在
+commit前未做prospective low-motion，导致已提交前缀污染后续H5；不是suffix几何不可达。
+
+当前WIP已将最终publisher同一smoothstep网格、前缀最后20帧及同一
+`find_unmarked_low_motion_windows()`前移到ordinary、rephase、suffix与最终coarse commit之前；失败先走
+现有auto-refine，短interval再进入strict H5，recovery/static标记语义保持原样。新增真实窗口回归和
+source-ordering检查；全量CPU=`107/107`，demo `--help`、Python AST、PowerShell runner AST与
+`git diff --check`均通过（仅既有wandb临时目录atexit噪声）。
+
+**正在执行/下一步：**复核diff并提交/push `main`，更新issue #7 implementation checkpoint，然后用完全
+相同Acceptance seed42 0--50 mm参数重跑GPU。所有collision/contact/task/joint/terminal/low-motion硬门
+均不放宽；完整plan/full audit/dynamics通过前不录像。

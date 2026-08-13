@@ -4834,6 +4834,127 @@ def main() -> None:
                     scheduled_tip_tangential_tolerances(distance),
                 )
 
+            def prospective_low_motion_failures(
+                candidate_distance_m: np.ndarray,
+                candidate_q_rad: np.ndarray,
+                *,
+                candidate_keyframe: int,
+                candidate_marked: bool = False,
+            ) -> list[dict[str, object]]:
+                """Audit a candidate against the rolling publisher window."""
+
+                knot_distance = np.asarray(
+                    candidate_distance_m,
+                    dtype=np.float64,
+                ).reshape(-1)
+                knot_q = np.asarray(
+                    candidate_q_rad,
+                    dtype=np.float64,
+                )
+                if knot_q.ndim == 1:
+                    knot_q = knot_q.reshape(1, -1)
+                if (
+                    candidate_keyframe <= 0
+                    or candidate_keyframe > keyframe_count
+                    or knot_distance.size == 0
+                    or knot_q.shape != (knot_distance.size, TOTAL_DOF)
+                    or not np.all(np.isfinite(knot_distance))
+                    or not np.all(np.isfinite(knot_q))
+                ):
+                    raise ValueError(
+                        "prospective low-motion candidate has invalid shape"
+                    )
+                anchor_distance = float(
+                    coarse_distance[candidate_keyframe - 1]
+                )
+                if (
+                    knot_distance[0] <= anchor_distance + 1.0e-12
+                    or np.any(np.diff(knot_distance) <= 0.0)
+                ):
+                    raise ValueError(
+                        "prospective low-motion knots must advance the route"
+                    )
+                candidate_frame_distance = planner_frame_target_distance[
+                    (planner_frame_target_distance
+                     > anchor_distance + 1.0e-12)
+                    & (planner_frame_target_distance
+                       <= knot_distance[-1] + 1.0e-12)
+                ]
+                if candidate_frame_distance.size == 0:
+                    return []
+                candidate_frame_q = smoothstep_joint_interpolation(
+                    np.concatenate(([anchor_distance], knot_distance)),
+                    np.vstack((coarse_q[candidate_keyframe - 1], knot_q)),
+                    candidate_frame_distance,
+                )
+                prefix_frame_distance = planner_frame_target_distance[
+                    planner_frame_target_distance
+                    <= anchor_distance + 1.0e-12
+                ][-LOW_MOTION_DEFAULT_WINDOW_FRAMES:]
+                if prefix_frame_distance.size:
+                    prefix_frame_q = smoothstep_joint_interpolation(
+                        coarse_distance[:candidate_keyframe],
+                        coarse_q[:candidate_keyframe],
+                        prefix_frame_distance,
+                    )
+                    prefix_right = np.searchsorted(
+                        coarse_distance[:candidate_keyframe],
+                        prefix_frame_distance,
+                        side="right",
+                    )
+                    prefix_right = np.clip(
+                        prefix_right,
+                        1,
+                        candidate_keyframe - 1,
+                    )
+                    prefix_marked = (
+                        coarse_static_feasibility_bridge[prefix_right]
+                        | coarse_recovery_bridge[prefix_right]
+                    )
+                else:
+                    prefix_frame_q = np.zeros(
+                        (0, TOTAL_DOF), dtype=np.float64
+                    )
+                    prefix_marked = np.zeros(0, dtype=np.bool_)
+                audit_distance = np.concatenate(
+                    (prefix_frame_distance, candidate_frame_distance)
+                )
+                audit_q = np.vstack((prefix_frame_q, candidate_frame_q))
+                audit_progress: list[np.ndarray] = []
+                audit_points: list[np.ndarray] = []
+                audit_axial: list[float] = []
+                for sample_q in audit_q:
+                    sample_state = contact_state(sample_q)
+                    sample_progress = direction * (
+                        sample_state[3] - start_arc
+                    )
+                    audit_progress.append(sample_progress)
+                    audit_points.append(sample_state[0])
+                    audit_axial.append(
+                        float(np.min(sample_progress[1:]))
+                    )
+                audit_marked = np.concatenate(
+                    (
+                        prefix_marked,
+                        np.full(
+                            candidate_frame_distance.size,
+                            candidate_marked,
+                            dtype=np.bool_,
+                        ),
+                    )
+                )
+                return find_unmarked_low_motion_windows(
+                    np.stack(audit_progress),
+                    np.stack(audit_points),
+                    audit_distance,
+                    audit_marked,
+                    np.asarray(audit_axial, dtype=np.float64),
+                    window_frames=LOW_MOTION_DEFAULT_WINDOW_FRAMES,
+                    forward_progress_ratio=(
+                        LOW_MOTION_FORWARD_PROGRESS_RATIO
+                    ),
+                )
+
             keyframe = 1
             while keyframe <= keyframe_count:
                 last_bridge_rejection_record: dict[str, object] | None = None
@@ -7198,6 +7319,13 @@ def main() -> None:
                         and pre_rephase_pad_alignment
                         >= planner_pad_alignment
                     )
+                pre_rephase_low_motion_failures = (
+                    prospective_low_motion_failures(
+                        np.asarray((desired_distance,), dtype=np.float64),
+                        best.x,
+                        candidate_keyframe=keyframe,
+                    )
+                )
                 auto_rephase_needed = bool(
                     float(progress_error.max())
                     > active_progress_tolerance_mm / 1000.0
@@ -7211,6 +7339,7 @@ def main() -> None:
                     or pre_rephase_palm_error
                     > palm_tracking_limit_m
                     or not pre_rephase_collision_ok
+                    or bool(pre_rephase_low_motion_failures)
                 )
                 if (
                     auto_rephase_limit_m > 0.0
@@ -7745,6 +7874,17 @@ def main() -> None:
                                         + 1.0e-12
                                         and rephased_collision_ok
                                     )
+                                    if rephased_hard_ok:
+                                        rephased_hard_ok = not bool(
+                                            prospective_low_motion_failures(
+                                                np.asarray(
+                                                    (desired_distance,),
+                                                    dtype=np.float64,
+                                                ),
+                                                rephased.x,
+                                                candidate_keyframe=keyframe,
+                                            )
+                                        )
                                     if not rephased_hard_ok:
                                         continue
                                     rephased_offset_norm_m = float(
@@ -9113,8 +9253,6 @@ def main() -> None:
                                         (prefix_frame_q, candidate_frame_q)
                                     )
                                     audit_progress: list[np.ndarray] = []
-                                    audit_points: list[np.ndarray] = []
-                                    audit_axial: list[float] = []
                                     for sample_distance, sample_q in zip(
                                         audit_distance,
                                         audit_q,
@@ -9131,10 +9269,6 @@ def main() -> None:
                                             sample_arc - start_arc
                                         )
                                         audit_progress.append(sample_progress)
-                                        audit_points.append(sample_points)
-                                        audit_axial.append(
-                                            float(np.min(sample_progress[1:]))
-                                        )
                                         if sample_distance <= anchor_distance + 1.0e-12:
                                             continue
                                         (
@@ -9338,49 +9472,11 @@ def main() -> None:
                                                 publisher_first_failure_gate_ok[
                                                     -1
                                                 ] = False
-                                    prefix_right = np.searchsorted(
-                                        coarse_distance[:keyframe],
-                                        prefix_frame_distance,
-                                        side="right",
-                                    )
-                                    prefix_right = np.clip(
-                                        prefix_right,
-                                        1,
-                                        keyframe - 1,
-                                    )
-                                    prefix_marked = (
-                                        coarse_static_feasibility_bridge[
-                                            prefix_right
-                                        ]
-                                        | coarse_recovery_bridge[prefix_right]
-                                        if prefix_frame_distance.size
-                                        else np.zeros(0, dtype=bool)
-                                    )
-                                    audit_marked = np.concatenate(
-                                        (
-                                            prefix_marked,
-                                            np.zeros(
-                                                candidate_frame_distance.size,
-                                                dtype=bool,
-                                            ),
-                                        )
-                                    )
                                     low_motion_failures = (
-                                        find_unmarked_low_motion_windows(
-                                            audit_progress_array,
-                                            np.stack(audit_points),
-                                            audit_distance,
-                                            audit_marked,
-                                            np.asarray(
-                                                audit_axial,
-                                                dtype=np.float64,
-                                            ),
-                                            window_frames=(
-                                                LOW_MOTION_DEFAULT_WINDOW_FRAMES
-                                            ),
-                                            forward_progress_ratio=(
-                                                LOW_MOTION_FORWARD_PROGRESS_RATIO
-                                            ),
+                                        prospective_low_motion_failures(
+                                            horizon_distance,
+                                            q_rows,
+                                            candidate_keyframe=keyframe,
                                         )
                                     )
                                     low_motion_ok = not bool(
@@ -11577,6 +11673,102 @@ def main() -> None:
                             f"{np.degrees(np.arccos(np.clip(best_pad_alignment, -1, 1))):.2f} "
                             "planner_limit_deg="
                             f"{args.max_pad_angle_deg - args.planner_pad_angle_margin_deg:.2f}"
+                        ),
+                        keyframe=keyframe,
+                        desired_distance=desired_distance,
+                        desired_arc=desired_arc,
+                        final_best_q=best.x,
+                        final_best_points=best_points,
+                        final_best_arc=achieved_arc,
+                        failure_metrics=candidate_failure_metrics,
+                        bridge_record=last_bridge_rejection_record,
+                        rejected_moving_bridge=(
+                            last_rejected_moving_bridge
+                        ),
+                    )
+                selected_low_motion_failures = (
+                    prospective_low_motion_failures(
+                        np.asarray((desired_distance,), dtype=np.float64),
+                        best.x,
+                        candidate_keyframe=keyframe,
+                        candidate_marked=bool(
+                            recovery_bridge_selected
+                            or static_feasibility_bridge_selected
+                        ),
+                    )
+                )
+                if selected_low_motion_failures:
+                    first_low_motion_window = selected_low_motion_failures[0][
+                        "first_window"
+                    ]
+                    candidate_failure_metrics[
+                        "condition_low_motion_ok"
+                    ] = np.asarray(False, dtype=np.bool_)
+                    candidate_failure_metrics[
+                        "low_motion_window_start_m"
+                    ] = np.asarray(
+                        first_low_motion_window[
+                            "target_distance_start_m"
+                        ],
+                        dtype=np.float64,
+                    )
+                    candidate_failure_metrics[
+                        "low_motion_window_end_m"
+                    ] = np.asarray(
+                        first_low_motion_window["target_distance_end_m"],
+                        dtype=np.float64,
+                    )
+                    candidate_failure_metrics[
+                        "low_motion_forward_finger_count"
+                    ] = np.asarray(
+                        first_low_motion_window["forward_finger_count"],
+                        dtype=np.int32,
+                    )
+                    candidate_failure_metrics[
+                        "low_motion_required_tip_progress_m"
+                    ] = np.asarray(
+                        first_low_motion_window[
+                            "required_tip_progress_m"
+                        ],
+                        dtype=np.float64,
+                    )
+                    candidate_failure_metrics[
+                        "low_motion_tip_progress_delta_m"
+                    ] = np.asarray(
+                        first_low_motion_window["tip_progress_delta_m"],
+                        dtype=np.float64,
+                    )
+                    print(
+                        "[PROSPECTIVE-LOW-MOTION] "
+                        f"keyframe={keyframe}/{keyframe_count} "
+                        f"distance_m={desired_distance:.9f} "
+                        "window_m="
+                        f"[{float(first_low_motion_window['target_distance_start_m']):.9f},"
+                        f"{float(first_low_motion_window['target_distance_end_m']):.9f}] "
+                        "forward_fingers="
+                        f"{int(first_low_motion_window['forward_finger_count'])}/4 "
+                        "required=3 tip_delta_mm="
+                        f"{(np.asarray(first_low_motion_window['tip_progress_delta_m']) * 1000).round(3).tolist()}",
+                        flush=True,
+                    )
+                    if insert_auto_refinement(
+                        keyframe=keyframe,
+                        desired_distance=desired_distance,
+                        reason="unmarked_low_motion",
+                    ):
+                        continue
+                    raise_adaptive_planner_failure(
+                        reason="unmarked_low_motion",
+                        message=(
+                            "Adaptive surface MPC would commit an unmarked "
+                            "20-frame fingertip stall: "
+                            f"keyframe={keyframe}/{keyframe_count} "
+                            f"distance_m={desired_distance:.6f} "
+                            "window_m="
+                            f"[{float(first_low_motion_window['target_distance_start_m']):.6f},"
+                            f"{float(first_low_motion_window['target_distance_end_m']):.6f}] "
+                            "forward_fingers="
+                            f"{int(first_low_motion_window['forward_finger_count'])}/4"
                         ),
                         keyframe=keyframe,
                         desired_distance=desired_distance,
