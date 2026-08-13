@@ -2870,3 +2870,82 @@ full collision、terminal、rolling-low-motion 与 dynamics 全部通过后才�
 `protected_self` block 是否有真实逐节点 motion；若 block 未全过，最多3条 rollout source 中是否包含
 至少一条 protected basin，并读取其 reached/prune/publisher gate。plan、full collision、terminal、
 rolling-low-motion、dynamics 未全部通过前不录像，Level 2 仍为 **NOT PASS**。
+
+#### `9e27e73` suffix-transport seed42 GPU 终审失败（2026-08-13）
+
+##### 产物与终止位置
+
+- stem=`baseline2_capsule_suffixtransport_0to50_acceptance_seed42_20260813_161621_794`；
+- 代码 commit=`9e27e736cf49e0974aace6ef6a12e6fbf497d9f4`；运行中仅追加 docs commit `c13c5e6`；
+- 最后 accepted=`45.625 mm`，失败目标=`45.78125 mm`，keyframe=`45/50`，auto-refine=`10/96`；
+- H5=`[45.78125,46.0703125,46.359375,46.6484375,46.9375] mm`，含 exact terminal sentinel；
+- 9个 evidence 全部 `passed=false`；selected index=`6`，minimum task slack=`-0.318738 mm`，
+  minimum joint slack=`+0.050000 mrad`，failed gates=`9`；
+- log SHA256=`0355D67A86D1BE28B613CBF9D54FC915A1044E1F077704B6BEF4B4EF7CA93E94`；
+- stderr SHA256=`3F4E56CDF4AEE21E4C2F5EFE962ED020C48493A24640621D2400ED9A29752671`；
+- failure-prefix SHA256=`57F6FADB5D05EF8364AA52D7F940004E29E8D4821F0CAA62BED28F7F255671B9`；
+- 无 `_plan.npz`、dynamics、standalone/full audit 或视频；Level 2 **NOT PASS**。
+
+普通 candidate 在45.78125 mm只有1/4 nominal support，误差约`[4.03,0.56,3.09,5.87] mm`，因此拒绝
+正确。H failure 仍 fail-closed，未提交未认证 myopic bridge。
+
+##### transport 与 protected rollout 已真实生效
+
+6条 block kinds 仍为
+`previous, extrapolated, protected_self, protected_self, nullspace_combined, nullspace_combined`；3条 partial
+包含 `rollout_partial_nullspace_combined`、`rollout_partial_protected_self` 与另一条 nullspace。两条
+protected block 的5节点 motion count 分别为`[4,4,4,4,4]`和`[3,4,4,1,4]`；因此本轮不能再归因于
+protected q 被静态重复，且 protected basin 已真实进入 rollout。
+
+##### 第0节点精确首败
+
+- candidate2 / protected A：4/4 contact、4指推进、self=0、pad margin正；progress/normal/tangent/
+  monotonic margin=`+0.113826/+0.474735/+0.073019/+0.200000 mm`。唯一 frozen collision 失败是
+  `palm_lower_collision`：hand hard margin=`-0.031245 mm`，即 endpoint/segment minimum=
+  `-1.031244 mm < -1 mm`；另 robust interior false。逐16点 hand clearance 从约`-0.848 mm`单调到
+  `-1.031244 mm`，不是采样身份混淆。
+- candidate3 / protected B：collision=true、self=0、4/4 contact、motion=3；但 progress/tangent margin=
+  `-0.014087/-0.062956 mm`，joint target margin仅=`+0.001834 mrad`，故不是鲁棒可提交点。
+- candidate5 / 最佳 overall nullspace：第0节点11个 frozen hard gates全过、motion=3/self=0；但 robust
+  interior需要每项至少`0.05 mm`，实际 progress/tangent/hand仅=
+  `0.040440/0.044100/0.015022 mm`，所以只失败`interior`。node1也只失败interior；node2以后开始真实
+  progress/tangent/collision失败。
+- candidate7 / `rollout_partial_protected_self`：局部修复后 collision、progress、tangent均为真，hand hard
+  margin=`+0.010931 mm`，但仅2指达到推进门并且interior仍失败；`reached=-1, prune=0, attempts=3`。
+
+这组证据说明局部 LS 正在 hand interior、task与3指真实推进之间交换代价；不能通过放宽 hand、自碰、
+motion 或50 um robust interior来伪造成功。当前 rollout source 只保留“best overall + best protected + rank
+fill”，实际选择 protected A，未让碰撞安全且motion=3的 protected B 进入逐节点恢复。
+
+##### 正在执行的最小修复
+
+1. rollout 的3个 source 改为确定性保留 best overall 与最多两条 protected basins；本 fixture 应选
+   candidate5、candidate2、candidate3，而非丢弃 protected B；
+2. 局部 node solve 对3-of-4 motion与50 um hand segment interior保持 constraint-priority，不改变阈值；
+3. 新增当前9-candidate排序反例及“两个 protected 均入 rollout”测试；
+4. 继续保存 exact node/publisher/low-motion evidence；完整H未过仍0 mutation/fail-close；
+5. CPU failure-prefix回归、全量测试、CLI/AST/PowerShell AST/diff-check 后才 commit/push 与同参数GPU。
+
+完整 plan/full collision/terminal/rolling-low-motion/dynamics 通过前不录像。
+
+#### 双 protected rollout 与 feasibility restoration 实现终审（2026-08-13，GPU 待跑）
+
+实现仅改动 suffix failure recovery，不触碰 ordinary planner、runtime controller或冻结门：
+
+1. `prioritized_suffix_rollout_indices()` 在最多3个source中保留best overall，再按rank保留最多两条
+   `protected_self*`；当前prefix的真实rank顺序`(5,4,1,2,0,3)`因此选择`(5,2,3)`，碰撞安全但task略差的
+   protected B不再被截掉；
+2. `suffix_node_residual(..., feasibility_weight_scale=...)`保持block basin finder为1x；逐节点rollout repair
+   显式使用4x，把既有task/motion/collision/interior/joint hinges提升到constraint-priority；
+3. 4x同时作用于strict task/motion、physical-tip target+inner、protected-self、FR3/hand inner、joint
+   margin/step；soft pad/palm tracking与hard authority保持原语义；
+4. 最终仍由同一11-gate node audit、16-sample collision、publisher、terminal sentinel和21-sample
+   rolling low-motion裁决；任何prefix不通过仍`reached=-1/prune=0`且0 mutation。
+
+新增回归覆盖真实9-candidate排序、两条protected均保留、maximum_sources=1/2边界，以及源结构确实把4x
+只接到rollout repair。验证：Planner+source定向=`63/63`；全量=`105/105`；demo CLI、Python AST、
+PowerShell AST、diff-check全部exit0。没有plan/dynamics/audit/video；Level 2仍 **NOT PASS**。
+
+**正在执行/下一步：**commit/push main -> issue #7 implementation checkpoint -> 完全相同seed42 GPU。
+若H仍失败，必须比较两个`rollout_partial_protected_self`的prune node/first gate与best overall；不得降低
+50 um interior、motion3、hand/tip/self/pad/joint/terminal/low-motion门。

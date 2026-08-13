@@ -1607,3 +1607,46 @@ issue #7 已同步：[comment 5277824852](https://github.com/FerryRain/Hand_Comp
 
 **正在执行：**低频只读监控；首次 H5 优先核对 protected block 的逐节点 motion 与
 `rollout_*protected_self*` evidence。没有完整 plan/full audit/dynamics 前仍为 **NOT PASS**，不录像。
+
+### `9e27e73` suffix-transport GPU 终审失败与 rollout 首节点证据（2026-08-13）
+
+同 stem 已终止，真实 Python 进程退出且 planner `RuntimeError`；最后 accepted=`45.625 mm`，失败目标=
+`45.78125 mm`、keyframe=`45/50`、auto-refine=`10/96`。H5 节点为
+`[45.78125,46.0703125,46.359375,46.6484375,46.9375] mm`，9个候选（6 block + 3 partial）全部失败，
+fail-close 保持零 coarse/phase/budget/flag 修改。仅有 log/stderr/failure-prefix，无 plan、dynamics、audit
+或视频；Level 2 仍为 **NOT PASS**。
+
+证据 SHA256：log=`0355D67A86D1BE28B613CBF9D54FC915A1044E1F077704B6BEF4B4EF7CA93E94`；stderr=
+`3F4E56CDF4AEE21E4C2F5EFE962ED020C48493A24640621D2400ED9A29752671`；failure-prefix=
+`57F6FADB5D05EF8364AA52D7F940004E29E8D4821F0CAA62BED28F7F255671B9`。
+
+本轮证明 transport 与 rollout 保留修复均真实生效：两条 `protected_self` block 的逐节点 motion 分别为
+`[4,4,4,4,4]` 与 `[3,4,4,1,4]`，不再是静态重复；partial 中真实出现
+`rollout_partial_protected_self`。新的第0节点瓶颈是多目标交换：第一条 protected seed 4指推进且
+progress/tangent 有正余量，但 `palm_lower_collision` 的 segment hand margin=`-0.031245 mm`；第二条
+protected seed 碰撞安全并3指推进，但 progress/tangent margin=`-0.014087/-0.062956 mm`，joint target
+margin 仅=`0.001834 mrad`。protected rollout 把 collision 修安全后 progress/tangent 也转正，却只剩
+2指推进，hand interior margin 仅=`0.010931 mm < 0.05 mm`。最佳 overall nullspace 第0节点所有 frozen
+hard gates 均过，但 robust interior 的 progress/tangent/hand margin 只有
+`0.040440/0.044100/0.015022 mm`，不能冒充已认证 suffix。
+
+**正在执行/下一步：**不放宽50 um robust interior或任何 frozen hard gate；让 rollout 同时保留两条
+protected basin，并加强局部可行性恢复对3指真实推进与 hand segment interior 的约束，新增当前 prefix
+排序/首节点反例。CPU 全量与静态检查通过后再 commit/push，并用完全相同 seed42 配置重跑 GPU；物理
+通过前不录像。
+
+### 双 protected rollout + 4x feasibility restoration CPU 终审（2026-08-13，GPU 待跑）
+
+最小修复已完成：3个 rollout source 现在确定性保留 best overall 与按综合rank最好的两条不同
+`protected_self` basins；当前真实排序回归固定为`(candidate5,candidate2,candidate3)`。逐节点 rollout LS
+使用4x feasibility restoration scale，只提高既有 progress/normal/tangent/monotonic/3-of-4 motion、
+physical-tip、FR3/hand interior、protected-self、joint-margin/step hinges 相对软tracking项的优先级；
+exact node/segment/publisher/terminal/rolling-low-motion hard audit、阈值和fail-close全部不变。
+
+验证：定向=`63/63`，全量 CPU=`105/105`；demo `--help`、3个 Python AST、Level-2 runner
+PowerShell AST、`git diff --check` 全部exit0。既知 wandb TemporaryDirectory atexit PermissionError不影响
+测试进程exit0。issue #7 已记录失败根因：[comment 5278317540](https://github.com/FerryRain/Hand_Compliance_Control/issues/7#issuecomment-5278317540)。
+
+**正在执行/下一步：**按用户要求直接提交并push `main`（不建branch/PR），发布implementation checkpoint，
+再用完全相同 Acceptance seed42 0--50 mm headless 参数GPU终审。新的partial证据必须同时包含两条
+protected sources；完整plan/collision/terminal/low-motion/dynamics未过前仍不录像。

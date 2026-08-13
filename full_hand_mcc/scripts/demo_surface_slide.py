@@ -8017,8 +8017,17 @@ def main() -> None:
                                 prior_q: np.ndarray,
                                 prior_arc: np.ndarray,
                                 prior_distance: float,
+                                feasibility_weight_scale: float = 1.0,
                             ) -> np.ndarray:
                                 """Shape one node and its segment; hard audit remains authoritative."""
+
+                                if (
+                                    not np.isfinite(feasibility_weight_scale)
+                                    or feasibility_weight_scale <= 0.0
+                                ):
+                                    raise ValueError(
+                                        "feasibility_weight_scale must be finite and positive"
+                                    )
 
                                 (
                                     node_points,
@@ -8132,7 +8141,10 @@ def main() -> None:
                                             minimum_node_motion_m
                                         ),
                                         interior_guard_m=task_guard_m,
-                                        weight=suffix_task_hinge_weight,
+                                        weight=(
+                                            feasibility_weight_scale
+                                            * suffix_task_hinge_weight
+                                        ),
                                     )
                                 )
                                 pad_alignment = np.einsum(
@@ -8173,7 +8185,8 @@ def main() -> None:
                                         rotation,
                                     )
                                     rows.append(
-                                        moving_bridge_tip_geometry_residual(
+                                        feasibility_weight_scale
+                                        * moving_bridge_tip_geometry_residual(
                                             tip_clearance,
                                             planner_tip_geom_target_m,
                                             inner_cap_m=(
@@ -8191,7 +8204,8 @@ def main() -> None:
                                         )
                                     )
                                     rows.append(
-                                        suffix_protected_self_weight
+                                        feasibility_weight_scale
+                                        * suffix_protected_self_weight
                                         * positive_self_clearance_residual(
                                             reachability.geometry_pair_distances(
                                                 sample_q,
@@ -8203,14 +8217,16 @@ def main() -> None:
                                         )
                                     )
                                     rows.append(
-                                        suffix_collision_hinge_weight
+                                        feasibility_weight_scale
+                                        * suffix_collision_hinge_weight
                                         * np.maximum(
                                             arm_inner_limit_m - arm_clearance,
                                             0.0,
                                         )
                                     )
                                     rows.append(
-                                        suffix_collision_hinge_weight
+                                        feasibility_weight_scale
+                                        * suffix_collision_hinge_weight
                                         * np.maximum(
                                             hand_inner_limit_m - hand_clearance,
                                             0.0,
@@ -8347,7 +8363,10 @@ def main() -> None:
                                             ),
                                             minimum_tip_motion_m=0.0,
                                             interior_guard_m=task_guard_m,
-                                            weight=suffix_task_hinge_weight,
+                                            weight=(
+                                                feasibility_weight_scale
+                                                * suffix_task_hinge_weight
+                                            ),
                                             minimum_progressing_fingers=0,
                                         )
                                     )
@@ -8377,14 +8396,16 @@ def main() -> None:
                                     upper - q_node,
                                 )
                                 rows.append(
-                                    suffix_task_hinge_weight
+                                    feasibility_weight_scale
+                                    * suffix_task_hinge_weight
                                     * np.maximum(
                                         minimum_joint_margin_rad - margin,
                                         0.0,
                                     )
                                 )
                                 rows.append(
-                                    suffix_task_hinge_weight
+                                    feasibility_weight_scale
+                                    * suffix_task_hinge_weight
                                     * np.maximum(
                                         np.abs(q_node - prior_q)
                                         - (
@@ -9648,6 +9669,7 @@ def main() -> None:
                                                 prior_distance=(
                                                     _prior_distance
                                                 ),
+                                                feasibility_weight_scale=4.0,
                                             )
 
                                         node_trials: list[SimpleNamespace] = []

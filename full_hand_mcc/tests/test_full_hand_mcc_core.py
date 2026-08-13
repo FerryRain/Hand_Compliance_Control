@@ -178,7 +178,7 @@ class PlannerDiagnosticsTest(unittest.TestCase):
             np.diff(base, axis=0),
         )
 
-    def test_suffix_rollout_keeps_best_protected_basin(self) -> None:
+    def test_suffix_rollout_keeps_two_protected_basins(self) -> None:
         kinds = (
             "previous",
             "extrapolated",
@@ -189,12 +189,29 @@ class PlannerDiagnosticsTest(unittest.TestCase):
         )
         indices = DIAGNOSTICS.prioritized_suffix_rollout_indices(
             kinds,
-            (5, 4, 1, 3, 2, 0),
+            (5, 4, 1, 2, 0, 3),
             maximum_sources=3,
         )
-        self.assertEqual(indices, (5, 3, 4))
-        self.assertTrue(
-            any(kinds[index].startswith("protected_self") for index in indices)
+        self.assertEqual(indices, (5, 2, 3))
+        self.assertEqual(
+            sum(kinds[index].startswith("protected_self") for index in indices),
+            2,
+        )
+
+    def test_suffix_rollout_respects_small_source_caps(self) -> None:
+        kinds = ("previous", "protected_self_a", "protected_self_b")
+        ranked = (0, 2, 1)
+        self.assertEqual(
+            DIAGNOSTICS.prioritized_suffix_rollout_indices(
+                kinds, ranked, maximum_sources=1
+            ),
+            (0,),
+        )
+        self.assertEqual(
+            DIAGNOSTICS.prioritized_suffix_rollout_indices(
+                kinds, ranked, maximum_sources=2
+            ),
+            (0, 2),
         )
 
     def test_bridge_multistart_keeps_previous_and_all_unique_seeds(
@@ -2055,6 +2072,7 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             "source_prefix_ok",
             'trial_kind="source_preserved"',
             '"extrapolated_ls"',
+            "feasibility_weight_scale=4.0",
             '"rollout_partial_"',
             "[SUFFIX-ROLLOUT-PRUNED]",
             '"candidate_rollout_reached_node"',

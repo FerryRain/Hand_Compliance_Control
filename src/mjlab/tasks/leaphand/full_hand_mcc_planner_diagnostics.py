@@ -224,7 +224,13 @@ def prioritized_suffix_rollout_indices(
     *,
     maximum_sources: int,
 ) -> tuple[int, ...]:
-    """Keep the best overall and best protected-self basin for rollout."""
+    """Keep the best overall and up to two protected-self rollout basins.
+
+    A measured self-separation direction can trade collision clearance against
+    progress, tangent, or joint margin in more than one local basin.  Retaining
+    only the best aggregate protected candidate discards that diversity before
+    the exact, step-bounded node repair gets a chance to evaluate it.
+    """
 
     if not isinstance(maximum_sources, int) or maximum_sources <= 0:
         raise ValueError("maximum_sources must be a positive integer")
@@ -242,10 +248,16 @@ def prioritized_suffix_rollout_indices(
 
     if ranked:
         append(ranked[0])
+    protected_target = min(2, maximum_sources)
     for index in ranked:
         if kinds[index].startswith("protected_self"):
             append(index)
-            break
+            protected_selected = sum(
+                kinds[selected_index].startswith("protected_self")
+                for selected_index in selected
+            )
+            if protected_selected >= protected_target:
+                break
     for index in ranked:
         append(index)
     return tuple(selected)
