@@ -3155,3 +3155,22 @@ rolling low-motion全部冻结不变。尚未运行新GPU、未生成plan/dynami
 **正在执行/下一步：**commit/push main -> issue #7 implementation checkpoint -> 完全相同Acceptance seed42
 0--50 mm headless GPU。重点检查45.9375 mm是否实际打印polish evidence、正式50 um audit是否通过，以及后续
 50 mm terminal/plan/full collision/low-motion/dynamics；全部数值物理验收前不录像。
+
+### `ae7516b` interior-polish Acceptance seed42 GPU启动（2026-08-13 19:34 CST）
+
+- stem=`baseline2_capsule_interiorpolish_0to50_acceptance_seed42_20260813_193439_840`；
+- runtime commit=`ae7516bc9acb614cf9ea1dcc2b83a8f3bc4c7617`，已推送远端`main`；
+- Acceptance、seed42、capsule radius/half-height=`0.10/0.17 m`、route=`0--0.05 m`、base keyframes=`40`、
+  motion frames=`800`、device=`cuda:0`、viewer=`headless`，不生成视频；
+- arguments完整复用`suffixheadroom_...184804_386_launch.json`，只替换`--plan-output`和
+  `--mpc-failure-prefix-output`；
+- wrapper PID=`18056`；Python shim/real进程已启动，日志已进入planner；
+- initial physical-tip clearance=`[-0.451,-0.253,-0.260,-0.058] mm >= -1 mm`；initial protected-self=
+  `[0.537514,0.721975,0.598799] mm`，active self=0；
+- launch/log/stderr已分类保存于`full_hand_mcc/outputs/debug/20_fr3_planning/`，issue #7启动记录：
+  [comment 5279873187](https://github.com/FerryRain/Hand_Compliance_Control/issues/7#issuecomment-5279873187)。
+
+**正在执行：**低频只读监控accepted path。38.750 mm的prospective low-motion门应先复现并安全细分；首次H5
+重点读取`[SUFFIX-INTERIOR-POLISH]`的source/node/nfev/prefix结果，以及candidate polish attempt metadata。
+只有重新通过正式50 um node/segment/dense publisher/exact terminal/rolling-low-motion后才允许commit。
+完整plan/full collision/terminal/low-motion/dynamics PASS前Level 2仍 **NOT PASS**，不录像。

@@ -1744,3 +1744,14 @@ low-motion门未改。
 **正在执行/下一步：**提交并push `main`、同步issue #7，然后完全复用上一轮Acceptance seed42 0--50 mm
 参数GPU重跑。目标是确认45.9375 mm出现`[SUFFIX-INTERIOR-POLISH]`并越过terminal；完整plan/full audit/
 dynamics PASS前仍不录像，Level 2仍为 **NOT PASS**。
+
+### `ae7516b` interior-polish GPU终审正在运行（2026-08-13 19:34 CST）
+
+已推送`ae7516b`到远端`main`并启动stem=
+`baseline2_capsule_interiorpolish_0to50_acceptance_seed42_20260813_193439_840`。完全复用上一轮Acceptance
+seed42 0--50 mm参数，仅替换plan/failure输出路径；`cuda:0` headless，不录像。wrapper PID=`18056`，
+Python进程已启动；初始physical-tip=`[-0.451,-0.253,-0.260,-0.058] mm`、protected-self minimum=
+`0.537514 mm`，均通过。issue #7启动记录：[comment 5279873187](https://github.com/FerryRain/Hand_Compliance_Control/issues/7#issuecomment-5279873187)。
+
+**正在执行：**低频只读监控；先核对38.750 mm prospective低运动细分，再核对45.9375 mm polish日志和正式
+50 um exact audit。完整plan/full collision/terminal/low-motion/dynamics PASS前不录像，Level 2仍 **NOT PASS**。
