@@ -1319,3 +1319,54 @@ Level 2 仍为 **NOT PASS**。
 **正在执行/下一步：**commit/push → 用完全相同的 Acceptance seed 42、0--50 mm
 headless 配置重跑。只有该次 GPU 规划和后续物理审计通过后才继续其它 seeds、完整
 `0.48 m`、dynamics 与视频。
+
+### `7ec7cdf` GPU 0--50 mm 与 H=5 后缀决策（2026-08-10）
+
+Acceptance seed 42 headless stem=
+`baseline2_capsule_bridgetip_0to50_acceptance_seed42_20260810_073140_087`。
+本轮越过旧 `45.9375 mm` 瓶颈，但在 `46.09375 mm`、keyframe `46/50`
+退出；只有 log 与 failure-prefix，没有 plan、dynamics、audit 或视频，Level 2 仍为
+**NOT PASS**。log SHA256=`F0A571105F5F1F63B092BE47FDB5E5E9F5C25F97A2B266D9C2676F1FFEB6AD9D`；
+prefix SHA256=`DB1DBCC1AA85EC4128D67002568AB8B1461E96ADD8C1464C24745E1CE24A0A71`。
+
+ordinary final-best 同时违反 progress、monotonic 和 `0.03 rad` joint-step；moving
+candidate 的 collision、normal、tangent、monotonic、palm、joint-step、motion 与 strict
+budget 均通过，唯一 strict 失败是 progress=`4.712855 mm >4.588452 mm`，超
+`0.124403 mm`。其 hand/joint-limit/tangent 余量分别只剩
+`7.817 um/2.212 urad/3.353 um`，不得靠放宽门接受。旧 bounded target 每步最多推进
+`0.15625 mm`，从 predecessor 的 `4.816928 mm` lag 出发理论上仍超过 strict limit，
+所以根因是单点目标语义和短视规划，不是继续调 physical-tip 权重可以解决。
+
+终端 contract 已精确核对：800 motion frames 的尾 50 帧从 route=`46.9375 mm`
+开始（含等号），必须 planned nominal `4/4`；low-motion 是20 intervals/21 samples。
+CPU 对比显示 H=5 overlapping windows 优于 H=3 与一次10-node solve，但尚未完成到
+50 mm，也尚未跑真实 publisher-frame low-motion audit。
+
+**正在执行/下一步：**实现 H=5 receding suffix MVP：固定历史 q0、nullspace/phase
+小 beam、外层固定 rho 的 block least-squares、node/segment/publisher/terminal/
+rolling-low-motion 全硬审；整窗通过才原子提交 q1，失败零状态修改。首版不做历史
+rollback/splice、不上大规模 SLSQP、不放宽任何门。CPU、GPU、plan/full audit 与
+dynamics 全过后才录像。
+
+### H=5 strict suffix 首版实现检查点（2026-08-13，GPU 未运行）
+
+已实现 H=5 overlapping receding suffix 的首个可运行版本：progress target 会主动进入
+原 strict band 内侧，窗口逐节点联合优化 23-DoF；每个候选重新审计 node、9+ segment
+samples、真实 smoothstep publisher samples、精确 `46.9375 mm` terminal `4/4`，以及
+prefix 最后20个发布样本拼接后的20-interval low-motion。physical tip、FR3、non-tip hand、
+self=0、40deg pad、joint/step、progress/normal/tangent/monotonic/palm 门均未放宽。
+
+完整窗口通过后只提交 q1；失败不修改 coarse arrays、rephase、bridge budget 或 flags。
+未来 q 只作为 exact predecessor/distance cache seed，并在下一窗口全部重审。Level-2 runner
+已冻结 `H=5`、joint interior=`0.5 mrad`、task interior=`0.05 mm`、`max_nfev=160`。
+当前先使用通用近限关节 inward beam、历史外推、protected-self seeds 和认证 cache；连续
+phase/nullspace 变量尚未加入，若真实同-seed GPU 仍停在该局部分支，再依据首个真实失败门
+补充，而不先扩大方法范围。
+
+全量 CPU regression=`94/94`；demo CLI、Python AST、PowerShell AST 与
+`git diff --check` 通过。尚未 commit/push，也尚未运行新的 GPU、生成 plan、进入 dynamics
+或录制视频，Level 2 仍为 **NOT PASS**。
+
+**正在执行/下一步：**提交并 push main 后，运行 Acceptance seed42 0--50mm headless；
+首先核对 H=5 是否真实触发、是否越过 `46.09375 mm`，再按 plan/full collision/terminal/
+low-motion/dynamics 的实际首失败条件继续修改。

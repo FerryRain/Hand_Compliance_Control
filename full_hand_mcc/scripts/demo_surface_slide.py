@@ -51,8 +51,8 @@ from mjlab.tasks.leaphand.full_hand_mcc_planner_diagnostics import (
     LOW_MOTION_FORWARD_PROGRESS_RATIO,
     MOVING_BRIDGE_FORWARD_FINGER_COUNT,
     RejectedMovingBridgeCandidate,
-    bounded_incremental_arc_targets,
     bounded_moving_bridge_trust_radius,
+    build_receding_horizon_distances,
     build_bridge_rejection_metrics,
     build_candidate_failure_metrics,
     build_palm_guide_multistart_specs,
@@ -68,11 +68,15 @@ from mjlab.tasks.leaphand.full_hand_mcc_planner_diagnostics import (
     moving_bridge_tip_geometry_residual,
     orientation_aware_candidate_rank,
     positive_self_clearance_residual,
+    progress_aware_arc_targets,
     save_mpc_failure_prefix,
     save_npz_no_overwrite,
     segment_tip_clearance_status,
     self_separation_ascent_seeds,
     smooth_pad_alignment_residual,
+    smoothstep_joint_interpolation,
+    terminal_contact_sample_mask,
+    terminal_contact_start_distance,
 )
 from mjlab.tasks.leaphand.leaphand_full_hand_mcc_env_cfg import (
     ARM_DOF,
@@ -920,6 +924,39 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--mpc-suffix-horizon-nodes",
+        type=int,
+        default=0,
+        help=(
+            "Number of strict moving-suffix nodes jointly optimized before "
+            "accepting the first node. Zero disables the receding horizon."
+        ),
+    )
+    parser.add_argument(
+        "--mpc-suffix-min-joint-margin-mrad",
+        type=float,
+        default=0.5,
+        help=(
+            "Soft minimum joint-limit margin for every new suffix node. "
+            "The historical anchor is exempt; formal joint limits remain hard."
+        ),
+    )
+    parser.add_argument(
+        "--mpc-suffix-min-task-margin-mm",
+        type=float,
+        default=0.05,
+        help=(
+            "Interior progress/normal/tangent/physical-tip margin targeted "
+            "by the strict suffix solver without changing any hard limit."
+        ),
+    )
+    parser.add_argument(
+        "--mpc-suffix-max-nfev",
+        type=int,
+        default=160,
+        help="Maximum evaluations for each H-node suffix least-squares solve.",
+    )
+    parser.add_argument(
         "--mpc-static-bridge-max-dwell-mm",
         type=float,
         default=1.50,
@@ -1762,6 +1799,28 @@ def main() -> None:
             "--mpc-feasibility-bridge-tip-target-scale must be finite and "
             "non-negative"
         )
+    if args.mpc_suffix_horizon_nodes < 0:
+        raise ValueError("--mpc-suffix-horizon-nodes cannot be negative")
+    if args.mpc_suffix_horizon_nodes == 1:
+        raise ValueError(
+            "--mpc-suffix-horizon-nodes must be zero or at least two"
+        )
+    if (
+        not np.isfinite(args.mpc_suffix_min_joint_margin_mrad)
+        or args.mpc_suffix_min_joint_margin_mrad < 0.0
+    ):
+        raise ValueError(
+            "--mpc-suffix-min-joint-margin-mrad must be finite and non-negative"
+        )
+    if (
+        not np.isfinite(args.mpc_suffix_min_task_margin_mm)
+        or args.mpc_suffix_min_task_margin_mm < 0.0
+    ):
+        raise ValueError(
+            "--mpc-suffix-min-task-margin-mm must be finite and non-negative"
+        )
+    if args.mpc_suffix_max_nfev <= 0:
+        raise ValueError("--mpc-suffix-max-nfev must be positive")
     if args.mpc_static_bridge_max_dwell_mm < 0.0:
         raise ValueError("--mpc-static-bridge-max-dwell-mm cannot be negative")
     if not 0.0 <= args.mpc_static_bridge_max_total_ratio <= 1.0:
@@ -3751,6 +3810,10 @@ def main() -> None:
                 keyframe_count + 1,
                 dtype=np.bool_,
             )
+            coarse_suffix_horizon = np.zeros(
+                keyframe_count + 1,
+                dtype=np.bool_,
+            )
             coarse_static_feasibility_bridge = np.zeros(
                 keyframe_count + 1,
                 dtype=np.bool_,
@@ -3779,6 +3842,20 @@ def main() -> None:
             coarse_nfev = np.zeros(keyframe_count + 1, dtype=np.int32)
             auto_refine_inserted_distance_m: list[float] = []
             auto_refine_inserted_reason: list[str] = []
+            suffix_horizon_attempt_count = 0
+            suffix_horizon_success_count = 0
+            suffix_horizon_cache: dict[str, np.ndarray | float] | None = None
+            planner_frame_target_distance = np.linspace(
+                0.0,
+                args.axial_travel_m,
+                frame_count + 1,
+                dtype=np.float64,
+            )[1:]
+            suffix_terminal_start_m = terminal_contact_start_distance(
+                args.axial_travel_m,
+                frame_count,
+                min(args.final_contact_recovery_frames, frame_count),
+            )
             print(
                 "[MPC-GRID] "
                 f"base_keyframes={base_keyframe_count} "
@@ -4146,6 +4223,24 @@ def main() -> None:
                     "auto_refine_insertions_max": (
                         args.mpc_auto_refine_max_insertions
                     ),
+                    "suffix_horizon_nodes": (
+                        args.mpc_suffix_horizon_nodes
+                    ),
+                    "suffix_horizon_attempt_count": (
+                        suffix_horizon_attempt_count
+                    ),
+                    "suffix_horizon_success_count": (
+                        suffix_horizon_success_count
+                    ),
+                    "suffix_min_joint_margin_mrad": (
+                        args.mpc_suffix_min_joint_margin_mrad
+                    ),
+                    "suffix_min_task_margin_mm": (
+                        args.mpc_suffix_min_task_margin_mm
+                    ),
+                    "suffix_terminal_start_m": (
+                        suffix_terminal_start_m
+                    ),
                 }
                 if (
                     bridge_record is not None
@@ -4200,6 +4295,7 @@ def main() -> None:
                 nonlocal coarse_target_progress
                 nonlocal coarse_auto_rephase_offset_m
                 nonlocal coarse_feasibility_bridge
+                nonlocal coarse_suffix_horizon
                 nonlocal coarse_static_feasibility_bridge
                 nonlocal coarse_static_bridge_dwell_m
                 nonlocal coarse_recovery_bridge
@@ -4211,6 +4307,7 @@ def main() -> None:
                 nonlocal coarse_nfev
                 nonlocal keyframe_count
                 nonlocal auto_rephase_offset_m
+                nonlocal suffix_horizon_cache
 
                 if (
                     args.mpc_auto_refine_min_step_mm <= 0.0
@@ -4267,6 +4364,11 @@ def main() -> None:
                     keyframe,
                     False,
                 )
+                coarse_suffix_horizon = np.insert(
+                    coarse_suffix_horizon,
+                    keyframe,
+                    False,
+                )
                 coarse_static_feasibility_bridge = np.insert(
                     coarse_static_feasibility_bridge,
                     keyframe,
@@ -4312,6 +4414,7 @@ def main() -> None:
                 )
                 auto_refine_inserted_distance_m.append(midpoint_m)
                 auto_refine_inserted_reason.append(reason)
+                suffix_horizon_cache = None
                 print(
                     "[AUTO-REFINE] "
                     f"reason={reason} keyframe={keyframe}/{keyframe_count} "
@@ -4534,6 +4637,167 @@ def main() -> None:
                     0.0,
                 )
 
+            def terminal_rephase_envelope_at(
+                surface_distance: float,
+            ) -> float:
+                coordinate = float(
+                    np.clip(
+                        (
+                            args.axial_travel_m - surface_distance
+                        )
+                        / min(0.020, args.axial_travel_m),
+                        0.0,
+                        1.0,
+                    )
+                )
+                return coordinate * coordinate * (3.0 - 2.0 * coordinate)
+
+            def scheduled_fingertip_targets(
+                surface_distance: float,
+                rephase_offset_m: np.ndarray,
+            ) -> tuple[
+                np.ndarray,
+                np.ndarray,
+                np.ndarray,
+                float,
+                np.ndarray,
+                np.ndarray,
+            ]:
+                """Rebuild immutable fingertip targets for a lookahead node."""
+
+                distance = float(surface_distance)
+                if not np.isfinite(distance):
+                    raise ValueError("suffix target distance must be finite")
+                offset = np.asarray(rephase_offset_m, dtype=np.float64)
+                if offset.shape != (4,) or not np.all(np.isfinite(offset)):
+                    raise ValueError("suffix rephase offset must have shape (4,)")
+                target_arc = start_arc + direction * distance
+                target_arc[0] = (
+                    start_arc[0]
+                    + direction * palm_follow_distance(distance)
+                )
+
+                def sine_window(start_m: float, end_m: float) -> float:
+                    if not start_m < distance < end_m:
+                        return 0.0
+                    coordinate = (distance - start_m) / (end_m - start_m)
+                    return float(np.sin(np.pi * coordinate))
+
+                target_arc[1:] += (
+                    direction
+                    * args.finger_meridian_gait_mm
+                    / 1000.0
+                    * sine_window(
+                        args.finger_meridian_gait_start_m,
+                        args.finger_meridian_gait_end_m,
+                    )
+                    * np.asarray(args.finger_meridian_gait_scales)
+                )
+                target_arc[1:] += (
+                    direction
+                    * args.finger_meridian_correction_mm
+                    / 1000.0
+                    * sine_window(
+                        args.finger_meridian_correction_start_m,
+                        args.finger_meridian_correction_end_m,
+                    )
+                    * np.asarray(args.finger_meridian_correction_scales)
+                )
+                target_arc[1:] += (
+                    direction
+                    * args.finger_meridian_terminal_correction_mm
+                    / 1000.0
+                    * sine_window(
+                        args.finger_meridian_terminal_correction_start_m,
+                        args.finger_meridian_terminal_correction_end_m,
+                    )
+                    * np.asarray(
+                        args.finger_meridian_terminal_correction_scales
+                    )
+                )
+                target_arc[1:] += (
+                    direction
+                    * args.finger_meridian_terminal_tail_correction_mm
+                    / 1000.0
+                    * sine_window(
+                        args.finger_meridian_terminal_tail_correction_start_m,
+                        args.finger_meridian_terminal_tail_correction_end_m,
+                    )
+                    * np.asarray(
+                        args.finger_meridian_terminal_tail_correction_scales
+                    )
+                )
+                for local_phase_spec in args.finger_meridian_local_phase:
+                    (
+                        local_amplitude_mm,
+                        local_start_m,
+                        local_end_m,
+                        *local_scales,
+                    ) = local_phase_spec
+                    target_arc[1:] += (
+                        direction
+                        * local_amplitude_mm
+                        / 1000.0
+                        * sine_window(local_start_m, local_end_m)
+                        * np.asarray(local_scales)
+                    )
+                active_rephase_limit_m = (
+                    max(
+                        args.mpc_auto_rephase_max_mm,
+                        args.mpc_feasibility_bridge_max_mm,
+                    )
+                    / 1000.0
+                    * terminal_rephase_envelope_at(distance)
+                )
+                target_arc[1:] += direction * np.clip(
+                    offset,
+                    -active_rephase_limit_m,
+                    active_rephase_limit_m,
+                )
+
+                target_azimuth = start_azimuth.copy()
+                target_azimuth[1:] += (
+                    args.finger_gait_amplitude_m
+                    * np.sin(np.pi * distance / args.axial_travel_m)
+                    * np.asarray((1.0, -1.0, 0.75, -0.75))
+                    / CAPSULE_RADIUS
+                )
+                preload_fraction = min(
+                    distance / max(0.025, args.axial_travel_m),
+                    1.0,
+                )
+                target_standoff = (
+                    initial_signed_standoff
+                    + preload_fraction
+                    * (target_signed_standoff - initial_signed_standoff)
+                )
+                progress_tolerance_mm = (
+                    args.mpc_progress_tolerance_mm
+                    if distance
+                    >= args.axial_travel_m - 1.0e-12
+                    else args.mpc_intermediate_progress_tolerance_mm
+                )
+                if (
+                    distance < args.axial_travel_m - 1.0e-12
+                    and transient_progress_active(distance)
+                ):
+                    progress_tolerance_mm = (
+                        args.mpc_transient_progress_tolerance_mm
+                        + transient_progress_recovery_phase(distance)
+                        * (
+                            args.mpc_intermediate_progress_tolerance_mm
+                            - args.mpc_transient_progress_tolerance_mm
+                        )
+                    )
+                return (
+                    target_arc,
+                    target_azimuth,
+                    target_standoff,
+                    progress_tolerance_mm / 1000.0,
+                    scheduled_tip_normal_tolerances(distance),
+                    scheduled_tip_tangential_tolerances(distance),
+                )
+
             keyframe = 1
             while keyframe <= keyframe_count:
                 last_bridge_rejection_record: dict[str, object] | None = None
@@ -4541,6 +4805,10 @@ def main() -> None:
                     RejectedMovingBridgeCandidate | None
                 ) = None
                 feasibility_bridge_selected = False
+                suffix_horizon_selected = False
+                pending_suffix_horizon: dict[
+                    str, np.ndarray | float
+                ] | None = None
                 static_feasibility_bridge_selected = False
                 recovery_bridge_selected = False
                 selected_static_bridge_dwell_m = 0.0
@@ -5322,6 +5590,7 @@ def main() -> None:
 
                 def segment_collision_status(
                     candidate_q: np.ndarray,
+                    segment_start_q: np.ndarray | None = None,
                 ) -> tuple[
                     float,
                     str,
@@ -5336,6 +5605,18 @@ def main() -> None:
                     float,
                 ]:
                     """Audit distinct arm, hand, tip, self, and pad gates."""
+
+                    segment_start = (
+                        previous_q
+                        if segment_start_q is None
+                        else np.asarray(segment_start_q, dtype=np.float64)
+                    )
+                    if segment_start.shape != candidate_q.shape:
+                        raise ValueError(
+                            "segment_start_q must match candidate_q"
+                        )
+                    if not np.all(np.isfinite(segment_start)):
+                        raise ValueError("segment_start_q must be finite")
 
                     if args.collision_mode != "full_robot":
                         return (
@@ -5371,7 +5652,7 @@ def main() -> None:
                         sample_count + 1,
                     )[1:]:
                         sample_q = (
-                            (1.0 - fraction) * previous_q
+                            (1.0 - fraction) * segment_start
                             + fraction * candidate_q
                         )
                         (
@@ -7481,11 +7762,17 @@ def main() -> None:
                         # without accumulating zero-motion planning pauses.
                         desired_arc[:] = bridge_desired_arc
                         moving_bridge_target_arc = (
-                            bounded_incremental_arc_targets(
+                            progress_aware_arc_targets(
                                 current_arc_m=bridge_arc[1:],
                                 desired_arc_m=bridge_desired_arc[1:],
                                 direction=direction,
-                                interval_m=bridge_interval_m,
+                                nominal_advance_m=bridge_interval_m,
+                                hard_progress_limit_m=progress_limit_m,
+                                interior_guard_m=min(
+                                    args.mpc_suffix_min_task_margin_mm
+                                    / 1000.0,
+                                    progress_limit_m,
+                                ),
                             )
                         )
                         bridge_anchor_standoff_m = bridge_aux[1:, 1].copy()
@@ -7504,6 +7791,1143 @@ def main() -> None:
                             upper,
                             previous_q + bridge_trust_radius,
                         )
+
+                        def build_suffix_horizon_candidate(
+                        ) -> SimpleNamespace | None:
+                            """Solve and exact-audit an immutable H-node suffix."""
+
+                            nonlocal suffix_horizon_attempt_count
+                            if args.mpc_suffix_horizon_nodes <= 0:
+                                return None
+                            suffix_horizon_attempt_count += 1
+                            horizon_distance = build_receding_horizon_distances(
+                                first_distance_m=desired_distance,
+                                nominal_step_m=bridge_interval_m,
+                                horizon_nodes=args.mpc_suffix_horizon_nodes,
+                                route_end_m=args.axial_travel_m,
+                                terminal_start_m=suffix_terminal_start_m,
+                            )
+                            if horizon_distance.size < 2:
+                                return None
+                            node_count = int(horizon_distance.size)
+                            target_arc_rows: list[np.ndarray] = []
+                            target_azimuth_rows: list[np.ndarray] = []
+                            target_standoff_rows: list[np.ndarray] = []
+                            progress_limit_rows: list[float] = []
+                            normal_tolerance_rows: list[np.ndarray] = []
+                            tangent_tolerance_rows: list[np.ndarray] = []
+                            local_target_rows: list[np.ndarray] = []
+                            prior_target_arc = bridge_arc[1:].copy()
+                            prior_distance = float(
+                                coarse_distance[keyframe - 1]
+                            )
+                            task_guard_m = (
+                                args.mpc_suffix_min_task_margin_mm
+                                / 1000.0
+                            )
+                            for node_distance in horizon_distance:
+                                (
+                                    node_arc,
+                                    node_azimuth,
+                                    node_standoff,
+                                    node_progress_limit,
+                                    node_normal_tolerance,
+                                    node_tangent_tolerance,
+                                ) = scheduled_fingertip_targets(
+                                    float(node_distance),
+                                    bridge_rephase_offset_m,
+                                )
+                                node_interval = float(
+                                    node_distance - prior_distance
+                                )
+                                local_target = progress_aware_arc_targets(
+                                    current_arc_m=prior_target_arc,
+                                    desired_arc_m=node_arc[1:],
+                                    direction=direction,
+                                    nominal_advance_m=node_interval,
+                                    hard_progress_limit_m=node_progress_limit,
+                                    interior_guard_m=min(
+                                        task_guard_m,
+                                        node_progress_limit,
+                                    ),
+                                )
+                                target_arc_rows.append(node_arc)
+                                target_azimuth_rows.append(node_azimuth)
+                                target_standoff_rows.append(node_standoff)
+                                progress_limit_rows.append(node_progress_limit)
+                                normal_tolerance_rows.append(
+                                    node_normal_tolerance
+                                )
+                                tangent_tolerance_rows.append(
+                                    node_tangent_tolerance
+                                )
+                                local_target_rows.append(local_target)
+                                prior_target_arc = local_target
+                                prior_distance = float(node_distance)
+                            target_arc_array = np.stack(target_arc_rows)
+                            target_azimuth_array = np.stack(
+                                target_azimuth_rows
+                            )
+                            target_standoff_array = np.stack(
+                                target_standoff_rows
+                            )
+                            progress_limit_array = np.asarray(
+                                progress_limit_rows,
+                                dtype=np.float64,
+                            )
+                            normal_tolerance_array = np.stack(
+                                normal_tolerance_rows
+                            )
+                            tangent_tolerance_array = np.stack(
+                                tangent_tolerance_rows
+                            )
+                            local_target_array = np.stack(local_target_rows)
+                            current_schedule_arc = scheduled_fingertip_targets(
+                                desired_distance,
+                                bridge_rephase_offset_m,
+                            )[0]
+                            if not np.allclose(
+                                current_schedule_arc[1:],
+                                bridge_desired_arc[1:],
+                                atol=1.0e-8,
+                                rtol=0.0,
+                            ):
+                                print(
+                                    "[SUFFIX-HORIZON-SCHEDULE-MISMATCH] "
+                                    f"distance_m={desired_distance:.9f} "
+                                    "max_arc_delta_mm="
+                                    f"{float(np.max(np.abs(current_schedule_arc[1:] - bridge_desired_arc[1:]))) * 1000:.6f}",
+                                    flush=True,
+                                )
+                                return None
+
+                            minimum_joint_margin_rad = (
+                                args.mpc_suffix_min_joint_margin_mrad
+                                / 1000.0
+                            )
+                            node_lower = lower + minimum_joint_margin_rad
+                            node_upper = upper - minimum_joint_margin_rad
+                            if np.any(node_lower >= node_upper):
+                                return None
+                            flat_lower = np.tile(node_lower, node_count)
+                            flat_upper = np.tile(node_upper, node_count)
+                            hand_inner_limit_m = -(
+                                args.max_incidental_hand_penetration_mm
+                                - args.mpc_suffix_min_task_margin_mm
+                            ) / 1000.0
+                            arm_inner_limit_m = (
+                                args.min_arm_clearance_mm
+                                + args.mpc_suffix_min_task_margin_mm
+                            ) / 1000.0
+
+                            def suffix_residual(flat_q: np.ndarray) -> np.ndarray:
+                                q_rows = np.asarray(
+                                    flat_q,
+                                    dtype=np.float64,
+                                ).reshape(node_count, TOTAL_DOF)
+                                rows: list[np.ndarray] = []
+                                prior_q = previous_q
+                                for node_index, q_node in enumerate(q_rows):
+                                    (
+                                        node_points,
+                                        _,
+                                        node_surface_normals,
+                                        node_arc,
+                                        node_aux,
+                                    ) = contact_state(q_node)
+                                    rows.append(
+                                        moving_bridge_local_residual(
+                                            arc_m=node_arc[1:],
+                                            target_arc_m=(
+                                                local_target_array[node_index]
+                                            ),
+                                            standoff_m=node_aux[1:, 1],
+                                            anchor_standoff_m=(
+                                                target_standoff_array[
+                                                    node_index, 1:
+                                                ]
+                                            ),
+                                            azimuth_rad=node_aux[1:, 0],
+                                            anchor_azimuth_rad=(
+                                                target_azimuth_array[
+                                                    node_index, 1:
+                                                ]
+                                            ),
+                                            q_rad=q_node,
+                                            anchor_q_rad=prior_q,
+                                            capsule_radius_m=CAPSULE_RADIUS,
+                                            task_weight=(
+                                                args.mpc_feasibility_bridge_target_weight
+                                            ),
+                                        )
+                                    )
+                                    pad_alignment = np.einsum(
+                                        "ij,ij->i",
+                                        reachability.fingertip_pad_normals(
+                                            q_node
+                                        ),
+                                        -node_surface_normals[1:],
+                                    )
+                                    rows.append(
+                                        args.planner_soft_pad_weight
+                                        * smooth_pad_alignment_residual(
+                                            pad_alignment,
+                                            target_alignment=(
+                                                planner_soft_pad_alignment
+                                            ),
+                                            tau=(
+                                                args.planner_soft_pad_softplus_tau
+                                            ),
+                                        )
+                                    )
+                                    if args.collision_mode == "full_robot":
+                                        (
+                                            tip_clearance,
+                                            arm_clearance,
+                                            _,
+                                            hand_clearance,
+                                            _,
+                                        ) = reachability.geometry_group_clearances(
+                                            q_node,
+                                            center,
+                                            rotation,
+                                        )
+                                        rows.append(
+                                            moving_bridge_tip_geometry_residual(
+                                                tip_clearance,
+                                                planner_tip_geom_target_m,
+                                                inner_cap_m=(
+                                                    planner_tip_geom_inner_cap_m
+                                                ),
+                                                target_weight=(
+                                                    args.planner_tip_geom_weight
+                                                ),
+                                                target_scale=(
+                                                    args.mpc_feasibility_bridge_tip_target_scale
+                                                ),
+                                                inner_weight=(
+                                                    args.planner_tip_geom_inner_weight
+                                                ),
+                                            )
+                                        )
+                                        rows.append(
+                                            args.planner_protected_self_clearance_weight
+                                            * positive_self_clearance_residual(
+                                                reachability.geometry_pair_distances(
+                                                    q_node,
+                                                    protected_self_pairs,
+                                                ),
+                                                target_clearance_m=(
+                                                    planner_protected_self_clearance_m
+                                                ),
+                                            )
+                                        )
+                                        rows.append(
+                                            2500.0
+                                            * np.maximum(
+                                                arm_inner_limit_m
+                                                - arm_clearance,
+                                                0.0,
+                                            )
+                                        )
+                                        rows.append(
+                                            2500.0
+                                            * np.maximum(
+                                                hand_inner_limit_m
+                                                - hand_clearance,
+                                                0.0,
+                                            )
+                                        )
+                                    approximate_palm_target = (
+                                        palm_target
+                                        + direction
+                                        * (
+                                            horizon_distance[node_index]
+                                            - desired_distance
+                                        )
+                                        * args.palm_travel_ratio
+                                        * rotation[:, 2]
+                                    )
+                                    rows.append(
+                                        20.0
+                                        * (
+                                            node_points[0]
+                                            - approximate_palm_target
+                                        )
+                                    )
+                                    margin = np.minimum(
+                                        q_node - lower,
+                                        upper - q_node,
+                                    )
+                                    rows.append(
+                                        1200.0
+                                        * np.maximum(
+                                            minimum_joint_margin_rad - margin,
+                                            0.0,
+                                        )
+                                    )
+                                    rows.append(
+                                        1200.0
+                                        * np.maximum(
+                                            np.abs(q_node - prior_q)
+                                            - (
+                                                args.max_plan_joint_step_rad
+                                                - 5.0e-5
+                                            ),
+                                            0.0,
+                                        )
+                                    )
+                                    prior_q = q_node
+                                if node_count > 1:
+                                    rows.append(
+                                        0.02 * np.diff(q_rows, n=2, axis=0).ravel()
+                                        if node_count > 2
+                                        else np.zeros(0, dtype=np.float64)
+                                    )
+                                return np.concatenate(rows)
+
+                            suffix_seeds: list[np.ndarray] = []
+
+                            def append_suffix_seed(q_rows: np.ndarray) -> None:
+                                candidate = np.asarray(
+                                    q_rows,
+                                    dtype=np.float64,
+                                ).reshape(node_count, TOTAL_DOF)
+                                candidate = np.clip(
+                                    candidate,
+                                    node_lower,
+                                    node_upper,
+                                )
+                                if any(
+                                    np.allclose(
+                                        candidate,
+                                        existing,
+                                        atol=1.0e-12,
+                                        rtol=0.0,
+                                    )
+                                    for existing in suffix_seeds
+                                ):
+                                    return
+                                suffix_seeds.append(candidate)
+
+                            append_suffix_seed(
+                                np.repeat(previous_q[None, :], node_count, axis=0)
+                            )
+                            extrapolated_rows = []
+                            extrapolated_q = previous_q.copy()
+                            capped_delta = np.clip(
+                                previous_delta,
+                                -0.020,
+                                0.020,
+                            )
+                            for _ in range(node_count):
+                                extrapolated_q = np.clip(
+                                    extrapolated_q + capped_delta,
+                                    node_lower,
+                                    node_upper,
+                                )
+                                extrapolated_rows.append(extrapolated_q.copy())
+                            append_suffix_seed(np.stack(extrapolated_rows))
+                            anchor_joint_margin = np.minimum(
+                                previous_q - lower,
+                                upper - previous_q,
+                            )
+                            critical_joint_indices = np.argsort(
+                                anchor_joint_margin
+                            )[: min(4, TOTAL_DOF)]
+                            centered_q = np.clip(
+                                previous_q,
+                                node_lower,
+                                node_upper,
+                            )
+                            combined_centered_q = centered_q.copy()
+                            for joint_index in critical_joint_indices:
+                                lower_distance = (
+                                    centered_q[joint_index]
+                                    - lower[joint_index]
+                                )
+                                upper_distance = (
+                                    upper[joint_index]
+                                    - centered_q[joint_index]
+                                )
+                                inward_sign = (
+                                    1.0
+                                    if lower_distance <= upper_distance
+                                    else -1.0
+                                )
+                                combined_centered_q[joint_index] = np.clip(
+                                    centered_q[joint_index]
+                                    + inward_sign * 0.005,
+                                    node_lower[joint_index],
+                                    node_upper[joint_index],
+                                )
+                            append_suffix_seed(
+                                np.repeat(
+                                    combined_centered_q[None, :],
+                                    node_count,
+                                    axis=0,
+                                )
+                            )
+                            for joint_index in critical_joint_indices[:2]:
+                                individual_q = centered_q.copy()
+                                lower_distance = (
+                                    individual_q[joint_index]
+                                    - lower[joint_index]
+                                )
+                                upper_distance = (
+                                    upper[joint_index]
+                                    - individual_q[joint_index]
+                                )
+                                inward_sign = (
+                                    1.0
+                                    if lower_distance <= upper_distance
+                                    else -1.0
+                                )
+                                individual_q[joint_index] = np.clip(
+                                    individual_q[joint_index]
+                                    + inward_sign * 0.005,
+                                    node_lower[joint_index],
+                                    node_upper[joint_index],
+                                )
+                                append_suffix_seed(
+                                    np.repeat(
+                                        individual_q[None, :],
+                                        node_count,
+                                        axis=0,
+                                    )
+                                )
+                            for separation_seed in protected_self_separation_seeds(
+                                np.clip(previous_q, node_lower, node_upper),
+                                node_lower,
+                                node_upper,
+                            ):
+                                append_suffix_seed(
+                                    np.repeat(
+                                        separation_seed[None, :],
+                                        node_count,
+                                        axis=0,
+                                    )
+                                )
+                            cache_seed: np.ndarray | None = None
+                            if suffix_horizon_cache is not None:
+                                cached_anchor_distance = float(
+                                    suffix_horizon_cache["anchor_distance_m"]
+                                )
+                                cached_anchor_q = np.asarray(
+                                    suffix_horizon_cache["anchor_q_rad"]
+                                )
+                                cached_distance = np.asarray(
+                                    suffix_horizon_cache["distance_m"]
+                                )
+                                cached_q = np.asarray(
+                                    suffix_horizon_cache["q_rad"]
+                                )
+                                if (
+                                    abs(
+                                        cached_anchor_distance
+                                        - float(coarse_distance[keyframe - 1])
+                                    )
+                                    <= 1.0e-12
+                                    and np.allclose(
+                                        cached_anchor_q,
+                                        previous_q,
+                                        atol=1.0e-10,
+                                        rtol=0.0,
+                                    )
+                                    and cached_distance.ndim == 1
+                                    and cached_q.shape
+                                    == (cached_distance.size, TOTAL_DOF)
+                                    and cached_distance.size >= 1
+                                ):
+                                    cache_rows: list[np.ndarray] = []
+                                    cache_knots_d = np.concatenate(
+                                        (
+                                            [cached_anchor_distance],
+                                            cached_distance,
+                                        )
+                                    )
+                                    cache_knots_q = np.vstack(
+                                        (cached_anchor_q, cached_q)
+                                    )
+                                    for node_distance in horizon_distance:
+                                        if node_distance <= cache_knots_d[-1] + 1.0e-12:
+                                            cache_rows.append(
+                                                smoothstep_joint_interpolation(
+                                                    cache_knots_d,
+                                                    cache_knots_q,
+                                                    np.asarray([node_distance]),
+                                                )[0]
+                                            )
+                                        else:
+                                            cache_rows.append(cache_knots_q[-1])
+                                    cache_seed = np.stack(cache_rows)
+                                    append_suffix_seed(cache_seed)
+                            if len(suffix_seeds) > 6:
+                                retained_seeds = suffix_seeds[:5]
+                                if cache_seed is not None and not any(
+                                    np.allclose(
+                                        cache_seed,
+                                        retained,
+                                        atol=1.0e-12,
+                                        rtol=0.0,
+                                    )
+                                    for retained in retained_seeds
+                                ):
+                                    retained_seeds.append(cache_seed)
+                                else:
+                                    retained_seeds.append(suffix_seeds[5])
+                                suffix_seeds = retained_seeds
+
+                            def audit_suffix(
+                                q_rows: np.ndarray,
+                            ) -> tuple[bool, tuple[float, ...], dict[str, object]]:
+                                prior_q = previous_q
+                                prior_arc = bridge_arc
+                                prior_distance = float(
+                                    coarse_distance[keyframe - 1]
+                                )
+                                minimum_slacks_m: list[float] = []
+                                failed_gate_count = 0
+                                node_contact_counts: list[int] = []
+                                node_progress_margins: list[float] = []
+                                node_normal_margins: list[float] = []
+                                node_tangent_margins: list[float] = []
+                                node_joint_margins: list[float] = []
+                                node_collision_ok: list[bool] = []
+                                for node_index, q_node in enumerate(q_rows):
+                                    node_distance = float(
+                                        horizon_distance[node_index]
+                                    )
+                                    (
+                                        node_points,
+                                        _,
+                                        _,
+                                        node_arc,
+                                        node_aux,
+                                    ) = contact_state(q_node)
+                                    progress_error = np.abs(
+                                        direction
+                                        * (
+                                            node_arc
+                                            - target_arc_array[node_index]
+                                        )
+                                    )
+                                    progress_error[0] = 0.0
+                                    progress_margin = float(
+                                        progress_limit_array[node_index]
+                                        - np.max(progress_error)
+                                    )
+                                    normal_error = np.abs(
+                                        node_aux[1:, 1]
+                                        - target_standoff_array[
+                                            node_index, 1:
+                                        ]
+                                    )
+                                    nominal_contact = normal_error <= (
+                                        args.mpc_normal_tolerance_mm
+                                        / 1000.0
+                                    )
+                                    if (
+                                        node_distance
+                                        >= suffix_terminal_start_m - 1.0e-12
+                                    ):
+                                        normal_tolerance = np.full(
+                                            4,
+                                            args.mpc_normal_tolerance_mm
+                                            / 1000.0,
+                                            dtype=np.float64,
+                                        )
+                                        contact_ok = bool(
+                                            np.all(nominal_contact)
+                                        )
+                                    else:
+                                        normal_tolerance = (
+                                            normal_tolerance_array[node_index]
+                                        )
+                                        contact_ok = bool(
+                                            np.count_nonzero(nominal_contact)
+                                            >= args.min_planner_contact_fingers
+                                            and np.all(
+                                                normal_error
+                                                <= normal_tolerance
+                                            )
+                                        )
+                                    normal_margin = float(
+                                        np.min(
+                                            normal_tolerance - normal_error
+                                        )
+                                    )
+                                    tangent_error = np.abs(
+                                        (
+                                            (
+                                                node_aux[1:, 0]
+                                                - target_azimuth_array[
+                                                    node_index, 1:
+                                                ]
+                                                + np.pi
+                                            )
+                                            % (2.0 * np.pi)
+                                            - np.pi
+                                        )
+                                        * CAPSULE_RADIUS
+                                    )
+                                    tangent_margin = float(
+                                        np.min(
+                                            tangent_tolerance_array[node_index]
+                                            - tangent_error
+                                        )
+                                    )
+                                    achieved_progress = direction * (
+                                        node_arc - start_arc
+                                    )
+                                    prior_progress = direction * (
+                                        prior_arc - start_arc
+                                    )
+                                    monotonic_error = float(
+                                        np.max(
+                                            np.maximum(
+                                                prior_progress
+                                                - achieved_progress,
+                                                0.0,
+                                            )
+                                        )
+                                    )
+                                    monotonic_margin = (
+                                        args.mpc_monotonic_tolerance_mm
+                                        / 1000.0
+                                        - monotonic_error
+                                    )
+                                    approximate_palm_target = (
+                                        palm_target
+                                        + direction
+                                        * (node_distance - desired_distance)
+                                        * args.palm_travel_ratio
+                                        * rotation[:, 2]
+                                    )
+                                    palm_error = float(
+                                        np.linalg.norm(
+                                            node_points[0]
+                                            - approximate_palm_target
+                                        )
+                                    )
+                                    joint_margin = float(
+                                        np.min(
+                                            np.minimum(
+                                                q_node - lower,
+                                                upper - q_node,
+                                            )
+                                        )
+                                    )
+                                    joint_step = float(
+                                        np.max(np.abs(q_node - prior_q))
+                                    )
+                                    tip_motion = direction * (
+                                        node_arc[1:] - prior_arc[1:]
+                                    )
+                                    minimum_motion = (
+                                        args.mpc_feasibility_bridge_min_progress_ratio
+                                        * (node_distance - prior_distance)
+                                    )
+                                    motion_ok, _ = evaluate_moving_bridge_motion(
+                                        max_joint_motion_rad=joint_step,
+                                        tip_motion_m=tip_motion,
+                                        minimum_tip_motion_m=minimum_motion,
+                                        active_fingers=np.zeros(4, dtype=bool),
+                                    )
+                                    collision_ok = True
+                                    arm_margin = np.inf
+                                    hand_margin = np.inf
+                                    tip_margin = np.inf
+                                    pad_margin = np.inf
+                                    if args.collision_mode == "full_robot":
+                                        (
+                                            arm_clearance,
+                                            _,
+                                            hand_clearance,
+                                            _,
+                                            tip_clearance,
+                                            _,
+                                            self_count,
+                                            _,
+                                            _,
+                                            _,
+                                            pad_alignment,
+                                        ) = segment_collision_status(
+                                            q_node,
+                                            segment_start_q=prior_q,
+                                        )
+                                        arm_margin = (
+                                            arm_clearance
+                                            - args.min_arm_clearance_mm
+                                            / 1000.0
+                                        )
+                                        hand_margin = (
+                                            hand_clearance
+                                            + args.max_incidental_hand_penetration_mm
+                                            / 1000.0
+                                        )
+                                        tip_margin = (
+                                            tip_clearance
+                                            + args.max_contact_penetration_mm
+                                            / 1000.0
+                                        )
+                                        pad_margin = float(
+                                            pad_alignment
+                                            - planner_pad_alignment
+                                        )
+                                        collision_ok = bool(
+                                            arm_margin >= 0.0
+                                            and hand_margin >= 0.0
+                                            and tip_margin >= 0.0
+                                            and self_count == 0
+                                            and pad_margin >= 0.0
+                                        )
+                                    node_hard_ok = bool(
+                                        progress_margin >= 0.0
+                                        and contact_ok
+                                        and normal_margin >= 0.0
+                                        and tangent_margin >= 0.0
+                                        and monotonic_margin >= 0.0
+                                        and palm_error
+                                        <= palm_tracking_limit_m
+                                        and joint_margin
+                                        >= minimum_joint_margin_rad
+                                        - 1.0e-12
+                                        and joint_step
+                                        <= args.max_plan_joint_step_rad
+                                        + 1.0e-12
+                                        and motion_ok
+                                        and collision_ok
+                                    )
+                                    interior_ok = bool(
+                                        progress_margin
+                                        >= task_guard_m - 1.0e-12
+                                        and normal_margin
+                                        >= task_guard_m - 1.0e-12
+                                        and tangent_margin
+                                        >= task_guard_m - 1.0e-12
+                                        and monotonic_margin
+                                        >= task_guard_m - 1.0e-12
+                                        and arm_margin
+                                        >= task_guard_m - 1.0e-12
+                                        and hand_margin
+                                        >= task_guard_m - 1.0e-12
+                                        and tip_margin
+                                        >= task_guard_m - 1.0e-12
+                                    )
+                                    if not node_hard_ok:
+                                        failed_gate_count += 1
+                                    if not interior_ok:
+                                        failed_gate_count += 1
+                                    minimum_slacks_m.extend(
+                                        (
+                                            progress_margin,
+                                            normal_margin,
+                                            tangent_margin,
+                                            monotonic_margin,
+                                            arm_margin,
+                                            hand_margin,
+                                            tip_margin,
+                                            joint_margin,
+                                            args.max_plan_joint_step_rad
+                                            - joint_step,
+                                        )
+                                    )
+                                    node_contact_counts.append(
+                                        int(np.count_nonzero(nominal_contact))
+                                    )
+                                    node_progress_margins.append(progress_margin)
+                                    node_normal_margins.append(normal_margin)
+                                    node_tangent_margins.append(tangent_margin)
+                                    node_joint_margins.append(joint_margin)
+                                    node_collision_ok.append(collision_ok)
+                                    prior_q = q_node
+                                    prior_arc = node_arc
+                                    prior_distance = node_distance
+
+                                anchor_distance = float(
+                                    coarse_distance[keyframe - 1]
+                                )
+                                candidate_frame_distance = (
+                                    planner_frame_target_distance[
+                                        (planner_frame_target_distance
+                                         > anchor_distance + 1.0e-12)
+                                        & (planner_frame_target_distance
+                                           <= horizon_distance[-1] + 1.0e-12)
+                                    ]
+                                )
+                                frame_hard_ok = True
+                                low_motion_ok = True
+                                if candidate_frame_distance.size:
+                                    knot_distance = np.concatenate(
+                                        ([anchor_distance], horizon_distance)
+                                    )
+                                    knot_q = np.vstack((previous_q, q_rows))
+                                    candidate_frame_q = (
+                                        smoothstep_joint_interpolation(
+                                            knot_distance,
+                                            knot_q,
+                                            candidate_frame_distance,
+                                        )
+                                    )
+                                    prefix_frame_distance = (
+                                        planner_frame_target_distance[
+                                            planner_frame_target_distance
+                                            <= anchor_distance + 1.0e-12
+                                        ][-LOW_MOTION_DEFAULT_WINDOW_FRAMES:]
+                                    )
+                                    if prefix_frame_distance.size:
+                                        prefix_frame_q = (
+                                            smoothstep_joint_interpolation(
+                                                coarse_distance[:keyframe],
+                                                coarse_q[:keyframe],
+                                                prefix_frame_distance,
+                                            )
+                                        )
+                                    else:
+                                        prefix_frame_q = np.zeros(
+                                            (0, TOTAL_DOF), dtype=np.float64
+                                        )
+                                    audit_distance = np.concatenate(
+                                        (
+                                            prefix_frame_distance,
+                                            candidate_frame_distance,
+                                        )
+                                    )
+                                    audit_q = np.vstack(
+                                        (prefix_frame_q, candidate_frame_q)
+                                    )
+                                    audit_progress: list[np.ndarray] = []
+                                    audit_points: list[np.ndarray] = []
+                                    audit_axial: list[float] = []
+                                    for sample_distance, sample_q in zip(
+                                        audit_distance,
+                                        audit_q,
+                                        strict=True,
+                                    ):
+                                        (
+                                            sample_points,
+                                            _,
+                                            sample_surface_normals,
+                                            sample_arc,
+                                            sample_aux,
+                                        ) = contact_state(sample_q)
+                                        sample_progress = direction * (
+                                            sample_arc - start_arc
+                                        )
+                                        audit_progress.append(sample_progress)
+                                        audit_points.append(sample_points)
+                                        audit_axial.append(
+                                            float(np.min(sample_progress[1:]))
+                                        )
+                                        if sample_distance <= anchor_distance + 1.0e-12:
+                                            continue
+                                        (
+                                            sample_target_arc,
+                                            sample_target_azimuth,
+                                            sample_target_standoff,
+                                            sample_progress_limit,
+                                            sample_normal_tolerance,
+                                            sample_tangent_tolerance,
+                                        ) = scheduled_fingertip_targets(
+                                            float(sample_distance),
+                                            bridge_rephase_offset_m,
+                                        )
+                                        sample_progress_error = np.abs(
+                                            direction
+                                            * (sample_arc - sample_target_arc)
+                                        )
+                                        sample_progress_error[0] = 0.0
+                                        sample_normal_error = np.abs(
+                                            sample_aux[1:, 1]
+                                            - sample_target_standoff[1:]
+                                        )
+                                        sample_tangent_error = np.abs(
+                                            (
+                                                (
+                                                    sample_aux[1:, 0]
+                                                    - sample_target_azimuth[1:]
+                                                    + np.pi
+                                                )
+                                                % (2.0 * np.pi)
+                                                - np.pi
+                                            )
+                                            * CAPSULE_RADIUS
+                                        )
+                                        sample_palm_target = (
+                                            palm_target
+                                            + direction
+                                            * (
+                                                sample_distance
+                                                - desired_distance
+                                            )
+                                            * args.palm_travel_ratio
+                                            * rotation[:, 2]
+                                        )
+                                        sample_palm_ok = bool(
+                                            np.linalg.norm(
+                                                sample_points[0]
+                                                - sample_palm_target
+                                            )
+                                            <= palm_tracking_limit_m
+                                        )
+                                        sample_collision_ok = True
+                                        if args.collision_mode == "full_robot":
+                                            (
+                                                sample_tip_clearance,
+                                                sample_arm_clearance,
+                                                _,
+                                                sample_hand_clearance,
+                                                _,
+                                            ) = reachability.geometry_group_clearances(
+                                                sample_q,
+                                                center,
+                                                rotation,
+                                            )
+                                            sample_self_pairs, _ = (
+                                                reachability.self_collision_contacts(
+                                                    sample_q
+                                                )
+                                            )
+                                            sample_pad_alignment = np.einsum(
+                                                "ij,ij->i",
+                                                reachability.fingertip_pad_normals(
+                                                    sample_q
+                                                ),
+                                                -sample_surface_normals[1:],
+                                            )
+                                            sample_collision_ok = bool(
+                                                float(
+                                                    np.min(
+                                                        sample_arm_clearance
+                                                    )
+                                                )
+                                                >= args.min_arm_clearance_mm
+                                                / 1000.0
+                                                and float(
+                                                    np.min(
+                                                        sample_hand_clearance
+                                                    )
+                                                )
+                                                >= -args.max_incidental_hand_penetration_mm
+                                                / 1000.0
+                                                and float(
+                                                    np.min(
+                                                        sample_tip_clearance
+                                                    )
+                                                )
+                                                >= -args.max_contact_penetration_mm
+                                                / 1000.0
+                                                and not sample_self_pairs
+                                                and float(
+                                                    np.min(
+                                                        sample_pad_alignment
+                                                    )
+                                                )
+                                                >= planner_pad_alignment
+                                            )
+                                        if (
+                                            sample_distance
+                                            >= suffix_terminal_start_m - 1.0e-12
+                                        ):
+                                            sample_contact_ok = bool(
+                                                np.all(
+                                                    sample_normal_error
+                                                    <= args.mpc_normal_tolerance_mm
+                                                    / 1000.0
+                                                )
+                                            )
+                                        else:
+                                            sample_contact_ok = bool(
+                                                np.count_nonzero(
+                                                    sample_normal_error
+                                                    <= args.mpc_normal_tolerance_mm
+                                                    / 1000.0
+                                                )
+                                                >= args.min_planner_contact_fingers
+                                                and np.all(
+                                                    sample_normal_error
+                                                    <= sample_normal_tolerance
+                                                )
+                                            )
+                                        if not (
+                                            float(np.max(sample_progress_error))
+                                            <= sample_progress_limit + 1.0e-12
+                                            and sample_contact_ok
+                                            and np.all(
+                                                sample_tangent_error
+                                                <= sample_tangent_tolerance
+                                                + 1.0e-12
+                                            )
+                                            and sample_palm_ok
+                                            and sample_collision_ok
+                                        ):
+                                            frame_hard_ok = False
+                                    audit_progress_array = np.stack(
+                                        audit_progress
+                                    )
+                                    if audit_progress_array.shape[0] > 1:
+                                        published_backtrack = np.maximum(
+                                            audit_progress_array[:-1]
+                                            - audit_progress_array[1:],
+                                            0.0,
+                                        )
+                                        published_backtrack[:, 0] = 0.0
+                                        if float(
+                                            np.max(published_backtrack)
+                                        ) > (
+                                            args.mpc_monotonic_tolerance_mm
+                                            / 1000.0
+                                            + 1.0e-12
+                                        ):
+                                            frame_hard_ok = False
+                                    prefix_right = np.searchsorted(
+                                        coarse_distance[:keyframe],
+                                        prefix_frame_distance,
+                                        side="right",
+                                    )
+                                    prefix_right = np.clip(
+                                        prefix_right,
+                                        1,
+                                        keyframe - 1,
+                                    )
+                                    prefix_marked = (
+                                        coarse_static_feasibility_bridge[
+                                            prefix_right
+                                        ]
+                                        | coarse_recovery_bridge[prefix_right]
+                                        if prefix_frame_distance.size
+                                        else np.zeros(0, dtype=bool)
+                                    )
+                                    audit_marked = np.concatenate(
+                                        (
+                                            prefix_marked,
+                                            np.zeros(
+                                                candidate_frame_distance.size,
+                                                dtype=bool,
+                                            ),
+                                        )
+                                    )
+                                    low_motion_ok = not bool(
+                                        find_unmarked_low_motion_windows(
+                                            audit_progress_array,
+                                            np.stack(audit_points),
+                                            audit_distance,
+                                            audit_marked,
+                                            np.asarray(
+                                                audit_axial,
+                                                dtype=np.float64,
+                                            ),
+                                            window_frames=(
+                                                LOW_MOTION_DEFAULT_WINDOW_FRAMES
+                                            ),
+                                            forward_progress_ratio=(
+                                                LOW_MOTION_FORWARD_PROGRESS_RATIO
+                                            ),
+                                        )
+                                    )
+                                if not frame_hard_ok:
+                                    failed_gate_count += 1
+                                if not low_motion_ok:
+                                    failed_gate_count += 1
+                                minimum_slack = float(
+                                    np.min(minimum_slacks_m)
+                                )
+                                passed = bool(
+                                    failed_gate_count == 0
+                                    and frame_hard_ok
+                                    and low_motion_ok
+                                )
+                                rank = (
+                                    0.0 if passed else 1.0,
+                                    float(failed_gate_count),
+                                    -minimum_slack,
+                                )
+                                details: dict[str, object] = {
+                                    "passed": passed,
+                                    "minimum_slack_m": minimum_slack,
+                                    "failed_gate_count": failed_gate_count,
+                                    "node_contact_count": np.asarray(
+                                        node_contact_counts, dtype=np.int8
+                                    ),
+                                    "node_progress_margin_m": np.asarray(
+                                        node_progress_margins
+                                    ),
+                                    "node_normal_margin_m": np.asarray(
+                                        node_normal_margins
+                                    ),
+                                    "node_tangent_margin_m": np.asarray(
+                                        node_tangent_margins
+                                    ),
+                                    "node_joint_margin_rad": np.asarray(
+                                        node_joint_margins
+                                    ),
+                                    "node_collision_ok": np.asarray(
+                                        node_collision_ok, dtype=bool
+                                    ),
+                                    "publisher_hard_ok": frame_hard_ok,
+                                    "low_motion_ok": low_motion_ok,
+                                }
+                                return passed, rank, details
+
+                            horizon_candidates: list[SimpleNamespace] = []
+                            for seed_index, suffix_seed in enumerate(
+                                suffix_seeds
+                            ):
+                                result = least_squares(
+                                    suffix_residual,
+                                    suffix_seed.ravel(),
+                                    bounds=(flat_lower, flat_upper),
+                                    max_nfev=args.mpc_suffix_max_nfev,
+                                    xtol=1.0e-9,
+                                    ftol=1.0e-9,
+                                    gtol=1.0e-9,
+                                    x_scale="jac",
+                                    diff_step=1.0e-5,
+                                )
+                                q_rows = result.x.reshape(
+                                    node_count, TOTAL_DOF
+                                )
+                                passed, audit_rank, audit_details = (
+                                    audit_suffix(q_rows)
+                                )
+                                horizon_candidates.append(
+                                    SimpleNamespace(
+                                        x=q_rows[0].copy(),
+                                        cost=float(result.cost),
+                                        nfev=int(result.nfev),
+                                        candidate_kind="suffix_horizon",
+                                        suffix_q_rad=q_rows.copy(),
+                                        suffix_distance_m=(
+                                            horizon_distance.copy()
+                                        ),
+                                        suffix_audit=audit_details,
+                                        suffix_passed=passed,
+                                        suffix_rank=(
+                                            *audit_rank,
+                                            float(result.cost),
+                                            float(seed_index),
+                                        ),
+                                    )
+                                )
+                            if not horizon_candidates:
+                                return None
+                            selected = min(
+                                horizon_candidates,
+                                key=lambda candidate: candidate.suffix_rank,
+                            )
+                            print(
+                                "[SUFFIX-HORIZON] "
+                                f"distance_m={desired_distance:.9f} "
+                                f"nodes={node_count} attempts={len(horizon_candidates)} "
+                                f"passed={selected.suffix_passed} "
+                                "minimum_slack_mm="
+                                f"{float(selected.suffix_audit['minimum_slack_m']) * 1000:.6f} "
+                                "failed_gates="
+                                f"{int(selected.suffix_audit['failed_gate_count'])}",
+                                flush=True,
+                            )
+                            return selected if selected.suffix_passed else None
 
                         def moving_bridge_residual(
                             q: np.ndarray,
@@ -7839,6 +9263,19 @@ def main() -> None:
                             )
                         )
                         moving_bridge_candidates = []
+                        suffix_horizon_candidate = (
+                            build_suffix_horizon_candidate()
+                        )
+                        if suffix_horizon_candidate is not None:
+                            suffix_horizon_candidate.bridge_seed_index = -1
+                            suffix_horizon_candidate.bridge_multistart_rank = (
+                                moving_bridge_multistart_rank(
+                                    suffix_horizon_candidate
+                                )
+                            )
+                            moving_bridge_candidates.append(
+                                suffix_horizon_candidate
+                            )
                         for bridge_seed_index, bridge_seed in enumerate(
                             moving_bridge_seeds
                         ):
@@ -7870,9 +9307,41 @@ def main() -> None:
                         moving_bridge = min(
                             moving_bridge_candidates,
                             key=lambda candidate: (
-                                candidate.bridge_multistart_rank
+                                candidate.bridge_multistart_rank[0],
+                                0.0
+                                if getattr(
+                                    candidate,
+                                    "candidate_kind",
+                                    "",
+                                )
+                                == "suffix_horizon"
+                                else 1.0,
+                                *candidate.bridge_multistart_rank[1:],
                             ),
                         )
+                        if (
+                            getattr(
+                                moving_bridge,
+                                "candidate_kind",
+                                "",
+                            )
+                            == "suffix_horizon"
+                        ):
+                            suffix_horizon_selected = True
+                            pending_suffix_horizon = {
+                                "anchor_distance_m": float(
+                                    desired_distance
+                                ),
+                                "anchor_q_rad": moving_bridge.x.copy(),
+                                "distance_m": np.asarray(
+                                    moving_bridge.suffix_distance_m[1:],
+                                    dtype=np.float64,
+                                ).copy(),
+                                "q_rad": np.asarray(
+                                    moving_bridge.suffix_q_rad[1:],
+                                    dtype=np.float64,
+                                ).copy(),
+                            }
                         (
                             moving_bridge_points,
                             _,
@@ -8333,7 +9802,15 @@ def main() -> None:
                         coarse_auto_rephase_offset_m[keyframe] = (
                             auto_rephase_offset_m
                         )
-                        if static_feasibility_bridge_selected:
+                        suffix_horizon_selected = bool(
+                            getattr(best, "candidate_kind", "")
+                            == "suffix_horizon"
+                        )
+                        if not suffix_horizon_selected:
+                            pending_suffix_horizon = None
+                        if suffix_horizon_selected:
+                            event_name = "STRICT-SUFFIX-HORIZON"
+                        elif static_feasibility_bridge_selected:
                             event_name = "STATIC-FEASIBILITY-BRIDGE"
                         elif recovery_bridge_selected:
                             event_name = "MOVING-RECOVERY-BRIDGE"
@@ -8749,6 +10226,7 @@ def main() -> None:
                 coarse_feasibility_bridge[keyframe] = (
                     feasibility_bridge_selected
                 )
+                coarse_suffix_horizon[keyframe] = suffix_horizon_selected
                 coarse_static_feasibility_bridge[keyframe] = (
                     static_feasibility_bridge_selected
                 )
@@ -8785,6 +10263,13 @@ def main() -> None:
                 )
                 coarse_cost[keyframe] = float(best.cost)
                 coarse_nfev[keyframe] = int(best.nfev)
+                if suffix_horizon_selected:
+                    suffix_horizon_success_count += 1
+                suffix_horizon_cache = (
+                    pending_suffix_horizon
+                    if suffix_horizon_selected
+                    else None
+                )
                 previous_delta = q - previous_q
                 previous_q = q
                 print(
@@ -9288,6 +10773,7 @@ def main() -> None:
                 mpc_coarse_feasibility_bridge=(
                     coarse_feasibility_bridge
                 ),
+                mpc_coarse_suffix_horizon=coarse_suffix_horizon,
                 mpc_coarse_static_feasibility_bridge=(
                     coarse_static_feasibility_bridge
                 ),
@@ -9328,6 +10814,27 @@ def main() -> None:
                 ),
                 mpc_feasibility_bridge_tip_target_scale=np.asarray(
                     args.mpc_feasibility_bridge_tip_target_scale
+                ),
+                mpc_suffix_horizon_nodes=np.asarray(
+                    args.mpc_suffix_horizon_nodes
+                ),
+                mpc_suffix_min_joint_margin_mrad=np.asarray(
+                    args.mpc_suffix_min_joint_margin_mrad
+                ),
+                mpc_suffix_min_task_margin_mm=np.asarray(
+                    args.mpc_suffix_min_task_margin_mm
+                ),
+                mpc_suffix_max_nfev=np.asarray(
+                    args.mpc_suffix_max_nfev
+                ),
+                mpc_suffix_horizon_attempt_count=np.asarray(
+                    suffix_horizon_attempt_count
+                ),
+                mpc_suffix_horizon_success_count=np.asarray(
+                    suffix_horizon_success_count
+                ),
+                mpc_suffix_terminal_start_m=np.asarray(
+                    suffix_terminal_start_m
                 ),
                 mpc_static_bridge_max_dwell_mm=np.asarray(
                     args.mpc_static_bridge_max_dwell_mm
@@ -10657,3 +12164,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+    horizon_joint_margin_residual,
+    horizon_joint_step_residual,

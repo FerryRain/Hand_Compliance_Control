@@ -658,6 +658,108 @@ class PlannerDiagnosticsTest(unittest.TestCase):
                 interval_m=0.1,
             )
 
+    def test_progress_aware_targets_enter_strict_inner_band(self) -> None:
+        current = np.asarray((0.0, 0.100, 0.101), dtype=np.float64)
+        desired = np.asarray((0.0, 0.104816928, 0.104), dtype=np.float64)
+        target = DIAGNOSTICS.progress_aware_arc_targets(
+            current_arc_m=current,
+            desired_arc_m=desired,
+            direction=1.0,
+            nominal_advance_m=0.00015625,
+            hard_progress_limit_m=0.004588452,
+            interior_guard_m=0.00005,
+        )
+        signed_error = desired - target
+        self.assertLessEqual(float(signed_error.max()), 0.004538452 + 1e-12)
+        self.assertTrue(np.all(target >= current - 1e-12))
+        self.assertGreater(target[1] - current[1], 0.00015625)
+
+    def test_progress_aware_targets_support_negative_direction(self) -> None:
+        current = np.asarray((0.2, 0.1), dtype=np.float64)
+        desired = np.asarray((0.19, 0.09), dtype=np.float64)
+        target = DIAGNOSTICS.progress_aware_arc_targets(
+            current_arc_m=current,
+            desired_arc_m=desired,
+            direction=-1.0,
+            nominal_advance_m=0.002,
+            hard_progress_limit_m=0.004,
+            interior_guard_m=0.001,
+        )
+        self.assertTrue(np.all(target <= current + 1e-12))
+        self.assertTrue(np.all(np.abs(target - desired) <= 0.003 + 1e-12))
+
+    def test_terminal_start_matches_published_last_fifty_frames(self) -> None:
+        start = DIAGNOSTICS.terminal_contact_start_distance(0.05, 800, 50)
+        self.assertAlmostEqual(start, 0.0469375, places=12)
+        route = np.linspace(0.0, 0.05, 801, dtype=np.float64)[1:]
+        mask = DIAGNOSTICS.terminal_contact_sample_mask(
+            route,
+            terminal_start_m=start,
+        )
+        self.assertEqual(int(np.flatnonzero(mask)[0]), 750)
+        self.assertFalse(bool(mask[749]))
+        self.assertTrue(bool(mask[750]))
+        self.assertEqual(int(np.count_nonzero(mask)), 50)
+
+    def test_horizon_grid_inserts_exact_terminal_sentinel(self) -> None:
+        distances = DIAGNOSTICS.build_receding_horizon_distances(
+            first_distance_m=0.04609375,
+            nominal_step_m=0.00015625,
+            horizon_nodes=5,
+            route_end_m=0.05,
+            terminal_start_m=0.0469375,
+        )
+        self.assertEqual(distances.shape, (5,))
+        self.assertAlmostEqual(float(distances[0]), 0.04609375, places=12)
+        self.assertAlmostEqual(float(distances[-1]), 0.0469375, places=12)
+        self.assertTrue(np.all(np.diff(distances) > 0.0))
+
+    def test_horizon_grid_inserts_route_endpoint_when_in_reach(self) -> None:
+        distances = DIAGNOSTICS.build_receding_horizon_distances(
+            first_distance_m=0.0494,
+            nominal_step_m=0.00015625,
+            horizon_nodes=5,
+            route_end_m=0.05,
+            terminal_start_m=0.0469375,
+        )
+        self.assertAlmostEqual(float(distances[-1]), 0.05, places=12)
+
+    def test_smoothstep_interpolation_matches_publisher_midpoint(self) -> None:
+        distance = np.asarray((0.0, 1.0, 2.0), dtype=np.float64)
+        q = np.asarray(((0.0,), (2.0,), (4.0,)), dtype=np.float64)
+        sample = np.asarray((0.0, 0.5, 1.0, 1.5, 2.0), dtype=np.float64)
+        interpolated = DIAGNOSTICS.smoothstep_joint_interpolation(
+            distance,
+            q,
+            sample,
+        )
+        self.assertTrue(
+            np.allclose(interpolated[:, 0], (0.0, 1.0, 2.0, 3.0, 4.0))
+        )
+
+    def test_horizon_joint_residuals_cover_all_nodes_and_steps(self) -> None:
+        q = np.asarray(((0.2, 0.8), (0.25, 0.75)), dtype=np.float64)
+        lower = np.zeros(2, dtype=np.float64)
+        upper = np.ones(2, dtype=np.float64)
+        margin = DIAGNOSTICS.horizon_joint_margin_residual(
+            q,
+            lower,
+            upper,
+            minimum_margin_rad=0.21,
+            weight=10.0,
+        )
+        self.assertEqual(margin.shape, (4,))
+        self.assertAlmostEqual(float(margin[0]), 0.1)
+        step = DIAGNOSTICS.horizon_joint_step_residual(
+            q,
+            np.asarray((0.19, 0.81), dtype=np.float64),
+            maximum_step_rad=0.06,
+            interior_guard_rad=0.01,
+            weight=100.0,
+        )
+        self.assertEqual(step.shape, (4,))
+        self.assertAlmostEqual(float(step.max()), 0.0)
+
     def test_moving_bridge_local_residual_is_tip_only_and_wraps_azimuth(
         self,
     ) -> None:
@@ -1544,7 +1646,7 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             "bridge_active_fingers",
             "minimum_tip_motion_m",
             "moving_bridge_target_arc",
-            "bounded_incremental_arc_targets",
+            "progress_aware_arc_targets",
             "bounded_moving_bridge_trust_radius",
             "moving_bridge_residual",
             "moving_bridge_local_residual",
@@ -1684,6 +1786,92 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             "mpc_feasibility_bridge_tip_target_scale=np.asarray(",
             source,
         )
+
+    def test_suffix_horizon_is_atomic_terminal_aware_and_audited(
+        self,
+    ) -> None:
+        source = DEMO_PATH.read_text(encoding="utf-8")
+        start = source.index("def build_suffix_horizon_candidate")
+        end = source.index("def moving_bridge_residual", start)
+        horizon = source[start:end]
+        for required in (
+            "build_receding_horizon_distances(",
+            "suffix_terminal_start_m",
+            "scheduled_fingertip_targets(",
+            "progress_aware_arc_targets(",
+            "least_squares(",
+            "diff_step=1.0e-5",
+            "segment_collision_status(",
+            "segment_start_q=prior_q",
+            "minimum_joint_margin_rad",
+            "critical_joint_indices",
+            "inward_sign",
+            "if len(suffix_seeds) > 6",
+            "suffix_horizon_cache",
+            "args.max_plan_joint_step_rad",
+            "args.max_contact_penetration_mm",
+            "args.min_arm_clearance_mm",
+            "args.max_incidental_hand_penetration_mm",
+            "planner_pad_alignment",
+            "self_count == 0",
+            "sample_distance\n                                            >= suffix_terminal_start_m",
+            "np.all(\n                                                    sample_normal_error",
+            "find_unmarked_low_motion_windows(",
+            "LOW_MOTION_DEFAULT_WINDOW_FRAMES",
+            "prefix_frame_distance",
+            "sample_collision_ok",
+            "reachability.geometry_group_clearances(",
+            "reachability.self_collision_contacts(",
+            "sample_pad_alignment",
+            "published_backtrack",
+            "sample_palm_ok",
+            'candidate_kind="suffix_horizon"',
+        ):
+            self.assertIn(required, horizon)
+        for forbidden_mutation in (
+            "coarse_q[keyframe] =",
+            "coarse_progress[keyframe] =",
+            "static_bridge_total_m +=",
+            "recovery_bridge_total_m +=",
+            "auto_rephase_offset_m =",
+        ):
+            self.assertNotIn(forbidden_mutation, horizon)
+        solve_start = source.index(
+            "suffix_horizon_candidate = (",
+            end,
+        )
+        bridge_solve = source.index(
+            "bridge_candidate = least_squares(",
+            solve_start,
+        )
+        self.assertLess(solve_start, bridge_solve)
+        selection = source[
+            source.index("moving_bridge = min(", bridge_solve) :
+            source.index("moving_bridge_points", bridge_solve)
+        ]
+        self.assertIn('== "suffix_horizon"', selection)
+        self.assertIn("candidate.bridge_multistart_rank[0]", selection)
+        commit = source.index("coarse_q[keyframe] = q", bridge_solve)
+        self.assertLess(
+            source.index(
+                "coarse_suffix_horizon[keyframe] = suffix_horizon_selected",
+                bridge_solve,
+            ),
+            commit,
+        )
+        self.assertIn("mpc_coarse_suffix_horizon=", source)
+        self.assertIn("mpc_suffix_horizon_attempt_count=np.asarray(", source)
+        self.assertIn("mpc_suffix_horizon_success_count=np.asarray(", source)
+
+    def test_level2_runner_freezes_suffix_horizon_contract(self) -> None:
+        source = RUNNER_PATH.read_text(encoding="utf-8")
+        for expected in (
+            '"--mpc-suffix-horizon-nodes", "5"',
+            '"--mpc-suffix-min-joint-margin-mrad", "0.5"',
+            '"--mpc-suffix-min-task-margin-mm", "0.05"',
+            '"--mpc-suffix-max-nfev", "160"',
+        ):
+            self.assertIn(expected, source)
 
     def test_bridge_failure_diagnostics_and_prefix_are_failure_scoped(
         self,

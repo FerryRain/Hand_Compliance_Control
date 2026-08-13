@@ -574,6 +574,244 @@ def bounded_incremental_arc_targets(
     return current + direction * advance
 
 
+def progress_aware_arc_targets(
+    *,
+    current_arc_m: np.ndarray,
+    desired_arc_m: np.ndarray,
+    direction: float,
+    nominal_advance_m: float,
+    hard_progress_limit_m: float,
+    interior_guard_m: float,
+) -> np.ndarray:
+    """Advance into a strict progress band without moving backwards."""
+
+    if not np.isfinite(direction) or direction not in (-1.0, 1.0):
+        raise ValueError("direction must be -1 or +1")
+    scalars = np.asarray(
+        [nominal_advance_m, hard_progress_limit_m, interior_guard_m],
+        dtype=np.float64,
+    )
+    if not np.all(np.isfinite(scalars)) or np.any(scalars < 0.0):
+        raise ValueError("progress target distances must be finite and non-negative")
+    if interior_guard_m > hard_progress_limit_m + 1.0e-15:
+        raise ValueError("interior_guard_m cannot exceed hard_progress_limit_m")
+    current = np.asarray(current_arc_m, dtype=np.float64)
+    desired = np.asarray(desired_arc_m, dtype=np.float64)
+    if current.shape != desired.shape:
+        raise ValueError("current_arc_m and desired_arc_m must have equal shape")
+    if current.ndim != 1 or current.size == 0:
+        raise ValueError("arc targets must be non-empty vectors")
+    if not np.all(np.isfinite(current)) or not np.all(np.isfinite(desired)):
+        raise ValueError("arc targets must be finite")
+
+    signed_current = float(direction) * current
+    signed_desired = float(direction) * desired
+    signed_nominal = signed_current + np.minimum(
+        np.maximum(signed_desired - signed_current, 0.0),
+        float(nominal_advance_m),
+    )
+    inner_limit = max(
+        float(hard_progress_limit_m) - float(interior_guard_m),
+        0.0,
+    )
+    signed_target = np.maximum(
+        signed_nominal,
+        signed_desired - inner_limit,
+    )
+    signed_target = np.minimum(signed_target, signed_desired + inner_limit)
+    # Never request backwards meridian motion. The unchanged hard audit will
+    # reject an already-ahead state if no forward-only feasible state exists.
+    signed_target = np.maximum(signed_target, signed_current)
+    return float(direction) * signed_target
+
+
+def terminal_contact_start_distance(
+    axial_travel_m: float,
+    frame_count: int,
+    final_contact_frames: int,
+) -> float:
+    """Return the first published route sample requiring terminal 4/4."""
+
+    if not np.isfinite(axial_travel_m) or axial_travel_m <= 0.0:
+        raise ValueError("axial_travel_m must be finite and positive")
+    if frame_count <= 0:
+        raise ValueError("frame_count must be positive")
+    if final_contact_frames <= 0 or final_contact_frames > frame_count:
+        raise ValueError("final_contact_frames must lie in [1, frame_count]")
+    first_one_based_frame = frame_count - final_contact_frames + 1
+    return (
+        float(first_one_based_frame)
+        * float(axial_travel_m)
+        / float(frame_count)
+    )
+
+
+def terminal_contact_sample_mask(
+    route_distance_m: np.ndarray,
+    *,
+    terminal_start_m: float,
+) -> np.ndarray:
+    """Mark published samples at or beyond the exact terminal boundary."""
+
+    route = np.asarray(route_distance_m, dtype=np.float64)
+    if route.ndim != 1 or route.size == 0:
+        raise ValueError("route_distance_m must be a non-empty vector")
+    if not np.all(np.isfinite(route)) or not np.isfinite(terminal_start_m):
+        raise ValueError("terminal contact inputs must be finite")
+    return route >= float(terminal_start_m) - 1.0e-12
+
+
+def build_receding_horizon_distances(
+    *,
+    first_distance_m: float,
+    nominal_step_m: float,
+    horizon_nodes: int,
+    route_end_m: float,
+    terminal_start_m: float | None,
+) -> np.ndarray:
+    """Build an increasing H-node suffix grid with exact sentinels."""
+
+    scalars = np.asarray(
+        [first_distance_m, nominal_step_m, route_end_m],
+        dtype=np.float64,
+    )
+    if not np.all(np.isfinite(scalars)):
+        raise ValueError("horizon distances must be finite")
+    if first_distance_m < 0.0 or nominal_step_m <= 0.0:
+        raise ValueError("first distance must be non-negative and step positive")
+    if route_end_m < first_distance_m - 1.0e-12:
+        raise ValueError("route_end_m cannot precede first_distance_m")
+    if horizon_nodes <= 0:
+        raise ValueError("horizon_nodes must be positive")
+    if terminal_start_m is not None and not np.isfinite(terminal_start_m):
+        raise ValueError("terminal_start_m must be finite when provided")
+
+    uniform_end = min(
+        float(first_distance_m)
+        + float(nominal_step_m) * float(horizon_nodes - 1),
+        float(route_end_m),
+    )
+    witness_end = uniform_end
+    lookahead_reach = float(first_distance_m) + float(nominal_step_m) * float(
+        horizon_nodes + 1
+    )
+    for sentinel in (terminal_start_m, route_end_m):
+        if sentinel is None:
+            continue
+        sentinel_value = float(sentinel)
+        if (
+            sentinel_value > first_distance_m + 1.0e-12
+            and sentinel_value <= lookahead_reach + 1.0e-12
+        ):
+            witness_end = max(witness_end, sentinel_value)
+    witness_end = min(witness_end, float(route_end_m))
+    if horizon_nodes == 1:
+        return np.asarray([float(first_distance_m)], dtype=np.float64)
+    distances = np.linspace(
+        float(first_distance_m),
+        witness_end,
+        horizon_nodes,
+        dtype=np.float64,
+    )
+    if np.any(np.diff(distances) <= 0.0):
+        distances = np.unique(distances)
+    return distances
+
+
+def smoothstep_joint_interpolation(
+    knot_distance_m: np.ndarray,
+    knot_q_rad: np.ndarray,
+    sample_distance_m: np.ndarray,
+) -> np.ndarray:
+    """Interpolate joint knots exactly like the adaptive plan publisher."""
+
+    distance = np.asarray(knot_distance_m, dtype=np.float64)
+    q = np.asarray(knot_q_rad, dtype=np.float64)
+    sample = np.asarray(sample_distance_m, dtype=np.float64)
+    if distance.ndim != 1 or distance.size < 2:
+        raise ValueError("knot_distance_m must contain at least two knots")
+    if q.ndim != 2 or q.shape[0] != distance.size:
+        raise ValueError("knot_q_rad must have one row per distance knot")
+    if sample.ndim != 1:
+        raise ValueError("sample_distance_m must be a vector")
+    if not all(np.all(np.isfinite(v)) for v in (distance, q, sample)):
+        raise ValueError("interpolation inputs must be finite")
+    if np.any(np.diff(distance) <= 0.0):
+        raise ValueError("knot distances must be strictly increasing")
+    if np.any(sample < distance[0] - 1.0e-12) or np.any(
+        sample > distance[-1] + 1.0e-12
+    ):
+        raise ValueError("sample distances must lie inside the knot range")
+
+    out = np.empty((sample.size, q.shape[1]), dtype=np.float64)
+    for index, value in enumerate(sample):
+        left = int(np.searchsorted(distance, value, side="right") - 1)
+        left = min(max(left, 0), distance.size - 2)
+        interval = distance[left + 1] - distance[left]
+        blend = float(np.clip((value - distance[left]) / interval, 0.0, 1.0))
+        blend = blend * blend * (3.0 - 2.0 * blend)
+        out[index] = (1.0 - blend) * q[left] + blend * q[left + 1]
+    return out
+
+
+def horizon_joint_margin_residual(
+    q_rad: np.ndarray,
+    lower_rad: np.ndarray,
+    upper_rad: np.ndarray,
+    *,
+    minimum_margin_rad: float,
+    weight: float,
+) -> np.ndarray:
+    """Return per-node, per-joint one-sided interior-margin residuals."""
+
+    q = np.asarray(q_rad, dtype=np.float64)
+    lower = np.asarray(lower_rad, dtype=np.float64)
+    upper = np.asarray(upper_rad, dtype=np.float64)
+    if q.ndim != 2 or lower.shape != (q.shape[1],) or upper.shape != lower.shape:
+        raise ValueError("joint margin shapes are inconsistent")
+    if not all(np.all(np.isfinite(v)) for v in (q, lower, upper)):
+        raise ValueError("joint margin inputs must be finite")
+    if np.any(lower > upper):
+        raise ValueError("lower_rad cannot exceed upper_rad")
+    if (
+        not np.isfinite(minimum_margin_rad)
+        or minimum_margin_rad < 0.0
+        or not np.isfinite(weight)
+        or weight < 0.0
+    ):
+        raise ValueError("joint margin and weight must be finite and non-negative")
+    margin = np.minimum(q - lower[None, :], upper[None, :] - q)
+    return float(weight) * np.maximum(float(minimum_margin_rad) - margin, 0.0).ravel()
+
+
+def horizon_joint_step_residual(
+    q_rad: np.ndarray,
+    anchor_q_rad: np.ndarray,
+    *,
+    maximum_step_rad: float,
+    interior_guard_rad: float,
+    weight: float,
+) -> np.ndarray:
+    """Return one-sided residuals for every anchor/node transition."""
+
+    q = np.asarray(q_rad, dtype=np.float64)
+    anchor = np.asarray(anchor_q_rad, dtype=np.float64)
+    if q.ndim != 2 or anchor.shape != (q.shape[1],):
+        raise ValueError("joint step shapes are inconsistent")
+    if not np.all(np.isfinite(q)) or not np.all(np.isfinite(anchor)):
+        raise ValueError("joint step inputs must be finite")
+    scalars = np.asarray(
+        [maximum_step_rad, interior_guard_rad, weight], dtype=np.float64
+    )
+    if not np.all(np.isfinite(scalars)) or np.any(scalars < 0.0):
+        raise ValueError("joint step parameters must be finite and non-negative")
+    if interior_guard_rad > maximum_step_rad + 1.0e-15:
+        raise ValueError("joint-step guard cannot exceed maximum step")
+    transitions = np.vstack((q[0] - anchor, np.diff(q, axis=0)))
+    inner_limit = float(maximum_step_rad) - float(interior_guard_rad)
+    return float(weight) * np.maximum(np.abs(transitions) - inner_limit, 0.0).ravel()
+
+
 def bounded_moving_bridge_trust_radius(
     configured_radius_rad: float,
     maximum_plan_step_rad: float,

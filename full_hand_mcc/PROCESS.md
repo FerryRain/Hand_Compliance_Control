@@ -2194,3 +2194,113 @@ P2 是该 snapshot 仍为冻结 fixture，并非真实 MuJoCo planner 调用链�
 **正在执行/下一步：**commit/push → 用原封不动的 Acceptance seed 42、0--50 mm
 headless 配置重跑。只有短程 GPU 规划及后续物理审计通过后，才继续 seeds 43--46、
 完整 `0.48 m`、dynamics 与视频。
+
+### `7ec7cdf` bridge-tip Acceptance 0--50 mm 精确审计（2026-08-10）
+
+产物 stem=`baseline2_capsule_bridgetip_0to50_acceptance_seed42_20260810_073140_087`；
+log SHA256=`F0A571105F5F1F63B092BE47FDB5E5E9F5C25F97A2B266D9C2676F1FFEB6AD9D`；
+failure-prefix SHA256=`DB1DBCC1AA85EC4128D67002568AB8B1461E96ADD8C1464C24745E1CE24A0A71`。
+运行 `exit 1`，最后 accepted=`45.9375 mm`，首失败=`46.09375 mm`、keyframe
+`46/50`、auto-refine=`10/96`。没有 plan、dynamics、audit 或视频。
+
+必须区分两个候选。`failure_final_best` 的 progress=
+`[5.949841,4.416359,3.001688,5.145061] mm`、limit=`4.588452 mm`；
+monotonic=`[1.103047,1.849435,1.194623,0] mm`、limit=`0.2 mm`；并且
+`max|dq|=0.039453478 rad >0.03 rad`。旧 prefix 的 `condition_joint_ok=true`
+只表示 joint limits 通过，不包含 joint-step，后续诊断必须拆分保存。
+
+`bridge_rejected` 的 strict gates 中只有 progress=false：progress=
+`[4.712855,2.396859,1.645861,2.420815] mm`，超限 `0.124403 mm`；normal=
+`[3.132101,2.588960,2.699827,1.747572] mm`、planned nominal=`3/4`；tangent
+最薄余量=`0.003353 mm`；physical tip=`-0.519597 mm`、FR3=`15.169217 mm`、
+non-tip hand=`-0.992183 mm`、self=`0/0`、pad=`35.5334 deg`；
+`max|dq|=0.011096271 rad`、joint-limit margin=`0.000002212 rad`。recovery 的
+任务/物理门通过，但 route 已超过 `30 mm` cutoff，budget=false，不能启用 recovery。
+
+predecessor lag=`4.816928 mm`，bounded target 最多推进一个 interval=`0.15625 mm`，
+理论最优仍为 `4.660678 mm >4.588452 mm`。因此单点权重扫描只能在 progress、
+tangent、hand 和 joint-limit 间交换微米级风险，不能成为修复。
+
+发布网格为800帧；尾50帧首个样本精确为 `46.9375 mm`，从该点起（含等号）必须
+nominal planned `4/4`，并由 dynamics 的 tactile terminal streak 独立证明物理4/4。
+low-motion 按20 intervals/21 samples，窗口审计需拼接 prefix 最后20个 samples，
+strict suffix 不得标 static/recovery 规避。
+
+CPU 探针对比：H=3过于短视；一次10-node solve只通过8/10；H=5从健康
+`41.875 mm` anchor 连续两个窗口至 `43.4375 mm` 为10/10 hard+robust，通过段最薄
+progress/tangent/normal/hand/joint/tip余量分别为
+`0.310690/0.164348/0.309396/0.272830 mm/0.667488 mrad/0.273602 mm`，
+max step=`0.020774 rad`、self=0。第三窗首点 `43.59375 mm` 仅 tangent 差
+`0.011072 mm`，仍是 warm-start/local-minimum 问题；尚无完整 suffix 或真实20-frame
+low-motion PASS，不能宣称成功。
+
+冻结 MVP：只在首次 moving fallback 触发 H=5 overlapping receding window，以最后
+ordinary state 为 fixed q0；nullspace/phase beam → 外层固定 rho 的 block LS → 每个
+node、16 segment samples、真实 publisher samples、`46.9375 mm` terminal sentinel、
+rolling low-motion exact audit。完整窗口通过才提交 q1；缓存未来状态必须 exact distance+
+predecessor 匹配且重审。任何失败零修改 coarse arrays、offset、budget 或 flags。
+首版不做历史 rollback/splice、大规模 SLSQP 或通用 dynamic collision repair；窗口接近
+末端时必须覆盖50mm endpoint和phase归零。所有既有 hard gates保持不变。
+
+**正在执行/下一步：**实现纯函数 target/terminal/atomic/cache helper 和 failure-prefix CPU
+回归；全量测试、CLI/AST/diff及review通过后提交/push，再跑同 seed 0--50mm headless。
+只有 plan/full collision/terminal/low-motion/dynamics 全过后才继续0.48m和视频。
+
+### H=5 overlapping strict suffix 首版实现（2026-08-13，未提交/未跑 GPU）
+
+#### 已落地的求解与原子状态语义
+
+- 新增纯 NumPy `progress_aware_arc_targets`、精确 terminal start/mask、H-node distance grid、
+  publisher 同构 smoothstep joint interpolation，以及 joint-margin/joint-step residual helpers；
+- moving fallback 在 ordinary/repair/rephase 都失败且 interval 已足够短时，先构造 H=5
+  strict suffix；当前节点继续使用真实 bridge rephase，未来节点按 terminal envelope 连续
+  收回，route end 必须归零；
+- 变量为 `H x 23` joint states，使用历史 predecessor、bounded extrapolation、bottom-joint
+  通用 inward seeds、protected-self separation seeds 与认证 cache，最多保留6个去重 seeds；
+- residual 包含 arc/standoff/azimuth、physical-tip target+inner cap、3个 protected-self
+  positive barriers、soft35deg pad、FR3/hand interior guide、joint margin、step 与平滑项；
+- H 候选必须逐 node 通过 progress/normal/tangent/monotonic/palm、至少3指真实前进、
+  joint limits、`<=0.03 rad` step、FR3 `>=2 mm`、non-tip hand `>=-1 mm`、physical tip
+  `>=-1 mm`、active self=`0`、planner pad `<=40 deg`；此外 rho=0 等价的首版内点要求为
+  joint `>=0.5 mrad`，progress/normal/tangent/monotonic/FR3/hand/tip hard margin
+  `>=0.05 mm`；
+- 每段继续调用原 `segment_collision_status(start_q=...)` 的9+采样审计；对最终发布网格又
+  逐帧重算 task、palm、physical-tip、FR3、non-tip hand、任意 self pair 与 pad；发布帧
+  backtrack 同样必须 `<=0.2 mm`；
+- terminal 首样本由 `frame_target_distance[-50]` 推导，精确为 `46.9375 mm`，从该样本起
+  强制 nominal planned `4/4`，不允许 transient/recovery 覆盖；
+- low-motion 使用 frozen helper，输入为已提交 prefix 最后20个发布样本加候选窗口全部发布
+  样本，因此实际检查20 intervals/21 samples；strict suffix mask 不标为 static/recovery；
+- 所有 H attempts 完成并全窗通过后，才把通过的 q1 放入 current moving candidate 集；
+  strict H candidate 优先于同帧 myopic strict candidate。最终 current hard audit 再过一次才
+  写 `coarse_q`；失败过程只增加诊断 attempt counter，不修改 q/phase/budget/flags；
+- 成功只缓存 q2..qH，下一 keyframe 仅在 predecessor distance/q 精确匹配时作为 seed，
+  且重新执行完整 hard audit。auto-refine 会立即清空 cache。
+
+#### 参数、产物与当前边界
+
+Level-2 runner 显式冻结：
+
+- `--mpc-suffix-horizon-nodes 5`；
+- `--mpc-suffix-min-joint-margin-mrad 0.5`；
+- `--mpc-suffix-min-task-margin-mm 0.05`；
+- `--mpc-suffix-max-nfev 160`。
+
+failure-prefix budget 与成功 plan NPZ 已增加 nodes、attempt/success counts、两个 interior
+阈值、terminal start 和 `mpc_coarse_suffix_horizon`。`insert_auto_refinement` 会同步插入
+该 coarse mask，避免 q/mask 数组错位。
+
+首版刻意没有实现历史 rollback/splice、大规模 SLSQP、动态 discovered-pair outer retry，
+也尚未把 phase 作为连续优化变量；当前只对现有 bridge rephase schedule 做 H=5 joint-space
+lookahead。如果真实 GPU 首失败显示固定 phase 本身是瓶颈，再加入受 terminal envelope/TV/
+endpoint-zero 约束的 phase beam，而不是预先放宽硬门。
+
+验证：全量 CPU regression=`94/94`，demo `--help` 显示4个 suffix 参数，Python AST、
+PowerShell runner AST、`git diff --check` 全通过。只有既有 wandb temp cleanup
+`PermissionError` atexit 噪声，测试 exit=0。当前仍无新 GPU plan、standalone/full audit、
+dynamics 或视频，Level 2 仍为 **NOT PASS**。
+
+**正在执行/下一步：**commit/push main 后，以相同 Acceptance seed42、0--50mm headless
+配置重跑；记录第一条 `[SUFFIX-HORIZON]` 的 nodes/attempts/minimum slack/failed gates，确认
+是否越过 `46.09375 mm`。若规划产生 plan，则先跑 standalone+full collision+terminal+
+low-motion 数值审计，再允许 dynamics；只有物理也过才录视频。
