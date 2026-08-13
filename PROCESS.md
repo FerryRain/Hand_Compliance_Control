@@ -1467,3 +1467,31 @@ CPU regression=`98/98`；新增 helper 数值反例、结构回归、demo CLI、
 **正在执行/下一步：**提交并 push main、同步 issue #7，然后以完全相同的 Acceptance seed42
 0--50 mm headless 命令终审新 H5。若仍失败，只按新 prefix 的首个 exact hard gate 继续修复；
 plan/full collision/terminal/low-motion/dynamics 全过前不录像。
+
+### `b7bad54` suffix-rollout GPU 终审与 prefix-preservation 修复（2026-08-13）
+
+同参数 Acceptance seed42、0--50 mm headless 已真实运行 `2422 s`，stem=
+`baseline2_capsule_suffixrollout_0to50_acceptance_seed42_20260813_133007_006`。进程 exit 1；最后
+accepted=`44.375 mm`，首个未认证目标=`44.53125 mm`，keyframe=`41/47`，auto-refine=`7/96`。
+H5 节点为 `[44.53125,45.1328125,45.734375,46.3359375,46.9375] mm`；6个 block seeds 均未完整
+通过，最佳 task/joint slack=`-0.153757 mm / +0.049766 mrad`，fail-close 正确阻止 myopic commit。
+本轮没有 plan、dynamics、standalone/full audit 或视频，Level 2 仍为 **NOT PASS**。
+
+证据 SHA256：log=`724B51906517FB7B5D5DF648E1BC5CF2840F6B6DC09231A78B06B2E656B79A7A`；stderr=
+`3FD352B18768DF9B0C08C049C1E208278192B6721F13B5F2FFF640BC77659393`；failure-prefix=
+`D1E22CAC1F7F99BF507B7D3015AD5A395FA19701F79C2D2940F01F1249054AFC`。
+
+新 prefix 暴露的是 rollout 控制流缺口而非硬门过严：6个 evidence 全是 block seeds，没有任何 partial
+rollout。`nullspace_combined` candidate 3 的 node0 已经 11/11 gates 全过（progress/normal/tangent/
+monotonic/palm/arm/hand/tip/joint/step/pad 均为正余量，4/4 contact、3指推进、self=0），但旧代码仍无条件
+重新 least-squares 求解并覆盖它；任一后续 node 失败后直接 `continue`，使被剪枝路径不进入 prefix。
+
+当前 WIP 已改为：先 exact-audit 原 block row，prefix 已通过则原样保留；仅失败时才从原行与有界外推
+两个 seed 求解并按 prefix hard-first rank 选优。三条被剪枝 rollout 均保存 reached/prune/attempt 字段并
+各输出一条 `[SUFFIX-ROLLOUT-PRUNED]`，完整 H5 未过仍零状态修改、fail closed。冻结 hard gates 全部
+不变。failure-prefix 回放确认 candidate 3 node0 会被新 helper 判为可保留；CPU regression=`99/99`，
+demo CLI、Python AST、PowerShell AST 与 `git diff --check` 通过。
+
+**正在执行/下一步：**提交并 push main、同步 issue #7，再重跑完全相同 Acceptance seed42 0--50mm
+headless。若仍失败，先使用新 partial-rollout evidence 定位真实 prune node；不得先加入 rollback/SLSQP
+或放宽任何门。完整 plan/collision/terminal/low-motion/dynamics 通过前不录像。

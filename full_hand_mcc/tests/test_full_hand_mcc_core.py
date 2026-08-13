@@ -729,6 +729,54 @@ class PlannerDiagnosticsTest(unittest.TestCase):
                 weight=1.0,
             )
 
+    def test_suffix_rollout_prefix_rank_preserves_only_exact_prefixes(
+        self,
+    ) -> None:
+        conditions = np.ones((3, 11), dtype=bool)
+        metric_m = np.full((3, 8), 0.001, dtype=np.float64)
+        metric_rad = np.full((3, 2), 0.002, dtype=np.float64)
+        pad_margin = np.full(3, 0.05, dtype=np.float64)
+        passed, rank = DIAGNOSTICS.suffix_rollout_prefix_rank(
+            node_condition_ok=conditions,
+            node_metric_margin_m=metric_m,
+            node_metric_margin_rad=metric_rad,
+            node_pad_alignment_margin=pad_margin,
+            node_index=0,
+            publisher_first_failure_distance_m=0.2,
+            node_distance_m=0.1,
+        )
+        self.assertTrue(passed)
+        self.assertEqual(rank[:2], (0.0, 0.0))
+
+        # Future node failure is irrelevant to a certified node-0 prefix.
+        conditions[2, 0] = False
+        future_failed, _ = DIAGNOSTICS.suffix_rollout_prefix_rank(
+            node_condition_ok=conditions,
+            node_metric_margin_m=metric_m,
+            node_metric_margin_rad=metric_rad,
+            node_pad_alignment_margin=pad_margin,
+            node_index=0,
+            publisher_first_failure_distance_m=np.nan,
+            node_distance_m=0.1,
+        )
+        self.assertTrue(future_failed)
+
+        # A publisher failure exactly at the current node is part of the
+        # prefix, and a failed node condition cannot be hidden by margins.
+        conditions[0, 8] = False
+        failed, failed_rank = DIAGNOSTICS.suffix_rollout_prefix_rank(
+            node_condition_ok=conditions,
+            node_metric_margin_m=metric_m,
+            node_metric_margin_rad=metric_rad,
+            node_pad_alignment_margin=pad_margin,
+            node_index=0,
+            publisher_first_failure_distance_m=0.1,
+            node_distance_m=0.1,
+        )
+        self.assertFalse(failed)
+        self.assertEqual(failed_rank[0], 1.0)
+        self.assertEqual(failed_rank[1], 2.0)
+
     def test_terminal_start_matches_published_last_fifty_frames(self) -> None:
         start = DIAGNOSTICS.terminal_contact_start_distance(0.05, 800, 50)
         self.assertAlmostEqual(start, 0.0469375, places=12)
@@ -1920,11 +1968,28 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             '"candidate_low_motion_first_window"',
             "rollout_source_indices",
             "local_lower = np.maximum(",
-            "prefix_node_ok",
-            "prefix_publisher_ok",
+            "suffix_rollout_prefix_rank(",
+            "source_prefix_ok",
+            'trial_kind="source_preserved"',
+            '"extrapolated_ls"',
+            '"rollout_partial_"',
+            "[SUFFIX-ROLLOUT-PRUNED]",
+            '"candidate_rollout_reached_node"',
+            '"candidate_rollout_prune_node"',
+            '"candidate_rollout_prune_reason"',
+            '"candidate_rollout_attempt_count"',
             '"rollout_"',
         ):
             self.assertIn(required, horizon)
+        rollout = horizon[horizon.index("rollout_source_indices") :]
+        self.assertLess(
+            rollout.index('trial_kind="source_preserved"'),
+            rollout.index("local_result = least_squares("),
+        )
+        self.assertLess(
+            rollout.index("if not source_prefix_ok:"),
+            rollout.index("local_result = least_squares("),
+        )
         for forbidden_mutation in (
             "coarse_q[keyframe] =",
             "coarse_progress[keyframe] =",

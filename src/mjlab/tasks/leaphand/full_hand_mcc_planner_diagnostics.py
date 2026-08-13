@@ -707,6 +707,70 @@ def strict_suffix_task_hinge_residual(
     return float(weight) * np.concatenate(residual_rows)
 
 
+def suffix_rollout_prefix_rank(
+    *,
+    node_condition_ok: np.ndarray,
+    node_metric_margin_m: np.ndarray,
+    node_metric_margin_rad: np.ndarray,
+    node_pad_alignment_margin: np.ndarray,
+    node_index: int,
+    publisher_first_failure_distance_m: float,
+    node_distance_m: float,
+) -> tuple[bool, tuple[float, ...]]:
+    """Rank an exact-audited rollout prefix without judging future nodes.
+
+    A block solve may already contain a valid early prefix even when later
+    horizon nodes fail.  The rollout must preserve that prefix instead of
+    unconditionally solving it again.  Publisher failure at or before the
+    current node is part of the prefix failure class.
+    """
+
+    conditions = np.asarray(node_condition_ok, dtype=bool)
+    metric_m = np.asarray(node_metric_margin_m, dtype=np.float64)
+    metric_rad = np.asarray(node_metric_margin_rad, dtype=np.float64)
+    pad_margin = np.asarray(node_pad_alignment_margin, dtype=np.float64)
+    if conditions.ndim != 2 or conditions.shape[0] == 0:
+        raise ValueError("node_condition_ok must be a non-empty matrix")
+    if metric_m.ndim != 2 or metric_m.shape[0] != conditions.shape[0]:
+        raise ValueError("node_metric_margin_m must match the node count")
+    if metric_rad.ndim != 2 or metric_rad.shape[0] != conditions.shape[0]:
+        raise ValueError("node_metric_margin_rad must match the node count")
+    if pad_margin.shape != (conditions.shape[0],):
+        raise ValueError("node_pad_alignment_margin must match the node count")
+    if node_index < 0 or node_index >= conditions.shape[0]:
+        raise ValueError("node_index is outside the audited horizon")
+    if not all(
+        np.all(np.isfinite(value)) for value in (metric_m, metric_rad, pad_margin)
+    ):
+        raise ValueError("rollout prefix margins must be finite")
+    distances = np.asarray(
+        (publisher_first_failure_distance_m, node_distance_m), dtype=np.float64
+    )
+    if not np.isfinite(distances[1]):
+        raise ValueError("node_distance_m must be finite")
+
+    prefix_slice = slice(0, node_index + 1)
+    prefix_conditions = conditions[prefix_slice]
+    publisher_ok = bool(
+        not np.isfinite(distances[0])
+        or distances[0] > distances[1] + 1.0e-12
+    )
+    failed_gate_count = int(np.count_nonzero(~prefix_conditions)) + int(
+        not publisher_ok
+    )
+    passed = failed_gate_count == 0
+    minimum_task_slack = float(np.min(metric_m[prefix_slice]))
+    minimum_joint_slack = float(np.min(metric_rad[prefix_slice]))
+    minimum_pad_slack = float(np.min(pad_margin[prefix_slice]))
+    return passed, (
+        0.0 if passed else 1.0,
+        float(failed_gate_count),
+        -minimum_task_slack,
+        -minimum_joint_slack,
+        -minimum_pad_slack,
+    )
+
+
 def terminal_contact_start_distance(
     axial_travel_m: float,
     frame_count: int,

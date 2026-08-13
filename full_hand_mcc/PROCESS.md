@@ -2551,3 +2551,74 @@ H5 node residual 现包含：
 **正在执行/下一步：**commit/push main -> issue #7 checkpoint -> 同命令 Acceptance seed42
 0--50 mm headless。优先比较第一条 `[SUFFIX-HORIZON]` 的 attempts/selected seed/node/publisher margins
 与旧 prefix；若新 H5 PASS 才继续 plan/full collision/terminal/low-motion/dynamics。物理未过不录像。
+
+#### `b7bad54` suffix-rollout GPU 终审：44.53125 mm 与 partial evidence 缺口（2026-08-13）
+
+##### 真实产物与终止点
+
+- stem=`baseline2_capsule_suffixrollout_0to50_acceptance_seed42_20260813_133007_006`；
+- 开始=`13:30:07`、结束=`14:10:29`、墙钟=`2422 s`、exit=`1`；
+- log SHA256=`724B51906517FB7B5D5DF648E1BC5CF2840F6B6DC09231A78B06B2E656B79A7A`；
+- stderr SHA256=`3FD352B18768DF9B0C08C049C1E208278192B6721F13B5F2FFF640BC77659393`；
+- failure-prefix SHA256=`D1E22CAC1F7F99BF507B7D3015AD5A395FA19701F79C2D2940F01F1249054AFC`；
+- 最后 accepted=`44.375 mm`；失败目标=`44.53125 mm`、keyframe=`41/47`、auto-refine=`7/96`；
+- 无 `_plan.npz`、dynamics、standalone/full collision/terminal/low-motion audit 或视频。
+
+早段路径继续越过旧32.97 mm self瓶颈；43.125 mm出现允许的短暂3/4，43.75 mm恢复4/4。日志中21.25 mm
+与33.75--35 mm附近仍观察到低tip运动，因此即使后续生成 plan，也必须由 publisher 的20 intervals/21
+samples low-motion hard gate裁决，不能仅以终点行程掩盖。当前状态仍是 Level 2 **NOT PASS**。
+
+##### H5 证据
+
+本轮 H 节点精确为：
+
+`[44.53125,45.1328125,45.734375,46.3359375,46.9375] mm`
+
+terminal sentinel wiring仍正确。日志输出：
+
+`[SUFFIX-HORIZON] ... attempts=6 passed=False minimum_slack_mm=-0.153757 minimum_joint_slack_mrad=0.049766 failed_gates=8`
+
+随后 `[SUFFIX-HORIZON-FAIL-CLOSED] ... myopic_bridge_commit_allowed=False`，因此未认证状态没有修改
+coarse q/phase/budget/flags。failure-prefix 只保存6个 block candidates：`previous`、`extrapolated`、两组
+`nullspace_combined`、`nullspace_joint_0/1`；failed-gate count=`[8,11,11,8,9,11]`，task slack=
+`[-0.153757,-3.232683,-2.702724,-0.214837,-0.263779,-3.267387] mm`，joint slack=
+`[0.049766,0.002926,0.000584,0.447228,0.065088,0.002972] mrad`。publisher first-fail distances=
+`[44.6875,44.5,44.5,45.1875,44.625,44.5] mm`。
+
+最重要的反例是 candidate 3（第二个 `nullspace_combined`）：node0 @44.53125 mm 已11/11条件全过：
+
+- progress=`+0.157086 mm`、normal=`+1.039102 mm`、tangent=`+0.050039 mm`；
+- monotonic=`+0.135935 mm`、palm=`+17.6145 mm`；
+- FR3=`+16.2700 mm`、non-tip hand=`+0.448463 mm`、physical-tip=`+0.152546 mm`；
+- joint interior=`+0.447228 mrad`、step=`+5.718452 mrad`；
+- contacts=`4/4`、motion=`3/4`、collision=true、self=`0`。
+
+candidate 0 node0只失败motion；candidate 4 node0只差很小的interior margin。可见至少一个 block basin 已提供
+安全首节点，失败不是“44.53125 mm单点不可达”。
+
+##### 精确代码根因与当前 WIP
+
+旧 rollout 在 `demo_surface_slide.py` 中对每个 source/node 无条件调用 local `least_squares`，立即用
+`local_result.x` 覆盖原 block row，之后才审 prefix。这样 candidate 3 的安全 node0 也会被重新优化到
+另一 basin。只要任一 node 未过，代码直接 `continue`；partial rollout 不会 append 到
+`horizon_candidates`，所以最终6个 evidence 全是 block seeds，无法知道三条 rollout 实际到达/剪枝位置。
+
+当前 WIP 只修这个已证实缺口，不扩算法边界：
+
+1. 新增纯 NumPy `suffix_rollout_prefix_rank()`，只审 `0..node_index` 的 node条件/margins，并把 publisher
+   在当前距离（含等号）或更早的失败计入 prefix；未来 node 失败不会污染已认证 prefix；
+2. 每个 node 先 exact-audit clipped source row；通过则以 `source_preserved` 原样保留，不再重复求解；
+3. source未过时才分别从 `source_ls` 与去重后的 `extrapolated_ls` 求解，逐个完整 `audit_suffix()`，按
+   hard-first、failed-count、task/joint/pad margin、cost 的确定性rank选取；
+4. 每个被剪枝 source 仍以 `rollout_partial_<source>` append不可变证据，保存reached node、prune node、
+   reason与attempt count，并最多打印三条 `[SUFFIX-ROLLOUT-PRUNED]`；partial永远不能被当作passed提交；
+5. 完整H5/publisher/terminal/rolling-low-motion未过仍保持原fail-close，零 coarse/phase/budget/flag修改。
+
+真实 prefix 只读回放已确认：candidate 3 node0被新helper判为 `prefix_ok=true`；其它5个均false，和逐门数组
+一致。验证为 CPU=`99/99`、demo `--help` exit0、Python AST、PowerShell runner AST 与
+`git diff --check` exit0；唯一噪声仍为既有wandb临时目录atexit PermissionError，测试进程exit0。当前
+尚未提交/push，也未运行新GPU；无plan/dynamics/audit/video。
+
+**正在执行/下一步：**commit/push main -> issue #7 checkpoint -> 完全相同 Acceptance seed42、0--50mm、
+800帧headless终审。若H仍失败，必须先读新增的partial seed/reached/prune/publisher字段；只有新证据证明
+本地两seed修复不足才考虑更长beam、joint/phase horizon或SLSQP。任何冻结硬门都不放宽，物理通过前不录像。

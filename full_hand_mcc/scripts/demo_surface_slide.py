@@ -76,6 +76,7 @@ from mjlab.tasks.leaphand.full_hand_mcc_planner_diagnostics import (
     self_separation_ascent_seeds,
     smooth_pad_alignment_residual,
     smoothstep_joint_interpolation,
+    suffix_rollout_prefix_rank,
     strict_suffix_task_hinge_residual,
     terminal_contact_sample_mask,
     terminal_contact_start_distance,
@@ -9548,11 +9549,18 @@ def main() -> None:
                                     rollout_nfev = 0
                                     rollout_cost = 0.0
                                     rollout_ok = True
+                                    rollout_reached_node = -1
+                                    rollout_prune_node = -1
+                                    rollout_prune_reason = "completed"
+                                    rollout_attempt_count = 0
                                     rollout_prior_q = previous_q.copy()
                                     rollout_prior_arc = bridge_arc.copy()
+                                    rollout_prior_delta = previous_delta.copy()
                                     rollout_prior_distance = float(
                                         coarse_distance[keyframe - 1]
                                     )
+                                    rollout_audit_details = source.suffix_audit
+                                    rollout_audit_rank = source.suffix_rank[:5]
                                     for node_index in range(node_count):
                                         step_inner_limit = (
                                             args.max_plan_joint_step_rad
@@ -9571,6 +9579,13 @@ def main() -> None:
                                             >= local_upper - 1.0e-12
                                         ):
                                             rollout_ok = False
+                                            rollout_prune_node = node_index
+                                            rollout_prune_reason = "invalid_bounds"
+                                            (
+                                                _,
+                                                rollout_audit_rank,
+                                                rollout_audit_details,
+                                            ) = audit_suffix(rollout_rows)
                                             break
                                         local_seed = np.clip(
                                             rollout_rows[node_index],
@@ -9602,65 +9617,183 @@ def main() -> None:
                                                 ),
                                             )
 
-                                        local_result = least_squares(
-                                            rollout_node_residual,
+                                        node_trials: list[SimpleNamespace] = []
+
+                                        def append_rollout_node_trial(
+                                            q_node: np.ndarray,
+                                            *,
+                                            trial_kind: str,
+                                            trial_cost: float,
+                                            trial_nfev: int,
+                                            trial_order: int,
+                                        ) -> None:
+                                            nonlocal rollout_attempt_count
+                                            trial_rows = rollout_rows.copy()
+                                            trial_rows[node_index] = q_node
+                                            (
+                                                _,
+                                                _,
+                                                trial_audit,
+                                            ) = audit_suffix(trial_rows)
+                                            (
+                                                trial_prefix_ok,
+                                                trial_prefix_rank,
+                                            ) = suffix_rollout_prefix_rank(
+                                                node_condition_ok=(
+                                                    trial_audit[
+                                                        "node_condition_ok"
+                                                    ]
+                                                ),
+                                                node_metric_margin_m=(
+                                                    trial_audit[
+                                                        "node_metric_margin_m"
+                                                    ]
+                                                ),
+                                                node_metric_margin_rad=(
+                                                    trial_audit[
+                                                        "node_metric_margin_rad"
+                                                    ]
+                                                ),
+                                                node_pad_alignment_margin=(
+                                                    trial_audit[
+                                                        "node_pad_alignment_margin"
+                                                    ]
+                                                ),
+                                                node_index=node_index,
+                                                publisher_first_failure_distance_m=float(
+                                                    trial_audit[
+                                                        "publisher_first_failure_distance_m"
+                                                    ]
+                                                ),
+                                                node_distance_m=float(
+                                                    horizon_distance[node_index]
+                                                ),
+                                            )
+                                            rollout_attempt_count += 1
+                                            node_trials.append(
+                                                SimpleNamespace(
+                                                    q_rad=q_node.copy(),
+                                                    rows=trial_rows,
+                                                    audit=trial_audit,
+                                                    prefix_ok=trial_prefix_ok,
+                                                    rank=(
+                                                        *trial_prefix_rank,
+                                                        float(trial_cost),
+                                                        float(trial_order),
+                                                    ),
+                                                    kind=trial_kind,
+                                                    cost=float(trial_cost),
+                                                    nfev=int(trial_nfev),
+                                                )
+                                            )
+
+                                        # Preserve an already certified block-prefix
+                                        # row. Re-solving it can move a safe node
+                                        # into a different, invalid local basin.
+                                        append_rollout_node_trial(
                                             local_seed,
-                                            bounds=(
-                                                local_lower,
-                                                local_upper,
-                                            ),
-                                            max_nfev=min(
-                                                args.mpc_suffix_max_nfev,
-                                                100,
-                                            ),
-                                            xtol=1.0e-9,
-                                            ftol=1.0e-9,
-                                            gtol=1.0e-9,
-                                            x_scale="jac",
-                                            diff_step=1.0e-5,
+                                            trial_kind="source_preserved",
+                                            trial_cost=0.0,
+                                            trial_nfev=0,
+                                            trial_order=0,
                                         )
-                                        rollout_rows[node_index] = (
-                                            local_result.x
+                                        source_prefix_ok = bool(
+                                            node_trials[0].prefix_ok
                                         )
-                                        rollout_nfev += int(
-                                            local_result.nfev
+                                        if not source_prefix_ok:
+                                            extrapolated_seed = np.clip(
+                                                rollout_prior_q
+                                                + rollout_prior_delta,
+                                                local_lower + 1.0e-10,
+                                                local_upper - 1.0e-10,
+                                            )
+                                            rollout_seed_specs = [
+                                                ("source_ls", local_seed)
+                                            ]
+                                            if not np.allclose(
+                                                extrapolated_seed,
+                                                local_seed,
+                                                atol=1.0e-12,
+                                                rtol=0.0,
+                                            ):
+                                                rollout_seed_specs.append(
+                                                    (
+                                                        "extrapolated_ls",
+                                                        extrapolated_seed,
+                                                    )
+                                                )
+                                            for (
+                                                trial_order,
+                                                (
+                                                    rollout_seed_kind,
+                                                    rollout_seed,
+                                                ),
+                                            ) in enumerate(
+                                                rollout_seed_specs,
+                                                start=1,
+                                            ):
+                                                local_result = least_squares(
+                                                    rollout_node_residual,
+                                                    rollout_seed,
+                                                    bounds=(
+                                                        local_lower,
+                                                        local_upper,
+                                                    ),
+                                                    max_nfev=min(
+                                                        args.mpc_suffix_max_nfev,
+                                                        100,
+                                                    ),
+                                                    xtol=1.0e-9,
+                                                    ftol=1.0e-9,
+                                                    gtol=1.0e-9,
+                                                    x_scale="jac",
+                                                    diff_step=1.0e-5,
+                                                )
+                                                rollout_nfev += int(
+                                                    local_result.nfev
+                                                )
+                                                append_rollout_node_trial(
+                                                    local_result.x,
+                                                    trial_kind=(
+                                                        rollout_seed_kind
+                                                    ),
+                                                    trial_cost=float(
+                                                        local_result.cost
+                                                    ),
+                                                    trial_nfev=int(
+                                                        local_result.nfev
+                                                    ),
+                                                    trial_order=trial_order,
+                                                )
+
+                                        selected_node_trial = min(
+                                            node_trials,
+                                            key=lambda trial: trial.rank,
+                                        )
+                                        rollout_rows = (
+                                            selected_node_trial.rows.copy()
+                                        )
+                                        rollout_audit_details = (
+                                            selected_node_trial.audit
                                         )
                                         rollout_cost += float(
-                                            local_result.cost
+                                            selected_node_trial.cost
                                         )
-                                        (
-                                            _,
-                                            _,
-                                            prefix_audit,
-                                        ) = audit_suffix(rollout_rows)
-                                        prefix_node_ok = bool(
-                                            np.all(
-                                                prefix_audit[
-                                                    "node_condition_ok"
-                                                ][: node_index + 1]
-                                            )
-                                        )
-                                        first_failure_distance = float(
-                                            prefix_audit[
-                                                "publisher_first_failure_distance_m"
-                                            ]
-                                        )
-                                        prefix_publisher_ok = bool(
-                                            not np.isfinite(
-                                                first_failure_distance
-                                            )
-                                            or first_failure_distance
-                                            > horizon_distance[node_index]
-                                            + 1.0e-12
-                                        )
-                                        if not (
-                                            prefix_node_ok
-                                            and prefix_publisher_ok
-                                        ):
+                                        if not selected_node_trial.prefix_ok:
                                             rollout_ok = False
+                                            rollout_prune_node = node_index
+                                            rollout_prune_reason = (
+                                                "prefix_gates"
+                                            )
                                             break
+
+                                        rollout_reached_node = node_index
+                                        rollout_prior_delta = (
+                                            selected_node_trial.q_rad
+                                            - rollout_prior_q
+                                        )
                                         rollout_prior_q = (
-                                            local_result.x.copy()
+                                            selected_node_trial.q_rad.copy()
                                         )
                                         rollout_prior_arc = contact_state(
                                             rollout_prior_q
@@ -9669,6 +9802,68 @@ def main() -> None:
                                             horizon_distance[node_index]
                                         )
                                     if not rollout_ok:
+                                        partial_seed_kind = (
+                                            "rollout_partial_"
+                                            + source.suffix_seed_kind
+                                        )
+                                        partial_rank = audit_suffix(
+                                            rollout_rows
+                                        )[1]
+                                        horizon_candidates.append(
+                                            SimpleNamespace(
+                                                x=rollout_rows[0].copy(),
+                                                cost=rollout_cost,
+                                                nfev=rollout_nfev,
+                                                candidate_kind=(
+                                                    "suffix_horizon"
+                                                ),
+                                                suffix_seed_kind=(
+                                                    partial_seed_kind
+                                                ),
+                                                suffix_q_rad=(
+                                                    rollout_rows.copy()
+                                                ),
+                                                suffix_distance_m=(
+                                                    horizon_distance.copy()
+                                                ),
+                                                suffix_audit=(
+                                                    rollout_audit_details
+                                                ),
+                                                suffix_passed=False,
+                                                suffix_rank=(
+                                                    *partial_rank,
+                                                    rollout_cost,
+                                                    float(source_index),
+                                                ),
+                                                rollout_reached_node=(
+                                                    rollout_reached_node
+                                                ),
+                                                rollout_prune_node=(
+                                                    rollout_prune_node
+                                                ),
+                                                rollout_prune_reason=(
+                                                    rollout_prune_reason
+                                                ),
+                                                rollout_attempt_count=(
+                                                    rollout_attempt_count
+                                                ),
+                                            )
+                                        )
+                                        first_failure_distance = float(
+                                            rollout_audit_details[
+                                                "publisher_first_failure_distance_m"
+                                            ]
+                                        )
+                                        print(
+                                            "[SUFFIX-ROLLOUT-PRUNED] "
+                                            f"source={source.suffix_seed_kind} "
+                                            f"reached_node={rollout_reached_node} "
+                                            f"prune_node={rollout_prune_node} "
+                                            f"reason={rollout_prune_reason} "
+                                            "publisher_first_failure_m="
+                                            f"{first_failure_distance:.9f}",
+                                            flush=True,
+                                        )
                                         continue
                                     (
                                         rollout_passed,
@@ -9703,6 +9898,16 @@ def main() -> None:
                                                 *rollout_audit_rank,
                                                 rollout_cost,
                                                 float(source_index),
+                                            ),
+                                            rollout_reached_node=(
+                                                node_count - 1
+                                            ),
+                                            rollout_prune_node=-1,
+                                            rollout_prune_reason=(
+                                                "completed"
+                                            ),
+                                            rollout_attempt_count=(
+                                                rollout_attempt_count
                                             ),
                                         )
                                     )
@@ -9759,6 +9964,49 @@ def main() -> None:
                                         for candidate in horizon_candidates
                                     ],
                                     dtype=np.int32,
+                                ),
+                                "candidate_rollout_reached_node": np.asarray(
+                                    [
+                                        getattr(
+                                            candidate,
+                                            "rollout_reached_node",
+                                            -1,
+                                        )
+                                        for candidate in horizon_candidates
+                                    ],
+                                    dtype=np.int16,
+                                ),
+                                "candidate_rollout_prune_node": np.asarray(
+                                    [
+                                        getattr(
+                                            candidate,
+                                            "rollout_prune_node",
+                                            -1,
+                                        )
+                                        for candidate in horizon_candidates
+                                    ],
+                                    dtype=np.int16,
+                                ),
+                                "candidate_rollout_prune_reason": np.asarray(
+                                    [
+                                        getattr(
+                                            candidate,
+                                            "rollout_prune_reason",
+                                            "not_rollout",
+                                        )
+                                        for candidate in horizon_candidates
+                                    ]
+                                ),
+                                "candidate_rollout_attempt_count": np.asarray(
+                                    [
+                                        getattr(
+                                            candidate,
+                                            "rollout_attempt_count",
+                                            0,
+                                        )
+                                        for candidate in horizon_candidates
+                                    ],
+                                    dtype=np.int16,
                                 ),
                                 "candidate_passed": np.asarray(
                                     [
