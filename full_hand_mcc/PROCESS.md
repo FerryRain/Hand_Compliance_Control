@@ -3337,3 +3337,52 @@ progress/normal/tangent/monotonic的正式50 um余量直接作为不等式，使
 **正在执行/下一步：**实现显式约束polish及纯函数符号/触发/原子性回归；全量CPU、CLI、Python AST、
 PowerShell AST与`git diff --check`通过后commit/push main并更新issue #7，再用完全相同seed42 GPU终审。
 当前Level 2仍 **NOT PASS**，完整plan/full collision/terminal/low-motion/dynamics通过前不录像。
+
+### explicit-constraint local polish已实现并通过CPU终审（2026-08-13，GPU待跑）
+
+#### 严格触发边界
+
+- continuation四级耗尽且当前node尚无`prefix_ok`后，重新筛选exact-safe/interior-only trials；
+- `suffix_prefix_needs_interior_polish()`继续要求当前prefix原hard列全true、publisher未在当前node前失败、
+  rolling low-motion=true；
+- 新`suffix_node_needs_explicit_task_polish()`进一步要求前序节点连interior也全true、当前node原hard全true、
+  当前node interior false且前四个task margin中至少一项低于正式50 um；
+- 碰撞、contact、joint、publisher、low-motion失败或前序interior失败都不能触发显式solver。
+
+#### 显式求解语义
+
+- 正式`task_guard_m=50 um`不变；新`suffix_explicit_constraint_guard()`只给SLSQP增加1 um数值headroom，
+  即solve-only guard=`51 um`；
+- `strict_suffix_task_constraint_margins()`返回16个互不聚合的正余量：4 progress、4 normal、4 tangent、
+  4 monotonic；每个都必须`>=0`，不能由别的手指/任务补偿；
+- 从exact-safe source确定性冻结3个已真实前进的指尖和preterminal至少3个nominal contacts；到exact terminal
+  则固定4/4 contacts。纯函数`suffix_explicit_support_indices()`按motion降序、normal error升序选择并在数量不足时
+  fail closed；
+- SLSQP变量仅当前23-DoF q；objective为相对source的归一化最小关节变化。bounds沿用
+  `lower/upper + 0.5 mrad joint interior`及相对prior的`max step - 0.05 mrad`，`eps=1e-5`解决现有float32几何
+  对默认有限差分不敏感的问题；
+- solver的`success`不具验收权威：任何有限q都会作为trial重新进入原`append_rollout_node_trial()`，重新计算
+  node 11门、16-sample FR3/hand/tip/self/pad、dense publisher、exact terminal sentinel和20-interval/21-sample
+  low-motion；只有该exact prefix通过才可继续，失败保持coarse/phase/budget/flags零修改；
+- rollout prefix rank现也显式纳入`low_motion_ok`。此前最终全窗audit仍能拒绝low-motion失败，但中间prefix
+  可能错误继续；修复后两层语义一致。
+
+#### 失败证据与回归
+
+- failure evidence新增`explicit_constraint_guard_m`；每candidate保存explicit attempt/success count、best minimum
+  constraint margin，并按node保存SLSQP status、solver success、exact prefix结果、nfev、constraint margin及23-DoF q；
+- 日志新增`[SUFFIX-EXPLICIT-CONSTRAINT-POLISH]`，输出source/node/guard/status/success/nit/nfev/
+  constraint margin/exact prefix；
+- 纯函数回归覆盖16维margin符号/shape/非法值、50→51 um、确定性motion/contact support、数量不足、
+  仅当前task miss触发、prior/hard/task-safe反例以及low-motion prefix fail；
+- 定向`test_full_hand_mcc_core`=`80/80`；全量`unittest discover`=`113/113`，exit0；demo `--help`、
+  三文件Python AST、Level-2 runner PowerShell AST与`git diff --check`全部exit0；
+- 唯一噪声仍为既有wandb TemporaryDirectory atexit PermissionError，不影响测试/CLI exit0。
+
+所有40 deg pad、physical-tip>=-1 mm、FR3>=2 mm、non-tip hand>=-1 mm、active self=0、原task/contact/
+joint/step、terminal4/4与rolling-low-motion门均未放宽。尚未运行新GPU、未生成plan/dynamics/audit/video，
+Level 2仍 **NOT PASS**。
+
+**正在执行/下一步：**最终diff复核 -> commit/push main -> issue #7 implementation checkpoint -> 完全相同
+Acceptance seed42 0--50 mm headless GPU。首先确认45.9375 mm实际打印explicit日志并读取formal50 um结果；若
+生成plan，立即执行Acceptance plan audit、全帧collision audit与dynamics。全部数值物理验收通过前不录像。

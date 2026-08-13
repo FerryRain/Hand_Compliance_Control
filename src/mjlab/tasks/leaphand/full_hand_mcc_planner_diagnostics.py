@@ -826,6 +826,130 @@ def strict_suffix_task_hinge_residual(
     return float(weight) * np.concatenate(residual_rows)
 
 
+def strict_suffix_task_constraint_margins(
+    *,
+    progress_error_m: np.ndarray,
+    progress_limit_m: float,
+    normal_error_m: np.ndarray,
+    normal_tolerance_m: np.ndarray,
+    tangent_error_m: np.ndarray,
+    tangent_tolerance_m: np.ndarray,
+    monotonic_error_m: np.ndarray,
+    monotonic_tolerance_m: float,
+    interior_guard_m: float,
+) -> np.ndarray:
+    """Return per-finger suffix margins for an explicit inequality solver.
+
+    Positive entries satisfy the unchanged task gate with the requested
+    interior.  Keeping the four task families separate prevents a constrained
+    polish from trading a normal violation on one finger against excess
+    progress or tangent margin on another.
+    """
+
+    arrays = {
+        "progress_error_m": progress_error_m,
+        "normal_error_m": normal_error_m,
+        "normal_tolerance_m": normal_tolerance_m,
+        "tangent_error_m": tangent_error_m,
+        "tangent_tolerance_m": tangent_tolerance_m,
+        "monotonic_error_m": monotonic_error_m,
+    }
+    normalized: dict[str, np.ndarray] = {}
+    for name, value in arrays.items():
+        array = np.asarray(value, dtype=np.float64)
+        if array.shape != (4,):
+            raise ValueError(f"{name} must have shape (4,)")
+        if not np.all(np.isfinite(array)):
+            raise ValueError(f"{name} must be finite")
+        normalized[name] = array
+
+    scalars = np.asarray(
+        (
+            progress_limit_m,
+            monotonic_tolerance_m,
+            interior_guard_m,
+        ),
+        dtype=np.float64,
+    )
+    if not np.all(np.isfinite(scalars)) or np.any(scalars < 0.0):
+        raise ValueError("strict suffix limits and guard must be non-negative")
+
+    guard = float(interior_guard_m)
+    return np.concatenate(
+        (
+            float(progress_limit_m)
+            - guard
+            - normalized["progress_error_m"],
+            normalized["normal_tolerance_m"]
+            - guard
+            - normalized["normal_error_m"],
+            normalized["tangent_tolerance_m"]
+            - guard
+            - normalized["tangent_error_m"],
+            float(monotonic_tolerance_m)
+            - guard
+            - normalized["monotonic_error_m"],
+        )
+    )
+
+
+def suffix_explicit_constraint_guard(required_guard_m: float) -> float:
+    """Add one micron of solve-only headroom to an unchanged formal guard."""
+
+    if not np.isfinite(required_guard_m) or required_guard_m < 0.0:
+        raise ValueError("required_guard_m must be finite and non-negative")
+    return float(required_guard_m) + 1.0e-6
+
+
+def suffix_explicit_support_indices(
+    *,
+    tip_motion_m: np.ndarray,
+    minimum_tip_motion_m: float,
+    normal_error_m: np.ndarray,
+    nominal_normal_tolerance_m: float,
+    required_motion_fingers: int,
+    required_contact_fingers: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Freeze deterministic moving/contact support sets for one SLSQP solve."""
+
+    motion = np.asarray(tip_motion_m, dtype=np.float64)
+    normal = np.asarray(normal_error_m, dtype=np.float64)
+    if motion.shape != (4,) or normal.shape != (4,):
+        raise ValueError("tip motion and normal error must have shape (4,)")
+    scalars = np.asarray(
+        (minimum_tip_motion_m, nominal_normal_tolerance_m),
+        dtype=np.float64,
+    )
+    if (
+        not np.all(np.isfinite(motion))
+        or not np.all(np.isfinite(normal))
+        or not np.all(np.isfinite(scalars))
+        or np.any(scalars < 0.0)
+    ):
+        raise ValueError("support values and thresholds must be finite")
+    if not 0 <= required_motion_fingers <= 4:
+        raise ValueError("required_motion_fingers must lie in [0, 4]")
+    if not 0 <= required_contact_fingers <= 4:
+        raise ValueError("required_contact_fingers must lie in [0, 4]")
+
+    motion_candidates = np.flatnonzero(
+        motion >= float(minimum_tip_motion_m) - 1.0e-12
+    )
+    motion_order = motion_candidates[
+        np.argsort(-motion[motion_candidates], kind="stable")
+    ]
+    contact_candidates = np.flatnonzero(
+        normal <= float(nominal_normal_tolerance_m) + 1.0e-12
+    )
+    contact_order = contact_candidates[
+        np.argsort(normal[contact_candidates], kind="stable")
+    ]
+    return (
+        motion_order[:required_motion_fingers].astype(np.int64, copy=False),
+        contact_order[:required_contact_fingers].astype(np.int64, copy=False),
+    )
+
+
 def suffix_optimization_guard(required_guard_m: float) -> float:
     """Return numerical headroom for a suffix solve without changing its audit.
 
@@ -888,6 +1012,44 @@ def suffix_prefix_needs_interior_polish(
     )
 
 
+def suffix_node_needs_explicit_task_polish(
+    *,
+    node_condition_ok: np.ndarray,
+    node_metric_margin_m: np.ndarray,
+    node_index: int,
+    task_guard_m: float,
+) -> bool:
+    """Restrict explicit polishing to one exact-safe task-interior miss."""
+
+    conditions = np.asarray(node_condition_ok, dtype=bool)
+    metrics = np.asarray(node_metric_margin_m, dtype=np.float64)
+    if conditions.ndim != 2 or conditions.shape[1] < 2:
+        raise ValueError("node_condition_ok must contain hard and interior gates")
+    if metrics.ndim != 2 or metrics.shape[0] != conditions.shape[0]:
+        raise ValueError("node metrics must align with node conditions")
+    if metrics.shape[1] < 4 or not np.all(np.isfinite(metrics)):
+        raise ValueError("node metrics must contain finite task margins")
+    if node_index < 0 or node_index >= conditions.shape[0]:
+        raise ValueError("node_index is outside the audited horizon")
+    if not np.isfinite(task_guard_m) or task_guard_m < 0.0:
+        raise ValueError("task_guard_m must be finite and non-negative")
+
+    previous_prefix_ok = bool(
+        node_index == 0 or np.all(conditions[:node_index])
+    )
+    current_hard_ok = bool(np.all(conditions[node_index, :-1]))
+    current_interior_ok = bool(conditions[node_index, -1])
+    current_task_miss = bool(
+        np.any(metrics[node_index, :4] < float(task_guard_m) - 1.0e-12)
+    )
+    return bool(
+        previous_prefix_ok
+        and current_hard_ok
+        and not current_interior_ok
+        and current_task_miss
+    )
+
+
 def suffix_interior_polish_scale_ladder(
     base_scale: float,
 ) -> tuple[float, ...]:
@@ -914,13 +1076,15 @@ def suffix_rollout_prefix_rank(
     node_index: int,
     publisher_first_failure_distance_m: float,
     node_distance_m: float,
+    low_motion_ok: bool,
 ) -> tuple[bool, tuple[float, ...]]:
     """Rank an exact-audited rollout prefix without judging future nodes.
 
     A block solve may already contain a valid early prefix even when later
     horizon nodes fail.  The rollout must preserve that prefix instead of
     unconditionally solving it again.  Publisher failure at or before the
-    current node is part of the prefix failure class.
+    current node and the exact rolling low-motion result are part of the
+    prefix failure class.
     """
 
     conditions = np.asarray(node_condition_ok, dtype=bool)
@@ -953,8 +1117,10 @@ def suffix_rollout_prefix_rank(
         not np.isfinite(distances[0])
         or distances[0] > distances[1] + 1.0e-12
     )
-    failed_gate_count = int(np.count_nonzero(~prefix_conditions)) + int(
-        not publisher_ok
+    failed_gate_count = (
+        int(np.count_nonzero(~prefix_conditions))
+        + int(not publisher_ok)
+        + int(not bool(low_motion_ok))
     )
     passed = failed_gate_count == 0
     minimum_task_slack = float(np.min(metric_m[prefix_slice]))

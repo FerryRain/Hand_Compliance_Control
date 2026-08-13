@@ -969,6 +969,128 @@ class PlannerDiagnosticsTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             DIAGNOSTICS.suffix_interior_polish_scale_ladder(float("inf"))
 
+    def test_suffix_explicit_task_constraints_keep_each_margin_separate(
+        self,
+    ) -> None:
+        margins = DIAGNOSTICS.strict_suffix_task_constraint_margins(
+            progress_error_m=np.full(4, 0.0008),
+            progress_limit_m=0.001,
+            normal_error_m=np.asarray((0.001, 0.002, 0.003, 0.004)),
+            normal_tolerance_m=np.asarray((0.002, 0.003, 0.004, 0.005)),
+            tangent_error_m=np.full(4, 0.0004),
+            tangent_tolerance_m=np.full(4, 0.0008),
+            monotonic_error_m=np.full(4, 0.0001),
+            monotonic_tolerance_m=0.0004,
+            interior_guard_m=0.0001,
+        )
+        self.assertEqual(margins.shape, (16,))
+        np.testing.assert_allclose(margins[:4], 0.0001)
+        np.testing.assert_allclose(margins[4:8], 0.0009)
+        np.testing.assert_allclose(margins[8:12], 0.0003)
+        np.testing.assert_allclose(margins[12:], 0.0002)
+        self.assertAlmostEqual(
+            DIAGNOSTICS.suffix_explicit_constraint_guard(50.0e-6),
+            51.0e-6,
+        )
+        with self.assertRaises(ValueError):
+            DIAGNOSTICS.strict_suffix_task_constraint_margins(
+                progress_error_m=np.zeros(3),
+                progress_limit_m=0.001,
+                normal_error_m=np.zeros(4),
+                normal_tolerance_m=np.ones(4),
+                tangent_error_m=np.zeros(4),
+                tangent_tolerance_m=np.ones(4),
+                monotonic_error_m=np.zeros(4),
+                monotonic_tolerance_m=0.001,
+                interior_guard_m=0.0,
+            )
+        with self.assertRaises(ValueError):
+            DIAGNOSTICS.suffix_explicit_constraint_guard(-1.0e-6)
+
+    def test_suffix_explicit_support_sets_are_fixed_and_deterministic(
+        self,
+    ) -> None:
+        motion_indices, contact_indices = (
+            DIAGNOSTICS.suffix_explicit_support_indices(
+                tip_motion_m=np.asarray((0.0002, 0.0004, 0.0003, 0.00005)),
+                minimum_tip_motion_m=0.0001,
+                normal_error_m=np.asarray((0.002, 0.001, 0.0025, 0.004)),
+                nominal_normal_tolerance_m=0.003,
+                required_motion_fingers=3,
+                required_contact_fingers=3,
+            )
+        )
+        np.testing.assert_array_equal(motion_indices, (1, 2, 0))
+        np.testing.assert_array_equal(contact_indices, (1, 0, 2))
+
+        short_motion, short_contact = (
+            DIAGNOSTICS.suffix_explicit_support_indices(
+                tip_motion_m=np.asarray((0.0, 0.0, 0.0002, 0.0003)),
+                minimum_tip_motion_m=0.0001,
+                normal_error_m=np.asarray((0.001, 0.004, 0.004, 0.004)),
+                nominal_normal_tolerance_m=0.003,
+                required_motion_fingers=3,
+                required_contact_fingers=3,
+            )
+        )
+        self.assertEqual(short_motion.size, 2)
+        self.assertEqual(short_contact.size, 1)
+        with self.assertRaises(ValueError):
+            DIAGNOSTICS.suffix_explicit_support_indices(
+                tip_motion_m=np.zeros(3),
+                minimum_tip_motion_m=0.0,
+                normal_error_m=np.zeros(4),
+                nominal_normal_tolerance_m=0.003,
+                required_motion_fingers=3,
+                required_contact_fingers=3,
+            )
+
+    def test_suffix_explicit_task_polish_requires_only_current_task_miss(
+        self,
+    ) -> None:
+        conditions = np.ones((5, 11), dtype=bool)
+        conditions[4, -1] = False
+        metrics = np.full((5, 8), 0.001, dtype=np.float64)
+        metrics[4, 1] = 37.83e-6
+        kwargs = {
+            "node_condition_ok": conditions,
+            "node_metric_margin_m": metrics,
+            "node_index": 4,
+            "task_guard_m": 50.0e-6,
+        }
+        self.assertTrue(
+            DIAGNOSTICS.suffix_node_needs_explicit_task_polish(**kwargs)
+        )
+
+        prior_interior_failed = conditions.copy()
+        prior_interior_failed[3, -1] = False
+        self.assertFalse(
+            DIAGNOSTICS.suffix_node_needs_explicit_task_polish(
+                **{
+                    **kwargs,
+                    "node_condition_ok": prior_interior_failed,
+                }
+            )
+        )
+        current_hard_failed = conditions.copy()
+        current_hard_failed[4, 2] = False
+        self.assertFalse(
+            DIAGNOSTICS.suffix_node_needs_explicit_task_polish(
+                **{**kwargs, "node_condition_ok": current_hard_failed}
+            )
+        )
+        task_safe_metrics = metrics.copy()
+        task_safe_metrics[4, :4] = 0.001
+        self.assertFalse(
+            DIAGNOSTICS.suffix_node_needs_explicit_task_polish(
+                **{**kwargs, "node_metric_margin_m": task_safe_metrics}
+            )
+        )
+        with self.assertRaises(ValueError):
+            DIAGNOSTICS.suffix_node_needs_explicit_task_polish(
+                **{**kwargs, "node_metric_margin_m": np.zeros((4, 8))}
+            )
+
     def test_suffix_rollout_prefix_rank_preserves_only_exact_prefixes(
         self,
     ) -> None:
@@ -984,6 +1106,7 @@ class PlannerDiagnosticsTest(unittest.TestCase):
             node_index=0,
             publisher_first_failure_distance_m=0.2,
             node_distance_m=0.1,
+            low_motion_ok=True,
         )
         self.assertTrue(passed)
         self.assertEqual(rank[:2], (0.0, 0.0))
@@ -998,6 +1121,7 @@ class PlannerDiagnosticsTest(unittest.TestCase):
             node_index=0,
             publisher_first_failure_distance_m=np.nan,
             node_distance_m=0.1,
+            low_motion_ok=True,
         )
         self.assertTrue(future_failed)
 
@@ -1012,10 +1136,27 @@ class PlannerDiagnosticsTest(unittest.TestCase):
             node_index=0,
             publisher_first_failure_distance_m=0.1,
             node_distance_m=0.1,
+            low_motion_ok=True,
         )
         self.assertFalse(failed)
         self.assertEqual(failed_rank[0], 1.0)
         self.assertEqual(failed_rank[1], 2.0)
+
+        conditions[0, 8] = True
+        low_motion_failed, low_motion_rank = (
+            DIAGNOSTICS.suffix_rollout_prefix_rank(
+                node_condition_ok=conditions,
+                node_metric_margin_m=metric_m,
+                node_metric_margin_rad=metric_rad,
+                node_pad_alignment_margin=pad_margin,
+                node_index=0,
+                publisher_first_failure_distance_m=np.nan,
+                node_distance_m=0.1,
+                low_motion_ok=False,
+            )
+        )
+        self.assertFalse(low_motion_failed)
+        self.assertEqual(low_motion_rank[1], 1.0)
 
     def test_terminal_start_matches_published_last_fifty_frames(self) -> None:
         start = DIAGNOSTICS.terminal_contact_start_distance(0.05, 800, 50)
@@ -2177,12 +2318,21 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             "solve_guard_m = suffix_optimization_guard(",
             "polish_guard_m = suffix_optimization_guard(",
             "suffix_interior_polish_scale_ladder(4.0)",
+            "explicit_constraint_guard_m = (",
+            "suffix_explicit_constraint_guard(task_guard_m)",
             "interior_guard_m=min(",
             "suffix_prefix_needs_interior_polish(",
+            "suffix_node_needs_explicit_task_polish(",
             "polish_source_trials = [",
             "rollout_node_polish_residual",
             '"interior_polish_"',
             "[SUFFIX-INTERIOR-POLISH]",
+            "rollout_node_explicit_constraints",
+            "strict_suffix_task_constraint_margins(",
+            "suffix_explicit_support_indices(",
+            'method="SLSQP"',
+            "Bounds(",
+            "[SUFFIX-EXPLICIT-CONSTRAINT-POLISH]",
             "suffix_transition_fractions",
             "suffix_node_residual(",
             "least_squares(",
@@ -2234,6 +2384,16 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             '"candidate_rollout_attempt_count"',
             '"candidate_rollout_interior_polish_attempt_count"',
             '"candidate_rollout_interior_polish_max_scale"',
+            '"candidate_rollout_explicit_polish_attempt_count"',
+            '"candidate_rollout_explicit_polish_success_count"',
+            '"candidate_rollout_explicit_polish_min_margin_m"',
+            '"candidate_rollout_explicit_polish_status"',
+            '"candidate_rollout_explicit_polish_solver_success"',
+            '"candidate_rollout_explicit_polish_prefix_ok"',
+            '"candidate_rollout_explicit_polish_nfev"',
+            '"candidate_rollout_explicit_polish_constraint_margin_m"',
+            '"candidate_rollout_explicit_polish_q_rad"',
+            '"explicit_constraint_guard_m"',
             '"interior_polish_scale_ladder"',
             '"rollout_"',
         ):
@@ -2265,6 +2425,10 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
         )
         self.assertLess(
             rollout.index("suffix_prefix_needs_interior_polish("),
+            rollout.index("suffix_node_needs_explicit_task_polish("),
+        )
+        self.assertLess(
+            rollout.index("suffix_node_needs_explicit_task_polish("),
             rollout.index("selected_node_trial = min("),
         )
         continuation = rollout[

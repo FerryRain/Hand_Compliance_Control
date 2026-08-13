@@ -1814,3 +1814,20 @@ scale提高到64/128只会把normal与joint/step余量继续交换，不能当�
 唯一欠缺为interior”的局部节点增加显式约束polish，直接把progress/normal/tangent/monotonic 50 um写成
 不等式，再由原16-sample collision与dense publisher完整重审。显式polish失败仍0 mutation并保存证据；
 CPU/静态终审通过后才commit/push和同seed GPU重跑，完整数值物理验收前不录像。
+
+### explicit-constraint local polish CPU终审（2026-08-13，GPU待跑）
+
+显式polish已按窄边界实现：只有前序节点含interior全过、当前节点原hard全过、当前确为task interior不足、
+publisher与rolling-low-motion均过时才触发。SLSQP只最小化相对exact-safe source的关节变化，把四指
+progress/normal/tangent/monotonic分别写成51 um solve-only不等式，并冻结3指真实推进与3/4（terminal为4/4）
+contact support；正式audit仍为50 um。joint interior与step由原local bounds保证，求解结果仍重走原node、
+16-sample collision、dense publisher、exact terminal与20/21 low-motion审计，失败0 mutation。
+
+同时修正rollout prefix排名遗漏low-motion的问题：此前最终全窗仍会fail-close，但中间prefix可能误称可继续；
+现在low-motion false直接进入prefix failed count。failure evidence新增explicit guard、每candidate/node的solver
+status/success/nfev/constraint margin/q与exact prefix结果。定向core=`80/80`，全量CPU=`113/113`；demo CLI、
+Python AST、Level-2 PowerShell AST与`git diff --check`全部exit0，仅有既知wandb临时目录atexit噪声。
+
+**正在执行/下一步：**最终diff复核后commit/push main、更新issue #7 implementation checkpoint，再复用完全
+相同Acceptance seed42 0--50 mm参数GPU终审。若显式solver仍失败，直接读取新NPZ的每节点状态/constraint/q，
+不得继续盲增统一scale；完整plan/full collision/terminal/low-motion/dynamics通过前不录像。

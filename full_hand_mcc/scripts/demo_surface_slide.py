@@ -30,7 +30,7 @@ import imageio.v2 as imageio
 import mujoco
 import numpy as np
 import torch
-from scipy.optimize import least_squares
+from scipy.optimize import Bounds, least_squares, minimize
 from scipy.spatial.transform import Rotation as R
 
 from mjlab.envs import ManagerBasedRlEnv
@@ -79,9 +79,13 @@ from mjlab.tasks.leaphand.full_hand_mcc_planner_diagnostics import (
     smooth_pad_alignment_residual,
     smoothstep_joint_interpolation,
     suffix_interior_polish_scale_ladder,
+    suffix_explicit_constraint_guard,
+    suffix_explicit_support_indices,
     suffix_optimization_guard,
+    suffix_node_needs_explicit_task_polish,
     suffix_prefix_needs_interior_polish,
     suffix_rollout_prefix_rank,
+    strict_suffix_task_constraint_margins,
     strict_suffix_task_hinge_residual,
     terminal_contact_sample_mask,
     terminal_contact_start_distance,
@@ -8031,6 +8035,9 @@ def main() -> None:
                             polish_guard_m = suffix_optimization_guard(
                                 solve_guard_m
                             )
+                            explicit_constraint_guard_m = (
+                                suffix_explicit_constraint_guard(task_guard_m)
+                            )
                             interior_polish_scale_ladder = (
                                 suffix_interior_polish_scale_ladder(4.0)
                             )
@@ -9730,6 +9737,29 @@ def main() -> None:
                                     rollout_attempt_count = 0
                                     rollout_interior_polish_attempt_count = 0
                                     rollout_interior_polish_max_scale = 0.0
+                                    rollout_explicit_polish_attempt_count = 0
+                                    rollout_explicit_polish_success_count = 0
+                                    rollout_explicit_polish_min_margin_m = np.nan
+                                    rollout_explicit_polish_status = np.full(
+                                        node_count, -999, dtype=np.int16
+                                    )
+                                    rollout_explicit_polish_solver_success = np.zeros(
+                                        node_count, dtype=np.bool_
+                                    )
+                                    rollout_explicit_polish_prefix_ok = np.zeros(
+                                        node_count, dtype=np.bool_
+                                    )
+                                    rollout_explicit_polish_nfev = np.zeros(
+                                        node_count, dtype=np.int32
+                                    )
+                                    rollout_explicit_polish_constraint_margin_m = np.full(
+                                        node_count, np.nan, dtype=np.float64
+                                    )
+                                    rollout_explicit_polish_q_rad = np.full(
+                                        (node_count, TOTAL_DOF),
+                                        np.nan,
+                                        dtype=np.float64,
+                                    )
                                     rollout_prior_q = previous_q.copy()
                                     rollout_prior_arc = bridge_arc.copy()
                                     rollout_prior_delta = previous_delta.copy()
@@ -9845,6 +9875,11 @@ def main() -> None:
                                                 ),
                                                 node_distance_m=float(
                                                     horizon_distance[node_index]
+                                                ),
+                                                low_motion_ok=bool(
+                                                    trial_audit[
+                                                        "low_motion_ok"
+                                                    ]
                                                 ),
                                             )
                                             rollout_attempt_count += 1
@@ -10080,6 +10115,419 @@ def main() -> None:
                                                 flush=True,
                                             )
 
+                                        if not any(
+                                            trial.prefix_ok
+                                            for trial in node_trials
+                                        ):
+                                            explicit_source_trials = [
+                                                trial
+                                                for trial in node_trials
+                                                if suffix_prefix_needs_interior_polish(
+                                                    node_condition_ok=(
+                                                        trial.audit[
+                                                            "node_condition_ok"
+                                                        ]
+                                                    ),
+                                                    node_index=node_index,
+                                                    publisher_first_failure_distance_m=float(
+                                                        trial.audit[
+                                                            "publisher_first_failure_distance_m"
+                                                        ]
+                                                    ),
+                                                    node_distance_m=float(
+                                                        horizon_distance[
+                                                            node_index
+                                                        ]
+                                                    ),
+                                                    low_motion_ok=bool(
+                                                        trial.audit[
+                                                            "low_motion_ok"
+                                                        ]
+                                                    ),
+                                                )
+                                                and suffix_node_needs_explicit_task_polish(
+                                                    node_condition_ok=(
+                                                        trial.audit[
+                                                            "node_condition_ok"
+                                                        ]
+                                                    ),
+                                                    node_metric_margin_m=(
+                                                        trial.audit[
+                                                            "node_metric_margin_m"
+                                                        ]
+                                                    ),
+                                                    node_index=node_index,
+                                                    task_guard_m=task_guard_m,
+                                                )
+                                            ]
+                                            if explicit_source_trials:
+                                                explicit_source_trial = min(
+                                                    explicit_source_trials,
+                                                    key=lambda trial: trial.rank,
+                                                )
+                                                (
+                                                    _,
+                                                    _,
+                                                    _,
+                                                    explicit_source_arc,
+                                                    explicit_source_aux,
+                                                ) = contact_state(
+                                                    explicit_source_trial.q_rad
+                                                )
+                                                explicit_source_motion = (
+                                                    direction
+                                                    * (
+                                                        explicit_source_arc[1:]
+                                                        - rollout_prior_arc[1:]
+                                                    )
+                                                )
+                                                minimum_node_motion_m = (
+                                                    args.mpc_feasibility_bridge_min_progress_ratio
+                                                    * (
+                                                        horizon_distance[
+                                                            node_index
+                                                        ]
+                                                        - rollout_prior_distance
+                                                    )
+                                                )
+                                                explicit_source_normal_error = (
+                                                    np.abs(
+                                                        explicit_source_aux[
+                                                            1:, 1
+                                                        ]
+                                                        - target_standoff_array[
+                                                            node_index, 1:
+                                                        ]
+                                                    )
+                                                )
+                                                nominal_normal_tolerance_m = (
+                                                    args.mpc_normal_tolerance_mm
+                                                    / 1000.0
+                                                )
+                                                required_contact_count = (
+                                                    4
+                                                    if horizon_distance[
+                                                        node_index
+                                                    ]
+                                                    >= suffix_terminal_start_m
+                                                    - 1.0e-12
+                                                    else args.min_planner_contact_fingers
+                                                )
+                                                (
+                                                    motion_constraint_indices,
+                                                    contact_constraint_indices,
+                                                ) = suffix_explicit_support_indices(
+                                                    tip_motion_m=(
+                                                        explicit_source_motion
+                                                    ),
+                                                    minimum_tip_motion_m=(
+                                                        minimum_node_motion_m
+                                                    ),
+                                                    normal_error_m=(
+                                                        explicit_source_normal_error
+                                                    ),
+                                                    nominal_normal_tolerance_m=(
+                                                        nominal_normal_tolerance_m
+                                                    ),
+                                                    required_motion_fingers=(
+                                                        MOVING_BRIDGE_FORWARD_FINGER_COUNT
+                                                    ),
+                                                    required_contact_fingers=(
+                                                        required_contact_count
+                                                    ),
+                                                )
+                                                explicit_masks_valid = bool(
+                                                    motion_constraint_indices.size
+                                                    == MOVING_BRIDGE_FORWARD_FINGER_COUNT
+                                                    and contact_constraint_indices.size
+                                                    == required_contact_count
+                                                )
+
+                                                def rollout_node_explicit_constraints(
+                                                    q_node: np.ndarray,
+                                                ) -> np.ndarray:
+                                                    (
+                                                        _,
+                                                        _,
+                                                        _,
+                                                        constrained_arc,
+                                                        constrained_aux,
+                                                    ) = contact_state(q_node)
+                                                    constrained_progress_error = np.abs(
+                                                        direction
+                                                        * (
+                                                            constrained_arc[1:]
+                                                            - target_arc_array[
+                                                                node_index, 1:
+                                                            ]
+                                                        )
+                                                    )
+                                                    constrained_normal_error = np.abs(
+                                                        constrained_aux[1:, 1]
+                                                        - target_standoff_array[
+                                                            node_index, 1:
+                                                        ]
+                                                    )
+                                                    constrained_normal_tolerance = (
+                                                        np.full(
+                                                            4,
+                                                            nominal_normal_tolerance_m,
+                                                            dtype=np.float64,
+                                                        )
+                                                        if horizon_distance[
+                                                            node_index
+                                                        ]
+                                                        >= suffix_terminal_start_m
+                                                        - 1.0e-12
+                                                        else normal_tolerance_array[
+                                                            node_index
+                                                        ]
+                                                    )
+                                                    constrained_tangent_error = np.abs(
+                                                        (
+                                                            (
+                                                                constrained_aux[
+                                                                    1:, 0
+                                                                ]
+                                                                - target_azimuth_array[
+                                                                    node_index,
+                                                                    1:,
+                                                                ]
+                                                                + np.pi
+                                                            )
+                                                            % (2.0 * np.pi)
+                                                            - np.pi
+                                                        )
+                                                        * CAPSULE_RADIUS
+                                                    )
+                                                    constrained_monotonic_error = np.maximum(
+                                                        direction
+                                                        * (
+                                                            rollout_prior_arc[
+                                                                1:
+                                                            ]
+                                                            - constrained_arc[
+                                                                1:
+                                                            ]
+                                                        ),
+                                                        0.0,
+                                                    )
+                                                    task_margins = (
+                                                        strict_suffix_task_constraint_margins(
+                                                            progress_error_m=(
+                                                                constrained_progress_error
+                                                            ),
+                                                            progress_limit_m=(
+                                                                progress_limit_array[
+                                                                    node_index
+                                                                ]
+                                                            ),
+                                                            normal_error_m=(
+                                                                constrained_normal_error
+                                                            ),
+                                                            normal_tolerance_m=(
+                                                                constrained_normal_tolerance
+                                                            ),
+                                                            tangent_error_m=(
+                                                                constrained_tangent_error
+                                                            ),
+                                                            tangent_tolerance_m=(
+                                                                tangent_tolerance_array[
+                                                                    node_index
+                                                                ]
+                                                            ),
+                                                            monotonic_error_m=(
+                                                                constrained_monotonic_error
+                                                            ),
+                                                            monotonic_tolerance_m=(
+                                                                args.mpc_monotonic_tolerance_mm
+                                                                / 1000.0
+                                                            ),
+                                                            interior_guard_m=(
+                                                                explicit_constraint_guard_m
+                                                            ),
+                                                        )
+                                                    )
+                                                    constrained_motion = (
+                                                        direction
+                                                        * (
+                                                            constrained_arc[1:]
+                                                            - rollout_prior_arc[1:]
+                                                        )
+                                                    )
+                                                    motion_margins = (
+                                                        constrained_motion[
+                                                            motion_constraint_indices
+                                                        ]
+                                                        - minimum_node_motion_m
+                                                    )
+                                                    contact_margins = (
+                                                        nominal_normal_tolerance_m
+                                                        - constrained_normal_error[
+                                                            contact_constraint_indices
+                                                        ]
+                                                    )
+                                                    return np.concatenate(
+                                                        (
+                                                            task_margins,
+                                                            motion_margins,
+                                                            contact_margins,
+                                                        )
+                                                    )
+
+                                                if explicit_masks_valid:
+                                                    explicit_source_q = (
+                                                        explicit_source_trial.q_rad.copy()
+                                                    )
+                                                    objective_scale = max(
+                                                        step_inner_limit,
+                                                        1.0e-6,
+                                                    )
+
+                                                    def rollout_node_explicit_objective(
+                                                        q_node: np.ndarray,
+                                                    ) -> float:
+                                                        normalized_delta = (
+                                                            q_node
+                                                            - explicit_source_q
+                                                        ) / objective_scale
+                                                        return 0.5 * float(
+                                                            np.dot(
+                                                                normalized_delta,
+                                                                normalized_delta,
+                                                            )
+                                                        )
+
+                                                    explicit_result = minimize(
+                                                        rollout_node_explicit_objective,
+                                                        explicit_source_q,
+                                                        method="SLSQP",
+                                                        bounds=Bounds(
+                                                            local_lower,
+                                                            local_upper,
+                                                            keep_feasible=True,
+                                                        ),
+                                                        constraints=(
+                                                            {
+                                                                "type": "ineq",
+                                                                "fun": (
+                                                                    rollout_node_explicit_constraints
+                                                                ),
+                                                            },
+                                                        ),
+                                                        options={
+                                                            "maxiter": min(
+                                                                args.mpc_suffix_max_nfev,
+                                                                100,
+                                                            ),
+                                                            "ftol": 1.0e-12,
+                                                            "eps": 1.0e-5,
+                                                            "disp": False,
+                                                        },
+                                                    )
+                                                    rollout_explicit_polish_attempt_count += 1
+                                                    rollout_explicit_polish_status[
+                                                        node_index
+                                                    ] = int(
+                                                        explicit_result.status
+                                                    )
+                                                    rollout_explicit_polish_solver_success[
+                                                        node_index
+                                                    ] = bool(
+                                                        explicit_result.success
+                                                    )
+                                                    explicit_nfev = int(
+                                                        getattr(
+                                                            explicit_result,
+                                                            "nfev",
+                                                            0,
+                                                        )
+                                                    )
+                                                    rollout_explicit_polish_nfev[
+                                                        node_index
+                                                    ] = explicit_nfev
+                                                    rollout_nfev += explicit_nfev
+                                                    explicit_q = np.asarray(
+                                                        explicit_result.x,
+                                                        dtype=np.float64,
+                                                    )
+                                                    explicit_constraint_margin_m = np.nan
+                                                    explicit_trial_prefix_ok = False
+                                                    if (
+                                                        explicit_q.shape
+                                                        == (TOTAL_DOF,)
+                                                        and np.all(
+                                                            np.isfinite(
+                                                                explicit_q
+                                                            )
+                                                        )
+                                                    ):
+                                                        rollout_explicit_polish_q_rad[
+                                                            node_index
+                                                        ] = explicit_q
+                                                        explicit_constraint_margin_m = float(
+                                                            np.min(
+                                                                rollout_node_explicit_constraints(
+                                                                    explicit_q
+                                                                )
+                                                            )
+                                                        )
+                                                        rollout_explicit_polish_constraint_margin_m[
+                                                            node_index
+                                                        ] = (
+                                                            explicit_constraint_margin_m
+                                                        )
+                                                        if np.isnan(
+                                                            rollout_explicit_polish_min_margin_m
+                                                        ):
+                                                            rollout_explicit_polish_min_margin_m = (
+                                                                explicit_constraint_margin_m
+                                                            )
+                                                        else:
+                                                            rollout_explicit_polish_min_margin_m = max(
+                                                                rollout_explicit_polish_min_margin_m,
+                                                                explicit_constraint_margin_m,
+                                                            )
+                                                        append_rollout_node_trial(
+                                                            explicit_q,
+                                                            trial_kind=(
+                                                                "explicit_constraint_polish"
+                                                            ),
+                                                            trial_cost=float(
+                                                                explicit_result.fun
+                                                            ),
+                                                            trial_nfev=explicit_nfev,
+                                                            trial_order=len(
+                                                                node_trials
+                                                            ),
+                                                        )
+                                                        explicit_trial_prefix_ok = bool(
+                                                            node_trials[-1].prefix_ok
+                                                        )
+                                                        rollout_explicit_polish_prefix_ok[
+                                                            node_index
+                                                        ] = (
+                                                            explicit_trial_prefix_ok
+                                                        )
+                                                        if explicit_trial_prefix_ok:
+                                                            rollout_explicit_polish_success_count += 1
+                                                    print(
+                                                        "[SUFFIX-EXPLICIT-CONSTRAINT-POLISH] "
+                                                        f"source={source.suffix_seed_kind} "
+                                                        f"node={node_index} "
+                                                        "guard_um="
+                                                        f"{explicit_constraint_guard_m * 1.0e6:.3f} "
+                                                        f"status={int(explicit_result.status)} "
+                                                        f"success={bool(explicit_result.success)} "
+                                                        f"nit={int(getattr(explicit_result, 'nit', 0))} "
+                                                        f"nfev={explicit_nfev} "
+                                                        "constraint_margin_um="
+                                                        f"{explicit_constraint_margin_m * 1.0e6:.3f} "
+                                                        "prefix_ok="
+                                                        f"{explicit_trial_prefix_ok}",
+                                                        flush=True,
+                                                    )
+
                                         selected_node_trial = min(
                                             node_trials,
                                             key=lambda trial: trial.rank,
@@ -10167,6 +10615,33 @@ def main() -> None:
                                                 rollout_interior_polish_max_scale=(
                                                     rollout_interior_polish_max_scale
                                                 ),
+                                                rollout_explicit_polish_attempt_count=(
+                                                    rollout_explicit_polish_attempt_count
+                                                ),
+                                                rollout_explicit_polish_success_count=(
+                                                    rollout_explicit_polish_success_count
+                                                ),
+                                                rollout_explicit_polish_min_margin_m=(
+                                                    rollout_explicit_polish_min_margin_m
+                                                ),
+                                                rollout_explicit_polish_status=(
+                                                    rollout_explicit_polish_status.copy()
+                                                ),
+                                                rollout_explicit_polish_solver_success=(
+                                                    rollout_explicit_polish_solver_success.copy()
+                                                ),
+                                                rollout_explicit_polish_prefix_ok=(
+                                                    rollout_explicit_polish_prefix_ok.copy()
+                                                ),
+                                                rollout_explicit_polish_nfev=(
+                                                    rollout_explicit_polish_nfev.copy()
+                                                ),
+                                                rollout_explicit_polish_constraint_margin_m=(
+                                                    rollout_explicit_polish_constraint_margin_m.copy()
+                                                ),
+                                                rollout_explicit_polish_q_rad=(
+                                                    rollout_explicit_polish_q_rad.copy()
+                                                ),
                                             )
                                         )
                                         first_failure_distance = float(
@@ -10235,6 +10710,33 @@ def main() -> None:
                                             rollout_interior_polish_max_scale=(
                                                 rollout_interior_polish_max_scale
                                             ),
+                                            rollout_explicit_polish_attempt_count=(
+                                                rollout_explicit_polish_attempt_count
+                                            ),
+                                            rollout_explicit_polish_success_count=(
+                                                rollout_explicit_polish_success_count
+                                            ),
+                                            rollout_explicit_polish_min_margin_m=(
+                                                rollout_explicit_polish_min_margin_m
+                                            ),
+                                            rollout_explicit_polish_status=(
+                                                rollout_explicit_polish_status.copy()
+                                            ),
+                                            rollout_explicit_polish_solver_success=(
+                                                rollout_explicit_polish_solver_success.copy()
+                                            ),
+                                            rollout_explicit_polish_prefix_ok=(
+                                                rollout_explicit_polish_prefix_ok.copy()
+                                            ),
+                                            rollout_explicit_polish_nfev=(
+                                                rollout_explicit_polish_nfev.copy()
+                                            ),
+                                            rollout_explicit_polish_constraint_margin_m=(
+                                                rollout_explicit_polish_constraint_margin_m.copy()
+                                            ),
+                                            rollout_explicit_polish_q_rad=(
+                                                rollout_explicit_polish_q_rad.copy()
+                                            ),
                                         )
                                     )
                             if not horizon_candidates:
@@ -10270,6 +10772,10 @@ def main() -> None:
                                 ),
                                 "polish_guard_m": np.asarray(
                                     polish_guard_m,
+                                    dtype=np.float64,
+                                ),
+                                "explicit_constraint_guard_m": np.asarray(
+                                    explicit_constraint_guard_m,
                                     dtype=np.float64,
                                 ),
                                 "interior_polish_scale_ladder": np.asarray(
@@ -10367,6 +10873,120 @@ def main() -> None:
                                         for candidate in horizon_candidates
                                     ],
                                     dtype=np.float64,
+                                ),
+                                "candidate_rollout_explicit_polish_attempt_count": np.asarray(
+                                    [
+                                        getattr(
+                                            candidate,
+                                            "rollout_explicit_polish_attempt_count",
+                                            0,
+                                        )
+                                        for candidate in horizon_candidates
+                                    ],
+                                    dtype=np.int16,
+                                ),
+                                "candidate_rollout_explicit_polish_success_count": np.asarray(
+                                    [
+                                        getattr(
+                                            candidate,
+                                            "rollout_explicit_polish_success_count",
+                                            0,
+                                        )
+                                        for candidate in horizon_candidates
+                                    ],
+                                    dtype=np.int16,
+                                ),
+                                "candidate_rollout_explicit_polish_min_margin_m": np.asarray(
+                                    [
+                                        getattr(
+                                            candidate,
+                                            "rollout_explicit_polish_min_margin_m",
+                                            np.nan,
+                                        )
+                                        for candidate in horizon_candidates
+                                    ],
+                                    dtype=np.float64,
+                                ),
+                                "candidate_rollout_explicit_polish_status": np.stack(
+                                    [
+                                        getattr(
+                                            candidate,
+                                            "rollout_explicit_polish_status",
+                                            np.full(
+                                                node_count,
+                                                -999,
+                                                dtype=np.int16,
+                                            ),
+                                        )
+                                        for candidate in horizon_candidates
+                                    ]
+                                ),
+                                "candidate_rollout_explicit_polish_solver_success": np.stack(
+                                    [
+                                        getattr(
+                                            candidate,
+                                            "rollout_explicit_polish_solver_success",
+                                            np.zeros(
+                                                node_count,
+                                                dtype=np.bool_,
+                                            ),
+                                        )
+                                        for candidate in horizon_candidates
+                                    ]
+                                ),
+                                "candidate_rollout_explicit_polish_prefix_ok": np.stack(
+                                    [
+                                        getattr(
+                                            candidate,
+                                            "rollout_explicit_polish_prefix_ok",
+                                            np.zeros(
+                                                node_count,
+                                                dtype=np.bool_,
+                                            ),
+                                        )
+                                        for candidate in horizon_candidates
+                                    ]
+                                ),
+                                "candidate_rollout_explicit_polish_nfev": np.stack(
+                                    [
+                                        getattr(
+                                            candidate,
+                                            "rollout_explicit_polish_nfev",
+                                            np.zeros(
+                                                node_count,
+                                                dtype=np.int32,
+                                            ),
+                                        )
+                                        for candidate in horizon_candidates
+                                    ]
+                                ),
+                                "candidate_rollout_explicit_polish_constraint_margin_m": np.stack(
+                                    [
+                                        getattr(
+                                            candidate,
+                                            "rollout_explicit_polish_constraint_margin_m",
+                                            np.full(
+                                                node_count,
+                                                np.nan,
+                                                dtype=np.float64,
+                                            ),
+                                        )
+                                        for candidate in horizon_candidates
+                                    ]
+                                ),
+                                "candidate_rollout_explicit_polish_q_rad": np.stack(
+                                    [
+                                        getattr(
+                                            candidate,
+                                            "rollout_explicit_polish_q_rad",
+                                            np.full(
+                                                (node_count, TOTAL_DOF),
+                                                np.nan,
+                                                dtype=np.float64,
+                                            ),
+                                        )
+                                        for candidate in horizon_candidates
+                                    ]
                                 ),
                                 "candidate_passed": np.asarray(
                                     [
