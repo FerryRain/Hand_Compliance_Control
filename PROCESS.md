@@ -1791,3 +1791,26 @@ PASS立即停止，hard失败不能成为后续source，全部失败仍保留证
 
 **正在执行：**低频监控38.750 mm prospective gate与45.9375 mm stage/scale continuation；完整plan/full
 collision/terminal/low-motion/dynamics PASS前不录像，Level 2仍 **NOT PASS**。
+
+### `998977d` continuation GPU终审：terminal normal提高到37.830 um但仍未达50 um（2026-08-13）
+
+同stem已以exit=`1`安全结束。38.750 mm prospective low-motion门再次在commit前拒绝2/4推进窗口并细分；
+修复路线继续到last accepted=`45.78125 mm`。失败目标仍为`45.9375 mm`，H5节点=
+`[45.9375,46.1875,46.4375,46.6875,46.9375] mm`。只有log/stderr/failure-prefix，无plan、
+dynamics、audit或视频；Level 2仍为 **NOT PASS**。
+
+证据SHA256：log=`067010AD3323E2EF598F062B52B75F5537B9B03C19F05457C9922F3747865BFC`；
+stderr=`ED055803B3FC72F93229348967F3BEE43F44FDE8ECEEA1C83961FFB32A8D8583`；prefix=
+`00F7A32469C7CE9C925E8DECD19E2B217CA9E9407566976FDB1136BAA89EF852`。
+
+continuation真实执行了`4/8/16/32`四级；selected index6=`rollout_partial_nullspace_joint_1`的五节点
+原hard task/contact/collision/joint/motion、terminal4/4、publisher与rolling-low-motion全部通过，唯一false仍是
+terminal node4 `interior`。正式margin为progress=`117.755 um`、normal=`37.830 um`、tangent=
+`105.220 um`、monotonic=`200 um`；normal较上一轮`31.035 um`继续改善，但仍比冻结的50 um少
+`12.170 um`。同时joint target slack仅`0.015350 mrad`、joint-step slack=`0.688678 mrad`，说明继续把统一
+scale提高到64/128只会把normal与joint/step余量继续交换，不能当作可靠修复。
+
+**正在执行/下一步：**保持50 um和全部冻结硬门不变；只对“exact hard/publisher/terminal/low-motion全过、
+唯一欠缺为interior”的局部节点增加显式约束polish，直接把progress/normal/tangent/monotonic 50 um写成
+不等式，再由原16-sample collision与dense publisher完整重审。显式polish失败仍0 mutation并保存证据；
+CPU/静态终审通过后才commit/push和同seed GPU重跑，完整数值物理验收前不录像。

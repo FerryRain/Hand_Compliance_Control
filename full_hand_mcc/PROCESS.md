@@ -3275,3 +3275,65 @@ attempt原子保留”回归；全量CPU/CLI/AST/PowerShell/diff通过后commit/
 读取`[SUFFIX-INTERIOR-POLISH] stage/scale/prefix_ok`以及failure/success NPZ的attempt/max-scale。只有正式
 50 um、dense publisher、terminal4/4、rolling-low-motion和全部collision/task/joint门通过才允许生成/接受plan；
 plan/full audit/dynamics全部PASS前不录像，Level 2仍 **NOT PASS**。
+
+### `998977d` polish-continuation Acceptance seed42 GPU终审结果（2026-08-13）
+
+#### 运行与产物
+
+- stem=`baseline2_capsule_polishcontinuation_0to50_acceptance_seed42_20260813_202000_043`；
+- runtime commit=`998977d72c74cd5d084aa06e96ce5cb013e5749e`；exit=`1`；
+- last accepted=`45.78125 mm`，failure target=`45.9375 mm`；H5=
+  `[45.9375,46.1875,46.4375,46.6875,46.9375] mm`；
+- 38.750 mm prospective窗口仍先检测到2/4推进并在commit前细分，故没有绕过rolling-low-motion；
+- 只有log、stderr与failure-prefix，无plan、dynamics、standalone/full audit或视频；
+- log SHA256=`067010AD3323E2EF598F062B52B75F5537B9B03C19F05457C9922F3747865BFC`；
+- stderr SHA256=`ED055803B3FC72F93229348967F3BEE43F44FDE8ECEEA1C83961FFB32A8D8583`；
+- prefix SHA256=`00F7A32469C7CE9C925E8DECD19E2B217CA9E9407566976FDB1136BAA89EF852`。
+
+#### continuation真实执行结果
+
+运行日志证明四级continuation全部真实进入GPU planner：
+
+- `nullspace_joint_1`在terminal node4依次执行stage=`1/2/3/4`、scale=`4/8/16/32`，全部
+  `prefix_ok=false`；
+- 一条`nullspace_combined`在node1和node3的scale4即可`prefix_ok=true`，但到exact terminal publisher
+  后被拒；另一条combined在node4同样执行到scale32仍未达到正式内带；
+- `[SUFFIX-HORIZON]`报告top-level attempts=`9`、passed=`false`、minimum task slack=
+  `0.037830 mm`、minimum joint slack=`0.015350 mrad`、failed gates=`1`；
+- 所有失败均在coarse/phase/budget/flag commit前裁决，fail-close保持0 mutation。
+
+selected index6=`rollout_partial_nullspace_joint_1`，内部node trials=`17`、polish attempts=`4`、
+max scale=`32`、reached node=`3`、prune node=`4`。五节点contacts=`[4,4,4,4,4]`、
+motion=`[4,4,4,4,4]`、self=`[0,0,0,0,0]`；原progress/contact/normal/tangent/monotonic/palm/
+joint-limit/joint-step/collision硬列全true，dense publisher全true且无first failure，rolling low-motion=true。
+唯一false为terminal node4 `interior`。
+
+逐节点正式最小任务余量（um）为：
+
+- node0：progress=`228.181`、normal=`159.065`、tangent=`146.468`、monotonic=`200`；
+- node1：progress=`53.472`、normal=`50.027`、tangent=`86.594`、monotonic=`200`；
+- node2：progress=`91.467`、normal=`101.921`、tangent=`70.893`、monotonic=`200`；
+- node3：progress=`58.579`、normal=`57.153`、tangent=`71.721`、monotonic=`200`；
+- terminal node4：progress=`117.755`、normal=`37.830`、tangent=`105.220`、monotonic=`200`。
+
+terminal node4仍有arm=`14.603 mm`、hand hard margin=`0.478121 mm`、physical-tip hard margin=
+`0.154832 mm`、self=0、pad alignment margin为正；但joint target slack只剩`0.015350 mrad`，
+joint-step slack=`0.688678 mrad`。因此continuation把normal从上一GPU的`31.035 um`提高到
+`37.830 um`，却仍比正式50 um少`12.170 um`，同时明显消耗joint/step内余量。
+
+candidate8同样只有interior false，但terminal progress=`45.420 um`、normal=`29.210 um`、joint target
+slack=`0.018219 mrad`、joint-step slack=`0.051432 mrad`，综合rank正确落后于candidate6。ordinary错误消息中
+的tangential gait final-best不是上述H5 selected失败，二者不得混用。
+
+#### 结论与下一步
+
+统一scale从4增至32已经进入边界交换平台；继续盲增64/128既不能证明normal达到50 um，也可能先耗尽
+joint/step余量。下一最小修复不放宽`task_guard_m=50 um`或任何40 deg pad、physical-tip/FR3/hand/self、
+terminal4/4、low-motion硬门：只在exact-safe/interior-only节点上增加局部显式约束polish，把每指
+progress/normal/tangent/monotonic的正式50 um余量直接作为不等式，使用现有joint/step bounds；结果仍须经过
+原node、16-sample segment collision、dense publisher、exact terminal与20/21 low-motion全量审计。
+失败必须0 mutation并保存solver状态/约束余量，不能由recovery/static豁免。
+
+**正在执行/下一步：**实现显式约束polish及纯函数符号/触发/原子性回归；全量CPU、CLI、Python AST、
+PowerShell AST与`git diff --check`通过后commit/push main并更新issue #7，再用完全相同seed42 GPU终审。
+当前Level 2仍 **NOT PASS**，完整plan/full collision/terminal/low-motion/dynamics通过前不录像。
