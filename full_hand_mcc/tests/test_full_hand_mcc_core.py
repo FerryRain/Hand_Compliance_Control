@@ -161,6 +161,42 @@ class PlannerDiagnosticsTest(unittest.TestCase):
         )
         self.assertEqual(indices, (0, 1, 6, 7, 2, 3))
 
+    def test_transported_suffix_seed_preserves_motion_and_anchor_delta(
+        self,
+    ) -> None:
+        base = np.asarray([[0.1, 0.2], [0.2, 0.4], [0.4, 0.7]])
+        anchor = np.asarray([0.05, 0.1])
+        modified = np.asarray([0.03, 0.14])
+        transported = DIAGNOSTICS.transported_suffix_seed_rows(
+            base,
+            anchor,
+            modified,
+        )
+        np.testing.assert_allclose(transported, base + [-0.02, 0.04])
+        np.testing.assert_allclose(
+            np.diff(transported, axis=0),
+            np.diff(base, axis=0),
+        )
+
+    def test_suffix_rollout_keeps_best_protected_basin(self) -> None:
+        kinds = (
+            "previous",
+            "extrapolated",
+            "protected_self",
+            "protected_self",
+            "nullspace_combined",
+            "nullspace_combined",
+        )
+        indices = DIAGNOSTICS.prioritized_suffix_rollout_indices(
+            kinds,
+            (5, 4, 1, 3, 2, 0),
+            maximum_sources=3,
+        )
+        self.assertEqual(indices, (5, 3, 4))
+        self.assertTrue(
+            any(kinds[index].startswith("protected_self") for index in indices)
+        )
+
     def test_bridge_multistart_keeps_previous_and_all_unique_seeds(
         self,
     ) -> None:
@@ -1739,6 +1775,7 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
         for required in (
             "protected_self_clearance_state",
             "protected_self_separation_seeds",
+            "transported_suffix_seed_rows(",
             "central_difference_clearance_gradient",
             "self_separation_ascent_seeds",
             "for fd_step_rad in (1.0e-6, 5.0e-7)",
@@ -1989,6 +2026,7 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             "suffix_seed_task_feature",
             '"nullspace_combined"',
             "prioritized_suffix_seed_indices(",
+            "prioritized_suffix_rollout_indices(",
             "suffix_horizon_cache",
             "args.max_plan_joint_step_rad",
             "args.max_contact_penetration_mm",

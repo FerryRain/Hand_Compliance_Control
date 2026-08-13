@@ -2770,3 +2770,83 @@ GitHub issue #7 已先发布 `1e-6/5e-7` 更正与 `102/102` 检查点，再发�
 **正在执行：**只读监控 accepted path；首次 H5 到来时检查6个 seed kinds 是否真实保留
 `protected_self*`，并以 publisher `45.125 mm` 的 ring MCP--DIP hard gate作为首要回归。plan、full
 collision、terminal、rolling-low-motion、dynamics 未全部通过前不录像，Level 2 仍为 **NOT PASS**。
+
+#### `8b7dada` protected-self seed42 GPU 终审失败（2026-08-13 16:04 CST）
+
+##### 产物与终止位置
+
+- stem=`baseline2_capsule_selfseed_0to50_acceptance_seed42_20260813_152728_314`；
+- 代码 commit=`8b7dada51a1f7a1ec38a391eef7f866ae234b8ab`；运行中只追加文档 commit `96ec086`，未改变代码；
+- 开始约 `15:28`、结束约 `16:04`、墙钟约 `2164 s`；真实 Python 进程已退出；
+- launcher 的 `.exitcode` 文件为空，故不伪造 OS exit 值；log 明确包含 planner `RuntimeError`；
+- 最后 accepted=`45.625 mm`；失败目标=`45.78125 mm`、keyframe=`45/50`、auto-refine=`10/96`；
+- 仅有 `.log`、`.stderr.log`、`_failure_prefix.npz`，无 `_plan.npz`、dynamics、standalone/full audit 或视频；
+- log SHA256=`03D72109A0FECB4F6A11E040D472C13C6EAFFA6554A34CA46B9691E78402A63B`；
+- stderr SHA256=`1CB4392412F4134B9CC2E0C9B862EF0D7F88CE6F5B1061A7BCA59EC40C9CCA3E`；
+- failure-prefix SHA256=`C4F30D05A2E7FFA5C1B4A62BFBAC995181F17196E69FFD47351E2D590E8A2AA8`；
+- issue #7 failure checkpoint：
+  [comment 5277716291](https://github.com/FerryRain/Hand_Compliance_Control/issues/7#issuecomment-5277716291)。
+
+普通候选在45.78125 mm只有 `1/4` nominal support（要求3），误差约
+`[4.03,0.56,3.09,5.87] mm`，容差约 `[3.67,3,3,3] mm`，所以 ordinary 路径应当拒绝。
+H5 节点精确为
+`[45.78125,46.0703125,46.359375,46.6484375,46.9375] mm`，包含 exact terminal sentinel。
+共有9条不可变证据（6 block + 3 partial），全部 `passed=false`；整体 minimum task slack=
+`-0.318738 mm`，fail-close 保持 `myopic_bridge_commit_allowed=false`，没有未认证 coarse/phase/budget/flag
+写入。
+
+##### 新 FD/seed-cap 已生效，失败已从 self 转移到 task/motion
+
+prefix 的6个 block seed kinds 精确为：
+
+`previous, extrapolated, protected_self, protected_self, nullspace_combined, nullspace_combined`
+
+另有3条 partial：`rollout_partial_nullspace_combined` 两条与
+`rollout_partial_extrapolated` 一条。说明 `1e-6/5e-7` FD、实测增距过滤与 protected seed-cap 都真实进入
+GPU 路径，不再是只靠单测推断。
+
+两条 protected-self block candidates 的5个节点全部 `collision=true`、`self=0`；publisher 首败均为
+`45.6875 mm` 的 `tangent`，并非 self。它们的 node0 tangent margin 分别约 `-0.088/-0.223 mm`，
+motion count仅 `1/2`，后续节点 motion 多为 `0/1` 且 progress/tangent deficit 累积。因此本轮不能再说
+protected seed 没有解决 self；真实问题是 protected H seed 没有随 surface route 前进。
+
+最好的 nullspace block（candidate5）在 node0 只差 interior：hard progress margin=`+0.04044 mm`、
+normal=`+0.4013 mm`、tangent=`+0.0441 mm`、monotonic=`+0.1844 mm`、hand=`+0.0150 mm`、
+physical-tip=`+0.1560 mm`、joint margin=`1.8226 mrad`、step slack=`49.733 urad`、motion=`3`、self=`0`；
+但 task-interior target为`0.05 mm`，tangent仍差约`5.9 um`。node1仍hard-safe，node2开始 progress=
+`-0.05998 mm`、tangent=`-0.23537 mm`，并有轻微 hand hard deficit。说明当前点存在接近可行的移动 basin，
+不应通过放宽门处理。
+
+##### 精确代码根因与最小修复
+
+旧 H 构造对每个 `separation_seed` 使用：
+
+`np.repeat(separation_seed[None, :], node_count, axis=0)`
+
+这会把“anchor 上测得的 self-separation 修正”重复到整个 H5，抹掉 `extrapolated_seed` 的 route motion；
+protected 候选不自碰但不推进正是这个构造的直接结果。随后 rollout source 又简单取综合 rank 前3，
+protected candidates 因静止产生的 task rank较差，未进入逐节点 `source_preserved/source_ls/extrapolated_ls`
+修复，因此3条 partial 中没有 protected evidence。
+
+当前最小 WIP 只改两点：
+
+1. 计算 `delta_q=separation_seed-clipped_anchor_q`，用纯 NumPy helper 将该相同 `delta_q` 平移到
+   `extrapolated_seed` 每个节点；这严格保留 base rows 的逐节点差分，之后仍由 `append_suffix_seed()`
+   做 node bounds clipping、block LS 与完整 H hard audit；
+2. rollout source 改为确定性保留最佳 overall 与最佳 `protected_self*`，再按原 rank 补满最多3条；
+   protected basin 仍必须逐节点通过 source-preserved/LS、publisher/terminal/rolling-low-motion 全门，
+   没有任何优先接受或门槛豁免。
+
+新增回归：transport 后 `np.diff(q_rows)` 与原 extrapolated 完全一致；给定真实6类 seed 的排序时，最佳
+protected index 必须进入3条 rollout sources。定向 core=`71/71`、全量 CPU=`104/104`；demo CLI
+`--help`、3个修改 Python AST、Level-2 runner PowerShell AST、`git diff --check` 全部 exit=`0`。
+wandb 临时目录 atexit PermissionError 仍为既知清理噪声，测试进程本身 exit=`0`。
+
+没有改变 frozen hard gates：planner pad=`40 deg`、physical tip=`-1 mm`、FR3=`2 mm`、non-tip hand=
+`-1 mm`、planner active self=`0`、joint/step、progress/normal/tangent/monotonic/palm、terminal nominal4/4、
+rolling low-motion=`20 intervals/21 samples` 均保持不变。
+
+**正在执行/下一步：**commit/push main -> issue #7 implementation checkpoint -> 完全相同 Acceptance seed42
+0--50 mm headless。首次 H5 需逐项核对：两条 protected block 的 motion 不再因 seed 构造固定为0--2；
+若 full H仍失败，三条 partial 中至少一条必须来自 `protected_self` 并给出真实 reached/prune gate。只有 plan、
+full collision、terminal、rolling-low-motion 与 dynamics 全部通过后才录像；当前 Level 2 仍为 **NOT PASS**。

@@ -187,6 +187,70 @@ def prioritized_suffix_seed_indices(
     return tuple(selected[:maximum_seeds])
 
 
+def transported_suffix_seed_rows(
+    base_rows_rad: np.ndarray,
+    anchor_q_rad: np.ndarray,
+    modified_anchor_q_rad: np.ndarray,
+) -> np.ndarray:
+    """Transport an anchor-space correction along a moving suffix seed.
+
+    Protected-self separation is measured at the last accepted state.  Apply
+    that same joint-space displacement to every row of a moving suffix seed,
+    instead of repeating the corrected anchor and erasing all route motion.
+    Per-node joint bounds remain the caller's hard authority.
+    """
+
+    rows = np.asarray(base_rows_rad, dtype=np.float64)
+    anchor = np.asarray(anchor_q_rad, dtype=np.float64)
+    modified = np.asarray(modified_anchor_q_rad, dtype=np.float64)
+    if rows.ndim != 2 or rows.shape[0] == 0 or rows.shape[1] == 0:
+        raise ValueError("base_rows_rad must be a non-empty matrix")
+    if anchor.ndim != 1 or modified.ndim != 1:
+        raise ValueError("anchor states must be vectors")
+    if anchor.shape != modified.shape or rows.shape[1] != anchor.size:
+        raise ValueError("suffix rows and anchor states must share the DoF")
+    if not (
+        np.all(np.isfinite(rows))
+        and np.all(np.isfinite(anchor))
+        and np.all(np.isfinite(modified))
+    ):
+        raise ValueError("suffix rows and anchor states must be finite")
+    return rows + (modified - anchor)[None, :]
+
+
+def prioritized_suffix_rollout_indices(
+    seed_kinds: tuple[str, ...] | list[str],
+    ranked_indices: tuple[int, ...] | list[int],
+    *,
+    maximum_sources: int,
+) -> tuple[int, ...]:
+    """Keep the best overall and best protected-self basin for rollout."""
+
+    if not isinstance(maximum_sources, int) or maximum_sources <= 0:
+        raise ValueError("maximum_sources must be a positive integer")
+    kinds = tuple(str(kind) for kind in seed_kinds)
+    ranked = tuple(int(index) for index in ranked_indices)
+    if len(set(ranked)) != len(ranked):
+        raise ValueError("ranked_indices must not contain duplicates")
+    if any(index < 0 or index >= len(kinds) for index in ranked):
+        raise ValueError("ranked_indices contains an out-of-range index")
+    selected: list[int] = []
+
+    def append(index: int) -> None:
+        if index not in selected and len(selected) < maximum_sources:
+            selected.append(index)
+
+    if ranked:
+        append(ranked[0])
+    for index in ranked:
+        if kinds[index].startswith("protected_self"):
+            append(index)
+            break
+    for index in ranked:
+        append(index)
+    return tuple(selected)
+
+
 def deduplicated_bridge_multistart_seeds(
     previous_q_rad: np.ndarray,
     separation_seeds_rad: tuple[np.ndarray, ...],

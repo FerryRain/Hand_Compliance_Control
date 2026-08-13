@@ -1562,3 +1562,36 @@ seed42、100x170 mm capsule、0--50 mm、40个基础关键帧、800个运动帧�
 
 **正在执行：**低频只读监控到首次 H5；先核对实际 seed kinds 包含 protected-self，再验 publisher
 45.125 mm 的 exact self collision。没有 plan/full audit/dynamics 前仍为 **NOT PASS**。
+
+### `8b7dada` protected-self GPU 终审失败与移动轨迹 seed 根因（2026-08-13）
+
+同 stem 在约 `2164 s` 后以 planner `RuntimeError` 终止；Windows launcher 的 exitcode 文件为空，
+但真实 Python 进程已退出且只有 log/stderr/failure-prefix，没有 plan、dynamics、audit 或视频。最后
+accepted=`45.625 mm`，失败目标=`45.78125 mm`、keyframe=`45/50`、auto-refine=`10/96`。H5 节点为
+`[45.78125,46.0703125,46.359375,46.6484375,46.9375] mm`；9个候选全部失败，fail-close 正常生效。
+log/stderr/prefix SHA256 分别为
+`03D72109A0FECB4F6A11E040D472C13C6EAFFA6554A34CA46B9691E78402A63B`、
+`1CB4392412F4134B9CC2E0C9B862EF0D7F88CE6F5B1061A7BCA59EC40C9CCA3E`、
+`C4F30D05A2E7FFA5C1B4A62BFBAC995181F17196E69FFD47351E2D590E8A2AA8`。issue #7 已同步：
+[comment 5277716291](https://github.com/FerryRain/Hand_Compliance_Control/issues/7#issuecomment-5277716291)。
+
+新 seed-retention 与稳定 FD 已真实生效：6个 block seeds 含两条 `protected_self`，两者所有 H 节点均
+`self=0`、collision hard gate通过；失败已从自碰转移为 tangent/progress/motion。精确代码根因是这两条
+seed 被构造成把修正后的 anchor q 重复5次，抹掉了 extrapolated suffix 的逐节点运动；其 motion count
+因而仅0--2。rollout 又只取综合排名前三，protected basin 没进入逐节点修复。
+
+### protected-self suffix transport / rollout 保留 CPU 终审（2026-08-13）
+
+最小修复现将 measured anchor self-separation `delta_q` 平移到 `extrapolated_seed` 的每个 H 节点，
+严格保持原逐节点 `dq`；随后仍由既有 node bounds、完整 H audit 与 fail-close裁决。rollout source 选择改为
+“最佳综合候选 + 最佳 protected-self 候选 + 按原 rank 补满3条”，保证一个已消除自碰的移动 basin 得到
+逐节点 exact-audit/repair。没有修改 H=5、预算、terminal、low-motion 或任何 collision/contact/task/joint 门。
+
+新增两个纯 NumPy 回归分别固定“transport 后逐节点差分不变”和“protected basin 必进 rollout”。定向
+CPU=`71/71`、全量 CPU=`104/104`；demo `--help`、Python AST、PowerShell runner AST 与
+`git diff --check` 全部 exit=`0`。仅保留既知 wandb 临时目录 atexit 清理噪声。
+
+**正在执行/下一步：**提交并 push main、更新 issue #7，再用完全相同 Acceptance seed42 0--50 mm
+headless 配置终审。下一次 H 必须确认 protected block candidates 保持真实 motion，并至少一条
+`rollout_*protected_self*` evidence 出现；完整 plan/full collision/terminal/rolling-low-motion/dynamics
+通过前仍不录像，Level 2 仍为 **NOT PASS**。

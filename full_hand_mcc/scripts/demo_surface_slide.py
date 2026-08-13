@@ -69,6 +69,7 @@ from mjlab.tasks.leaphand.full_hand_mcc_planner_diagnostics import (
     moving_bridge_tip_geometry_residual,
     orientation_aware_candidate_rank,
     positive_self_clearance_residual,
+    prioritized_suffix_rollout_indices,
     prioritized_suffix_seed_indices,
     progress_aware_arc_targets,
     save_mpc_failure_prefix,
@@ -81,6 +82,7 @@ from mjlab.tasks.leaphand.full_hand_mcc_planner_diagnostics import (
     strict_suffix_task_hinge_residual,
     terminal_contact_sample_mask,
     terminal_contact_start_distance,
+    transported_suffix_seed_rows,
 )
 from mjlab.tasks.leaphand.leaphand_full_hand_mcc_env_cfg import (
     ARM_DOF,
@@ -8596,16 +8598,21 @@ def main() -> None:
                                         if direction_index == 0
                                         else f"nullspace_joint_{direction_index - 1}",
                                     )
+                            separation_anchor_q = np.clip(
+                                previous_q,
+                                node_lower,
+                                node_upper,
+                            )
                             for separation_seed in protected_self_separation_seeds(
-                                np.clip(previous_q, node_lower, node_upper),
+                                separation_anchor_q,
                                 node_lower,
                                 node_upper,
                             ):
                                 append_suffix_seed(
-                                    np.repeat(
-                                        separation_seed[None, :],
-                                        node_count,
-                                        axis=0,
+                                    transported_suffix_seed_rows(
+                                        extrapolated_seed,
+                                        separation_anchor_q,
+                                        separation_seed,
                                     ),
                                     "protected_self",
                                 )
@@ -9553,12 +9560,22 @@ def main() -> None:
                                 # impossible to violate.  Every repaired prefix
                                 # is exact-audited before it may seed the next
                                 # node; no planner state is mutated here.
-                                rollout_source_indices = sorted(
+                                ranked_rollout_source_indices = sorted(
                                     range(len(horizon_candidates)),
                                     key=lambda index: horizon_candidates[
                                         index
                                     ].suffix_rank,
-                                )[:3]
+                                )
+                                rollout_source_indices = (
+                                    prioritized_suffix_rollout_indices(
+                                        tuple(
+                                            candidate.suffix_seed_kind
+                                            for candidate in horizon_candidates
+                                        ),
+                                        ranked_rollout_source_indices,
+                                        maximum_sources=3,
+                                    )
+                                )
                                 for source_index in rollout_source_indices:
                                     source = horizon_candidates[source_index]
                                     rollout_rows = source.suffix_q_rad.copy()
