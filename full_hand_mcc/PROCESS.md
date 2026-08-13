@@ -3257,3 +3257,21 @@ attempt原子保留”回归；全量CPU/CLI/AST/PowerShell/diff通过后commit/
 **正在执行/下一步：**commit/push main并更新issue #7 implementation checkpoint；随后只替换输出stem，复用
 上一轮Acceptance seed42 0--50 mm launch参数重跑GPU。重点核对45.9375 mm各stage日志、实际max scale与
 正式50 um PASS；若生成plan则立即做Acceptance plan audit、全帧collision audit和dynamics验收。全部通过前不录像。
+
+### `998977d` polish-continuation Acceptance seed42 GPU启动（2026-08-13 20:20 CST）
+
+- stem=`baseline2_capsule_polishcontinuation_0to50_acceptance_seed42_20260813_202000_043`；
+- runtime commit=`998977d72c74cd5d084aa06e96ce5cb013e5749e`，已推送远端`main`；
+- source launch=`baseline2_capsule_interiorpolish_0to50_acceptance_seed42_20260813_193439_840_launch.json`；
+- argument policy：逐项复用全部参数，只替换`--mpc-failure-prefix-output`和`--plan-output`；
+- Acceptance、seed42、capsule radius/half-height=`0.10/0.17 m`、route=`0--0.05 m`、base keyframes=40、
+  motion frames=800、`cuda:0`、headless，不生成视频；
+- wrapper PID=`37252`；`.venv` shim PID=`54432`；真实`DMtactile` Python PID=`54256`；
+- initial physical-tip clearance=`[-0.451,-0.253,-0.260,-0.058] mm >= -1 mm`；
+- initial protected-self=`[0.537514,0.721975,0.598799] mm`、active self=0；
+- launch/log/stderr写入`full_hand_mcc/outputs/debug/20_fr3_planning/`，当前场景初始化正常。
+
+**正在执行：**低频只读监控accepted path；38.750 mm应先复现prospective low-motion细分；45.9375 mm重点
+读取`[SUFFIX-INTERIOR-POLISH] stage/scale/prefix_ok`以及failure/success NPZ的attempt/max-scale。只有正式
+50 um、dense publisher、terminal4/4、rolling-low-motion和全部collision/task/joint门通过才允许生成/接受plan；
+plan/full audit/dynamics全部PASS前不录像，Level 2仍 **NOT PASS**。

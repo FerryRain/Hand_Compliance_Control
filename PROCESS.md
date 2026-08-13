@@ -1781,3 +1781,13 @@ PASS立即停止，hard失败不能成为后续source，全部失败仍保留证
 
 **正在执行/下一步：**提交并push `main`、同步issue #7，然后复用完全相同Acceptance seed42 0--50 mm参数
 重跑GPU。完整plan/full collision/terminal/rolling-low-motion/dynamics PASS前不录像，Level 2仍 **NOT PASS**。
+
+### `998977d` continuation GPU终审启动（2026-08-13 20:20 CST）
+
+已推送`main`并启动stem=`baseline2_capsule_polishcontinuation_0to50_acceptance_seed42_20260813_202000_043`。
+完全复用上一轮Acceptance seed42、100x170 mm capsule、0--50 mm、40 keyframes、800 motion frames、
+`cuda:0` headless参数，只替换plan/failure输出；wrapper PID=`37252`，真实DMtactile Python PID=`54256`。
+初始physical-tip=`[-0.451,-0.253,-0.260,-0.058] mm`，protected-self minimum=`0.537514 mm`，均通过。
+
+**正在执行：**低频监控38.750 mm prospective gate与45.9375 mm stage/scale continuation；完整plan/full
+collision/terminal/low-motion/dynamics PASS前不录像，Level 2仍 **NOT PASS**。
