@@ -3068,3 +3068,90 @@ atexit PermissionError，测试/CLI进程exit0。
 
 **正在执行/下一步：**复核最终diff，提交/push main并更新issue #7，再用完全相同参数GPU重跑。未出现
 plan/dynamics/audit/video；Level 2仍为 **NOT PASS**，完整数值物理验收前不录像。
+
+### `534575c` 75/50 um suffix GPU结果与二阶段polish切点（2026-08-13）
+
+运行stem=`baseline2_capsule_suffixheadroom_0to50_acceptance_seed42_20260813_184804_386`，commit=
+`534575c2cd3d3ab3fe1c454a86a0be505333ce85`，其余Acceptance seed42 0--50 mm参数与上一run逐项相同。
+started=`18:48:04.4309581+08:00`，ended=`19:20:33.1218510+08:00`，elapsed=`1948.7 s`，exit1。
+产物只有log/stderr/failure-prefix，无plan、dynamics、audit或视频：
+
+- log SHA256=`01D7BC64D9700CDED8EAFF533EF0E17EE43D29EC3473DE1FF31759FB467F7264`；
+- stderr SHA256=`70A0B3723C0A79E96C4EE07E8F997EAC97C50E260BABCD0D81F4CBD565615A50`；
+- prefix SHA256=`52BD7C9D2BDF603EF12B5F935E9ABD70B2F742EF0AC90C26E100393C6EEF3D00`。
+
+#### 重跑中已确认的有效行为
+
+- 38.750 mm再次触发同一`[PROSPECTIVE-LOW-MOTION]`：窗口37.250--38.500 mm、per-tip advance=
+  `[0.241,0.047,0.113,0.456] mm`、forward=`2/4<3/4`；插入38.125 mm且坏prefix未commit；
+- 修复路线继续accepted 38.125、38.750、40.000、41.250、42.500、43.750、44.375、45.000、
+  45.3125、45.625与45.78125 mm；最后accepted仍4/4，tip=`-0.807 mm`、pad=`35.40 deg`；
+- failure target=45.9375 mm，keyframe42/46，refine6/96；H5节点=
+  `[45.9375,46.1875,46.4375,46.6875,46.9375] mm`，attempts=9，所有候选rolling-low-motion通过。
+
+#### prefix中最佳候选（selected index6=`rollout_partial_nullspace_joint_1`）
+
+该rollout五个节点的progress/contact/normal/tangent/monotonic/palm/joint-limit/joint-step/motion/collision
+原hard条件全部true；contacts=`[4,4,4,4,4]`，motion=`[4,4,4,4,4]`，self=`[0,0,0,0,0]`，
+dense publisher六门全部true且无first failure。逐节点最小task slack（取progress/normal/tangent/monotonic）中，
+node0--3均超过正式50 um；terminal node4的progress=`64.205 um`、normal=`24.059 um`、tangent=
+`47.872 um`、monotonic=`200 um`。因此唯一false是node4 `interior`，不是formal contact/normal/tangent、
+collision、joint、terminal4/4、publisher或low-motion。terminal其它余量：joint slack=`0.191387 mrad`，
+joint-step slack=`3.478270 mrad`，arm=`14.603 mm`，hand=`0.487545 mm`，physical tip=`0.138566 mm`，
+pad alignment margin=`0.041690`，全部原hard gate通过。
+
+另一个complete-hard候选index8同样publisher全过、4/4/self0，仅terminal interior normal=`4.065 um`且
+joint slack几乎为零，排名正确落后于index6。75 um solve headroom相较50 um版本已找到新的全hard basin；
+问题已从“多项hard gate失败”收敛为terminal single-node interior polish。
+
+#### 最小后续实现边界
+
+不再全局提高所有seed权重，也不改正式`task_guard_m=50 um`。只在rollout某节点满足：prefix所有11列中
+除最后`interior`外全true、dense publisher在该节点前无失败、low-motion通过，而interior仍false时，
+从当前最佳q做一次额外local least-squares polish；polish使用第二级solve-only guard（50→75→112.5 um），
+节点/segment/dense publisher/terminal/rolling-low-motion仍由原50 um与全部原hard门重新审计。polish不通过则
+0 mutation并保留完整failure证据；不允许用recovery/static mask豁免。
+
+**正在执行/下一步：**实现interior-only判定、第二级local polish及attempt metadata/log，补纯函数和source
+回归，跑全量CPU/CLI/AST/diff；通过后提交/push main、更新issue #7并重跑完全相同GPU case。Level 2仍
+**NOT PASS**，完整plan/full collision/terminal/low-motion/dynamics通过前不录像。
+
+### interior-only polish 已实现并通过CPU终审（2026-08-13，GPU待重跑）
+
+#### 触发和数值语义
+
+- 正式鲁棒audit保持`task_guard_m=50 um`；第一阶段suffix basin solve保持`solve_guard_m=75 um`；
+  第二阶段仅求解目标为`polish_guard_m=112.5 um`，三者都写入failure evidence，不能混称；
+- 新纯函数`suffix_prefix_needs_interior_polish()`只在当前节点以前的condition矩阵中，最后`interior`列以外
+  全部true、至少一个interior false、publisher首失败为NaN或严格晚于当前节点、且rolling low-motion=true时
+  返回true；shape、index与node distance均fail closed验证；
+- rollout不是只检查综合rank第一名，而是从所有node trials中先筛出上述exact-safe/interior-only集合，再按
+  原rank选最佳q，防止另一个hard-failed trial遮住可polish basin；
+- polish只追加一次local `least_squares`，沿用相同step bounds、`diff_step=1e-5`、最多100 nfev与4x
+  feasibility scale；`suffix_node_residual()`仅允许active solve guard不小于正式audit guard；
+- polish q重新进入原`append_rollout_node_trial()`，因此node 11门、16-sample collision、dense publisher、
+  exact terminal sentinel与rolling 20-interval/21-sample low-motion全部重算。只有重新exact-pass才可继续rollout；
+  否则仍prune/fail-close且coarse q、phase、bridge budgets、flags零修改；
+- evidence新增`solve_guard_m`、`polish_guard_m`和
+  `candidate_rollout_interior_polish_attempt_count`；运行日志新增`[SUFFIX-INTERIOR-POLISH]`及source/node/nfev/
+  prefix结果。没有新增CLI，也没有改变runner参数。
+
+#### 回归与静态检查
+
+- 新纯函数反例覆盖：interior-only可触发；任一旧hard列false、publisher在当前节点失败、low-motion false、
+  所有interior已过均不可触发；无效矩阵和越界node拒绝；
+- guard回归固定`50 -> 75 -> 112.5 um`，source结构固定polish位于普通local trials之后、最终trial选择之前，
+  并继续断言正式progress audit既不使用75 um也不使用112.5 um；
+- core定向=`76/76`；全量unittest discover=`109/109`，exit0；demo `--help` exit0；三文件Python AST、
+  `run_baseline2_capsule_level2.ps1` PowerShell AST、`git diff --check`全部通过；
+- 唯一噪声仍是现环境wandb TemporaryDirectory的atexit PermissionError，不影响测试/CLI exit0。
+
+#### 当前结论与下一步
+
+代码只扩展strict suffix的数值找盆能力；planner pad40 deg、physical tip>=-1mm、FR3>=2mm、non-tip
+hand>=-1mm、active self=0、progress/normal/tangent/monotonic/palm、joint/step、terminal nominal4/4与
+rolling low-motion全部冻结不变。尚未运行新GPU、未生成plan/dynamics/audit/video，Level 2仍 **NOT PASS**。
+
+**正在执行/下一步：**commit/push main -> issue #7 implementation checkpoint -> 完全相同Acceptance seed42
+0--50 mm headless GPU。重点检查45.9375 mm是否实际打印polish evidence、正式50 um audit是否通过，以及后续
+50 mm terminal/plan/full collision/low-motion/dynamics；全部数值物理验收前不录像。

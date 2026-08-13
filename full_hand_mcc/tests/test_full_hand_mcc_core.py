@@ -898,6 +898,9 @@ class PlannerDiagnosticsTest(unittest.TestCase):
         solve_guard = DIAGNOSTICS.suffix_optimization_guard(required)
         self.assertAlmostEqual(solve_guard, 0.000075)
         self.assertGreater(solve_guard, required)
+        polish_guard = DIAGNOSTICS.suffix_optimization_guard(solve_guard)
+        self.assertAlmostEqual(polish_guard, 0.0001125)
+        self.assertGreater(polish_guard, solve_guard)
         self.assertAlmostEqual(
             DIAGNOSTICS.suffix_optimization_guard(0.0),
             0.000025,
@@ -906,6 +909,55 @@ class PlannerDiagnosticsTest(unittest.TestCase):
             DIAGNOSTICS.suffix_optimization_guard(float("nan"))
         with self.assertRaises(ValueError):
             DIAGNOSTICS.suffix_optimization_guard(-1.0e-6)
+
+    def test_suffix_interior_polish_requires_an_exact_safe_prefix(self) -> None:
+        conditions = np.ones((5, 11), dtype=bool)
+        conditions[4, -1] = False
+        kwargs = {
+            "node_condition_ok": conditions,
+            "node_index": 4,
+            "publisher_first_failure_distance_m": np.nan,
+            "node_distance_m": 0.0469375,
+            "low_motion_ok": True,
+        }
+        self.assertTrue(
+            DIAGNOSTICS.suffix_prefix_needs_interior_polish(**kwargs)
+        )
+
+        hard_failed = conditions.copy()
+        hard_failed[3, 2] = False
+        self.assertFalse(
+            DIAGNOSTICS.suffix_prefix_needs_interior_polish(
+                **{**kwargs, "node_condition_ok": hard_failed}
+            )
+        )
+        self.assertFalse(
+            DIAGNOSTICS.suffix_prefix_needs_interior_polish(
+                **{
+                    **kwargs,
+                    "publisher_first_failure_distance_m": 0.0469375,
+                }
+            )
+        )
+        self.assertFalse(
+            DIAGNOSTICS.suffix_prefix_needs_interior_polish(
+                **{**kwargs, "low_motion_ok": False}
+            )
+        )
+        all_interior = np.ones((5, 11), dtype=bool)
+        self.assertFalse(
+            DIAGNOSTICS.suffix_prefix_needs_interior_polish(
+                **{**kwargs, "node_condition_ok": all_interior}
+            )
+        )
+        with self.assertRaises(ValueError):
+            DIAGNOSTICS.suffix_prefix_needs_interior_polish(
+                **{**kwargs, "node_condition_ok": np.ones(5, dtype=bool)}
+            )
+        with self.assertRaises(ValueError):
+            DIAGNOSTICS.suffix_prefix_needs_interior_polish(
+                **{**kwargs, "node_index": 5}
+            )
 
     def test_suffix_rollout_prefix_rank_preserves_only_exact_prefixes(
         self,
@@ -2113,7 +2165,13 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             "progress_aware_arc_targets(",
             "strict_suffix_task_hinge_residual(",
             "solve_guard_m = suffix_optimization_guard(",
-            "interior_guard_m=solve_guard_m",
+            "polish_guard_m = suffix_optimization_guard(",
+            "interior_guard_m=min(",
+            "suffix_prefix_needs_interior_polish(",
+            "polish_source_trials = [",
+            "rollout_node_polish_residual",
+            'trial_kind="interior_polish"',
+            "[SUFFIX-INTERIOR-POLISH]",
             "suffix_transition_fractions",
             "suffix_node_residual(",
             "least_squares(",
@@ -2163,6 +2221,7 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             '"candidate_rollout_prune_node"',
             '"candidate_rollout_prune_reason"',
             '"candidate_rollout_attempt_count"',
+            '"candidate_rollout_interior_polish_attempt_count"',
             '"rollout_"',
         ):
             self.assertIn(required, horizon)
@@ -2174,6 +2233,10 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             "progress_margin\n                                        >= solve_guard_m",
             horizon,
         )
+        self.assertNotIn(
+            "progress_margin\n                                        >= polish_guard_m",
+            horizon,
+        )
         rollout = horizon[horizon.index("rollout_source_indices") :]
         self.assertLess(
             rollout.index('trial_kind="source_preserved"'),
@@ -2182,6 +2245,14 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
         self.assertLess(
             rollout.index("if not source_prefix_ok:"),
             rollout.index("local_result = least_squares("),
+        )
+        self.assertLess(
+            rollout.index("local_result = least_squares("),
+            rollout.index("suffix_prefix_needs_interior_polish("),
+        )
+        self.assertLess(
+            rollout.index("suffix_prefix_needs_interior_polish("),
+            rollout.index("selected_node_trial = min("),
         )
         for forbidden_mutation in (
             "coarse_q[keyframe] =",

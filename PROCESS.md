@@ -1711,3 +1711,36 @@ PowerShell AST与`git diff --check`均通过（仅既有wandb临时目录atexit�
 
 **正在执行/下一步：**复核最终diff，提交/push `main`并更新issue #7；随后以完全相同参数再次运行GPU
 seed42。未获得完整plan、全碰撞/终端/low-motion audit与dynamics PASS前不录像。
+
+### `534575c` suffix-headroom GPU终审：全硬门轨迹已找到，terminal鲁棒内带仍差25.941 um（2026-08-13）
+
+同参数运行`baseline2_capsule_suffixheadroom_0to50_acceptance_seed42_20260813_184804_386`耗时
+`1948.7 s`、exit1。prospective gate再次在38.750 mm拦住2/4低运动窗口并安全细分；最终last accepted=
+45.78125 mm，H5在45.9375 mm fail-close。最佳rollout的5节点原hard task/collision、4/4、motion、self0、
+publisher与rolling-low-motion全部通过，唯一失败是正式50 um interior：terminal normal slack=
+`24.059 um`、tangent=`47.872 um`。这证明75 um solve headroom找到更好的可行basin，但还不足以提供
+冻结的50 um鲁棒余量；未生成plan/dynamics/audit/video。SHA256：log=
+`01D7BC64D9700CDED8EAFF533EF0E17EE43D29EC3473DE1FF31759FB467F7264`，stderr=
+`70A0B3723C0A79E96C4EE07E8F997EAC97C50E260BABCD0D81F4CBD565615A50`，prefix=
+`52BD7C9D2BDF603EF12B5F935E9ABD70B2F742EF0AC90C26E100393C6EEF3D00`。
+
+**正在执行/下一步：**只对“dense publisher与全部原hard gate已通过、仅interior不足”的rollout节点增加
+第二阶段interior polish；正式50 um审计不变，碰撞/接触/terminal/low-motion门均不放宽。CPU回归后提交/
+push并重跑同一GPU case；完整数值物理验收前不录像。
+
+### interior-only local polish 实现终审（2026-08-13，GPU待重跑）
+
+第二阶段polish已按冻结边界实现：正式audit仍为`50 um`，普通suffix solve仍追`75 um`，只有当某个rollout
+prefix的原hard列全部true、dense publisher在当前节点前无失败且rolling low-motion通过，而唯一失败为
+`interior`时，才从该类候选中选最佳q追加一次`112.5 um` solve-only local polish。polish之后仍走相同
+node/segment/publisher/terminal/low-motion exact audit；失败不写coarse/phase/budget/flags。实现还避免由另一个
+hard-failed trial遮住可polish trial，并保存solve/polish guard与每个candidate的polish attempt count。
+
+验证：定向core=`76/76`，全量CPU=`109/109`；demo `--help`、三文件Python AST、Level-2 runner
+PowerShell AST与`git diff --check`全部exit0。既有wandb临时目录atexit PermissionError仍只是退出噪声，
+测试进程exit0。所有40 deg pad、physical-tip/FR3/hand/self、task、joint/step、terminal4/4与20/21
+low-motion门未改。
+
+**正在执行/下一步：**提交并push `main`、同步issue #7，然后完全复用上一轮Acceptance seed42 0--50 mm
+参数GPU重跑。目标是确认45.9375 mm出现`[SUFFIX-INTERIOR-POLISH]`并越过terminal；完整plan/full audit/
+dynamics PASS前仍不录像，Level 2仍为 **NOT PASS**。

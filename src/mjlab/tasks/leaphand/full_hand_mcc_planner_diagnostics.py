@@ -842,6 +842,52 @@ def suffix_optimization_guard(required_guard_m: float) -> float:
     return required + max(25.0e-6, 0.5 * required)
 
 
+def suffix_prefix_needs_interior_polish(
+    *,
+    node_condition_ok: np.ndarray,
+    node_index: int,
+    publisher_first_failure_distance_m: float,
+    node_distance_m: float,
+    low_motion_ok: bool,
+) -> bool:
+    """Return whether an exact-safe prefix misses only its robust interior.
+
+    The final condition column is the solve-independent interior audit.  A
+    polish is permitted only after every original hard node gate passes, the
+    dense publisher has no failure at or before the node, and the rolling
+    fingertip-motion audit passes.  This keeps the extra solve from repairing
+    collision, contact, or motion failures by trading against soft residuals.
+    """
+
+    conditions = np.asarray(node_condition_ok, dtype=bool)
+    if conditions.ndim != 2 or conditions.shape[0] == 0:
+        raise ValueError("node_condition_ok must be a non-empty matrix")
+    if conditions.shape[1] < 2:
+        raise ValueError("node_condition_ok must include hard and interior gates")
+    if node_index < 0 or node_index >= conditions.shape[0]:
+        raise ValueError("node_index is outside the audited horizon")
+    distances = np.asarray(
+        (publisher_first_failure_distance_m, node_distance_m),
+        dtype=np.float64,
+    )
+    if not np.isfinite(distances[1]):
+        raise ValueError("node_distance_m must be finite")
+
+    prefix = conditions[: node_index + 1]
+    hard_ok = bool(np.all(prefix[:, :-1]))
+    interior_ok = bool(np.all(prefix[:, -1]))
+    publisher_prefix_ok = bool(
+        not np.isfinite(distances[0])
+        or distances[0] > distances[1] + 1.0e-12
+    )
+    return bool(
+        hard_ok
+        and not interior_ok
+        and publisher_prefix_ok
+        and bool(low_motion_ok)
+    )
+
+
 def suffix_rollout_prefix_rank(
     *,
     node_condition_ok: np.ndarray,
