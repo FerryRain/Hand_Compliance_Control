@@ -1,0 +1,24 @@
+id: peanut_compound
+display_name: Two-lobe compound
+family: compound
+rgba: [0.72, 0.38, 0.88, 1.00]
+
+geoms:
+  - type: sphere
+    size: [0.115]
+    pos: [0.0, 0.0, -0.075]
+    mass_fraction: 0.5
+  - type: sphere
+    size: [0.115]
+    pos: [0.0, 0.0, 0.075]
+    mass_fraction: 0.5
+
+motion:
+  translation:
+    allowed_axes: [principal_x, principal_y, principal_z]
+    distance_mode: object_extent_ratio
+    distance_ratio_range: [0.10, 0.35]
+    absolute_max_m: 0.045
+  rotation:
+    allowed_axes: [principal_x, principal_y, principal_z, uniform_sphere]
+    angle_range_deg: [30.0, 180.0]

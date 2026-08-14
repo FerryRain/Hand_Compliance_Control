@@ -1,0 +1,55 @@
+id: ellipsoid_medium
+display_name: Ellipsoid
+family: smooth_convex
+rgba: [0.45, 0.72, 0.30, 1.00]
+
+collection:
+  surface_preload_m: 0.0030
+
+geoms:
+  - type: ellipsoid
+    size: [0.15, 0.115, 0.10]
+
+motion:
+  translation:
+    contact_gated: true
+    allowed_axes: [principal_x, principal_y, principal_z]
+    distance_mode: object_extent_ratio
+    distance_ratio_range: [0.15, 0.45]
+    absolute_max_m: 0.055
+    segment_move_steps: 180
+    segment_hold_steps: 70
+    axis_profiles:
+      principal_x:
+        speed_range_m_s: [0.0025, 0.0060]
+        distance_ratio_range: [0.10, 0.25]
+        absolute_max_m: 0.035
+      principal_y:
+        speed_range_m_s: [0.0020, 0.0050]
+        distance_ratio_range: [0.08, 0.20]
+        absolute_max_m: 0.025
+      principal_z:
+        speed_range_m_s: [0.0015, 0.0030]
+        distance_ratio_range: [0.04, 0.10]
+        absolute_max_m: 0.012
+        segment_move_steps: 100
+        segment_hold_steps: 120
+  rotation:
+    contact_gated: true
+    allowed_axes: [principal_x, principal_y, principal_z, uniform_sphere]
+    angle_range_deg: [60.0, 300.0]
+    segment_move_steps: 160
+    segment_hold_steps: 80
+    axis_profiles:
+      principal_x:
+        angular_speed_range_rad_s: [0.025, 0.060]
+      principal_y:
+        angular_speed_range_rad_s: [0.020, 0.050]
+        segment_move_steps: 120
+        segment_hold_steps: 100
+      principal_z:
+        angular_speed_range_rad_s: [0.015, 0.035]
+        segment_move_steps: 100
+        segment_hold_steps: 120
+      uniform_sphere:
+        angular_speed_range_rad_s: [0.020, 0.050]

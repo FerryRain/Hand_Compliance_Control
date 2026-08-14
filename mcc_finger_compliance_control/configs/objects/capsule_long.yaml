@@ -1,0 +1,59 @@
+id: capsule_long
+display_name: Long capsule
+family: smooth_convex
+rgba: [0.16, 0.72, 0.92, 1.00]
+
+collection:
+  surface_preload_m: 0.0025
+
+geoms:
+  - type: capsule
+    size: [0.11, 0.16]
+
+motion:
+  translation:
+    contact_gated: true
+    allowed_axes: [principal_x, principal_y, principal_z]
+    distance_mode: object_extent_ratio
+    distance_ratio_range: [0.15, 0.60]
+    absolute_max_m: 0.080
+    segment_move_steps: 180
+    segment_hold_steps: 80
+    axis_profiles:
+      principal_x:
+        speed_range_m_s: [0.0020, 0.0040]
+        distance_ratio_range: [0.08, 0.18]
+        absolute_max_m: 0.025
+      principal_y:
+        speed_range_m_s: [0.0015, 0.0030]
+        distance_ratio_range: [0.05, 0.12]
+        absolute_max_m: 0.015
+        segment_move_steps: 120
+        segment_hold_steps: 100
+      principal_z:
+        speed_range_m_s: [0.0020, 0.0040]
+        distance_ratio_range: [0.05, 0.12]
+        absolute_max_m: 0.025
+  rotation:
+    contact_gated: true
+    allowed_axes: [principal_x, principal_y, principal_z, uniform_sphere]
+    angle_range_deg: [60.0, 360.0]
+    segment_move_steps: 160
+    segment_hold_steps: 80
+    axis_profiles:
+      principal_x:
+        angular_speed_range_rad_s: [0.015, 0.035]
+        segment_move_steps: 100
+        segment_hold_steps: 100
+      principal_y:
+        angular_speed_range_rad_s: [0.015, 0.030]
+        segment_move_steps: 100
+        segment_hold_steps: 100
+      principal_z:
+        angular_speed_range_rad_s: [0.040, 0.090]
+        segment_move_steps: 240
+        segment_hold_steps: 50
+      uniform_sphere:
+        angular_speed_range_rad_s: [0.015, 0.030]
+        segment_move_steps: 90
+        segment_hold_steps: 110

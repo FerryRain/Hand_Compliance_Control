@@ -1,0 +1,23 @@
+id: cross_capsule
+display_name: Crossed-capsule compound
+family: compound
+rgba: [0.90, 0.35, 0.72, 1.00]
+
+geoms:
+  - type: capsule
+    size: [0.075, 0.13]
+    mass_fraction: 0.5
+  - type: capsule
+    size: [0.075, 0.13]
+    quat: [0.70710678, 0.0, 0.70710678, 0.0]
+    mass_fraction: 0.5
+
+motion:
+  translation:
+    allowed_axes: [principal_x, principal_y, principal_z]
+    distance_mode: object_extent_ratio
+    distance_ratio_range: [0.10, 0.30]
+    absolute_max_m: 0.040
+  rotation:
+    allowed_axes: [principal_x, principal_y, principal_z, uniform_sphere]
+    angle_range_deg: [30.0, 160.0]
