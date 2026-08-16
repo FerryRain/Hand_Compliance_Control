@@ -2421,3 +2421,80 @@ prefix：distance必须从0严格递增且终点早于failure，`keyframe/keyfra
 `(N,23)/(N,5)/(N,5,3)`。CPU验证：完整discover `134/134`、`--help`、Python/PowerShell AST与diff-check均exit
 `0`；discover/help退出时只有既有wandb临时目录清理warning。该诊断补丁不表示full-tail已经完成；它只授权下一次
 same-device、同参数的GPU fail-close取证重跑，不授权atomic-tail行为或成功结论。
+
+### 7be27fc provenance-snapshot终局与phase-bound P0（2026-08-17）
+
+#### same-device snapshot只复现既有fail-close，不生成plan/dynamics
+
+instrumentation-only commit=`7be27fc014b1b12991b15c68852279904db7d9fd`；GPU stem=
+`baseline2_capsule_provenancesnapshot_0to50_acceptance_seed42_20260817_053902_220`。本轮沿用上一轮280个
+Acceptance参数，仅替换failure-prefix/plan输出路径；launcher exit=`1`，reason=`longitudinal_progress`，
+failure distance=`47.968750000000004 mm`，last committed=`47.8125 mm`，账本=`keyframe 55/58`。没有
+`plan.npz`，因此没有进入dynamics或HEADLESS Acceptance；状态仍为`FAIL DEBUG/PENDING`。
+
+schema-v3 failure-prefix可由`np.load(..., allow_pickle=False)`读取：共`207` fields、object dtype=`0`，
+`schema_version=3`，`committed_coarse_row_count=keyframe=55`。distance/q/points/arcs及14组新增coarse
+provenance全部固定shape、finite且首维=`55`；failure distance不在committed distance中，last committed严格早于
+failure，尚未提交的current row及其后两行没有泄漏。与a80c8ff schema-v2 prior分层对照为：behavior
+`MATCH`，完整committed distance/q/arcs raw bytes全部`MATCH`，instrumentation=`VALID_SCHEMA_V3_EXTENSION`；
+没有检测到prefix或planner-state mutation。
+
+#### frame750 authoritative row与phase的精确含义
+
+`46.875 mm`是artifact row `48`（zero-based，key=`last_feasible_coarse_*[48]`）。actual phase offset=
+`[-9.841918945312517e-05,-7.873535156250012e-05,0,-7.873535156250012e-05] m`；terminal coordinate=
+`0.15625000000000014`、envelope=`0.06561279296875011`，所以phase/envelope latent amplitude=
+`[-1.5,-1.2,0,-1.2] mm`，相对bridge max `1.5 mm`的normalized amplitude=
+`[-1,-0.8,0,-0.8]`。actual progress=
+`[0.07063337597329691,0.050390178560264204,0.046464663489345595,0.04498611454266879,0.05110905119568257] m`；
+target progress=`[0.08095438009509837,0.05471011421345923,0.04779615058805499,0.046875,0.0467962646484375] m`；
+normal error=`[0.005783036864937585,0.0030010047082523117,0.0028513664307509767,0.0021336189374529194,
+0.0013064981400885446] m`。palm target=
+`[0.5812394856489254,0.0008446275788750691,0.22949309827176084] m`，palm error=
+`0.011583636976395771 m`；arcs=
+`[0.22764915538643898,0.14124024594420367,0.1281040663777002,0.13186303534045837,0.1911390064158712] m`。
+flags为`feasibility=true/suffix=true/static=false/recovery=false`，static/recovery dwell均=`0`，cost=
+`958.1728443330774`、nfev=`52`。23-DoF q保存在
+`last_feasible_coarse_q_rad[48]`，raw-f64-bytes SHA256=
+`468EE78168ED7C2944264DEC2BCBE75764538D8D588898842BE4765867A353AA`；完整向量与float64 bits保存在下述
+exact audit JSON，避免在两份PROCESS重复一整行数值。
+
+#### frame751、refine/cache/rolling provenance
+
+publisher grid的one-based frame `751`为`0.0469375 m`（bits=`3FA8083126E978D5`），不是ordinary coarse
+node；budget terminal-start=`0.04693750000000001 m`（bits末位=`D6`），两者只差`-6.938893903907228e-18 m`
+=`1 ULP`，仅为既有`1e-12 m`分类容差的`6.938893903907228e-06`。production authority使用
+`route >= terminal_start - 1e-12`；独立重算frames749--752 mask=`[false,false,true,true]`，frame750仍非terminal、
+frame751确定为首个terminal sample，1 ULP没有前移或后移4/4边界。50 mm envelope为数值零；production clip会
+产生`[-0,-0,+0,-0]` signed zeros，数值等于零，加入非零target progress后raw bytes不变。
+
+本轮auto-refine=`18/96`，包含38.75 mm low-motion细化以及最终47.96875 mm失败插点；suffix horizon
+attempts/success=`14/13`。failure-time cache（不是per-commit历史ledger）available/valid/conversion/schema/
+anchor-valid均为true，anchor=`47.8125 mm`，cache knots=
+`[47.96875,48.125,48.28125,48.4375] mm`，seed另含`48.59375 mm`；fail-closed=true。rolling provenance
+available：完整`800`帧grid、`20 intervals/21 samples`、forward ratio=`0.1`、required fingers=`3`；
+frames731--751的schedule q可finite重建，static/recovery marks=`0/21`。这些数据只证明schedule/provenance可重建，
+几何tip-motion仍须production-equivalent model audit。
+
+#### 工件与精确审计哈希
+
+debug目录中的exact audit JSON路径=
+`D:\Code\Hand_Compliance_Control\mjlab_full_hand_mcc\full_hand_mcc\outputs\debug\20_fr3_planning\baseline2_capsule_provenancesnapshot_0to50_acceptance_seed42_20260817_053902_220_failure_prefix_schema_v3_exact_audit.json`。
+SHA256：launch=`DBF3EF74463D02A3CB287505427A4EBD80E7DBA14129DACDE320487B6FE3029F`；log=
+`3427A56875842415A4030F5BB2987518897262A68146287735C6DC5610C04174`；stderr=
+`54D36F4C3083A56D7F5D529AF359753E0545B53B2AAF4894B48795ABD52CD27A`；exit=
+`6B86B273FF34FCE19D6B804EFF5A3F5747ADA4EAA22F1D49C01E52DDB7875B4B`；failure-prefix NPZ=
+`440C50274EC5166CAA1C3C7930E19CE03DD80227DFEDC2ED1319A10BC30E5992`；exact audit JSON=
+`3B63566F1E93E37B470342A47C9FD52045065D5EDD3071B8BFE90A5FACD55654`。
+
+#### P0 phase-bound审查与下一步证据门
+
+snapshot确认A0并非ordinary `mpc_auto_rephase_max=1.2 mm`状态：它是历史moving-feasibility bridge
+grandfathered phase，latent amplitude=`[-1.5,-1.2,0,-1.2] mm`。A0可作为immutable accepted anchor；但新生成的
+ordinary tail controls必须逐分量满足`±1.2 mm`，尤其不得把finger0的`-1.5 mm`继续当作ordinary可写控制或通过
+transaction继承。下一步仍需分别从`46.875 mm` A0和更早的`45.78125 mm` ordinary-safe层做
+production-equivalent CPU full-tail probe；二者均为pending，未授权实现、GPU或成功结论。
+
+此前SHADOW前向到`49.21875 mm`的pass以及从`49.375 mm`做的backward Pareto，只保留为历史非production
+诊断：它们没有同时具备本次authoritative phase-bound、完整atomic state和production exact全门，不可用于
+promotion、50 mm路线或Acceptance声明。所有冻结门和fail-close/atomic splice要求保持不变。
