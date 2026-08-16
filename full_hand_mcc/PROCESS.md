@@ -3753,7 +3753,7 @@ rolling-low-motion门；先诊断并改善现有explicit polish，使selected H5
 > options”得到`51.067217 um`，但该临时harness没有保存q、bounds、support、target/prior、objective scale或
 > constraint callable状态，也没有可哈希artifact。真正same-input GPU在`eps=1e-5`下只得到
 > `49.689031 um < 50 um`。所以`51.067217 um`不是可复核事实，下面相同options/`eps=1e-5`只记录
-> `4f42ab2`已被证伪的历史实现，不代表当前WIP。权威结论见下一检查点。
+> `4f42ab2`已被证伪的历史实现，不代表随后提交的`b064928`修正。权威结论见下一检查点。
 
 #### 唯一失败与same-constraint CPU因果验证
 
@@ -3774,8 +3774,8 @@ artifact不能证明其输入相同，也不得再引用为Acceptance证据。**
   归一化最小位移，避免沿用原source anchor把解拉回第一次求解前；
 - `4f42ab2`历史实现的两次调用复用同一`Bounds`、constraint callable/spec、motion/contact support indices、
   `51 um` explicit guard和同一options：`eps=1e-5`、`ftol=1e-12`、iteration cap=
-  `min(mpc_suffix_max_nfev,100)`；GPU已证明第二次继续使用该粗粒度`eps`仍不够，当前WIP仅把attempt2改为
-  `eps=1e-6`；
+  `min(mpc_suffix_max_nfev,100)`；GPU证明第二次继续使用该粗粒度`eps`仍不够，随后提交的`b064928`仅把
+  attempt2改为`eps=1e-6`；
 - SLSQP `success`与`status`仅为诊断信息，exact node/prefix/publisher/rolling-low-motion audit仍是唯一验收权威；
   因而`status=9`的有限迭代结果在`result.x`完整exact audit通过时可以接受，solver success反过来也不能绕门；
 - restart只复用原约束求解，不修改planner state、Acceptance bands、rank、candidate budget或cache生命周期。
@@ -3796,7 +3796,7 @@ restart gate现显式要求metric columns `5:8`即arm/hand/tip clearance全部`>
 
 - core tests=`97/97`；全量`unittest discover`=`130/130`；
 - demo `--help`、相关Python AST、Level-2 PowerShell AST与`git diff --check`全部通过；
-- 尚未运行GPU、未commit/push、未操作GitHub；现有FAIL DEBUG仍只描述旧失败现场，不是新实现的GPU结果。
+- 在该检查点记录时尚未运行GPU、未commit/push、未操作GitHub；此状态已由下方`b064928`检查点取代。
 
 **下一步：**先核对本机`gh` active=`FerryRain`、FerryRain origin与Git author，再由主代理提交并push `main`、
 同步issue #7；随后完全复用Acceptance seed42 local-H5 launch参数做GPU fail-closed因果重跑，确认一次性restart
@@ -3886,9 +3886,9 @@ float-center微差不改变过门结论。
 严格边界：这些反事实由两次独立临时CPU复建得到，但临时脚本已删除，**没有持久化q、NPZ、JSON或hash**；
 它只能定位P0并支持最小补丁，不能当作GPU/Acceptance证据。
 
-#### 当前WIP、验证与下一步
+#### 该检查点当时的WIP、验证与下一步
 
-当前WIP仅修改：
+该检查点当时的WIP仅修改：
 
 - `full_hand_mcc/scripts/demo_surface_slide.py`：attempt1保留`eps=1e-5`；仅当原task-interior-only gate触发
   attempt2时切到`eps=1e-6`；保存primary/restart eps与restart objective anchor固定shape数值证据；
@@ -3896,9 +3896,117 @@ float-center微差不改变过门结论。
   shape/dtype/NaN sentinel及failure-prefix传播。
 
 没有修改diagnostics、runner、README、Acceptance阈值、H5、rank、budget或cache语义。全量tests=`130/130`，
-demo/AST/PowerShell AST/diff-check通过，独立review P0/P1/P2=`0/0/0`。此WIP尚未运行GPU，也尚未commit/push；
-`51.003814 um`仍必须由same-seed真实GPU验证。
+demo/AST/PowerShell AST/diff-check通过，独立review P0/P1/P2=`0/0/0`。本段“尚未运行GPU/commit”的状态只描述
+该检查点当时；修复随后以`b064928`提交，`51.003814 um`的方向由下一检查点same-seed真实GPU验证。
 
 **下一步：**主代理重新核对本机`gh` active=`FerryRain`、FerryRain origin和Git author，只用本机FerryRain
 commit `main`、push并同步issue #7；然后原样复用Acceptance seed42 launch重跑。任何失败继续fail-close并提供
 `FAIL DEBUG`，只有全数值、plan、dynamics和视觉门通过后才交付成功版视频。
+
+### `b064928` restart-FD same-seed GPU终局与47.34375 mm terminal-contact诊断（2026-08-17）
+
+#### 运行身份、参数同一性与issue链
+
+commit=`b064928bd3c2228efb33720d4eacad00c5b580c3`，stem=
+`baseline2_capsule_restartfd_0to50_acceptance_seed42_20260816_234055_604`，branch=`main`。本机local `gh`
+active=`FerryRain`，origin fetch/push均为`https://github.com/FerryRain/Hand_Compliance_Control.git`，author=
+`Ferry <kenny0326@qq.com>`；没有使用yoyozhang身份。launch精确复用`4f42ab2` Acceptance seed42的`280`个参数，
+只替换zero-based indices `267/269`的failure-prefix/plan输出路径；source arguments SHA256=
+`70BC42D0188ECD99251F1F21715B35347A7663A194D95D902345E3B922FD423C`，本次arguments SHA256=
+`07B17547A98275886975A1B4BA6D7CE71C2535B2E5973433B43757F3F31BAB0C`。issue #7由本机FerryRain记录：
+[commit/checkpoint](https://github.com/FerryRain/Hand_Compliance_Control/issues/7#issuecomment-5308240093)、
+[GPU start](https://github.com/FerryRain/Hand_Compliance_Control/issues/7#issuecomment-5308267479)、
+[fail-close终局](https://github.com/FerryRain/Hand_Compliance_Control/issues/7#issuecomment-5308575937)。
+
+38.750 mm第一次prospective low-motion只有`2/4`指前进，planner拒绝直接commit，并在37.500--38.750 mm中插入
+38.125 mm；refine后38.750 mm以`4/4`接触接受，rolling 20 intervals/21 samples、至少3/4指运动的冻结门未放宽。
+进入local-H5区后，各outer target的H5 minimum task slack为：
+
+| outer target (mm) | H5 minimum task slack (um) | 结果 |
+| ---: | ---: | --- |
+| 45.9375 | 50.988 | pass |
+| 46.09375 | 51.001 | pass |
+| 46.25 | 51.001 | pass |
+| 46.40625 | 54.956 | pass |
+| 46.5625 | 53.935 | pass |
+| 46.71875 | 54.477 | pass |
+| 46.875 | 57.242 | pass |
+| 47.03125 | 51.005 | pass |
+| 47.1875 | 50.621 | pass |
+
+47.03125 mm处直接复现P0因果链：selected certified-cache H5 attempt1=`eps 1e-5`、status=`9`、nit=`100`、
+nfev=`3316`、formal=`-2.605 um`、prefix=false；唯一restart=`eps 1e-6`、status=`0`、nit=`37`、nfev=
+`1106`、formal=`+0.005 um`、prefix=true。最终H5 minimum task slack=`51.005 um`、joint slack=
+`22.067 urad`、failed gates=`0`，horizon接受并继续。这是GPU证据，取代无artifact旧`51.067217 um`说法，
+但只关闭47.03125 mm旧瓶颈，不代表50 mm路线成功。
+
+#### 47.34375 mm selected suffix与outer final-best分层
+
+新first failed outer target=`47.34375 mm`，last feasible=`47.1875 mm`、committed nodes=`51`、exit=`1`，
+plan不存在、dynamics未启动。selected index=`6`、seed kind=`rollout_partial_certified_cache`；H1--H4 exact全过，
+H5 node4=`47.96875 mm`仅有primitive `contact=false/normal=false`并导致aggregate `interior=false`。index fingertip
+normal error=`3.001543299 mm`，比3 mm contact带多`1.543299 um`，contact=`3/4`；progress margin=
+`49.775312 um`、tangent=`53.420000 um`、monotonic=`200 um`，motion=`4/4`、collision=true、self=`0`，
+joint step=`19.633950 mrad`。q10/q18对0.5 mrad solver lower boundary的余量分别只有
+`0.000076/0.000095 urad`。selected publisher六hard gates全部true、first failure index=`-1`，rolling low-motion=true；
+因此 selected 的唯一真实瓶颈是terminal contact/normal interior，不是publisher、progress、碰撞或自碰。
+
+outer final-best是独立rejected分支：progress max error=`4.756529 mm`、limit=`4.290393 mm`、margin=
+`-0.466136 mm`；non-tip-hand clearance=`-1.320088 mm`、相对`-1 mm`门margin=`-0.320088 mm`，所以
+progress/collision false。其normal/tangent/monotonic/palm/joint/contact为true、self=`0`不能替换selected H5；
+failure-prefix顶层`reason=longitudinal_progress`同样来自outer归因。任何selected/outer数值混用都会错误改变
+failure attribution。
+
+#### 可哈希工件、视频与755帧独立prefix认证
+
+run SHA256：
+
+- failure-prefix NPZ=`78F288960FC0497D6747F3CA382E66CAD04AB1111D34277D201AFA715FB7FDBE`；
+- log=`3B57FF2299859DDED69A6204BAA45FB9FAE4213BBBD62B2850649CECDB5AE61F`；
+- stderr=`73BBD114AE3EC369BE4A6B7E60C53A0ED33EF4DEF895CC11E5C1C9971C5F6747`；
+- exitcode=`6B86B273FF34FCE19D6B804EFF5A3F5747ADA4EAA22F1D49C01E52DDB7875B4B`；
+- launch JSON=`70ACA16C2BBB449B43B17B24DEF7041D322E74D8E75522D57F2F12E8E908DDAC`；
+- launcher PS1=`26699E397990BDF5EE178D4D216D33833426940292D253368CFACEA23B40272F`；
+- wrapper stderr=`02B256729EA8A0223A1B2DC66EB36B498B9F73E872C542315773CD38FCDE3C8A`。
+
+正确FAIL DEBUG视频使用真实capsule `radius=0.10 m/half-height=0.17 m`，只回放last-feasible 47.1875 mm prefix、
+省略失败候选，并显式写明`NO PLAN / NO DYNAMICS`。H.264、1600x920、30 fps、450 frames/15 s、末60帧冻结、
+full FR3/capsule与四pad/thumb close-up双视图。路径=
+`D:\Code\Hand_Compliance_Control\mjlab_full_hand_mcc\full_hand_mcc\outputs\debug\20_fr3_planning\baseline2_capsule_restartfd_0to50_acceptance_seed42_20260816_234055_604_FAIL_DEBUG_kinematic_prefix_only.mp4`，
+SHA256=`C9E3C96A28D52DEA5E014F8F3237FC7AC737536283B251351E87EB699A9671B6`。failure audit JSON SHA256=
+`98837592D9E3FAF63C88BDB8D06193DBC87451953256D878A52347BC461BE585`；video metadata=
+`573AF3CDC8944A21DCC752649F43B46AA999D4547E4BE38E35BB8CDAC7FA2C16`。
+
+independent CPU MuJoCo prefix audit JSON SHA256=
+`1401E624F7344C85DD806F1CF0843F6D96CC826CBACF01FBE7B5B45763B041F6`；按production逐区间smoothstep重建
+51 nodes/755 publisher frames。checks全true：四指physical-tip minima=
+`[-0.870733,-0.823051,-0.990469,-0.846272] mm`；FR3 minimum=`13.885654 mm`；non-tip hand=
+`-0.941315 mm`；active self=`0`；pad max=`36.939298 deg`；joint-limit minimum=`0.548138 urad`；max frame
+joint step=`19.400461 mrad`；FK max error=`0`、surface-arc max error=`63.592228 um`；rolling 20/21 regions=`0`。
+该认证严格是committed prefix-only，不能认证selected failed H5、plan或dynamics。
+
+#### CPU真实根因、窄repair反事实与production设计
+
+普通explicit polish只有在当前node原hard gates已过时才会进入；而selected C6 node4的normal error=
+`3.001543 mm`使contact/normal先失败，所以没有node4 attempt。既有support又只从normal error `<=3 mm`的指尖
+构造，正好排除需要修复的第4指。failure evidence因此只见node3 attempt。这是terminal-contact入口与support
+定义的窄缺口，不是restart FD回归；增加同类restart或借用outer final-best都无效。
+
+真实CPU MuJoCo `r=0.10 m/half-height=0.17 m`反事实仅增加terminal-contact repair，使用all-four contact support，
+并把repair solver Bounds向joint limits内收`1 urad`（比正式门更严，正式joint limit不变）。FD仍为`eps=1e-5`即得
+H5 exact margins=`[progress 50.994659, normal 51.002993, tangent 64.388493, monotonic 200] um`，contact/motion=
+`4/4`，joint额外保留`1 urad`，step=`19.629 mrad`。原publisher audit最小余量=
+`[progress 47.688, normal 50.781, tangent 68.830, monotonic 151.511] um`；FR3/hand/tip物理余量=
+`14.484 mm/0.336 mm/75.793 um`，self=`0`、pad max=`37.64 deg`。该反事实只证明窄repair方向，不是GPU/
+Acceptance成功。
+
+production设计为独立`terminal-contact-only` predicate：prior必须pass、current必须只失败
+`contact/normal/interior`、仍有`3/4`接触、task miss `<=50 um`，且其余safety、publisher、rolling low-motion
+已经pass；repair支持固定为all-four contact，Bounds只在repair solver内向内收`1 urad`；restart若触发也必须保持
+同一窄predicate。repair输出没有任何特权，最终仍走原exact node/prefix/publisher/low-motion/物理审计并在任一失败
+时fail-close。pad `<=40 deg`、tip `>=-1 mm`、FR3 `>=2 mm`、non-tip hand `>=-1 mm`、self=`0`、joint
+limit/max-step、terminal 4/4、rolling 20/21及所有task门完全冻结。
+
+**当前状态：**实现仍为WIP，尚未GPU运行；不生成成功标签，不宣称plan/dynamics通过。下一轮必须用同一280参数
+Acceptance seed42先跨过47.34375 mm再走到50 mm，之后才允许plan audit、独立全帧MuJoCo、dynamics/HEADLESS
+与最终视觉验收；失败继续交付明确`FAIL DEBUG`。

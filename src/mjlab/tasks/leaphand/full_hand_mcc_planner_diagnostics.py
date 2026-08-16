@@ -913,8 +913,16 @@ def suffix_explicit_support_indices(
     nominal_normal_tolerance_m: float,
     required_motion_fingers: int,
     required_contact_fingers: int,
+    include_all_contacts: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Freeze deterministic moving/contact support sets for one SLSQP solve."""
+    """Freeze deterministic moving/contact support sets for one SLSQP solve.
+
+    The default path keeps its historical semantics: only fingers already
+    inside the nominal normal tolerance may enter the contact support.  The
+    opt-in path is reserved for the narrowly gated terminal 3-of-4 contact
+    repair and freezes all four fingers, including the one missing contact.
+    Motion support selection is identical in both modes.
+    """
 
     motion = np.asarray(tip_motion_m, dtype=np.float64)
     normal = np.asarray(normal_error_m, dtype=np.float64)
@@ -935,6 +943,10 @@ def suffix_explicit_support_indices(
         raise ValueError("required_motion_fingers must lie in [0, 4]")
     if not 0 <= required_contact_fingers <= 4:
         raise ValueError("required_contact_fingers must lie in [0, 4]")
+    if not isinstance(include_all_contacts, (bool, np.bool_)):
+        raise ValueError("include_all_contacts must be boolean")
+    if bool(include_all_contacts) and required_contact_fingers != 4:
+        raise ValueError("all-contact support requires four contact fingers")
 
     motion_candidates = np.flatnonzero(
         motion >= float(minimum_tip_motion_m) - 1.0e-12
@@ -942,8 +954,12 @@ def suffix_explicit_support_indices(
     motion_order = motion_candidates[
         np.argsort(-motion[motion_candidates], kind="stable")
     ]
-    contact_candidates = np.flatnonzero(
-        normal <= float(nominal_normal_tolerance_m) + 1.0e-12
+    contact_candidates = (
+        np.arange(4, dtype=np.int64)
+        if bool(include_all_contacts)
+        else np.flatnonzero(
+            normal <= float(nominal_normal_tolerance_m) + 1.0e-12
+        )
     )
     contact_order = contact_candidates[
         np.argsort(normal[contact_candidates], kind="stable")
@@ -951,6 +967,163 @@ def suffix_explicit_support_indices(
     return (
         motion_order[:required_motion_fingers].astype(np.int64, copy=False),
         contact_order[:required_contact_fingers].astype(np.int64, copy=False),
+    )
+
+
+def suffix_terminal_contact_repair_required(
+    *,
+    node_condition_ok: np.ndarray,
+    node_metric_margin_m: np.ndarray,
+    node_metric_margin_rad: np.ndarray,
+    node_contact_count: np.ndarray,
+    node_index: int,
+    publisher_first_failure_distance_m: float,
+    node_distance_m: float,
+    terminal_start_m: float,
+    low_motion_ok: bool,
+    task_guard_m: float,
+) -> bool:
+    """Admit only the terminal 3-of-4 contact/normal repair state.
+
+    This is deliberately independent of the ordinary interior-polish
+    predicate.  Every prior node must be fully certified.  At the current
+    terminal node, exactly contact, normal, and interior must be false; the
+    contact count must be exactly three; and every task hard-boundary
+    shortfall must be no larger than 50 microns.  Collision clearances retain
+    the full task interior guard, while palm, joint, step, motion, collision,
+    publisher-prefix, and low-motion gates must already pass.
+    """
+
+    conditions = np.asarray(node_condition_ok, dtype=bool)
+    metrics_m = np.asarray(node_metric_margin_m, dtype=np.float64)
+    metrics_rad = np.asarray(node_metric_margin_rad, dtype=np.float64)
+    try:
+        contact_count = np.asarray(node_contact_count, dtype=np.float64)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("node contact counts must be numeric") from exc
+    if conditions.ndim != 2 or conditions.shape[1] != 11:
+        raise ValueError("node conditions must contain the eleven frozen gates")
+    node_count = conditions.shape[0]
+    if metrics_m.shape != (node_count, 8):
+        raise ValueError("node metric margins must have shape (nodes, 8)")
+    if metrics_rad.shape != (node_count, 2):
+        raise ValueError("node angular margins must have shape (nodes, 2)")
+    if contact_count.shape != (node_count,):
+        raise ValueError("node contact counts must match the node count")
+    if node_index < 0 or node_index >= node_count:
+        raise ValueError("node_index is outside the audited horizon")
+    scalars = np.asarray(
+        (node_distance_m, terminal_start_m, task_guard_m), dtype=np.float64
+    )
+    if not np.all(np.isfinite(scalars)) or scalars[2] < 0.0:
+        raise ValueError("terminal distances and task guard must be finite")
+    if (
+        not np.all(np.isfinite(metrics_m))
+        or not np.all(np.isfinite(metrics_rad))
+        or not np.all(np.isfinite(contact_count))
+        or np.any(contact_count < 0.0)
+        or np.any(contact_count > 4.0)
+        or np.any(contact_count != np.floor(contact_count))
+    ):
+        raise ValueError("terminal repair evidence must be finite and valid")
+
+    if float(node_distance_m) < float(terminal_start_m) - 1.0e-12:
+        return False
+    if node_index > 0 and not bool(np.all(conditions[:node_index])):
+        return False
+
+    expected_current = np.ones(11, dtype=bool)
+    expected_current[[1, 2, 10]] = False
+    if not np.array_equal(conditions[node_index], expected_current):
+        return False
+    if int(contact_count[node_index]) != 3:
+        return False
+
+    # "Miss" is measured against the unchanged hard boundary.  The final
+    # exact audit still requires the positive task guard below.
+    maximum_hard_miss_m = 50.0e-6
+    current_task_margins = metrics_m[node_index, :4]
+    normal_is_narrow_miss = bool(
+        -maximum_hard_miss_m - 1.0e-12
+        <= current_task_margins[1]
+        < 0.0
+    )
+    task_miss_is_narrow = bool(
+        np.all(current_task_margins >= -maximum_hard_miss_m - 1.0e-12)
+    )
+    other_task_hard_ok = bool(
+        np.all(current_task_margins[[0, 2, 3]] >= -1.0e-12)
+    )
+    task_interior_is_missing = bool(
+        np.any(current_task_margins < float(task_guard_m) - 1.0e-12)
+    )
+    collision_interior_ok = bool(
+        np.all(
+            metrics_m[node_index, 5:8]
+            >= float(task_guard_m) - 1.0e-12
+        )
+    )
+    palm_ok = bool(metrics_m[node_index, 4] >= -1.0e-12)
+    angular_ok = bool(np.all(metrics_rad[node_index] >= -1.0e-12))
+    publisher_prefix_ok = bool(
+        not np.isfinite(publisher_first_failure_distance_m)
+        or float(publisher_first_failure_distance_m)
+        > float(node_distance_m) + 1.0e-12
+    )
+    return bool(
+        normal_is_narrow_miss
+        and task_miss_is_narrow
+        and other_task_hard_ok
+        and task_interior_is_missing
+        and collision_interior_ok
+        and palm_ok
+        and angular_ok
+        and publisher_prefix_ok
+        and bool(low_motion_ok)
+    )
+
+
+def suffix_terminal_contact_repair_restart_required(
+    *,
+    q_rad: np.ndarray,
+    expected_dof: int,
+    explicit_prefix_ok: bool,
+    node_condition_ok: np.ndarray,
+    node_metric_margin_m: np.ndarray,
+    node_metric_margin_rad: np.ndarray,
+    node_contact_count: np.ndarray,
+    node_index: int,
+    publisher_first_failure_distance_m: float,
+    node_distance_m: float,
+    terminal_start_m: float,
+    low_motion_ok: bool,
+    task_guard_m: float,
+) -> bool:
+    """Allow one restart only while the same narrow repair state remains."""
+
+    if expected_dof <= 0:
+        raise ValueError("expected_dof must be positive")
+    try:
+        q = np.asarray(q_rad, dtype=np.float64)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    if q.shape != (expected_dof,) or not np.all(np.isfinite(q)):
+        return False
+    if bool(explicit_prefix_ok):
+        return False
+    return suffix_terminal_contact_repair_required(
+        node_condition_ok=node_condition_ok,
+        node_metric_margin_m=node_metric_margin_m,
+        node_metric_margin_rad=node_metric_margin_rad,
+        node_contact_count=node_contact_count,
+        node_index=node_index,
+        publisher_first_failure_distance_m=(
+            publisher_first_failure_distance_m
+        ),
+        node_distance_m=node_distance_m,
+        terminal_start_m=terminal_start_m,
+        low_motion_ok=low_motion_ok,
+        task_guard_m=task_guard_m,
     )
 
 

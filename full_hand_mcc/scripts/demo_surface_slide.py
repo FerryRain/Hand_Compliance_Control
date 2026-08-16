@@ -86,6 +86,8 @@ from mjlab.tasks.leaphand.full_hand_mcc_planner_diagnostics import (
     suffix_node_needs_explicit_task_polish,
     suffix_prefix_needs_interior_polish,
     suffix_rollout_prefix_rank,
+    suffix_terminal_contact_repair_required,
+    suffix_terminal_contact_repair_restart_required,
     strict_suffix_task_constraint_margins,
     strict_suffix_task_hinge_residual,
     terminal_contact_sample_mask,
@@ -9973,6 +9975,36 @@ def main() -> None:
                                         np.nan,
                                         dtype=np.float64,
                                     )
+                                    rollout_terminal_contact_repair_mode = np.zeros(
+                                        node_count, dtype=np.bool_
+                                    )
+                                    rollout_terminal_contact_repair_source_q_rad = np.full(
+                                        (node_count, TOTAL_DOF),
+                                        np.nan,
+                                        dtype=np.float64,
+                                    )
+                                    rollout_terminal_contact_repair_source_contact_count = np.full(
+                                        node_count, -1, dtype=np.int8
+                                    )
+                                    rollout_terminal_contact_repair_source_normal_error_m = np.full(
+                                        (node_count, 4),
+                                        np.nan,
+                                        dtype=np.float64,
+                                    )
+                                    rollout_terminal_contact_repair_motion_support_indices = np.full(
+                                        (node_count, 3), -1, dtype=np.int8
+                                    )
+                                    rollout_terminal_contact_repair_contact_support_indices = np.full(
+                                        (node_count, 4), -1, dtype=np.int8
+                                    )
+                                    rollout_terminal_contact_repair_bound_headroom_rad = np.full(
+                                        node_count, np.nan, dtype=np.float64
+                                    )
+                                    rollout_terminal_contact_repair_objective_anchor_q_rad = np.full(
+                                        (node_count, TOTAL_DOF),
+                                        np.nan,
+                                        dtype=np.float64,
+                                    )
                                     rollout_prior_q = previous_q.copy()
                                     rollout_prior_arc = bridge_arc.copy()
                                     rollout_prior_delta = previous_delta.copy()
@@ -10332,7 +10364,7 @@ def main() -> None:
                                             trial.prefix_ok
                                             for trial in node_trials
                                         ):
-                                            explicit_source_trials = [
+                                            ordinary_explicit_source_trials = [
                                                 trial
                                                 for trial in node_trials
                                                 if suffix_prefix_needs_interior_polish(
@@ -10373,6 +10405,62 @@ def main() -> None:
                                                     task_guard_m=task_guard_m,
                                                 )
                                             ]
+                                            terminal_contact_repair_source_trials = [
+                                                trial
+                                                for trial in node_trials
+                                                if args.collision_mode == "full_robot"
+                                                and suffix_terminal_contact_repair_required(
+                                                    node_condition_ok=(
+                                                        trial.audit[
+                                                            "node_condition_ok"
+                                                        ]
+                                                    ),
+                                                    node_metric_margin_m=(
+                                                        trial.audit[
+                                                            "node_metric_margin_m"
+                                                        ]
+                                                    ),
+                                                    node_metric_margin_rad=(
+                                                        trial.audit[
+                                                            "node_metric_margin_rad"
+                                                        ]
+                                                    ),
+                                                    node_contact_count=(
+                                                        trial.audit[
+                                                            "node_contact_count"
+                                                        ]
+                                                    ),
+                                                    node_index=node_index,
+                                                    publisher_first_failure_distance_m=float(
+                                                        trial.audit[
+                                                            "publisher_first_failure_distance_m"
+                                                        ]
+                                                    ),
+                                                    node_distance_m=float(
+                                                        horizon_distance[
+                                                            node_index
+                                                        ]
+                                                    ),
+                                                    terminal_start_m=(
+                                                        suffix_terminal_start_m
+                                                    ),
+                                                    low_motion_ok=bool(
+                                                        trial.audit[
+                                                            "low_motion_ok"
+                                                        ]
+                                                    ),
+                                                    task_guard_m=task_guard_m,
+                                                )
+                                            ]
+                                            explicit_repair_mode = bool(
+                                                not ordinary_explicit_source_trials
+                                                and terminal_contact_repair_source_trials
+                                            )
+                                            explicit_source_trials = (
+                                                terminal_contact_repair_source_trials
+                                                if explicit_repair_mode
+                                                else ordinary_explicit_source_trials
+                                            )
                                             if explicit_source_trials:
                                                 explicit_source_trial = min(
                                                     explicit_source_trials,
@@ -10448,6 +10536,9 @@ def main() -> None:
                                                     required_contact_fingers=(
                                                         required_contact_count
                                                     ),
+                                                    include_all_contacts=(
+                                                        explicit_repair_mode
+                                                    ),
                                                 )
                                                 explicit_masks_valid = bool(
                                                     motion_constraint_indices.size
@@ -10455,6 +10546,61 @@ def main() -> None:
                                                     and contact_constraint_indices.size
                                                     == required_contact_count
                                                 )
+                                                explicit_bound_headroom_rad = (
+                                                    1.0e-6
+                                                    if explicit_repair_mode
+                                                    else 0.0
+                                                )
+                                                explicit_lower = (
+                                                    local_lower
+                                                    + explicit_bound_headroom_rad
+                                                )
+                                                explicit_upper = (
+                                                    local_upper
+                                                    - explicit_bound_headroom_rad
+                                                )
+                                                explicit_masks_valid = bool(
+                                                    explicit_masks_valid
+                                                    and np.all(
+                                                        explicit_lower
+                                                        < explicit_upper
+                                                        - 1.0e-12
+                                                    )
+                                                )
+                                                if explicit_repair_mode:
+                                                    rollout_terminal_contact_repair_mode[
+                                                        node_index
+                                                    ] = True
+                                                    rollout_terminal_contact_repair_source_q_rad[
+                                                        node_index
+                                                    ] = explicit_source_trial.q_rad
+                                                    rollout_terminal_contact_repair_source_contact_count[
+                                                        node_index
+                                                    ] = int(
+                                                        explicit_source_trial.audit[
+                                                            "node_contact_count"
+                                                        ][node_index]
+                                                    )
+                                                    rollout_terminal_contact_repair_source_normal_error_m[
+                                                        node_index
+                                                    ] = explicit_source_normal_error
+                                                    if (
+                                                        motion_constraint_indices.size
+                                                        == MOVING_BRIDGE_FORWARD_FINGER_COUNT
+                                                    ):
+                                                        rollout_terminal_contact_repair_motion_support_indices[
+                                                            node_index
+                                                        ] = motion_constraint_indices
+                                                    if (
+                                                        contact_constraint_indices.size
+                                                        == 4
+                                                    ):
+                                                        rollout_terminal_contact_repair_contact_support_indices[
+                                                            node_index
+                                                        ] = contact_constraint_indices
+                                                    rollout_terminal_contact_repair_bound_headroom_rad[
+                                                        node_index
+                                                    ] = explicit_bound_headroom_rad
 
                                                 def rollout_node_explicit_constraints(
                                                     q_node: np.ndarray,
@@ -10600,8 +10746,8 @@ def main() -> None:
                                                         1.0e-6,
                                                     )
                                                     explicit_bounds = Bounds(
-                                                        local_lower,
-                                                        local_upper,
+                                                        explicit_lower,
+                                                        explicit_upper,
                                                         keep_feasible=True,
                                                     )
                                                     explicit_constraint_specs = (
@@ -10622,7 +10768,13 @@ def main() -> None:
                                                         "disp": False,
                                                     }
                                                     explicit_attempt_q = (
-                                                        explicit_source_q.copy()
+                                                        np.clip(
+                                                            explicit_source_q,
+                                                            explicit_lower,
+                                                            explicit_upper,
+                                                        )
+                                                        if explicit_repair_mode
+                                                        else explicit_source_q.copy()
                                                     )
                                                     for explicit_attempt_index in range(
                                                         2
@@ -10640,12 +10792,22 @@ def main() -> None:
                                                             ]
                                                         )
                                                         explicit_objective_anchor_q = (
-                                                            explicit_attempt_q.copy()
+                                                            np.clip(
+                                                                explicit_attempt_q,
+                                                                explicit_lower,
+                                                                explicit_upper,
+                                                            )
+                                                            if explicit_repair_mode
+                                                            else explicit_attempt_q.copy()
                                                         )
                                                         if explicit_attempt_index == 0:
                                                             rollout_explicit_polish_eps[
                                                                 node_index
                                                             ] = explicit_attempt_eps
+                                                            if explicit_repair_mode:
+                                                                rollout_terminal_contact_repair_objective_anchor_q_rad[
+                                                                    node_index
+                                                                ] = explicit_objective_anchor_q
                                                         else:
                                                             rollout_explicit_polish_restart_eps[
                                                                 node_index
@@ -10860,49 +11022,107 @@ def main() -> None:
                                                             explicit_trial
                                                             is not None
                                                         )
-                                                        if not suffix_explicit_restart_required(
-                                                            q_rad=explicit_q,
-                                                            expected_dof=(
-                                                                TOTAL_DOF
-                                                            ),
-                                                            explicit_prefix_ok=(
-                                                                explicit_trial_prefix_ok
-                                                            ),
-                                                            node_condition_ok=(
-                                                                explicit_trial.audit[
-                                                                    "node_condition_ok"
-                                                                ]
-                                                            ),
-                                                            node_metric_margin_m=(
-                                                                explicit_trial.audit[
-                                                                    "node_metric_margin_m"
-                                                                ]
-                                                            ),
-                                                            node_index=(
-                                                                node_index
-                                                            ),
-                                                            publisher_first_failure_distance_m=float(
-                                                                explicit_trial.audit[
-                                                                    "publisher_first_failure_distance_m"
-                                                                ]
-                                                            ),
-                                                            node_distance_m=float(
-                                                                horizon_distance[
+                                                        if explicit_repair_mode:
+                                                            explicit_restart_required = suffix_terminal_contact_repair_restart_required(
+                                                                q_rad=explicit_q,
+                                                                expected_dof=TOTAL_DOF,
+                                                                explicit_prefix_ok=(
+                                                                    explicit_trial_prefix_ok
+                                                                ),
+                                                                node_condition_ok=(
+                                                                    explicit_trial.audit[
+                                                                        "node_condition_ok"
+                                                                    ]
+                                                                ),
+                                                                node_metric_margin_m=(
+                                                                    explicit_trial.audit[
+                                                                        "node_metric_margin_m"
+                                                                    ]
+                                                                ),
+                                                                node_metric_margin_rad=(
+                                                                    explicit_trial.audit[
+                                                                        "node_metric_margin_rad"
+                                                                    ]
+                                                                ),
+                                                                node_contact_count=(
+                                                                    explicit_trial.audit[
+                                                                        "node_contact_count"
+                                                                    ]
+                                                                ),
+                                                                node_index=node_index,
+                                                                publisher_first_failure_distance_m=float(
+                                                                    explicit_trial.audit[
+                                                                        "publisher_first_failure_distance_m"
+                                                                    ]
+                                                                ),
+                                                                node_distance_m=float(
+                                                                    horizon_distance[
+                                                                        node_index
+                                                                    ]
+                                                                ),
+                                                                terminal_start_m=(
+                                                                    suffix_terminal_start_m
+                                                                ),
+                                                                low_motion_ok=bool(
+                                                                    explicit_trial.audit[
+                                                                        "low_motion_ok"
+                                                                    ]
+                                                                ),
+                                                                task_guard_m=(
+                                                                    task_guard_m
+                                                                ),
+                                                            )
+                                                        else:
+                                                            explicit_restart_required = suffix_explicit_restart_required(
+                                                                q_rad=explicit_q,
+                                                                expected_dof=(
+                                                                    TOTAL_DOF
+                                                                ),
+                                                                explicit_prefix_ok=(
+                                                                    explicit_trial_prefix_ok
+                                                                ),
+                                                                node_condition_ok=(
+                                                                    explicit_trial.audit[
+                                                                        "node_condition_ok"
+                                                                    ]
+                                                                ),
+                                                                node_metric_margin_m=(
+                                                                    explicit_trial.audit[
+                                                                        "node_metric_margin_m"
+                                                                    ]
+                                                                ),
+                                                                node_index=(
                                                                     node_index
-                                                                ]
-                                                            ),
-                                                            low_motion_ok=bool(
-                                                                explicit_trial.audit[
-                                                                    "low_motion_ok"
-                                                                ]
-                                                            ),
-                                                            task_guard_m=(
-                                                                task_guard_m
-                                                            ),
-                                                        ):
+                                                                ),
+                                                                publisher_first_failure_distance_m=float(
+                                                                    explicit_trial.audit[
+                                                                        "publisher_first_failure_distance_m"
+                                                                    ]
+                                                                ),
+                                                                node_distance_m=float(
+                                                                    horizon_distance[
+                                                                        node_index
+                                                                    ]
+                                                                ),
+                                                                low_motion_ok=bool(
+                                                                    explicit_trial.audit[
+                                                                        "low_motion_ok"
+                                                                    ]
+                                                                ),
+                                                                task_guard_m=(
+                                                                    task_guard_m
+                                                                ),
+                                                            )
+                                                        if not explicit_restart_required:
                                                             break
                                                         explicit_attempt_q = (
-                                                            explicit_q.copy()
+                                                            np.clip(
+                                                                explicit_q,
+                                                                explicit_lower,
+                                                                explicit_upper,
+                                                            )
+                                                            if explicit_repair_mode
+                                                            else explicit_q.copy()
                                                         )
 
                                         selected_node_trial = min(
@@ -11052,6 +11272,30 @@ def main() -> None:
                                                 rollout_explicit_polish_restart_objective_anchor_q_rad=(
                                                     rollout_explicit_polish_restart_objective_anchor_q_rad.copy()
                                                 ),
+                                                rollout_terminal_contact_repair_mode=(
+                                                    rollout_terminal_contact_repair_mode.copy()
+                                                ),
+                                                rollout_terminal_contact_repair_source_q_rad=(
+                                                    rollout_terminal_contact_repair_source_q_rad.copy()
+                                                ),
+                                                rollout_terminal_contact_repair_source_contact_count=(
+                                                    rollout_terminal_contact_repair_source_contact_count.copy()
+                                                ),
+                                                rollout_terminal_contact_repair_source_normal_error_m=(
+                                                    rollout_terminal_contact_repair_source_normal_error_m.copy()
+                                                ),
+                                                rollout_terminal_contact_repair_motion_support_indices=(
+                                                    rollout_terminal_contact_repair_motion_support_indices.copy()
+                                                ),
+                                                rollout_terminal_contact_repair_contact_support_indices=(
+                                                    rollout_terminal_contact_repair_contact_support_indices.copy()
+                                                ),
+                                                rollout_terminal_contact_repair_bound_headroom_rad=(
+                                                    rollout_terminal_contact_repair_bound_headroom_rad.copy()
+                                                ),
+                                                rollout_terminal_contact_repair_objective_anchor_q_rad=(
+                                                    rollout_terminal_contact_repair_objective_anchor_q_rad.copy()
+                                                ),
                                             )
                                         )
                                         first_failure_distance = float(
@@ -11179,6 +11423,30 @@ def main() -> None:
                                             ),
                                             rollout_explicit_polish_restart_objective_anchor_q_rad=(
                                                 rollout_explicit_polish_restart_objective_anchor_q_rad.copy()
+                                            ),
+                                            rollout_terminal_contact_repair_mode=(
+                                                rollout_terminal_contact_repair_mode.copy()
+                                            ),
+                                            rollout_terminal_contact_repair_source_q_rad=(
+                                                rollout_terminal_contact_repair_source_q_rad.copy()
+                                            ),
+                                            rollout_terminal_contact_repair_source_contact_count=(
+                                                rollout_terminal_contact_repair_source_contact_count.copy()
+                                            ),
+                                            rollout_terminal_contact_repair_source_normal_error_m=(
+                                                rollout_terminal_contact_repair_source_normal_error_m.copy()
+                                            ),
+                                            rollout_terminal_contact_repair_motion_support_indices=(
+                                                rollout_terminal_contact_repair_motion_support_indices.copy()
+                                            ),
+                                            rollout_terminal_contact_repair_contact_support_indices=(
+                                                rollout_terminal_contact_repair_contact_support_indices.copy()
+                                            ),
+                                            rollout_terminal_contact_repair_bound_headroom_rad=(
+                                                rollout_terminal_contact_repair_bound_headroom_rad.copy()
+                                            ),
+                                            rollout_terminal_contact_repair_objective_anchor_q_rad=(
+                                                rollout_terminal_contact_repair_objective_anchor_q_rad.copy()
                                             ),
                                         )
                                     )
@@ -11572,6 +11840,116 @@ def main() -> None:
                                         getattr(
                                             candidate,
                                             "rollout_explicit_polish_restart_objective_anchor_q_rad",
+                                            np.full(
+                                                (node_count, TOTAL_DOF),
+                                                np.nan,
+                                                dtype=np.float64,
+                                            ),
+                                        )
+                                        for candidate in horizon_candidates
+                                    ]
+                                ),
+                                "candidate_rollout_terminal_contact_repair_mode": np.stack(
+                                    [
+                                        getattr(
+                                            candidate,
+                                            "rollout_terminal_contact_repair_mode",
+                                            np.zeros(
+                                                node_count, dtype=np.bool_
+                                            ),
+                                        )
+                                        for candidate in horizon_candidates
+                                    ]
+                                ),
+                                "candidate_rollout_terminal_contact_repair_source_q_rad": np.stack(
+                                    [
+                                        getattr(
+                                            candidate,
+                                            "rollout_terminal_contact_repair_source_q_rad",
+                                            np.full(
+                                                (node_count, TOTAL_DOF),
+                                                np.nan,
+                                                dtype=np.float64,
+                                            ),
+                                        )
+                                        for candidate in horizon_candidates
+                                    ]
+                                ),
+                                "candidate_rollout_terminal_contact_repair_source_contact_count": np.stack(
+                                    [
+                                        getattr(
+                                            candidate,
+                                            "rollout_terminal_contact_repair_source_contact_count",
+                                            np.full(
+                                                node_count,
+                                                -1,
+                                                dtype=np.int8,
+                                            ),
+                                        )
+                                        for candidate in horizon_candidates
+                                    ]
+                                ),
+                                "candidate_rollout_terminal_contact_repair_source_normal_error_m": np.stack(
+                                    [
+                                        getattr(
+                                            candidate,
+                                            "rollout_terminal_contact_repair_source_normal_error_m",
+                                            np.full(
+                                                (node_count, 4),
+                                                np.nan,
+                                                dtype=np.float64,
+                                            ),
+                                        )
+                                        for candidate in horizon_candidates
+                                    ]
+                                ),
+                                "candidate_rollout_terminal_contact_repair_motion_support_indices": np.stack(
+                                    [
+                                        getattr(
+                                            candidate,
+                                            "rollout_terminal_contact_repair_motion_support_indices",
+                                            np.full(
+                                                (node_count, 3),
+                                                -1,
+                                                dtype=np.int8,
+                                            ),
+                                        )
+                                        for candidate in horizon_candidates
+                                    ]
+                                ),
+                                "candidate_rollout_terminal_contact_repair_contact_support_indices": np.stack(
+                                    [
+                                        getattr(
+                                            candidate,
+                                            "rollout_terminal_contact_repair_contact_support_indices",
+                                            np.full(
+                                                (node_count, 4),
+                                                -1,
+                                                dtype=np.int8,
+                                            ),
+                                        )
+                                        for candidate in horizon_candidates
+                                    ]
+                                ),
+                                "candidate_rollout_terminal_contact_repair_bound_headroom_rad": np.stack(
+                                    [
+                                        getattr(
+                                            candidate,
+                                            "rollout_terminal_contact_repair_bound_headroom_rad",
+                                            np.full(
+                                                node_count,
+                                                np.nan,
+                                                dtype=np.float64,
+                                            ),
+                                        )
+                                        for candidate in horizon_candidates
+                                    ]
+                                ),
+                                "candidate_rollout_terminal_contact_repair_objective_anchor_q_rad": np.stack(
+                                    [
+                                        getattr(
+                                            candidate,
+                                            "rollout_terminal_contact_repair_objective_anchor_q_rad",
                                             np.full(
                                                 (node_count, TOTAL_DOF),
                                                 np.nan,
