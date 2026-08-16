@@ -3386,3 +3386,34 @@ Level 2仍 **NOT PASS**。
 **正在执行/下一步：**最终diff复核 -> commit/push main -> issue #7 implementation checkpoint -> 完全相同
 Acceptance seed42 0--50 mm headless GPU。首先确认45.9375 mm实际打印explicit日志并读取formal50 um结果；若
 生成plan，立即执行Acceptance plan audit、全帧collision audit与dynamics。全部数值物理验收通过前不录像。
+
+### `f45db64` explicit-constraint Acceptance seed42 GPU终审启动（2026-08-16 16:23 CST）
+
+#### 运行身份与冻结参数
+
+- stem=`baseline2_capsule_explicitpolish_0to50_acceptance_seed42_20260816_162323_062`；
+- runtime commit=`f45db64bf4476c5edd0f42dc5b13c463fa2105ca`，远端与本地`main`一致；
+- source launch=`baseline2_capsule_polishcontinuation_0to50_acceptance_seed42_20260813_202000_043_launch.json`；
+- argument policy：逐项复用source arguments，只替换`--mpc-failure-prefix-output`和`--plan-output`；
+- Acceptance、seed42、capsule=`0.10/0.17 m`、route=`0--0.05 m`、base keyframes=`40`、
+  motion frames=`800`、device=`cuda:0`、viewer=`headless`；没有录像参数；
+- wrapper PID=`54676`；`.venv` shim PID=`12496`；真实`DMtactile` Python PID=`83060`；
+- 分类产物前缀位于`full_hand_mcc/outputs/debug/20_fr3_planning/`，包含launch manifest、stdout、stderr、
+  exitcode以及预期plan/failure-prefix；成功前不会写入deliverables。
+
+#### 初始硬门
+
+- 场景已在RTX 4090 D上完成初始化，physics step=`0.002 s`、env step=`0.01 s`；
+- initial physical-tip clearance=`[-0.451,-0.253,-0.260,-0.058] mm`，四指均高于`-1 mm`；
+- initial protected MCP--DIP clearance=`[0.537514,0.721975,0.598799] mm`，active self=0；
+- CPU final-approach FR3 clearance=`16.571 mm`、nearest=`fr3v2_link4_collision`；
+- 首个raw surface seed的FR3=`15.38 mm`、non-tip hand=`-0.20 mm`、tip=`-0.51 mm`、pad=`29.03 deg`、
+  self unique/occurrences=`0/0`，planner正在求解keyframe1；
+- stderr只有既知的“robot有2个keyframe、仅使用第一个”UserWarning，无Traceback/RuntimeError。
+
+上一次额度拒绝发生在创建GPU进程之前，没有产生任何`explicitpolish`半成品；本stem才是
+`f45db64`的首次真实GPU终审，不能把前次拒绝记作仿真失败。
+
+**正在执行：**低频只读监控accepted path。38.750 mm必须继续由prospective 20-interval/21-sample门先审；
+45.9375 mm重点读取SLSQP status/constraint margin/exact prefix与formal 50 um。只有plan、全帧collision、
+terminal nominal4/4、rolling-low-motion和dynamics全部PASS后才允许录像；Level 2仍 **NOT PASS**。

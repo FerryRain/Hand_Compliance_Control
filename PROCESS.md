@@ -1831,3 +1831,19 @@ Python AST、Level-2 PowerShell AST与`git diff --check`全部exit0，仅有既�
 **正在执行/下一步：**最终diff复核后commit/push main、更新issue #7 implementation checkpoint，再复用完全
 相同Acceptance seed42 0--50 mm参数GPU终审。若显式solver仍失败，直接读取新NPZ的每节点状态/constraint/q，
 不得继续盲增统一scale；完整plan/full collision/terminal/low-motion/dynamics通过前不录像。
+
+### `f45db64` explicit-constraint Acceptance seed42 GPU终审启动（2026-08-16 16:23 CST）
+
+- stem=`baseline2_capsule_explicitpolish_0to50_acceptance_seed42_20260816_162323_062`；
+- runtime commit=`f45db64bf4476c5edd0f42dc5b13c463fa2105ca`，`main...origin/main`；
+- arguments逐项复用上一轮Acceptance seed42 0--50 mm launch，只替换plan/failure-prefix输出；
+- device=`cuda:0`、viewer=`headless`、base keyframes=`40`、motion frames=`800`，不生成视频；
+- wrapper PID=`54676`、`.venv` shim PID=`12496`、真实DMtactile Python PID=`83060`；
+- 初始physical-tip=`[-0.451,-0.253,-0.260,-0.058] mm >= -1 mm`；protected-self minimum=
+  `0.537514 mm`、active self=0；FR3 final-approach CPU clearance=`16.571 mm`；
+- launch/log/stderr/exitcode与预期plan/failure-prefix均分类写入`outputs/debug/20_fr3_planning/`；
+- 上一次额度阻塞发生在创建进程前且无半成品；本条才是`f45db64`首次真实GPU运行。
+
+**正在执行：**低频只读监控accepted path；38.750 mm先核对prospective low-motion，45.9375 mm读取
+`[SUFFIX-EXPLICIT-CONSTRAINT-POLISH]`与formal 50 um exact结果。plan/full collision/terminal/
+rolling-low-motion/dynamics全部PASS前不录像，Level 2仍 **NOT PASS**。
