@@ -49,6 +49,7 @@ from mjlab.tasks.leaphand.full_hand_mcc_geometry import (
 from mjlab.tasks.leaphand.full_hand_mcc_planner_diagnostics import (
     LOW_MOTION_DEFAULT_WINDOW_FRAMES,
     LOW_MOTION_FORWARD_PROGRESS_RATIO,
+    LOW_MOTION_REQUIRED_FORWARD_FINGERS,
     MOVING_BRIDGE_FORWARD_FINGER_COUNT,
     RejectedMovingBridgeCandidate,
     bounded_moving_bridge_trust_radius,
@@ -4493,6 +4494,75 @@ def main() -> None:
                         rephase_offset_m=auto_rephase_offset_m,
                         budget_values=budget_values,
                         failure_metrics=failure_metrics,
+                        coarse_provenance={
+                            "auto_rephase_offset_m": (
+                                coarse_auto_rephase_offset_m[:keyframe].copy()
+                            ),
+                            "progress_m": coarse_progress[:keyframe].copy(),
+                            "target_progress_m": (
+                                coarse_target_progress[:keyframe].copy()
+                            ),
+                            "feasibility_bridge": (
+                                coarse_feasibility_bridge[:keyframe].copy()
+                            ),
+                            "suffix_horizon": (
+                                coarse_suffix_horizon[:keyframe].copy()
+                            ),
+                            "static_feasibility_bridge": (
+                                coarse_static_feasibility_bridge[
+                                    :keyframe
+                                ].copy()
+                            ),
+                            "static_bridge_dwell_m": (
+                                coarse_static_bridge_dwell_m[:keyframe].copy()
+                            ),
+                            "recovery_bridge": (
+                                coarse_recovery_bridge[:keyframe].copy()
+                            ),
+                            "recovery_bridge_dwell_m": (
+                                coarse_recovery_bridge_dwell_m[
+                                    :keyframe
+                                ].copy()
+                            ),
+                            "normal_error_m": (
+                                coarse_normal_error[:keyframe].copy()
+                            ),
+                            "palm_target_m": (
+                                coarse_palm_target[:keyframe].copy()
+                            ),
+                            "palm_position_error_m": (
+                                coarse_palm_position_error[:keyframe].copy()
+                            ),
+                            "cost": coarse_cost[:keyframe].copy(),
+                            "nfev": coarse_nfev[:keyframe].copy(),
+                        },
+                        refinement_provenance={
+                            "inserted_distance_m": np.asarray(
+                                auto_refine_inserted_distance_m,
+                                dtype=np.float64,
+                            ),
+                            "inserted_reason": np.asarray(
+                                auto_refine_inserted_reason,
+                                dtype=np.str_,
+                            ),
+                        },
+                        rolling_provenance={
+                            "frame_target_distance_m": (
+                                planner_frame_target_distance.copy()
+                            ),
+                            "window_frames": np.asarray(
+                                LOW_MOTION_DEFAULT_WINDOW_FRAMES,
+                                dtype=np.int32,
+                            ),
+                            "forward_progress_ratio": np.asarray(
+                                LOW_MOTION_FORWARD_PROGRESS_RATIO,
+                                dtype=np.float64,
+                            ),
+                            "required_forward_fingers": np.asarray(
+                                LOW_MOTION_REQUIRED_FORWARD_FINGERS,
+                                dtype=np.int8,
+                            ),
+                        },
                         bridge_record=bridge_record,
                         rejected_moving_bridge=rejected_moving_bridge,
                     )

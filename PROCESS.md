@@ -2247,3 +2247,177 @@ self=`0`、joint limit/max-step、terminal 4/4及rolling 20/21等冻结门全部
 **当前状态：**terminal-contact repair实现仍为WIP，尚未用GPU重跑；上述反事实不得标记为成功视频或plan/
 dynamics通过。下一次必须同280参数same-seed GPU验证47.34375 mm并继续到50 mm；任一硬门失败仍生成明确
 `FAIL DEBUG`，只有plan、独立全帧物理审计、dynamics/HEADLESS及视觉门全部通过后才交付成功视频。
+
+### `a80c8ff` terminal-contact repair GPU验证与47.96875 mm self fail-close（2026-08-17）
+
+#### 同参launch、issue链与各local-H5结果
+
+上一节“尚未GPU重跑”的状态已由本检查点取代。commit=
+`a80c8ff6d736e428317f8bb3b7d261c170c5eac3`，stem=
+`baseline2_capsule_terminalrepair_0to50_acceptance_seed42_20260817_014901_153`；Acceptance、seed42、
+`cuda:0`、真实capsule `radius=0.10 m/half-height=0.17 m`。launch从`b064928`同一运行原样复用`280`个参数，
+只替换zero-based indices `267/269`的failure-prefix/plan输出路径；source argument SHA256=
+`07B17547A98275886975A1B4BA6D7CE71C2535B2E5973433B43757F3F31BAB0C`，本次argument SHA256=
+`2423FCBDBF80CE0CE4F517C9463DDEA92FAC75D47F1C48FE5D58021BDE328388`。本机FerryRain issue #7记录为
+[commit/checkpoint](https://github.com/FerryRain/Hand_Compliance_Control/issues/7#issuecomment-5308807675)、
+[GPU start](https://github.com/FerryRain/Hand_Compliance_Control/issues/7#issuecomment-5308827947)与
+[fail-close终局](https://github.com/FerryRain/Hand_Compliance_Control/issues/7#issuecomment-5309257581)。
+
+45.9375--47.96875 mm各outer target的local-H5 minimum task slack（um）依次为：
+
+- `45.9375:50.988`、`46.09375:51.001`、`46.25:51.001`、`46.40625:54.956`；
+- `46.5625:53.935`、`46.71875:54.477`、`46.875:57.242`、`47.03125:51.005`；
+- `47.1875:50.621`、`47.34375:51.005`、`47.5:57.751`、`47.65625:51.008`、
+  `47.8125:50.264`均pass；`47.96875:8.088` fail。
+
+旧47.34375 mm terminal-contact瓶颈本次通过，minimum joint slack=`1.000 urad`；certified-cache node3
+attempt1 formal=`+0.175 um`且exact prefix=true，node4 attempt1 status=`0`、formal=`+0.005 um`且exact
+prefix=true。same-seed、同280参数且行为改动仅限窄terminal-contact repair的前后对照，支持该修复关闭旧瓶颈；
+但证据边界必须保留：failure-prefix中`selected_candidate_mode_by_node=[false,false,false,false,false]`和
+activation count=`0`只属于**最终47.96875 mm失败调用**。它既不是47.34375 mm accepted horizon的持久化mode
+证据，也不能用来断言47.34375 mm具体是哪一内部candidate触发repair。47.34375 mm的直接持久证据是上述
+HORIZON pass与explicit-attempt数值，而不是最终NPZ的mode数组。
+
+#### 47.8125 mm last-safe与47.96875 mm selected/outer分层
+
+planner继续提交到47.8125 mm：last-feasible keyframes=`55`且distance严格递增；随后在outer target=
+`47.96875 mm`正确fail-close、exit=`1`，没有plan，也没有进入dynamics/HEADLESS。selected index=`6`、kind=
+`rollout_partial_certified_cache`；local distances为
+`[47.96875,48.125,48.28125,48.4375,48.59375] mm`。H1--H3全部hard pass；H4第一次失败，
+`collision=false/interior=false/self=1`；H5同为`collision=false/interior=false/self=1`，minimum task/safety
+slack=`8.087560 um`。selected publisher `hard_ok=false`，first failure index=`28`、distance=`48.375 mm`，
+只有collision gate false；rolling low-motion=true。因此新失败不是terminal contact、progress或低运动回归，
+而是selected suffix的受保护自碰/连续publisher碰撞。
+
+outer final-best是另一条rejected候选，不能替换selected C6：progress margin=`-0.230447539 mm`、minimum
+normal margin=`-0.137385223 mm`、non-tip-hand margin=`-0.280573435 mm`，所以progress/normal/collision
+false；其顶层`reason=longitudinal_progress`只解释outer归因。selected的确定性首个失败仍是H4 self collision。
+
+#### geom17/19连续碰撞根因、raw-cache边界与未完成probe
+
+独立只读MuJoCo复算在已实际reached/pruned范围内重现唯一pair `geom 17/19`=
+`mcp_joint_3_geom::dip_3_geom`。沿selected rollout诊断的signed clearance为anchor=`+61.346365 um`、
+H1=`+17.145712 um`、H2=`+5.782687 um`、H3=`+8.565284 um`、H4=`-13.542676 um`；未reached的
+H5 endpoint诊断值=`+8.255120 um`不能挽救已确定的H4 failure，也不能覆盖H5 persisted aggregate。
+H3--H4线性q插值的零点为`48.341556384 mm`；production smoothstep publisher零点为
+`48.347402191 mm`，首个离散失败帧在`48.375 mm`、signed distance=`-5.791907 um`。这与publisher
+first-failure完全一致，排除了只在keyframe端点出现的审计假象。
+
+关键反事实是immutable raw certified cache本身在H4仍self-safe：该pair endpoint clearance=
+`+19.790 um`，physical-tip interior=`+51.536 um`。C4/certified-cache block least-squares随后把H4 q最大改变
+`12.586 mrad`并新造出上述碰撞；selected C6只是从该已改变的C4 prefix继续rollout。现有hard audit能在H4
+正确拦截，但repair缺口是：block solve没有把protected-self作为formal hard constraints，并且没有保留可直接
+回退的immutable raw-cache分支，所以对“优化中从safe跨过零点的新active pair”只能prune，不能恢复。
+
+只读局部搜索没有找到全门可行解：局部DE maximin=`33.339118 um`，23-DoF试探约=`37.44 um`，均低于
+50 um interior要求或仍有其他hard gate失败，不能当修复/Acceptance证据。下一步候选设计当时是同时保留
+immutable raw cache、把protected-self signed clearance加入formal hard constraints，并在改代码前做
+`7--9` node CPU horizon probe；“probe尚未完成”只描述本历史检查点，已由文末“raw/cache H2薄边probe与
+earlier-anchor atomic full-tail决策”取代，不得继续据此启动GPU或把旧候选设计视为已证实。
+
+#### 工件哈希、FAIL DEBUG与765帧独立prefix认证
+
+run SHA256：failure-prefix NPZ=`62EB5A3FE22174DC40D82437E489A21246505EF8D41909FE5632AD74ECA435F9`，
+log=`F5B662CB86458F827835A87AD0805976C1ABD7CB28761F28B8120964D5017EBC`，stderr=
+`F028EE2127378F664DFCBCDBDC44B8A23A0E3763A8DF4A829304A3A479F5F74E`，exitcode=
+`6B86B273FF34FCE19D6B804EFF5A3F5747ADA4EAA22F1D49C01E52DDB7875B4B`，launch JSON=
+`4AA6D51FD9016431C70C9C4F12D7AF89868ABC4C0E1CA456F00D945285FA507E`，launcher PS1=
+`716A945B2ACF08CD1C14DFA57AA9F8C39171B28A3AAF9B9ABF45F240F4639216`；failure audit JSON=
+`88FCD32BFB99F03500AEB75F7A793E1E3D3C0FF61CFE3E9D79865378D748557D`。
+
+正确几何FAIL DEBUG只回放到47.8125 mm的last-feasible prefix、明确省略失败候选并标有`NO PLAN /
+NO DYNAMICS`；H.264、1600x920、30 fps、450 frames/15 s、末60帧冻结，左侧完整FR3+capsule、右侧
+四pad/thumb近景。路径=
+`D:\Code\Hand_Compliance_Control\mjlab_full_hand_mcc\full_hand_mcc\outputs\debug\20_fr3_planning\baseline2_capsule_terminalrepair_0to50_acceptance_seed42_20260817_014901_153_FAIL_DEBUG_kinematic_prefix_only.mp4`，
+SHA256=`42492D2BF604590F7F9F18E8C26F0EC9A21126DDCB2D4D406AF18807453A1EE6`；metadata SHA256=
+`50CDEAA94960A87A6E46A29D3B616BA7B54FFA381970A4C3BA85E097701F011F`。
+
+independent CPU MuJoCo prefix audit JSON SHA256=
+`F3D185CA82E817FDBA8CFDAE2EB3189B865CD7DE08B38A5E5E2914B3A7A46669`；按production smoothstep重建
+55 committed keyframes/765 frames，全部prefix门通过：physical-tip per-finger minima=
+`[-0.870733,-0.823051,-0.990469,-0.846272] mm`，FR3 minimum=`13.885654 mm`，non-tip hand=
+`-0.941315 mm`，active self occurrences=`0`，pad max=`37.486041 deg`，joint-limit minimum=
+`0.548138 urad`，joint-step max=`19.400461 mrad`，FK max error=`0`、surface-arc max error=
+`63.592228 um`，rolling 20/21 failed regions=`0`。该认证仅覆盖committed prefix；不认证失败candidate、plan或
+dynamics。所有冻结门保持不变；当前仍是`FAIL DEBUG`，不是50 mm成功或Acceptance成功。
+
+### raw/cache H2薄边probe与earlier-anchor atomic full-tail决策（2026-08-17）
+
+#### probe最终边界：当前anchor只有runtime-50 um H2薄边，不是full-tail证据
+
+对47.8125 mm当前anchor及当前schedule做的只读CPU probe已经完成到H2。使用solver-only strict
+`51 um`时没有找到full-all-gate解；只有回到冻结runtime `50 um`审计，才得到当前最长的exact H2，节点为
+`47.96875/48.125 mm`。其全局最薄task margin相对`50 um`仅=`+0.995583 um`，即相对`51 um`还短
+`0.004417 um=4.417 nm`；physical-tip相对冻结`-1 mm`门的余量=`+51.000017 um`，相对solver-only
+`51 um` guard仅=`+0.000017 um`。linear protected-self minimum=`0`，而对应sample可没有self contact；
+`mj_geomDistance`的exact zero不能单独分类成碰撞，冻结hard authority仍是self contact occurrence=`0`。因此该
+H2可通过冻结审计，但不能证明可生产的正self数值headroom。H5/H7/H9均未完成，首个未验证节点=
+`48.28125 mm`；“未验证”不是“不可行”，也
+绝不能外推为50 mm成功。
+
+immutable raw cache旧H4的self-safe事实仍保留，但切到**当前schedule**后，raw node0 task margin相对冻结门为
+`-80.819 um`，固定C6 node0约=`-80.423 um`。因此raw/current-schedule的current-certified prefix长度明确为
+`0`：raw只能作为immutable warm start，不能成为direct commit/acceptance分支；只加入self cuts也只能阻止
+优化跨过零点，不能修复node0 schedule/task断层或证明后续tail。
+
+#### production MVP决策：frame750固定anchor，frame751显式sentinel，整尾原子提交
+
+最小可靠方向改为更早anchor的atomic full-tail replanning。固定one-based frame `750`、distance=
+`46.875 mm`作为immutable anchor；one-based frame `751`、distance=`46.9375 mm`只在publisher/collocation
+网格中显式保留为terminal 4/4 sentinel，**不是普通coarse node**，production predecessor仍是`46.875 mm`，
+下一真实coarse knot是`47.03125 mm`，之后保留现有`0.15625 mm` knots直至精确`50 mm` endpoint。不得给
+sentinel额外套用`50 um` node-interior或单段3-of-4 node-motion；它沿用publisher hard、terminal 4/4、
+joint/step、collision与pad门，运动由rolling 20 intervals/21 samples认证。prefix至anchor只读，tail的
+q/phase/target/support/cache/budget证据全部先写局部transaction；只有真实coarse node、linear-segment、
+production smoothstep publisher、上述sentinel/terminal、joint/step、FR3/hand/tip、pad、self=0及rolling全部
+exact通过，才允许一次性splice。timeout、异常或任一门失败都必须保持planner state、prefix、cache和budget
+不变并fail closed；tail不得标记为static/recovery bridge或借用low-motion豁免。
+
+候选按maximin `rho`选择：`rho=0`仅代表原冻结门可行；task/arm/hand/tip以`50 um`、joint以`0.5 mrad`、step以
+`30 mrad`、pad以`5 deg`等作归一化scale。self hard gate始终是exact contact occurrence=`0`；constraint
+generation只对exact audit发现的active/near-collision witness绑定明确`(pair, fraction)`并增加headroom cut，同一
+transaction内cuts只增不减，不能把无contact的`geometry_pair_distances==0`当碰撞，也不能要求每个sample所有pair
+都有正距离。linear-q与production smoothstep exact audit继续覆盖全采样并捕获pair switching。CPU到GPU的更严格
+promotion门为完整50 mm tail重复exact通过且`rho_exact>=0.01`；这是prelaunch数值稳健门，不替换、更不放宽任何
+Acceptance冻结门。当前H2虽不是self hard fail，但protected minimum=`0`不能证明数值headroom，故仍不能promotion。
+
+#### 当前阻塞：CPU replay不等价，需instrumented GPU failure-prefix
+
+现有failure-prefix保存了失败调用时的`rephase_offset_m`与last-feasible q/distance，却没有46.875 mm anchor的
+完整`coarse_auto_rephase_offset_m`历史、该anchor对应的exact phase/target/support元数据，因此不能从artifact单独
+恢复frame750的原子tail schedule。同一`280`参数仅把device改成CPU的deterministic replay已在planner start立即
+判定不等价并主动停止：q0有`16/23` joints不同，`max|dq|=0.008000001311 rad`、L2=
+`0.0140267561 rad`；start arcs最大差=`317.494626 um`。因此CPU replay不能生成production snapshot，也未浪费时间
+继续跑到frame750。
+
+后续可行性搜索严格标为SHADOW：anchor q/arcs来自failure NPZ的production committed prefix，但phase只由terminal
+envelope乘`[-1,-0.8,0,-0.8]`解析建模，尚未由artifact直接恢复。按正确sentinel语义重算，原committed q链通过到
+47.8125 mm；raw-cache/局部polish目前把modeled frozen gates延到48.59375 mm，但最薄task约=`50.993311 um`、
+hand约=`50.235 um`，仍极薄且48.75 mm尚无证据。该SHADOW结果不是production、Acceptance或GPU promotion证据。
+必须先用本轮schema-v3 instrumentation做same-device GPU fail-close重跑，取得exact per-row snapshot，之后才能做
+production-equivalent full-tail CPU audit。planner pad `<=40 deg`、physical tip `>=-1 mm`、FR3 `>=2 mm`、
+non-tip hand `>=-1 mm`、self=`0`、joint limits/max-step、terminal 4/4、rolling low-motion与全部task/interior门继续冻结。
+
+#### instrumentation-only failure-prefix schema v3（2026-08-17）
+
+为让同参CPU replay能够离线重建`46.875 mm` committed schedule，本检查点只扩充failure-prefix诊断，不改变
+planner控制流、任何冻结门、CLI、seed、solver、cache选择或日志频率。schema v3把
+`committed_coarse_row_count`固定为失败时的`keyframe`，并强制它等于`last_feasible_distance_m`行数；q/points/
+arcs及所有新增coarse字段都必须为有限、固定shape、同样行数。caller对每个coarse allocation都显式使用
+`[:keyframe].copy()`，因此失败前可能已写入的未提交current row（phase/target等）绝不会泄漏进artifact。
+
+新增的authoritative committed slices包括exact per-row `auto_rephase_offset_m`、actual/target progress、
+feasibility/suffix/static/recovery flags、static/recovery dwell、normal error、palm target/error、cost与nfev；原有
+budget mapping继续保存失败时总量/上限/remaining以及suffix evidence。另存auto-refine distance/reason events和
+完整publisher frame-distance grid、rolling window/ratio/required-finger常量，以便从coarse rows+marks独立bitmatch
+rolling；这里保存的是全800帧grid provenance与冻结常量，不是last-20 execution state或已算出的rolling metric。
+optional provenance缺省时写N行float NaN、bool false、int `-1`及非object空数组，同时有availability bit；
+NPZ继续拒绝object dtype并可用`allow_pickle=False`读取。
+
+本轮明确不加入per-commit/cache-generation ledger、transaction splice或solver candidate scratch：它们属于后续
+planner实现，超出最小instrumentation边界；`previous_delta`也不重复保存，因为可由相邻committed q精确推导。
+poisoned-current-row回归、legacy sentinel、shape/dtype及failure写出测试已加入；独立review后又收紧authoritative
+prefix：distance必须从0严格递增且终点早于failure，`keyframe/keyframe_count`必须为合法整数账本，q/arcs/points固定为
+`(N,23)/(N,5)/(N,5,3)`。CPU验证：完整discover `134/134`、`--help`、Python/PowerShell AST与diff-check均exit
+`0`；discover/help退出时只有既有wandb临时目录清理warning。该诊断补丁不表示full-tail已经完成；它只授权下一次
+same-device、同参数的GPU fail-close取证重跑，不授权atomic-tail行为或成功结论。

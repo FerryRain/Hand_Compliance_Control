@@ -1897,6 +1897,59 @@ class PlannerDiagnosticsTest(unittest.TestCase):
             (2, 5, 23), np.nan, dtype=np.float64
         )
         repair_objective_anchor_q[0, 4] = 0.2495
+        coarse_auto_rephase_all = np.asarray(
+            (
+                (0.0, 0.0, 0.0, 0.0),
+                (-3.0e-5, -2.0e-5, 0.0, -1.0e-5),
+                (999.0, 999.0, 999.0, 999.0),
+            ),
+            dtype=np.float64,
+        )
+        coarse_target_progress_all = np.vstack(
+            (
+                np.arange(10, dtype=np.float64).reshape(2, 5),
+                np.full((1, 5), 999.0),
+            )
+        )
+        committed_rows = 2
+        coarse_auto_rephase = coarse_auto_rephase_all[:committed_rows]
+        coarse_target_progress = coarse_target_progress_all[:committed_rows]
+        coarse_provenance = {
+            "auto_rephase_offset_m": coarse_auto_rephase,
+            "progress_m": coarse_target_progress,
+            "target_progress_m": coarse_target_progress,
+            "feasibility_bridge": np.asarray(
+                (False, True, True), dtype=np.bool_
+            )[:committed_rows],
+            "suffix_horizon": np.asarray(
+                (False, True, False), dtype=np.bool_
+            )[:committed_rows],
+            "static_feasibility_bridge": np.asarray(
+                (False, False, True), dtype=np.bool_
+            )[:committed_rows],
+            "static_bridge_dwell_m": np.asarray((0.0, 0.0001, 999.0))[
+                :committed_rows
+            ],
+            "recovery_bridge": np.asarray(
+                (False, True, True), dtype=np.bool_
+            )[:committed_rows],
+            "recovery_bridge_dwell_m": np.asarray((0.0, 0.0002, 999.0))[
+                :committed_rows
+            ],
+            "normal_error_m": np.vstack(
+                (np.zeros((2, 5)), np.full((1, 5), 999.0))
+            )[:committed_rows],
+            "palm_target_m": np.vstack(
+                (np.zeros((2, 3)), np.full((1, 3), 999.0))
+            )[:committed_rows],
+            "palm_position_error_m": np.asarray((0.0, 0.001, 999.0))[
+                :committed_rows
+            ],
+            "cost": np.asarray((1.0, 2.0, 999.0))[:committed_rows],
+            "nfev": np.asarray((10, 20, 999), dtype=np.int32)[
+                :committed_rows
+            ],
+        }
         output = Path("failure.npz")
         values = {
             "reason": "longitudinal_progress",
@@ -1976,6 +2029,17 @@ class PlannerDiagnosticsTest(unittest.TestCase):
             "failure_metrics": {
                 "progress_error_m": np.asarray([0.0, 0.006])
             },
+            "coarse_provenance": coarse_provenance,
+            "refinement_provenance": {
+                "inserted_distance_m": np.asarray((0.125,), dtype=np.float64),
+                "inserted_reason": np.asarray(("fingertip_support",)),
+            },
+            "rolling_provenance": {
+                "frame_target_distance_m": np.linspace(0.01, 0.25, 25),
+                "window_frames": np.asarray(20, dtype=np.int32),
+                "forward_progress_ratio": np.asarray(0.1, dtype=np.float64),
+                "required_forward_fingers": np.asarray(3, dtype=np.int8),
+            },
             "bridge_record": bridge_record,
             "rejected_moving_bridge": (
                 DIAGNOSTICS.RejectedMovingBridgeCandidate(
@@ -2048,7 +2112,96 @@ class PlannerDiagnosticsTest(unittest.TestCase):
             )
             self.assertEqual(
                 int(saved["schema_version"]),
-                2,
+                3,
+            )
+            self.assertEqual(
+                int(saved["committed_coarse_row_count"]),
+                committed_rows,
+            )
+            self.assertEqual(
+                saved["committed_coarse_row_count"].dtype,
+                np.dtype(np.int32),
+            )
+            self.assertTrue(
+                bool(saved["last_feasible_coarse_provenance_available"])
+            )
+            expected_coarse_arrays = {
+                "auto_rephase_offset_m": (np.dtype(np.float64), (2, 4)),
+                "progress_m": (np.dtype(np.float64), (2, 5)),
+                "target_progress_m": (np.dtype(np.float64), (2, 5)),
+                "feasibility_bridge": (np.dtype(np.bool_), (2,)),
+                "suffix_horizon": (np.dtype(np.bool_), (2,)),
+                "static_feasibility_bridge": (np.dtype(np.bool_), (2,)),
+                "static_bridge_dwell_m": (np.dtype(np.float64), (2,)),
+                "recovery_bridge": (np.dtype(np.bool_), (2,)),
+                "recovery_bridge_dwell_m": (np.dtype(np.float64), (2,)),
+                "normal_error_m": (np.dtype(np.float64), (2, 5)),
+                "palm_target_m": (np.dtype(np.float64), (2, 3)),
+                "palm_position_error_m": (np.dtype(np.float64), (2,)),
+                "cost": (np.dtype(np.float64), (2,)),
+                "nfev": (np.dtype(np.int32), (2,)),
+            }
+            for suffix, (expected_dtype, expected_shape) in (
+                expected_coarse_arrays.items()
+            ):
+                array = saved[f"last_feasible_coarse_{suffix}"]
+                self.assertEqual(array.dtype, expected_dtype)
+                self.assertEqual(array.shape, expected_shape)
+                self.assertEqual(
+                    array.shape[0],
+                    saved["last_feasible_distance_m"].size,
+                )
+                self.assertNotEqual(array.dtype, np.dtype(object))
+                if array.dtype == np.dtype(np.float64):
+                    self.assertFalse(np.any(array == 999.0))
+            np.testing.assert_allclose(
+                saved["last_feasible_coarse_auto_rephase_offset_m"],
+                coarse_auto_rephase,
+            )
+            np.testing.assert_allclose(
+                saved["last_feasible_coarse_target_progress_m"],
+                coarse_target_progress,
+            )
+            np.testing.assert_array_equal(
+                saved["last_feasible_coarse_nfev"],
+                (10, 20),
+            )
+            self.assertTrue(bool(saved["refinement_provenance_available"]))
+            self.assertEqual(
+                saved["auto_refine_inserted_distance_m"].dtype,
+                np.dtype(np.float64),
+            )
+            self.assertEqual(saved["auto_refine_inserted_reason"].dtype.kind, "U")
+            self.assertEqual(saved["auto_refine_inserted_reason"].shape, (1,))
+            self.assertTrue(bool(saved["rolling_provenance_available"]))
+            self.assertEqual(
+                saved["rolling_frame_target_distance_m"].shape,
+                (25,),
+            )
+            self.assertEqual(
+                saved["rolling_frame_target_distance_m"].dtype,
+                np.dtype(np.float64),
+            )
+            self.assertEqual(
+                saved["rolling_window_frames"].dtype,
+                np.dtype(np.int32),
+            )
+            self.assertEqual(int(saved["rolling_window_frames"]), 20)
+            self.assertEqual(
+                saved["rolling_forward_progress_ratio"].dtype,
+                np.dtype(np.float64),
+            )
+            self.assertEqual(
+                float(saved["rolling_forward_progress_ratio"]),
+                0.1,
+            )
+            self.assertEqual(
+                saved["rolling_required_forward_fingers"].dtype,
+                np.dtype(np.int8),
+            )
+            self.assertEqual(
+                int(saved["rolling_required_forward_fingers"]),
+                3,
             )
             restart_prefix = (
                 "budget_last_suffix_horizon_candidate_rollout_"
@@ -2244,6 +2397,186 @@ class PlannerDiagnosticsTest(unittest.TestCase):
                 output,
                 **unsafe_values,
             )
+
+    def test_failure_prefix_legacy_provenance_uses_fixed_sentinels(
+        self,
+    ) -> None:
+        output = Path("legacy_failure.npz")
+        values = {
+            "reason": "legacy",
+            "keyframe": 2,
+            "keyframe_count": 5,
+            "failure_distance_m": 0.3,
+            "last_feasible_distance_m": np.asarray((0.0, 0.25)),
+            "last_feasible_q_rad": np.zeros((2, 23)),
+            "last_feasible_points_m": np.zeros((2, 5, 3)),
+            "last_feasible_arcs_m": np.zeros((2, 5)),
+            "final_best_desired_arcs_m": np.zeros(5),
+            "final_best_q_rad": np.zeros(23),
+            "final_best_points_m": np.zeros((5, 3)),
+            "final_best_arcs_m": np.zeros(5),
+            "rephase_offset_m": np.zeros(4),
+            "budget_values": {},
+            "failure_metrics": {},
+        }
+        with mock.patch.object(
+            DIAGNOSTICS,
+            "save_npz_no_overwrite",
+            return_value=output,
+        ) as save:
+            self.assertEqual(
+                DIAGNOSTICS.save_mpc_failure_prefix(output, **values),
+                output,
+            )
+        payload = save.call_args.args[1]
+        self.assertEqual(int(payload["schema_version"]), 3)
+        self.assertEqual(int(payload["committed_coarse_row_count"]), 2)
+        self.assertEqual(
+            payload["committed_coarse_row_count"].dtype,
+            np.dtype(np.int32),
+        )
+        self.assertFalse(
+            bool(payload["last_feasible_coarse_provenance_available"])
+        )
+        for name in (
+            "auto_rephase_offset_m",
+            "progress_m",
+            "target_progress_m",
+            "static_bridge_dwell_m",
+            "recovery_bridge_dwell_m",
+            "normal_error_m",
+            "palm_target_m",
+            "palm_position_error_m",
+            "cost",
+        ):
+            array = payload[f"last_feasible_coarse_{name}"]
+            self.assertEqual(array.shape[0], 2)
+            self.assertEqual(array.dtype, np.dtype(np.float64))
+            self.assertTrue(np.isnan(array).all())
+        for name in (
+            "feasibility_bridge",
+            "suffix_horizon",
+            "static_feasibility_bridge",
+            "recovery_bridge",
+        ):
+            array = payload[f"last_feasible_coarse_{name}"]
+            self.assertEqual(array.shape, (2,))
+            self.assertEqual(array.dtype, np.dtype(np.bool_))
+            self.assertFalse(np.any(array))
+        nfev = payload["last_feasible_coarse_nfev"]
+        self.assertEqual(nfev.shape, (2,))
+        self.assertEqual(nfev.dtype, np.dtype(np.int32))
+        self.assertTrue(np.all(nfev == -1))
+        self.assertFalse(bool(payload["refinement_provenance_available"]))
+        self.assertEqual(payload["auto_refine_inserted_distance_m"].shape, (0,))
+        self.assertEqual(payload["auto_refine_inserted_reason"].shape, (0,))
+        self.assertNotEqual(
+            payload["auto_refine_inserted_reason"].dtype,
+            np.dtype(object),
+        )
+        self.assertFalse(bool(payload["rolling_provenance_available"]))
+        self.assertEqual(payload["rolling_frame_target_distance_m"].shape, (0,))
+        self.assertEqual(int(payload["rolling_window_frames"]), -1)
+        self.assertTrue(np.isnan(payload["rolling_forward_progress_ratio"]))
+        self.assertEqual(int(payload["rolling_required_forward_fingers"]), -1)
+
+        valid_coarse = {
+            "auto_rephase_offset_m": np.zeros((2, 4)),
+            "progress_m": np.zeros((2, 5)),
+            "target_progress_m": np.zeros((2, 5)),
+            "feasibility_bridge": np.zeros(2, dtype=np.bool_),
+            "suffix_horizon": np.zeros(2, dtype=np.bool_),
+            "static_feasibility_bridge": np.zeros(2, dtype=np.bool_),
+            "static_bridge_dwell_m": np.zeros(2),
+            "recovery_bridge": np.zeros(2, dtype=np.bool_),
+            "recovery_bridge_dwell_m": np.zeros(2),
+            "normal_error_m": np.zeros((2, 5)),
+            "palm_target_m": np.zeros((2, 3)),
+            "palm_position_error_m": np.zeros(2),
+            "cost": np.zeros(2),
+            "nfev": np.zeros(2, dtype=np.int32),
+        }
+        valid_coarse["auto_rephase_offset_m"] = np.zeros((1, 4))
+        with self.assertRaisesRegex(ValueError, "must have shape"):
+            DIAGNOSTICS.save_mpc_failure_prefix(
+                output,
+                **values,
+                coarse_provenance=valid_coarse,
+            )
+
+        wrong_commit_count = dict(values)
+        wrong_commit_count["keyframe"] = 1
+        with self.assertRaisesRegex(ValueError, "committed last-feasible"):
+            DIAGNOSTICS.save_mpc_failure_prefix(
+                output,
+                **wrong_commit_count,
+            )
+
+    def test_failure_prefix_rejects_malformed_authoritative_prefix(
+        self,
+    ) -> None:
+        output = Path("malformed_prefix.npz")
+        values = {
+            "reason": "test",
+            "keyframe": 2,
+            "keyframe_count": 5,
+            "failure_distance_m": 0.3,
+            "last_feasible_distance_m": np.asarray((0.0, 0.25)),
+            "last_feasible_q_rad": np.zeros((2, 23)),
+            "last_feasible_points_m": np.zeros((2, 5, 3)),
+            "last_feasible_arcs_m": np.zeros((2, 5)),
+            "final_best_desired_arcs_m": np.zeros(5),
+            "final_best_q_rad": np.zeros(23),
+            "final_best_points_m": np.zeros((5, 3)),
+            "final_best_arcs_m": np.zeros(5),
+            "rephase_offset_m": np.zeros(4),
+            "budget_values": {},
+            "failure_metrics": {},
+        }
+        malformed = (
+            (
+                "nonzero origin",
+                "last_feasible_distance_m",
+                np.asarray((1.0e-4, 0.25)),
+                "start at zero",
+            ),
+            (
+                "duplicate distance",
+                "last_feasible_distance_m",
+                np.asarray((0.0, 0.0)),
+                "strictly increasing",
+            ),
+            (
+                "failure before prefix end",
+                "failure_distance_m",
+                0.25,
+                "end before the failure distance",
+            ),
+            (
+                "wrong joint width",
+                "last_feasible_q_rad",
+                np.zeros((2, 22)),
+                "row-aligned arrays",
+            ),
+            (
+                "wrong point count",
+                "last_feasible_arcs_m",
+                np.zeros((2, 4)),
+                "row-aligned arrays",
+            ),
+            (
+                "invalid keyframe ledger",
+                "keyframe_count",
+                1,
+                "committed prefix",
+            ),
+        )
+        for label, name, value, message in malformed:
+            with self.subTest(label=label):
+                trial = dict(values)
+                trial[name] = value
+                with self.assertRaisesRegex(ValueError, message):
+                    DIAGNOSTICS.save_mpc_failure_prefix(output, **trial)
 
 
 class BaselineTwoAdmittanceTest(unittest.TestCase):
@@ -3889,6 +4222,56 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
         failure = source[failure_start:failure_end]
         self.assertIn("last_suffix_horizon_evidence", failure)
         self.assertIn('f"last_suffix_horizon_{evidence_name}"', failure)
+        compact_failure = "".join(failure.split())
+        palm_error_initializers = [
+            node.value
+            for node in ast.walk(ast.parse(source))
+            if isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Name)
+                and target.id == "coarse_palm_position_error"
+                for target in node.targets
+            )
+        ]
+        self.assertIn(
+            "np.zeros(keyframe_count + 1, dtype=np.float64)",
+            tuple(ast.unparse(value) for value in palm_error_initializers),
+        )
+        for expected in (
+            "coarse_provenance=",
+            '"auto_rephase_offset_m"',
+            "coarse_auto_rephase_offset_m[:keyframe].copy()",
+            '"target_progress_m"',
+            "coarse_target_progress[:keyframe].copy()",
+            "coarse_feasibility_bridge[:keyframe].copy()",
+            "coarse_suffix_horizon[:keyframe].copy()",
+            "coarse_static_bridge_dwell_m[:keyframe].copy()",
+            "coarse_recovery_bridge[:keyframe].copy()",
+            "refinement_provenance=",
+            "auto_refine_inserted_distance_m",
+            "auto_refine_inserted_reason",
+            "rolling_provenance=",
+            "planner_frame_target_distance.copy()",
+            "LOW_MOTION_REQUIRED_FORWARD_FINGERS",
+        ):
+            self.assertIn(expected, failure)
+        for expected in (
+            "coarse_auto_rephase_offset_m[:keyframe].copy()",
+            "coarse_progress[:keyframe].copy()",
+            "coarse_target_progress[:keyframe].copy()",
+            "coarse_feasibility_bridge[:keyframe].copy()",
+            "coarse_suffix_horizon[:keyframe].copy()",
+            "coarse_static_feasibility_bridge[:keyframe].copy()",
+            "coarse_static_bridge_dwell_m[:keyframe].copy()",
+            "coarse_recovery_bridge[:keyframe].copy()",
+            "coarse_recovery_bridge_dwell_m[:keyframe].copy()",
+            "coarse_normal_error[:keyframe].copy()",
+            "coarse_palm_target[:keyframe].copy()",
+            "coarse_palm_position_error[:keyframe].copy()",
+            "coarse_cost[:keyframe].copy()",
+            "coarse_nfev[:keyframe].copy()",
+        ):
+            self.assertIn(expected, compact_failure)
         for expected in (
             '"candidate_q_rad"',
             '"seed_kind"',
