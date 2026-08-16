@@ -1660,8 +1660,16 @@ class PlannerDiagnosticsTest(unittest.TestCase):
         )
         restart_source_q = np.full((2, 5, 23), np.nan, dtype=np.float64)
         restart_source_q[0, 4] = 0.25
+        primary_eps = np.full((2, 5), np.nan, dtype=np.float64)
+        primary_eps[0, 4] = 1.0e-5
         restart_q = np.full((2, 5, 23), np.nan, dtype=np.float64)
         restart_q[0, 4] = 0.251
+        restart_eps = np.full((2, 5), np.nan, dtype=np.float64)
+        restart_eps[0, 4] = 1.0e-6
+        restart_objective_anchor_q = np.full(
+            (2, 5, 23), np.nan, dtype=np.float64
+        )
+        restart_objective_anchor_q[0, 4] = 0.2505
         restart_attempt_count = np.zeros((2, 5), dtype=np.int16)
         restart_attempt_count[0, 4] = 1
         restart_status = np.full((2, 5), -999, dtype=np.int16)
@@ -1696,6 +1704,9 @@ class PlannerDiagnosticsTest(unittest.TestCase):
                 "last_suffix_horizon_candidate_rollout_explicit_polish_source_q_rad": (
                     restart_source_q
                 ),
+                "last_suffix_horizon_candidate_rollout_explicit_polish_eps": (
+                    primary_eps
+                ),
                 "last_suffix_horizon_candidate_rollout_explicit_polish_restart_attempt_count": (
                     restart_attempt_count
                 ),
@@ -1716,6 +1727,12 @@ class PlannerDiagnosticsTest(unittest.TestCase):
                 ),
                 "last_suffix_horizon_candidate_rollout_explicit_polish_restart_q_rad": (
                     restart_q
+                ),
+                "last_suffix_horizon_candidate_rollout_explicit_polish_restart_eps": (
+                    restart_eps
+                ),
+                "last_suffix_horizon_candidate_rollout_explicit_polish_restart_objective_anchor_q_rad": (
+                    restart_objective_anchor_q
                 ),
             },
             "failure_metrics": {
@@ -1806,6 +1823,14 @@ class PlannerDiagnosticsTest(unittest.TestCase):
             self.assertEqual(source_q_array.shape, (2, 5, 23))
             self.assertEqual(source_q_array.dtype, np.dtype(np.float64))
             self.assertTrue(np.isnan(source_q_array[1, 0]).all())
+            primary_eps_array = saved[
+                "budget_last_suffix_horizon_candidate_rollout_"
+                "explicit_polish_eps"
+            ]
+            self.assertEqual(primary_eps_array.shape, (2, 5))
+            self.assertEqual(primary_eps_array.dtype, np.dtype(np.float64))
+            self.assertEqual(float(primary_eps_array[0, 4]), 1.0e-5)
+            self.assertTrue(np.isnan(primary_eps_array[1, 0]))
             expected_restart_arrays = {
                 "attempt_count": (np.dtype(np.int16), (2, 5)),
                 "status": (np.dtype(np.int16), (2, 5)),
@@ -1814,6 +1839,11 @@ class PlannerDiagnosticsTest(unittest.TestCase):
                 "nfev": (np.dtype(np.int32), (2, 5)),
                 "constraint_margin_m": (np.dtype(np.float64), (2, 5)),
                 "q_rad": (np.dtype(np.float64), (2, 5, 23)),
+                "eps": (np.dtype(np.float64), (2, 5)),
+                "objective_anchor_q_rad": (
+                    np.dtype(np.float64),
+                    (2, 5, 23),
+                ),
             }
             for suffix, (expected_dtype, expected_shape) in (
                 expected_restart_arrays.items()
@@ -1842,6 +1872,22 @@ class PlannerDiagnosticsTest(unittest.TestCase):
             )
             self.assertTrue(
                 np.isnan(saved[f"{restart_prefix}q_rad"][1, 0]).all()
+            )
+            self.assertEqual(
+                float(saved[f"{restart_prefix}eps"][0, 4]),
+                1.0e-6,
+            )
+            self.assertTrue(
+                np.isnan(saved[f"{restart_prefix}eps"][1, 0])
+            )
+            np.testing.assert_allclose(
+                saved[f"{restart_prefix}objective_anchor_q_rad"][0, 4],
+                0.2505,
+            )
+            self.assertTrue(
+                np.isnan(
+                    saved[f"{restart_prefix}objective_anchor_q_rad"][1, 0]
+                ).all()
             )
             self.assertEqual(
                 saved["failure_final_best_q_rad"].shape,
@@ -3078,6 +3124,7 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             '"candidate_rollout_explicit_polish_nfev"',
             '"candidate_rollout_explicit_polish_constraint_margin_m"',
             '"candidate_rollout_explicit_polish_q_rad"',
+            '"candidate_rollout_explicit_polish_eps"',
             '"candidate_rollout_explicit_polish_restart_attempt_count"',
             '"candidate_rollout_explicit_polish_restart_status"',
             '"candidate_rollout_explicit_polish_restart_solver_success"',
@@ -3085,6 +3132,8 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             '"candidate_rollout_explicit_polish_restart_nfev"',
             '"candidate_rollout_explicit_polish_restart_constraint_margin_m"',
             '"candidate_rollout_explicit_polish_restart_q_rad"',
+            '"candidate_rollout_explicit_polish_restart_eps"',
+            '"candidate_rollout_explicit_polish_restart_objective_anchor_q_rad"',
             '"explicit_constraint_guard_m"',
             '"interior_polish_scale_ladder"',
             '"rollout_"',
@@ -3215,6 +3264,7 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
         ]
         self.assertEqual(len(minimize_calls), 1)
         self.assertEqual(len(restart_gate_calls), 1)
+        restart_gate_call = restart_gate_calls[0]
         minimize_call = minimize_calls[0]
         self.assertEqual(ast.unparse(minimize_call.args[1]), "explicit_attempt_q")
         minimize_keywords = {
@@ -3235,6 +3285,34 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
         self.assertIn("rollout_explicit_polish_attempt_count += 1", loop_source)
         self.assertIn("rollout_nfev += explicit_nfev", loop_source)
         self.assertIn('"explicit_constraint_restart"', loop_source)
+        self.assertIn('f"eps={explicit_attempt_eps:.1e} "', loop_source)
+
+        restart_gate_ifs = [
+            node
+            for node in ast.walk(restart_loop)
+            if isinstance(node, ast.If)
+            and isinstance(node.test, ast.UnaryOp)
+            and isinstance(node.test.op, ast.Not)
+            and restart_gate_call in ast.walk(node.test)
+        ]
+        self.assertEqual(len(restart_gate_ifs), 1)
+        self.assertEqual(len(restart_gate_ifs[0].body), 1)
+        self.assertIsInstance(restart_gate_ifs[0].body[0], ast.Break)
+        gate_keywords = {keyword.arg for keyword in restart_gate_call.keywords}
+        self.assertNotIn("status", gate_keywords)
+        self.assertNotIn("success", gate_keywords)
+        control_tests = [
+            ast.unparse(node.test)
+            for node in ast.walk(restart_loop)
+            if isinstance(node, (ast.If, ast.While))
+        ]
+        self.assertFalse(
+            any(
+                "explicit_result.status" in test
+                or "explicit_result.success" in test
+                for test in control_tests
+            )
+        )
 
         loop_assignments = [
             node
@@ -3254,6 +3332,10 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
         self.assertEqual(
             assignment_values["explicit_attempt_q"],
             "explicit_q.copy()",
+        )
+        self.assertEqual(
+            assignment_values["explicit_attempt_eps"],
+            "float(explicit_options['eps'])",
         )
         self.assertIn(
             "(explicit_q - explicit_source_q) / objective_scale",
@@ -3301,6 +3383,73 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
         self.assertIn('"ftol": 1.0e-12', options_source)
         self.assertIn('"eps": 1.0e-5', options_source)
 
+        explicit_options_assignments = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and node.targets[0].id == "explicit_options"
+        ]
+        self.assertEqual(len(explicit_options_assignments), 1)
+        explicit_options_value = explicit_options_assignments[0].value
+        self.assertIsInstance(explicit_options_value, ast.Dict)
+        explicit_option_values = {
+            ast.literal_eval(key): value
+            for key, value in zip(
+                explicit_options_value.keys,
+                explicit_options_value.values,
+                strict=True,
+            )
+        }
+        self.assertEqual(
+            set(explicit_option_values),
+            {"maxiter", "ftol", "eps", "disp"},
+        )
+        self.assertEqual(
+            ast.literal_eval(explicit_option_values["eps"]),
+            1.0e-5,
+        )
+        self.assertEqual(
+            ast.literal_eval(explicit_option_values["ftol"]),
+            1.0e-12,
+        )
+        self.assertEqual(
+            ast.unparse(explicit_option_values["maxiter"]),
+            "min(args.mpc_suffix_max_nfev, 100)",
+        )
+
+        option_mutations = [
+            node
+            for node in ast.walk(restart_loop)
+            if isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Subscript)
+            and isinstance(node.targets[0].value, ast.Name)
+            and node.targets[0].value.id == "explicit_options"
+        ]
+        self.assertEqual(len(option_mutations), 1)
+        eps_mutation = option_mutations[0]
+        self.assertEqual(ast.literal_eval(eps_mutation.targets[0].slice), "eps")
+        self.assertEqual(ast.literal_eval(eps_mutation.value), 1.0e-6)
+        restart_eps_guards = [
+            node
+            for node in ast.walk(restart_loop)
+            if isinstance(node, ast.If)
+            and ast.unparse(node.test) == "explicit_attempt_index > 0"
+            and eps_mutation in ast.walk(node)
+        ]
+        self.assertEqual(len(restart_eps_guards), 1)
+
+        self.assertLess(
+            loop_source.index("explicit_result = minimize("),
+            loop_source.index("if not suffix_explicit_restart_required("),
+        )
+        self.assertLess(
+            loop_source.index("if not suffix_explicit_restart_required("),
+            loop_source.rindex("explicit_attempt_q ="),
+        )
+
     def test_failure_prefix_receives_last_suffix_horizon_evidence(self) -> None:
         source = DEMO_PATH.read_text(encoding="utf-8")
         failure_start = source.index("def raise_adaptive_planner_failure")
@@ -3316,6 +3465,7 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             '"candidate_node_metric_margin_rad"',
             '"candidate_publisher_first_failure_distance_m"',
             '"candidate_rollout_explicit_polish_source_q_rad"',
+            '"candidate_rollout_explicit_polish_eps"',
             '"candidate_rollout_explicit_polish_restart_attempt_count"',
             '"candidate_rollout_explicit_polish_restart_status"',
             '"candidate_rollout_explicit_polish_restart_solver_success"',
@@ -3323,6 +3473,8 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             '"candidate_rollout_explicit_polish_restart_nfev"',
             '"candidate_rollout_explicit_polish_restart_constraint_margin_m"',
             '"candidate_rollout_explicit_polish_restart_q_rad"',
+            '"candidate_rollout_explicit_polish_restart_eps"',
+            '"candidate_rollout_explicit_polish_restart_objective_anchor_q_rad"',
             '"selected_index"',
         ):
             self.assertIn(expected, source)

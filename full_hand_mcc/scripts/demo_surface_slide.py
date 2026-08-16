@@ -9939,6 +9939,9 @@ def main() -> None:
                                         np.nan,
                                         dtype=np.float64,
                                     )
+                                    rollout_explicit_polish_eps = np.full(
+                                        node_count, np.nan, dtype=np.float64
+                                    )
                                     rollout_explicit_polish_restart_attempt_count = np.zeros(
                                         node_count, dtype=np.int16
                                     )
@@ -9958,6 +9961,14 @@ def main() -> None:
                                         node_count, np.nan, dtype=np.float64
                                     )
                                     rollout_explicit_polish_restart_q_rad = np.full(
+                                        (node_count, TOTAL_DOF),
+                                        np.nan,
+                                        dtype=np.float64,
+                                    )
+                                    rollout_explicit_polish_restart_eps = np.full(
+                                        node_count, np.nan, dtype=np.float64
+                                    )
+                                    rollout_explicit_polish_restart_objective_anchor_q_rad = np.full(
                                         (node_count, TOTAL_DOF),
                                         np.nan,
                                         dtype=np.float64,
@@ -10616,9 +10627,32 @@ def main() -> None:
                                                     for explicit_attempt_index in range(
                                                         2
                                                     ):
+                                                        if (
+                                                            explicit_attempt_index
+                                                            > 0
+                                                        ):
+                                                            explicit_options[
+                                                                "eps"
+                                                            ] = 1.0e-6
+                                                        explicit_attempt_eps = float(
+                                                            explicit_options[
+                                                                "eps"
+                                                            ]
+                                                        )
                                                         explicit_objective_anchor_q = (
                                                             explicit_attempt_q.copy()
                                                         )
+                                                        if explicit_attempt_index == 0:
+                                                            rollout_explicit_polish_eps[
+                                                                node_index
+                                                            ] = explicit_attempt_eps
+                                                        else:
+                                                            rollout_explicit_polish_restart_eps[
+                                                                node_index
+                                                            ] = explicit_attempt_eps
+                                                            rollout_explicit_polish_restart_objective_anchor_q_rad[
+                                                                node_index
+                                                            ] = explicit_objective_anchor_q
 
                                                         def rollout_node_explicit_objective(
                                                             q_node: np.ndarray,
@@ -10803,6 +10837,7 @@ def main() -> None:
                                                             f"node={node_index} "
                                                             "attempt="
                                                             f"{explicit_attempt_index + 1}/2 "
+                                                            f"eps={explicit_attempt_eps:.1e} "
                                                             "guard_um="
                                                             f"{explicit_constraint_guard_m * 1.0e6:.3f} "
                                                             f"status={int(explicit_result.status)} "
@@ -10987,6 +11022,9 @@ def main() -> None:
                                                 rollout_explicit_polish_q_rad=(
                                                     rollout_explicit_polish_q_rad.copy()
                                                 ),
+                                                rollout_explicit_polish_eps=(
+                                                    rollout_explicit_polish_eps.copy()
+                                                ),
                                                 rollout_explicit_polish_restart_attempt_count=(
                                                     rollout_explicit_polish_restart_attempt_count.copy()
                                                 ),
@@ -11007,6 +11045,12 @@ def main() -> None:
                                                 ),
                                                 rollout_explicit_polish_restart_q_rad=(
                                                     rollout_explicit_polish_restart_q_rad.copy()
+                                                ),
+                                                rollout_explicit_polish_restart_eps=(
+                                                    rollout_explicit_polish_restart_eps.copy()
+                                                ),
+                                                rollout_explicit_polish_restart_objective_anchor_q_rad=(
+                                                    rollout_explicit_polish_restart_objective_anchor_q_rad.copy()
                                                 ),
                                             )
                                         )
@@ -11106,6 +11150,9 @@ def main() -> None:
                                             rollout_explicit_polish_q_rad=(
                                                 rollout_explicit_polish_q_rad.copy()
                                             ),
+                                            rollout_explicit_polish_eps=(
+                                                rollout_explicit_polish_eps.copy()
+                                            ),
                                             rollout_explicit_polish_restart_attempt_count=(
                                                 rollout_explicit_polish_restart_attempt_count.copy()
                                             ),
@@ -11126,6 +11173,12 @@ def main() -> None:
                                             ),
                                             rollout_explicit_polish_restart_q_rad=(
                                                 rollout_explicit_polish_restart_q_rad.copy()
+                                            ),
+                                            rollout_explicit_polish_restart_eps=(
+                                                rollout_explicit_polish_restart_eps.copy()
+                                            ),
+                                            rollout_explicit_polish_restart_objective_anchor_q_rad=(
+                                                rollout_explicit_polish_restart_objective_anchor_q_rad.copy()
                                             ),
                                         )
                                     )
@@ -11392,6 +11445,20 @@ def main() -> None:
                                         for candidate in horizon_candidates
                                     ]
                                 ),
+                                "candidate_rollout_explicit_polish_eps": np.stack(
+                                    [
+                                        getattr(
+                                            candidate,
+                                            "rollout_explicit_polish_eps",
+                                            np.full(
+                                                node_count,
+                                                np.nan,
+                                                dtype=np.float64,
+                                            ),
+                                        )
+                                        for candidate in horizon_candidates
+                                    ]
+                                ),
                                 "candidate_rollout_explicit_polish_restart_attempt_count": np.stack(
                                     [
                                         getattr(
@@ -11477,6 +11544,34 @@ def main() -> None:
                                         getattr(
                                             candidate,
                                             "rollout_explicit_polish_restart_q_rad",
+                                            np.full(
+                                                (node_count, TOTAL_DOF),
+                                                np.nan,
+                                                dtype=np.float64,
+                                            ),
+                                        )
+                                        for candidate in horizon_candidates
+                                    ]
+                                ),
+                                "candidate_rollout_explicit_polish_restart_eps": np.stack(
+                                    [
+                                        getattr(
+                                            candidate,
+                                            "rollout_explicit_polish_restart_eps",
+                                            np.full(
+                                                node_count,
+                                                np.nan,
+                                                dtype=np.float64,
+                                            ),
+                                        )
+                                        for candidate in horizon_candidates
+                                    ]
+                                ),
+                                "candidate_rollout_explicit_polish_restart_objective_anchor_q_rad": np.stack(
+                                    [
+                                        getattr(
+                                            candidate,
+                                            "rollout_explicit_polish_restart_objective_anchor_q_rad",
                                             np.full(
                                                 (node_count, TOTAL_DOF),
                                                 np.nan,

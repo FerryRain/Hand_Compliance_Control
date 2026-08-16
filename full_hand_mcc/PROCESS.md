@@ -3747,7 +3747,13 @@ size=`19060 B`，SHA256=`5F39185737D7D9D9442333B4F1C192F8BF64B862B01464EB5959D74
 rolling-low-motion门；先诊断并改善现有explicit polish，使selected H5最小task slack达到`>=50 um`，再用完全
 相同Acceptance seed42参数重跑。
 
-### Deterministic explicit restart P0 实现、CPU验证与独立终审（2026-08-16）
+### Deterministic explicit restart P0 实现、CPU验证与独立终审（2026-08-16；已勘误）
+
+> **勘误（同日，commit `4f42ab2` GPU证伪）：**本节原称CPU使用“同一source/bounds/constraints/support/
+> options”得到`51.067217 um`，但该临时harness没有保存q、bounds、support、target/prior、objective scale或
+> constraint callable状态，也没有可哈希artifact。真正same-input GPU在`eps=1e-5`下只得到
+> `49.689031 um < 50 um`。所以`51.067217 um`不是可复核事实，下面相同options/`eps=1e-5`只记录
+> `4f42ab2`已被证伪的历史实现，不代表当前WIP。权威结论见下一检查点。
 
 #### 唯一失败与same-constraint CPU因果验证
 
@@ -3755,9 +3761,10 @@ rolling-low-motion门；先诊断并改善现有explicit polish，使selected H5
 slack=`48.394703 um`，相对冻结`50.000000 um`门只短`1.605297 um`；H1--H4 11/11、H5其余10/11、
 publisher hard、rolling low-motion、5节点4/4 contact/motion及全部物理门均已通过。
 
-CPU使用失败现场捕获的同一source q、同一bounds、同一显式constraints与support做一次deterministic restart；
-`maxiter=100`得到formal task slack=`51.067217 um`，超过`51 um` formal solve guard，并通过完整exact audit。
-该正向结果不使用outer final-best、不改变H5距离，也不放宽任何Acceptance门。
+CPU临时harness当时声称使用失败现场捕获的同一source q、bounds、显式constraints与support做一次restart，并在
+`maxiter=100`报告formal task slack=`51.067217 um`。**该报告已由`4f42ab2`同seed GPU结果证伪；因没有
+artifact不能证明其输入相同，也不得再引用为Acceptance证据。**修复本身仍不使用outer final-best、不改变H5
+距离，也不放宽任何Acceptance门。
 
 #### production一次性restart语义
 
@@ -3765,9 +3772,10 @@ CPU使用失败现场捕获的同一source q、同一bounds、同一显式constr
   exact-only task-interior miss时，`suffix_explicit_restart_required()`才返回true；
 - 第一次`result.x`同时成为第二次SLSQP的`x0`和新的objective anchor；restart objective仍是相对当前anchor的
   归一化最小位移，避免沿用原source anchor把解拉回第一次求解前；
-- 两次调用复用同一`Bounds`、同一constraint callable/spec、同一motion/contact support indices、同一
+- `4f42ab2`历史实现的两次调用复用同一`Bounds`、constraint callable/spec、motion/contact support indices、
   `51 um` explicit guard和同一options：`eps=1e-5`、`ftol=1e-12`、iteration cap=
-  `min(mpc_suffix_max_nfev,100)`；
+  `min(mpc_suffix_max_nfev,100)`；GPU已证明第二次继续使用该粗粒度`eps`仍不够，当前WIP仅把attempt2改为
+  `eps=1e-6`；
 - SLSQP `success`与`status`仅为诊断信息，exact node/prefix/publisher/rolling-low-motion audit仍是唯一验收权威；
   因而`status=9`的有限迭代结果在`result.x`完整exact audit通过时可以接受，solver success反过来也不能绕门；
 - restart只复用原约束求解，不修改planner state、Acceptance bands、rank、candidate budget或cache生命周期。
@@ -3793,3 +3801,104 @@ restart gate现显式要求metric columns `5:8`即arm/hand/tip clearance全部`>
 **下一步：**先核对本机`gh` active=`FerryRain`、FerryRain origin与Git author，再由主代理提交并push `main`、
 同步issue #7；随后完全复用Acceptance seed42 local-H5 launch参数做GPU fail-closed因果重跑，确认一次性restart
 在真实47.03125 mm H5上把formal余量带到`>=51 um`并继续推进。
+
+### `4f42ab2`一次restart GPU证伪与`eps=1e-6` P0修正（2026-08-16）
+
+#### 真实GPU结果与selected/outer分层
+
+commit=`4f42ab2241f64d9e2d0077b0de3717a6b71aa198`，stem=
+`baseline2_capsule_explicitrestart_0to50_acceptance_seed42_20260816_214207_136`。完全复用Acceptance seed42
+参数后launcher exit=`1`；last outer accepted=`46.875 mm`，first failed target=`47.03125 mm`，selected index=
+`6`、seed kind=`rollout_partial_certified_cache`，H5 local distances=
+`[47.03125,47.1875,47.34375,47.5,47.65625] mm`。
+
+selected H5的一次restart确实触发：attempt1 status=`9`、nfev=`3316`、formal margin=
+`-2.605297 um`；attempt2 status=`9`、nfev=`3374`、formal margin=`-1.310969 um`。attempt2 exact normal
+minimum=`49.689031 um`，相对冻结50 um门仍短`0.310969 um`。H1--H4各11/11 true，H5只有
+`interior=False`、其余10/11 true；五个节点均contact=`4/4`、motion=`4/4`、collision=true、self count=`0`。
+publisher hard=true、first failure index=`-1`、六门全true；rolling low-motion=true且无failure window。
+因此失败不是restart未触发，也不是publisher/contact/motion/collision问题，而是selected H5唯一的50 um
+interior短缺。planner fail-close；没有plan、没有dynamics。
+
+outer final-best是另一条rejected结果：reason=`monotonic_progress`，progress=false、monotonic=false、
+collision=false，non-tip hand clearance=`-1.473622 mm < -1.000000 mm`。不得把outer数值混进selected index6，
+也不得把H1--H4/publisher通过扩大成47.03125 mm accepted。
+
+#### run与FAIL DEBUG证据哈希
+
+原始run SHA256：
+
+- failure-prefix NPZ=`9283A0C9DCF8171D6E3D60325F13DD8DA272EBDACBAC5259D9AA32E7BD80C30A`；
+- log=`1986A1F343106D047CD7B841444E756FEB81C966682E942CFF84A74B3B7DA8C7`；
+- stderr=`427F9D72E51FA6A408AD086377FFB2EA24A67EA8AA40CD07CC923DDD389675C5`；
+- exitcode=`6B86B273FF34FCE19D6B804EFF5A3F5747ADA4EAA22F1D49C01E52DDB7875B4B`；
+- launch JSON=`83EBB19BFDBDCD4ED275D5792AD2152B74541BF8D0645A1EFCA56AAFFD737443`；
+- launcher PS1=`8C4FE3E16B9B07A01BAF4578988362332D5A1CC4D348E2D82D3B393BD81EAC6B`。
+
+正确几何视频在solver/model构建前注入capsule `radius=0.10 m`、`half-height=0.17 m`，只含已提交到
+46.875 mm的last-feasible prefix；失败候选省略。metadata=`H.264 / 1600x920 / 30 fps / 450 frames / 15 s`，
+末60帧/2 s冻结，full FR3+capsule与pad-side close-up双视图：
+
+- 视频绝对路径=
+  `D:\Code\Hand_Compliance_Control\mjlab_full_hand_mcc\full_hand_mcc\outputs\debug\20_fr3_planning\baseline2_capsule_explicitrestart_0to50_acceptance_seed42_20260816_214207_136_FAIL_DEBUG_kinematic_prefix_only.mp4`；
+  SHA256=`6E0F46B5DDFC7AAF94A7D5BED54ABFDF218A477D40024D7D171AF14D87D03160`；
+- failure audit JSON绝对路径=
+  `D:\Code\Hand_Compliance_Control\mjlab_full_hand_mcc\full_hand_mcc\outputs\debug\20_fr3_planning\baseline2_capsule_explicitrestart_0to50_acceptance_seed42_20260816_214207_136_FAIL_DEBUG_failure_prefix_audit.json`；
+  SHA256=`F1F57F872582E6BA4A4B252706D052AD795221158A2A573049FF0C8397FC62E1`；
+- independent CPU JSON绝对路径=
+  `D:\Code\Hand_Compliance_Control\mjlab_full_hand_mcc\full_hand_mcc\outputs\debug\20_fr3_planning\baseline2_capsule_explicitrestart_0to50_acceptance_seed42_20260816_214207_136_FAIL_DEBUG_cpu_mujoco_prefix_audit.json`；
+  SHA256=`B28123679E5A2315858E480F7E59B2C50245A33F8C0BE43B94DC52F60F90CA18`。
+
+旧错误几何渲染SHA256=
+`D2BA3B66CEC96BB234DFDCB4477707C13AF09B0685E358EC6B1BDB94369D7F0D`已**作废**并由`6E0F...`正确版覆盖；
+禁止再引用D2BA版作视觉证据。
+
+独立CPU MuJoCo以smoothstep重建committed prefix的750个publisher frames，checks全部true：physical tip
+per-finger minima=`[-0.851757,-0.823051,-0.990469,-0.846272] mm`，全局余量=`9.531 um`；FR3 minimum=
+`13.885654 mm`、相对2 mm余量=`11.885654 mm`；non-tip hand minimum=`-0.941315 mm`、相对-1 mm余量=
+`58.685 um`；active self occurrences/unique=`0/0`；pad maximum=`36.939298 deg`；joint-limit minimum=
+`0.548138 urad`；joint-step maximum=`19.400461 mrad`、相对30 mrad余量=`10.599539 mrad`；saved coarse
+FK max error=`0`、surface-arc max error=`63.592228 um`；rolling 20 intervals/21 samples failed regions=`0`。
+该JSON只认证committed debug prefix，不认证失败H5、plan或dynamics。
+
+#### P0根因与`eps=1e-6`反事实
+
+生产restart仍用`eps=1e-5 rad`，而真实GPU attempt1→attempt2的最大关节修正只有`1.629820 urad`，所需
+可行修正约`2--3 urad`；10 urad的有限差分探针粗于该局部尺度。仅提高`eps=1e-5`求解的`maxiter`无效：
+从attempt1 q重启到160/300 iterations的formal margin分别为`-1.289564/-1.197094 um`；从attempt2 q第三次
+再锚100 iterations也只有`-1.029340 um`。这排除了“多给iterations/再加一次同eps restart”作为修复。
+
+唯一变量改为**attempt2使用`eps=1e-6`**的临时CPU反事实保持原x0/objective anchor、Bounds、23个ineq、
+motion/contact support、51 um guard、`ftol=1e-12`和100 iteration cap。主复建：status=`0`、success=true、
+nit=`39`、nfev=`1162`、formal constraint margin=`+0.003813652 um`；H1--H4继续11/11，H5 exact task
+margins=`[progress 72.512348, normal 51.003814, tangent 174.759846, monotonic 200] um`，palm=
+`18830.750 um`，joint-target margin=`0.480895 mrad`，joint-step slack=`22.420296 mrad`，contact/motion=
+`4/4`。
+
+H5 16-sample完整物理audit：FR3 absolute=`16.587972 mm`、相对2 mm margin=`14.587972 mm`；hand
+absolute=`-0.586215 mm`、相对-1 mm margin=`0.413785 mm`；physical tip absolute=`-0.881127 mm`、
+相对-1 mm margin=`0.118873 mm`；self=`0`、pad=`36.9486 deg`。12-sample dense publisher hard六门全true，
+最小余量依次为progress=`44.944493 um`、contact=`20.542411 um`、tangent=`58.208898 um`、palm=
+`18364.874067 um`、collision=`121.845964 um`、monotonic=`147.844881 um`；rolling 20/21 failure windows=
+`0`。独立review复建为formal=`+0.003458 um`、exact task=`51.003458 um`、nit=`41`、nfev=`1215`；
+float-center微差不改变过门结论。
+
+严格边界：这些反事实由两次独立临时CPU复建得到，但临时脚本已删除，**没有持久化q、NPZ、JSON或hash**；
+它只能定位P0并支持最小补丁，不能当作GPU/Acceptance证据。
+
+#### 当前WIP、验证与下一步
+
+当前WIP仅修改：
+
+- `full_hand_mcc/scripts/demo_surface_slide.py`：attempt1保留`eps=1e-5`；仅当原task-interior-only gate触发
+  attempt2时切到`eps=1e-6`；保存primary/restart eps与restart objective anchor固定shape数值证据；
+- `full_hand_mcc/tests/test_full_hand_mcc_core.py`：覆盖eps切换、gate顺序、不依赖solver status/success、证据
+  shape/dtype/NaN sentinel及failure-prefix传播。
+
+没有修改diagnostics、runner、README、Acceptance阈值、H5、rank、budget或cache语义。全量tests=`130/130`，
+demo/AST/PowerShell AST/diff-check通过，独立review P0/P1/P2=`0/0/0`。此WIP尚未运行GPU，也尚未commit/push；
+`51.003814 um`仍必须由same-seed真实GPU验证。
+
+**下一步：**主代理重新核对本机`gh` active=`FerryRain`、FerryRain origin和Git author，只用本机FerryRain
+commit `main`、push并同步issue #7；然后原样复用Acceptance seed42 launch重跑。任何失败继续fail-close并提供
+`FAIL DEBUG`，只有全数值、plan、dynamics和视觉门通过后才交付成功版视频。
