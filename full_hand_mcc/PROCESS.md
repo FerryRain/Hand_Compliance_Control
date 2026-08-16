@@ -3573,3 +3573,92 @@ plan audit、全帧collision/terminal/rolling-low-motion与dynamics；全部PASS
 
 **正在执行：**低频只读监控accepted path。38.75 mm继续验证prospective 20/21 low-motion；45.9375 mm验证H5；
 auto-refine后的46.09375 mm必须打印`[SUFFIX-CERTIFIED-CACHE] valid=True`且cache进入block/rollout候选。只有plan、全帧FR3/hand/tip/self/pad、terminal nominal4/4、rolling-low-motion和dynamics全部PASS后才允许录像；Level 2仍 **NOT PASS**。
+
+### `09aee58` certified-cache GPU结果与 FAIL DEBUG 里程碑视频（2026-08-16）
+
+#### 因果结论与终止位置
+
+- stem=`baseline2_capsule_cachecontinuity_0to50_acceptance_seed42_20260816_174111_780`，进程exit=`1`；
+- 46.09375 mm的auto-refine路径实际打印valid `SUFFIX-CERTIFIED-CACHE`，cache进入后续求解并使运行越过
+  `f45db64`的旧失败点；因此P0 cache lifecycle/rollout修复获得了正向因果验证；
+- 后续accepted path依次继续前进，last accepted=`46.875 mm`，即50 mm路线的`93.75%`；
+- 新failure target=`47.03125 mm`；没有生成plan、dynamics或成功audit，Level 2仍 **NOT PASS**；
+- failure-prefix=
+  `full_hand_mcc/outputs/debug/20_fr3_planning/baseline2_capsule_cachecontinuity_0to50_acceptance_seed42_20260816_174111_780_failure_prefix.npz`，
+  SHA256=`B6486EC15C0AA7EEAFA8691092427D0D245EB9386B8C930343E9FE0B7774142E`。
+
+#### selected cache rollout与endpoint H5跨距
+
+接近route endpoint时，末节点仍须精确落在50 mm，因而H5被强制展开为
+`[47.03125,47.7734375,48.515625,49.2578125,50] mm`。首段跨度=`0.7421875 mm`，相对当前
+nominal step=`0.15625 mm`为`4.75x`，破坏了此前连续跟踪的局部步长假设。
+
+failure evidence的selected index6=`rollout_partial_certified_cache`，必须按两层审计解读：
+
+- 当前H1/47.03125 mm节点自身11/11条件全true，contacts=`4/4`；这证明cache rollout真实到达并修复了当前节点；
+- 但H1到H2之间的dense publisher在47.125 mm首次失败，first gate仅`progress=false`，所以prefix不得提交；
+- 后续H2--H5 contacts均为`3/4`，normal margin依次已经为负；H4/H5 physical-tip hard margin分别约
+  `-89.569 um/-169.623 um`，即clearance约`-1.089569/-1.169623 mm`，低于冻结的`-1 mm`门；
+- 因此整个selected candidate仍为false，不能把“当前节点11/11+4/4通过”扩大解释成H5或plan通过。
+
+NPZ顶层`failure_final_best_*`和`metric_*`是outer final-best的独立终局求解证据，其reason=
+`monotonic_progress`；它不是上述selected `rollout_partial_certified_cache`。两组contact、clearance和task margin
+必须分别报告，不能互相拼接或用outer数值解释cache rollout首败。
+
+#### 阶段性 FAIL DEBUG 视频
+
+- 绝对路径=
+  `D:\Code\Hand_Compliance_Control\mjlab_full_hand_mcc\full_hand_mcc\outputs\debug\20_fr3_planning\baseline2_capsule_cachecontinuity_0to50_acceptance_seed42_20260816_174111_780_FAIL_DEBUG_kinematic_prefix_only.mp4`；
+- 仓库相对路径=
+  `full_hand_mcc/outputs/debug/20_fr3_planning/baseline2_capsule_cachecontinuity_0to50_acceptance_seed42_20260816_174111_780_FAIL_DEBUG_kinematic_prefix_only.mp4`；
+- metadata=`15 s / 1600x920 / 30 fps / H.264 / 450 frames`；
+- SHA256=`1F19A6020A0A5DC49C4AB8E4C3C2C1BE0FAE49D69E5E5776F06BD8CE02126080`；
+- 内容只包括last feasible prefix，明确省略未通过的47.03125 mm failure candidate；
+- 这是kinematic debug回放，不是dynamics；尚未完成full-frame FR3/hand/tip/self/pad audit，也没有plan，
+  所以只可标作`FAIL DEBUG / PENDING`，不得进入deliverables或称为成功测试。
+
+用户要求后续执行期间定期给出可检查的里程碑视频。固定证据策略为：有意义的plan、首轮dynamics、repair/contact
+恢复、新物体泛化节点各给短视频；所有未全过的视频显式标`FAIL`或`PENDING`并留在debug目录；只有full pass后
+才输出完整deliverable视频。
+
+**正在执行/下一步：**先用CPU probe验证local fine H5，只在suffix进入route endpoint的local-reach区间时启用，
+且末节点仍精确固定为50 mm；若probe成立，再做最小patch、完整CPU/静态tests，最后同Acceptance seed42参数GPU
+重跑。任何task/contact/collision/joint/step/pad/physical-tip/FR3/hand/self/terminal/rolling-low-motion门均不放宽。
+
+### Local-H5 endpoint witness P0 实现、回归与独立终审（2026-08-16）
+
+#### 最小代码修复
+
+- 仅修改纯NumPy `build_receding_horizon_distances()`：terminal-start仍可使用原远预览reach，让planner提前恢复
+  4/4；route endpoint不再共享该reach；
+- `uniform_end=min(first+(H-1)*nominal_step, route_end)`已经保证endpoint在本地真正可达时精确纳入，因此删除
+  endpoint借terminal-tail span提前进入H5的路径；
+- 47.03125 mm现在构造
+  `[47.03125,47.1875,47.34375,47.5,47.65625] mm`，而不是跨到50 mm的稀疏网格；
+- 对应certified cache regression证明前4个已认证q逐点bitwise相同，第5个节点才保持cache最后q并由原solver局部
+  延拓；cache仍只是warm start，所有node/segment/publisher/terminal/rolling-low-motion exact audit继续执行；
+- 未改CLI/runner/solver weight、rank、预算或任何Acceptance门。
+
+#### 回归与review
+
+- 精确47.03125 failure grid与`max(diff)<=0.15625 mm`；
+- route endpoint在first=49.375 mm时刚好进入local H5，在49.374 mm时仍不进入；
+- H1且first<end返回first，H5且first=end收缩为唯一endpoint；
+- 现有pre-terminal远预览测试继续通过，证明terminal-start语义未被误删；
+- 全量CPU=`128/128`；demo `--help`、demo/diagnostics/tests Python AST、Level-2 runner PowerShell AST及
+  `git diff --check`全部exit0；仅有既知wandb TemporaryDirectory atexit PermissionError噪声；
+- 独立sol-ultra review未发现P0、P1或P2；本机身份只读复核为`gh` active=`FerryRain`、FerryRain origin、
+  Git author=`Ferry <kenny0326@qq.com>`。
+
+#### probe伪失败的纠正
+
+最初tail probe独立优化了46.9375 mm q，再把它作为47.03125 mm predecessor，因而报告两点不连续；这不是
+production语义。46.9375只是publisher sample，不会被插成coarse knot。真实predecessor始终是last accepted
+46.875 mm；此前GPU成功H5已经对46.875→47.03125整段做dense publisher审计，其中包含46.9375 terminal sample。
+failure NPZ进一步证明47.03125 node0本身hard/interior全过，publisher首败严格在之后的47.125 mm。因此该人为
+改变predecessor的probe结果已撤回，不能作为P0 blocker。
+
+**正在执行/下一步：**提交/push上述P0和两份PROCESS到`main`，GitHub只用本机FerryRain `gh`更新#7；随后完全
+复用本轮Acceptance seed42参数，仅换stem做GPU fail-closed因果重跑。成功生成plan后依次做短程Acceptance audit、
+逐帧physical-tip/FR3/hand/self/pad、terminal4/4、20/21 low-motion、dynamics；下一里程碑视频标`PENDING`，只有
+所有数值和视觉门通过才生成deliverable。

@@ -1319,6 +1319,75 @@ class PlannerDiagnosticsTest(unittest.TestCase):
             terminal_start_m=0.0469375,
         )
         self.assertAlmostEqual(float(distances[-1]), 0.05, places=12)
+        self.assertLessEqual(
+            float(np.max(np.diff(distances))),
+            0.00015625 + 1.0e-12,
+        )
+
+    def test_horizon_grid_stays_local_after_terminal_boundary(self) -> None:
+        distances = DIAGNOSTICS.build_receding_horizon_distances(
+            first_distance_m=0.04703125,
+            nominal_step_m=0.00015625,
+            horizon_nodes=5,
+            route_end_m=0.05,
+            terminal_start_m=0.0469375,
+        )
+        np.testing.assert_allclose(
+            distances,
+            np.asarray(
+                (0.04703125, 0.0471875, 0.04734375, 0.0475, 0.04765625),
+                dtype=np.float64,
+            ),
+            rtol=0.0,
+            atol=1.0e-12,
+        )
+        self.assertLessEqual(
+            float(np.max(np.diff(distances))),
+            0.00015625 + 1.0e-12,
+        )
+        self.assertLess(float(distances[-1]), 0.05)
+
+    def test_horizon_grid_endpoint_local_reach_boundary(self) -> None:
+        just_outside = DIAGNOSTICS.build_receding_horizon_distances(
+            first_distance_m=0.049374,
+            nominal_step_m=0.00015625,
+            horizon_nodes=5,
+            route_end_m=0.05,
+            terminal_start_m=0.0469375,
+        )
+        self.assertLess(float(just_outside[-1]), 0.05)
+        self.assertLessEqual(
+            float(np.max(np.diff(just_outside))),
+            0.00015625 + 1.0e-12,
+        )
+        exact_reach = DIAGNOSTICS.build_receding_horizon_distances(
+            first_distance_m=0.049375,
+            nominal_step_m=0.00015625,
+            horizon_nodes=5,
+            route_end_m=0.05,
+            terminal_start_m=0.0469375,
+        )
+        self.assertAlmostEqual(float(exact_reach[-1]), 0.05, places=12)
+        one_node_before_endpoint = (
+            DIAGNOSTICS.build_receding_horizon_distances(
+                first_distance_m=0.049,
+                nominal_step_m=0.00015625,
+                horizon_nodes=1,
+                route_end_m=0.05,
+                terminal_start_m=0.0469375,
+            )
+        )
+        np.testing.assert_array_equal(
+            one_node_before_endpoint, np.asarray([0.049])
+        )
+        endpoint_only = DIAGNOSTICS.build_receding_horizon_distances(
+            first_distance_m=0.05,
+            nominal_step_m=0.00015625,
+            horizon_nodes=5,
+            route_end_m=0.05,
+            terminal_start_m=0.0469375,
+        )
+        np.testing.assert_array_equal(endpoint_only, np.asarray([0.05]))
 
     def test_smoothstep_interpolation_matches_publisher_off_midpoint(self) -> None:
         distance = np.asarray((0.0, 1.0, 2.0), dtype=np.float64)
@@ -2014,6 +2083,38 @@ class CertifiedSuffixCacheTest(unittest.TestCase):
         np.testing.assert_allclose(evidence["cache_seed_q_rad"], seed)
         for value in evidence.values():
             self.assertNotEqual(np.asarray(value).dtype, np.dtype("O"))
+
+    def test_terminal_local_horizon_preserves_certified_knots(self) -> None:
+        cache = {
+            "anchor_distance_m": 0.046875,
+            "anchor_q_rad": np.asarray([0.0, 0.0]),
+            "distance_m": np.asarray(
+                (0.04703125, 0.0471875, 0.04734375, 0.0475),
+                dtype=np.float64,
+            ),
+            "q_rad": np.asarray(
+                ((1.0, 10.0), (2.0, 20.0), (3.0, 30.0), (4.0, 40.0)),
+                dtype=np.float64,
+            ),
+        }
+        horizon = np.asarray(
+            (0.04703125, 0.0471875, 0.04734375, 0.0475, 0.04765625),
+            dtype=np.float64,
+        )
+        seed, evidence = self.validate_cache(
+            cache,
+            current_anchor_distance_m=0.046875,
+            current_anchor_q_rad=np.asarray([0.0, 0.0]),
+            horizon_distance_m=horizon,
+            total_dof=2,
+        )
+        self.assertIsNotNone(seed)
+        np.testing.assert_array_equal(seed[:4], cache["q_rad"])
+        np.testing.assert_array_equal(seed[4], cache["q_rad"][-1])
+        self.assertTrue(bool(evidence["cache_valid"]))
+        np.testing.assert_array_equal(
+            evidence["cache_seed_distance_m"], horizon
+        )
 
     def test_cache_lifecycle_preserves_resamples_replaces_and_clears(
         self,

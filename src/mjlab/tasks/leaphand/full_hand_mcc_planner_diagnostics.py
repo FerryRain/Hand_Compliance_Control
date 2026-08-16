@@ -1216,17 +1216,23 @@ def build_receding_horizon_distances(
             float(route_end_m) - float(terminal_start_m),
             0.0,
         )
-    lookahead_reach = float(first_distance_m) + max(
+    terminal_lookahead_reach = float(first_distance_m) + max(
         float(nominal_step_m) * float(horizon_nodes + 1),
         terminal_tail_span,
     )
-    for sentinel in (terminal_start_m, route_end_m):
-        if sentinel is None:
-            continue
-        sentinel_value = float(sentinel)
+    # The terminal-contact boundary may be previewed beyond the nominal local
+    # horizon so that the optimizer starts restoring 4/4 contact before the
+    # published tail.  The route endpoint must not borrow that long preview:
+    # forcing it into a fixed-size H-node grid stretches every local segment
+    # after the terminal boundary and can make dense publisher interpolation
+    # fail even when the retained certified local knots remain feasible.
+    # ``uniform_end`` is already clipped to ``route_end_m``, so the endpoint is
+    # included automatically once it is genuinely inside the local horizon.
+    if terminal_start_m is not None:
+        sentinel_value = float(terminal_start_m)
         if (
             sentinel_value > first_distance_m + 1.0e-12
-            and sentinel_value <= lookahead_reach + 1.0e-12
+            and sentinel_value <= terminal_lookahead_reach + 1.0e-12
         ):
             witness_end = max(witness_end, sentinel_value)
     witness_end = min(witness_end, float(route_end_m))
