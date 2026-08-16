@@ -1175,6 +1175,113 @@ class PlannerDiagnosticsTest(unittest.TestCase):
                 **{**kwargs, "node_metric_margin_m": np.zeros((4, 8))}
             )
 
+    def test_suffix_explicit_restart_requires_one_finite_exact_task_miss(
+        self,
+    ) -> None:
+        conditions = np.ones((2, 11), dtype=bool)
+        conditions[1, -1] = False
+        metrics = np.full((2, 8), 0.001, dtype=np.float64)
+        metrics[1, 1] = 48.394703e-6
+        metrics[1, 5:8] = 50.0e-6
+        kwargs = {
+            "q_rad": np.zeros(23, dtype=np.float64),
+            "expected_dof": 23,
+            "explicit_prefix_ok": False,
+            "node_condition_ok": conditions,
+            "node_metric_margin_m": metrics,
+            "node_index": 1,
+            "publisher_first_failure_distance_m": np.nan,
+            "node_distance_m": 0.04703125,
+            "low_motion_ok": True,
+            "task_guard_m": 50.0e-6,
+        }
+        self.assertTrue(
+            DIAGNOSTICS.suffix_explicit_restart_required(**kwargs)
+        )
+        palm_below_guard = metrics.copy()
+        palm_below_guard[1, 4] = 40.0e-6
+        self.assertTrue(
+            DIAGNOSTICS.suffix_explicit_restart_required(
+                **{**kwargs, "node_metric_margin_m": palm_below_guard}
+            )
+        )
+        for collision_index, collision_name in enumerate(
+            ("arm", "hand", "tip"), start=5
+        ):
+            with self.subTest(collision_margin=collision_name):
+                task_and_collision_miss = metrics.copy()
+                task_and_collision_miss[1, collision_index] = 40.0e-6
+                self.assertFalse(
+                    DIAGNOSTICS.suffix_explicit_restart_required(
+                        **{
+                            **kwargs,
+                            "node_metric_margin_m": task_and_collision_miss,
+                        }
+                    )
+                )
+        with self.assertRaisesRegex(ValueError, "collision margins"):
+            DIAGNOSTICS.suffix_explicit_restart_required(
+                **{**kwargs, "node_metric_margin_m": metrics[:, :7]}
+            )
+
+        # Exact audit is authoritative: a solver status such as SLSQP 9 is
+        # deliberately not an input, and an exact pass must not restart.
+        self.assertFalse(
+            DIAGNOSTICS.suffix_explicit_restart_required(
+                **{**kwargs, "explicit_prefix_ok": True}
+            )
+        )
+        self.assertFalse(
+            DIAGNOSTICS.suffix_explicit_restart_required(
+                **{**kwargs, "q_rad": np.full(23, np.nan)}
+            )
+        )
+        self.assertFalse(
+            DIAGNOSTICS.suffix_explicit_restart_required(
+                **{**kwargs, "q_rad": np.zeros(22)}
+            )
+        )
+
+        prior_hard_failed = conditions.copy()
+        prior_hard_failed[0, 2] = False
+        self.assertFalse(
+            DIAGNOSTICS.suffix_explicit_restart_required(
+                **{**kwargs, "node_condition_ok": prior_hard_failed}
+            )
+        )
+        current_hard_failed = conditions.copy()
+        current_hard_failed[1, 2] = False
+        self.assertFalse(
+            DIAGNOSTICS.suffix_explicit_restart_required(
+                **{**kwargs, "node_condition_ok": current_hard_failed}
+            )
+        )
+        self.assertFalse(
+            DIAGNOSTICS.suffix_explicit_restart_required(
+                **{
+                    **kwargs,
+                    "publisher_first_failure_distance_m": 0.04703125,
+                }
+            )
+        )
+        self.assertFalse(
+            DIAGNOSTICS.suffix_explicit_restart_required(
+                **{**kwargs, "low_motion_ok": False}
+            )
+        )
+        non_task_miss = metrics.copy()
+        non_task_miss[1, :4] = 0.001
+        non_task_miss[1, 4] = -1.0e-6
+        self.assertFalse(
+            DIAGNOSTICS.suffix_explicit_restart_required(
+                **{**kwargs, "node_metric_margin_m": non_task_miss}
+            )
+        )
+        with self.assertRaises(ValueError):
+            DIAGNOSTICS.suffix_explicit_restart_required(
+                **{**kwargs, "expected_dof": 0}
+            )
+
     def test_suffix_rollout_prefix_rank_preserves_only_exact_prefixes(
         self,
     ) -> None:
@@ -1551,6 +1658,23 @@ class PlannerDiagnosticsTest(unittest.TestCase):
             recovery_conditions=conditions,
             metrics={"progress_margin_m": -0.001},
         )
+        restart_source_q = np.full((2, 5, 23), np.nan, dtype=np.float64)
+        restart_source_q[0, 4] = 0.25
+        restart_q = np.full((2, 5, 23), np.nan, dtype=np.float64)
+        restart_q[0, 4] = 0.251
+        restart_attempt_count = np.zeros((2, 5), dtype=np.int16)
+        restart_attempt_count[0, 4] = 1
+        restart_status = np.full((2, 5), -999, dtype=np.int16)
+        restart_status[0, 4] = 9
+        restart_solver_success = np.zeros((2, 5), dtype=np.bool_)
+        restart_prefix_ok = np.zeros((2, 5), dtype=np.bool_)
+        restart_prefix_ok[0, 4] = True
+        restart_nfev = np.zeros((2, 5), dtype=np.int32)
+        restart_nfev[0, 4] = 3316
+        restart_constraint_margin = np.full(
+            (2, 5), np.nan, dtype=np.float64
+        )
+        restart_constraint_margin[0, 4] = 0.067217e-6
         output = Path("failure.npz")
         values = {
             "reason": "longitudinal_progress",
@@ -1569,6 +1693,30 @@ class PlannerDiagnosticsTest(unittest.TestCase):
             "budget_values": {
                 "recovery_remaining_m": 0.001,
                 "feasibility_bridge_tip_target_scale": 0.5,
+                "last_suffix_horizon_candidate_rollout_explicit_polish_source_q_rad": (
+                    restart_source_q
+                ),
+                "last_suffix_horizon_candidate_rollout_explicit_polish_restart_attempt_count": (
+                    restart_attempt_count
+                ),
+                "last_suffix_horizon_candidate_rollout_explicit_polish_restart_status": (
+                    restart_status
+                ),
+                "last_suffix_horizon_candidate_rollout_explicit_polish_restart_solver_success": (
+                    restart_solver_success
+                ),
+                "last_suffix_horizon_candidate_rollout_explicit_polish_restart_prefix_ok": (
+                    restart_prefix_ok
+                ),
+                "last_suffix_horizon_candidate_rollout_explicit_polish_restart_nfev": (
+                    restart_nfev
+                ),
+                "last_suffix_horizon_candidate_rollout_explicit_polish_restart_constraint_margin_m": (
+                    restart_constraint_margin
+                ),
+                "last_suffix_horizon_candidate_rollout_explicit_polish_restart_q_rad": (
+                    restart_q
+                ),
             },
             "failure_metrics": {
                 "progress_error_m": np.asarray([0.0, 0.006])
@@ -1646,6 +1794,54 @@ class PlannerDiagnosticsTest(unittest.TestCase):
             self.assertEqual(
                 int(saved["schema_version"]),
                 2,
+            )
+            restart_prefix = (
+                "budget_last_suffix_horizon_candidate_rollout_"
+                "explicit_polish_restart_"
+            )
+            source_q_array = saved[
+                "budget_last_suffix_horizon_candidate_rollout_"
+                "explicit_polish_source_q_rad"
+            ]
+            self.assertEqual(source_q_array.shape, (2, 5, 23))
+            self.assertEqual(source_q_array.dtype, np.dtype(np.float64))
+            self.assertTrue(np.isnan(source_q_array[1, 0]).all())
+            expected_restart_arrays = {
+                "attempt_count": (np.dtype(np.int16), (2, 5)),
+                "status": (np.dtype(np.int16), (2, 5)),
+                "solver_success": (np.dtype(np.bool_), (2, 5)),
+                "prefix_ok": (np.dtype(np.bool_), (2, 5)),
+                "nfev": (np.dtype(np.int32), (2, 5)),
+                "constraint_margin_m": (np.dtype(np.float64), (2, 5)),
+                "q_rad": (np.dtype(np.float64), (2, 5, 23)),
+            }
+            for suffix, (expected_dtype, expected_shape) in (
+                expected_restart_arrays.items()
+            ):
+                array = saved[f"{restart_prefix}{suffix}"]
+                self.assertEqual(array.dtype, expected_dtype)
+                self.assertEqual(array.shape, expected_shape)
+                self.assertNotEqual(array.dtype, np.dtype(object))
+            self.assertEqual(
+                int(saved[f"{restart_prefix}attempt_count"][0, 4]),
+                1,
+            )
+            self.assertEqual(
+                int(saved[f"{restart_prefix}status"][0, 4]),
+                9,
+            )
+            self.assertFalse(
+                bool(saved[f"{restart_prefix}solver_success"][0, 4])
+            )
+            self.assertTrue(
+                bool(saved[f"{restart_prefix}prefix_ok"][0, 4])
+            )
+            self.assertEqual(
+                int(saved[f"{restart_prefix}status"][1, 0]),
+                -999,
+            )
+            self.assertTrue(
+                np.isnan(saved[f"{restart_prefix}q_rad"][1, 0]).all()
             )
             self.assertEqual(
                 saved["failure_final_best_q_rad"].shape,
@@ -2808,6 +3004,7 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             "interior_guard_m=min(",
             "suffix_prefix_needs_interior_polish(",
             "suffix_node_needs_explicit_task_polish(",
+            "suffix_explicit_restart_required(",
             "polish_source_trials = [",
             "rollout_node_polish_residual",
             '"interior_polish_"',
@@ -2817,6 +3014,8 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             "suffix_explicit_support_indices(",
             'method="SLSQP"',
             "Bounds(",
+            "explicit_objective_anchor_q",
+            '"explicit_constraint_restart"',
             "[SUFFIX-EXPLICIT-CONSTRAINT-POLISH]",
             "suffix_transition_fractions",
             "suffix_node_residual(",
@@ -2872,12 +3071,20 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             '"candidate_rollout_explicit_polish_attempt_count"',
             '"candidate_rollout_explicit_polish_success_count"',
             '"candidate_rollout_explicit_polish_min_margin_m"',
+            '"candidate_rollout_explicit_polish_source_q_rad"',
             '"candidate_rollout_explicit_polish_status"',
             '"candidate_rollout_explicit_polish_solver_success"',
             '"candidate_rollout_explicit_polish_prefix_ok"',
             '"candidate_rollout_explicit_polish_nfev"',
             '"candidate_rollout_explicit_polish_constraint_margin_m"',
             '"candidate_rollout_explicit_polish_q_rad"',
+            '"candidate_rollout_explicit_polish_restart_attempt_count"',
+            '"candidate_rollout_explicit_polish_restart_status"',
+            '"candidate_rollout_explicit_polish_restart_solver_success"',
+            '"candidate_rollout_explicit_polish_restart_prefix_ok"',
+            '"candidate_rollout_explicit_polish_restart_nfev"',
+            '"candidate_rollout_explicit_polish_restart_constraint_margin_m"',
+            '"candidate_rollout_explicit_polish_restart_q_rad"',
             '"explicit_constraint_guard_m"',
             '"interior_polish_scale_ladder"',
             '"rollout_"',
@@ -2973,6 +3180,127 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             fail_close,
         )
 
+    def test_suffix_explicit_restart_is_once_reanchored_and_reuses_solve(
+        self,
+    ) -> None:
+        source = DEMO_PATH.read_text(encoding="utf-8")
+        start = source.index("def build_suffix_horizon_candidate")
+        end = source.index("def moving_bridge_residual", start)
+        horizon = source[start:end]
+        tree = ast.parse(horizon)
+        restart_loops = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.For)
+            and isinstance(node.target, ast.Name)
+            and node.target.id == "explicit_attempt_index"
+        ]
+        self.assertEqual(len(restart_loops), 1)
+        restart_loop = restart_loops[0]
+        self.assertEqual(ast.unparse(restart_loop.iter), "range(2)")
+
+        loop_calls = [
+            node for node in ast.walk(restart_loop) if isinstance(node, ast.Call)
+        ]
+        minimize_calls = [
+            node
+            for node in loop_calls
+            if isinstance(node.func, ast.Name) and node.func.id == "minimize"
+        ]
+        restart_gate_calls = [
+            node
+            for node in loop_calls
+            if isinstance(node.func, ast.Name)
+            and node.func.id == "suffix_explicit_restart_required"
+        ]
+        self.assertEqual(len(minimize_calls), 1)
+        self.assertEqual(len(restart_gate_calls), 1)
+        minimize_call = minimize_calls[0]
+        self.assertEqual(ast.unparse(minimize_call.args[1]), "explicit_attempt_q")
+        minimize_keywords = {
+            keyword.arg: ast.unparse(keyword.value)
+            for keyword in minimize_call.keywords
+        }
+        self.assertEqual(minimize_keywords["bounds"], "explicit_bounds")
+        self.assertEqual(
+            minimize_keywords["constraints"],
+            "explicit_constraint_specs",
+        )
+        self.assertEqual(minimize_keywords["options"], "explicit_options")
+
+        loop_source = ast.get_source_segment(horizon, restart_loop)
+        assert loop_source is not None
+        self.assertNotIn("if explicit_result.success", loop_source)
+        self.assertIn("if explicit_trial_prefix_ok", loop_source)
+        self.assertIn("rollout_explicit_polish_attempt_count += 1", loop_source)
+        self.assertIn("rollout_nfev += explicit_nfev", loop_source)
+        self.assertIn('"explicit_constraint_restart"', loop_source)
+
+        loop_assignments = [
+            node
+            for node in ast.walk(restart_loop)
+            if isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+        ]
+        assignment_values = {
+            node.targets[0].id: ast.unparse(node.value)
+            for node in loop_assignments
+        }
+        self.assertEqual(
+            assignment_values["explicit_objective_anchor_q"],
+            "explicit_attempt_q.copy()",
+        )
+        self.assertEqual(
+            assignment_values["explicit_attempt_q"],
+            "explicit_q.copy()",
+        )
+        self.assertIn(
+            "(explicit_q - explicit_source_q) / objective_scale",
+            assignment_values["explicit_selection_delta"],
+        )
+        objective_functions = [
+            node
+            for node in ast.walk(restart_loop)
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "rollout_node_explicit_objective"
+        ]
+        self.assertEqual(len(objective_functions), 1)
+        objective = objective_functions[0]
+        self.assertEqual(
+            ast.unparse(objective.args.kw_defaults[0]),
+            "explicit_objective_anchor_q",
+        )
+        self.assertEqual(
+            ast.unparse(objective.args.kw_defaults[1]),
+            "objective_scale",
+        )
+        self.assertIn("q_node - _anchor_q", ast.unparse(objective))
+
+        loop_offset = horizon.index("for explicit_attempt_index")
+        for frozen_setup in (
+            "motion_constraint_indices",
+            "contact_constraint_indices",
+            "def rollout_node_explicit_constraints",
+            "explicit_bounds = Bounds",
+            "explicit_constraint_specs =",
+            "explicit_options =",
+        ):
+            self.assertLess(horizon.index(frozen_setup), loop_offset)
+        constraint_start = horizon.index("def rollout_node_explicit_constraints")
+        constraint_end = horizon.index("if explicit_masks_valid", constraint_start)
+        constraint_source = horizon[constraint_start:constraint_end]
+        self.assertIn("explicit_constraint_guard_m", constraint_source)
+        self.assertIn("motion_constraint_indices", constraint_source)
+        self.assertIn("contact_constraint_indices", constraint_source)
+        options_source = horizon[
+            horizon.index("explicit_options =") : loop_offset
+        ]
+        self.assertIn("args.mpc_suffix_max_nfev", options_source)
+        self.assertIn("100", options_source)
+        self.assertIn('"ftol": 1.0e-12', options_source)
+        self.assertIn('"eps": 1.0e-5', options_source)
+
     def test_failure_prefix_receives_last_suffix_horizon_evidence(self) -> None:
         source = DEMO_PATH.read_text(encoding="utf-8")
         failure_start = source.index("def raise_adaptive_planner_failure")
@@ -2987,6 +3315,14 @@ class AdaptiveMPCSourceStructureTest(unittest.TestCase):
             '"candidate_node_metric_margin_m"',
             '"candidate_node_metric_margin_rad"',
             '"candidate_publisher_first_failure_distance_m"',
+            '"candidate_rollout_explicit_polish_source_q_rad"',
+            '"candidate_rollout_explicit_polish_restart_attempt_count"',
+            '"candidate_rollout_explicit_polish_restart_status"',
+            '"candidate_rollout_explicit_polish_restart_solver_success"',
+            '"candidate_rollout_explicit_polish_restart_prefix_ok"',
+            '"candidate_rollout_explicit_polish_restart_nfev"',
+            '"candidate_rollout_explicit_polish_restart_constraint_margin_m"',
+            '"candidate_rollout_explicit_polish_restart_q_rad"',
             '"selected_index"',
         ):
             self.assertIn(expected, source)

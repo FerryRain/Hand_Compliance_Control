@@ -1054,6 +1054,62 @@ def suffix_node_needs_explicit_task_polish(
     )
 
 
+def suffix_explicit_restart_required(
+    *,
+    q_rad: np.ndarray,
+    expected_dof: int,
+    explicit_prefix_ok: bool,
+    node_condition_ok: np.ndarray,
+    node_metric_margin_m: np.ndarray,
+    node_index: int,
+    publisher_first_failure_distance_m: float,
+    node_distance_m: float,
+    low_motion_ok: bool,
+    task_guard_m: float,
+) -> bool:
+    """Allow one explicit restart only for the same exact-only task miss."""
+
+    if expected_dof <= 0:
+        raise ValueError("expected_dof must be positive")
+    try:
+        q = np.asarray(q_rad, dtype=np.float64)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    if q.shape != (expected_dof,) or not np.all(np.isfinite(q)):
+        return False
+    if bool(explicit_prefix_ok):
+        return False
+    metrics = np.asarray(node_metric_margin_m, dtype=np.float64)
+    if metrics.ndim != 2 or metrics.shape[1] < 8:
+        raise ValueError(
+            "node metrics must contain task, palm, and collision margins"
+        )
+    return bool(
+        suffix_prefix_needs_interior_polish(
+            node_condition_ok=node_condition_ok,
+            node_index=node_index,
+            publisher_first_failure_distance_m=(
+                publisher_first_failure_distance_m
+            ),
+            node_distance_m=node_distance_m,
+            low_motion_ok=low_motion_ok,
+        )
+        and suffix_node_needs_explicit_task_polish(
+            node_condition_ok=node_condition_ok,
+            node_metric_margin_m=node_metric_margin_m,
+            node_index=node_index,
+            task_guard_m=task_guard_m,
+        )
+        # Columns 0:4 are task-interior margins.  Palm (column 4) is a
+        # hard-only margin; only arm/hand/tip clearances in columns 5:8
+        # belong to the remaining interior gate.
+        and np.all(
+            metrics[node_index, 5:8]
+            >= float(task_guard_m) - 1.0e-12
+        )
+    )
+
+
 def suffix_interior_polish_scale_ladder(
     base_scale: float,
 ) -> tuple[float, ...]:

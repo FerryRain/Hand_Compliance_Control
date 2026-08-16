@@ -80,6 +80,7 @@ from mjlab.tasks.leaphand.full_hand_mcc_planner_diagnostics import (
     smoothstep_joint_interpolation,
     suffix_interior_polish_scale_ladder,
     suffix_explicit_constraint_guard,
+    suffix_explicit_restart_required,
     suffix_explicit_support_indices,
     suffix_optimization_guard,
     suffix_node_needs_explicit_task_polish,
@@ -9913,6 +9914,11 @@ def main() -> None:
                                     rollout_explicit_polish_attempt_count = 0
                                     rollout_explicit_polish_success_count = 0
                                     rollout_explicit_polish_min_margin_m = np.nan
+                                    rollout_explicit_polish_source_q_rad = np.full(
+                                        (node_count, TOTAL_DOF),
+                                        np.nan,
+                                        dtype=np.float64,
+                                    )
                                     rollout_explicit_polish_status = np.full(
                                         node_count, -999, dtype=np.int16
                                     )
@@ -9929,6 +9935,29 @@ def main() -> None:
                                         node_count, np.nan, dtype=np.float64
                                     )
                                     rollout_explicit_polish_q_rad = np.full(
+                                        (node_count, TOTAL_DOF),
+                                        np.nan,
+                                        dtype=np.float64,
+                                    )
+                                    rollout_explicit_polish_restart_attempt_count = np.zeros(
+                                        node_count, dtype=np.int16
+                                    )
+                                    rollout_explicit_polish_restart_status = np.full(
+                                        node_count, -999, dtype=np.int16
+                                    )
+                                    rollout_explicit_polish_restart_solver_success = np.zeros(
+                                        node_count, dtype=np.bool_
+                                    )
+                                    rollout_explicit_polish_restart_prefix_ok = np.zeros(
+                                        node_count, dtype=np.bool_
+                                    )
+                                    rollout_explicit_polish_restart_nfev = np.zeros(
+                                        node_count, dtype=np.int32
+                                    )
+                                    rollout_explicit_polish_restart_constraint_margin_m = np.full(
+                                        node_count, np.nan, dtype=np.float64
+                                    )
+                                    rollout_explicit_polish_restart_q_rad = np.full(
                                         (node_count, TOTAL_DOF),
                                         np.nan,
                                         dtype=np.float64,
@@ -10552,154 +10581,294 @@ def main() -> None:
                                                     explicit_source_q = (
                                                         explicit_source_trial.q_rad.copy()
                                                     )
+                                                    rollout_explicit_polish_source_q_rad[
+                                                        node_index
+                                                    ] = explicit_source_q
                                                     objective_scale = max(
                                                         step_inner_limit,
                                                         1.0e-6,
                                                     )
-
-                                                    def rollout_node_explicit_objective(
-                                                        q_node: np.ndarray,
-                                                    ) -> float:
-                                                        normalized_delta = (
-                                                            q_node
-                                                            - explicit_source_q
-                                                        ) / objective_scale
-                                                        return 0.5 * float(
-                                                            np.dot(
-                                                                normalized_delta,
-                                                                normalized_delta,
-                                                            )
-                                                        )
-
-                                                    explicit_result = minimize(
-                                                        rollout_node_explicit_objective,
-                                                        explicit_source_q,
-                                                        method="SLSQP",
-                                                        bounds=Bounds(
-                                                            local_lower,
-                                                            local_upper,
-                                                            keep_feasible=True,
-                                                        ),
-                                                        constraints=(
-                                                            {
-                                                                "type": "ineq",
-                                                                "fun": (
-                                                                    rollout_node_explicit_constraints
-                                                                ),
-                                                            },
-                                                        ),
-                                                        options={
-                                                            "maxiter": min(
-                                                                args.mpc_suffix_max_nfev,
-                                                                100,
+                                                    explicit_bounds = Bounds(
+                                                        local_lower,
+                                                        local_upper,
+                                                        keep_feasible=True,
+                                                    )
+                                                    explicit_constraint_specs = (
+                                                        {
+                                                            "type": "ineq",
+                                                            "fun": (
+                                                                rollout_node_explicit_constraints
                                                             ),
-                                                            "ftol": 1.0e-12,
-                                                            "eps": 1.0e-5,
-                                                            "disp": False,
                                                         },
                                                     )
-                                                    rollout_explicit_polish_attempt_count += 1
-                                                    rollout_explicit_polish_status[
-                                                        node_index
-                                                    ] = int(
-                                                        explicit_result.status
+                                                    explicit_options = {
+                                                        "maxiter": min(
+                                                            args.mpc_suffix_max_nfev,
+                                                            100,
+                                                        ),
+                                                        "ftol": 1.0e-12,
+                                                        "eps": 1.0e-5,
+                                                        "disp": False,
+                                                    }
+                                                    explicit_attempt_q = (
+                                                        explicit_source_q.copy()
                                                     )
-                                                    rollout_explicit_polish_solver_success[
-                                                        node_index
-                                                    ] = bool(
-                                                        explicit_result.success
-                                                    )
-                                                    explicit_nfev = int(
-                                                        getattr(
-                                                            explicit_result,
-                                                            "nfev",
-                                                            0,
+                                                    for explicit_attempt_index in range(
+                                                        2
+                                                    ):
+                                                        explicit_objective_anchor_q = (
+                                                            explicit_attempt_q.copy()
                                                         )
-                                                    )
-                                                    rollout_explicit_polish_nfev[
-                                                        node_index
-                                                    ] = explicit_nfev
-                                                    rollout_nfev += explicit_nfev
-                                                    explicit_q = np.asarray(
-                                                        explicit_result.x,
-                                                        dtype=np.float64,
-                                                    )
-                                                    explicit_constraint_margin_m = np.nan
-                                                    explicit_trial_prefix_ok = False
-                                                    if (
-                                                        explicit_q.shape
-                                                        == (TOTAL_DOF,)
-                                                        and np.all(
-                                                            np.isfinite(
-                                                                explicit_q
+
+                                                        def rollout_node_explicit_objective(
+                                                            q_node: np.ndarray,
+                                                            *,
+                                                            _anchor_q: np.ndarray = (
+                                                                explicit_objective_anchor_q
+                                                            ),
+                                                            _objective_scale: float = objective_scale,
+                                                        ) -> float:
+                                                            normalized_delta = (
+                                                                q_node - _anchor_q
+                                                            ) / _objective_scale
+                                                            return 0.5 * float(
+                                                                np.dot(
+                                                                    normalized_delta,
+                                                                    normalized_delta,
+                                                                )
+                                                            )
+
+                                                        explicit_result = minimize(
+                                                            rollout_node_explicit_objective,
+                                                            explicit_attempt_q,
+                                                            method="SLSQP",
+                                                            bounds=explicit_bounds,
+                                                            constraints=(
+                                                                explicit_constraint_specs
+                                                            ),
+                                                            options=explicit_options,
+                                                        )
+                                                        rollout_explicit_polish_attempt_count += 1
+                                                        explicit_nfev = int(
+                                                            getattr(
+                                                                explicit_result,
+                                                                "nfev",
+                                                                0,
                                                             )
                                                         )
-                                                    ):
-                                                        rollout_explicit_polish_q_rad[
-                                                            node_index
-                                                        ] = explicit_q
-                                                        explicit_constraint_margin_m = float(
-                                                            np.min(
-                                                                rollout_node_explicit_constraints(
+                                                        rollout_nfev += explicit_nfev
+                                                        explicit_q = np.asarray(
+                                                            explicit_result.x,
+                                                            dtype=np.float64,
+                                                        )
+                                                        explicit_q_finite = bool(
+                                                            explicit_q.shape
+                                                            == (TOTAL_DOF,)
+                                                            and np.all(
+                                                                np.isfinite(
                                                                     explicit_q
                                                                 )
                                                             )
                                                         )
-                                                        rollout_explicit_polish_constraint_margin_m[
-                                                            node_index
-                                                        ] = (
-                                                            explicit_constraint_margin_m
+                                                        explicit_constraint_margin_m = (
+                                                            np.nan
                                                         )
-                                                        if np.isnan(
-                                                            rollout_explicit_polish_min_margin_m
-                                                        ):
-                                                            rollout_explicit_polish_min_margin_m = (
-                                                                explicit_constraint_margin_m
+                                                        explicit_trial_prefix_ok = (
+                                                            False
+                                                        )
+                                                        explicit_trial = None
+                                                        if explicit_q_finite:
+                                                            explicit_constraint_margin_m = float(
+                                                                np.min(
+                                                                    rollout_node_explicit_constraints(
+                                                                        explicit_q
+                                                                    )
+                                                                )
                                                             )
+                                                            if np.isnan(
+                                                                rollout_explicit_polish_min_margin_m
+                                                            ):
+                                                                rollout_explicit_polish_min_margin_m = (
+                                                                    explicit_constraint_margin_m
+                                                                )
+                                                            else:
+                                                                rollout_explicit_polish_min_margin_m = max(
+                                                                    rollout_explicit_polish_min_margin_m,
+                                                                    explicit_constraint_margin_m,
+                                                                )
+                                                            explicit_selection_delta = (
+                                                                explicit_q
+                                                                - explicit_source_q
+                                                            ) / objective_scale
+                                                            explicit_selection_cost = (
+                                                                float(
+                                                                    explicit_result.fun
+                                                                )
+                                                                if explicit_attempt_index
+                                                                == 0
+                                                                else 0.5
+                                                                * float(
+                                                                    np.dot(
+                                                                        explicit_selection_delta,
+                                                                        explicit_selection_delta,
+                                                                    )
+                                                                )
+                                                            )
+                                                            append_rollout_node_trial(
+                                                                explicit_q,
+                                                                trial_kind=(
+                                                                    "explicit_constraint_polish"
+                                                                    if explicit_attempt_index
+                                                                    == 0
+                                                                    else "explicit_constraint_restart"
+                                                                ),
+                                                                trial_cost=(
+                                                                    explicit_selection_cost
+                                                                ),
+                                                                trial_nfev=explicit_nfev,
+                                                                trial_order=len(
+                                                                    node_trials
+                                                                ),
+                                                            )
+                                                            explicit_trial = (
+                                                                node_trials[-1]
+                                                            )
+                                                            explicit_trial_prefix_ok = bool(
+                                                                explicit_trial.prefix_ok
+                                                            )
+                                                            if explicit_trial_prefix_ok:
+                                                                rollout_explicit_polish_success_count += 1
+                                                        if explicit_attempt_index == 0:
+                                                            rollout_explicit_polish_status[
+                                                                node_index
+                                                            ] = int(
+                                                                explicit_result.status
+                                                            )
+                                                            rollout_explicit_polish_solver_success[
+                                                                node_index
+                                                            ] = bool(
+                                                                explicit_result.success
+                                                            )
+                                                            rollout_explicit_polish_prefix_ok[
+                                                                node_index
+                                                            ] = (
+                                                                explicit_trial_prefix_ok
+                                                            )
+                                                            rollout_explicit_polish_nfev[
+                                                                node_index
+                                                            ] = explicit_nfev
+                                                            if explicit_q_finite:
+                                                                rollout_explicit_polish_constraint_margin_m[
+                                                                    node_index
+                                                                ] = (
+                                                                    explicit_constraint_margin_m
+                                                                )
+                                                                rollout_explicit_polish_q_rad[
+                                                                    node_index
+                                                                ] = explicit_q
                                                         else:
-                                                            rollout_explicit_polish_min_margin_m = max(
-                                                                rollout_explicit_polish_min_margin_m,
-                                                                explicit_constraint_margin_m,
+                                                            rollout_explicit_polish_restart_attempt_count[
+                                                                node_index
+                                                            ] += 1
+                                                            rollout_explicit_polish_restart_status[
+                                                                node_index
+                                                            ] = int(
+                                                                explicit_result.status
                                                             )
-                                                        append_rollout_node_trial(
-                                                            explicit_q,
-                                                            trial_kind=(
-                                                                "explicit_constraint_polish"
-                                                            ),
-                                                            trial_cost=float(
-                                                                explicit_result.fun
-                                                            ),
-                                                            trial_nfev=explicit_nfev,
-                                                            trial_order=len(
-                                                                node_trials
-                                                            ),
+                                                            rollout_explicit_polish_restart_solver_success[
+                                                                node_index
+                                                            ] = bool(
+                                                                explicit_result.success
+                                                            )
+                                                            rollout_explicit_polish_restart_prefix_ok[
+                                                                node_index
+                                                            ] = (
+                                                                explicit_trial_prefix_ok
+                                                            )
+                                                            rollout_explicit_polish_restart_nfev[
+                                                                node_index
+                                                            ] = explicit_nfev
+                                                            if explicit_q_finite:
+                                                                rollout_explicit_polish_restart_constraint_margin_m[
+                                                                    node_index
+                                                                ] = (
+                                                                    explicit_constraint_margin_m
+                                                                )
+                                                                rollout_explicit_polish_restart_q_rad[
+                                                                    node_index
+                                                                ] = explicit_q
+                                                        print(
+                                                            "[SUFFIX-EXPLICIT-CONSTRAINT-POLISH] "
+                                                            f"source={source.suffix_seed_kind} "
+                                                            f"node={node_index} "
+                                                            "attempt="
+                                                            f"{explicit_attempt_index + 1}/2 "
+                                                            "guard_um="
+                                                            f"{explicit_constraint_guard_m * 1.0e6:.3f} "
+                                                            f"status={int(explicit_result.status)} "
+                                                            f"success={bool(explicit_result.success)} "
+                                                            f"nit={int(getattr(explicit_result, 'nit', 0))} "
+                                                            f"nfev={explicit_nfev} "
+                                                            "constraint_margin_um="
+                                                            f"{explicit_constraint_margin_m * 1.0e6:.3f} "
+                                                            "prefix_ok="
+                                                            f"{explicit_trial_prefix_ok}",
+                                                            flush=True,
                                                         )
-                                                        explicit_trial_prefix_ok = bool(
-                                                            node_trials[-1].prefix_ok
+                                                        if (
+                                                            explicit_attempt_index
+                                                            > 0
+                                                            or not explicit_q_finite
+                                                        ):
+                                                            break
+                                                        assert (
+                                                            explicit_trial
+                                                            is not None
                                                         )
-                                                        rollout_explicit_polish_prefix_ok[
-                                                            node_index
-                                                        ] = (
-                                                            explicit_trial_prefix_ok
+                                                        if not suffix_explicit_restart_required(
+                                                            q_rad=explicit_q,
+                                                            expected_dof=(
+                                                                TOTAL_DOF
+                                                            ),
+                                                            explicit_prefix_ok=(
+                                                                explicit_trial_prefix_ok
+                                                            ),
+                                                            node_condition_ok=(
+                                                                explicit_trial.audit[
+                                                                    "node_condition_ok"
+                                                                ]
+                                                            ),
+                                                            node_metric_margin_m=(
+                                                                explicit_trial.audit[
+                                                                    "node_metric_margin_m"
+                                                                ]
+                                                            ),
+                                                            node_index=(
+                                                                node_index
+                                                            ),
+                                                            publisher_first_failure_distance_m=float(
+                                                                explicit_trial.audit[
+                                                                    "publisher_first_failure_distance_m"
+                                                                ]
+                                                            ),
+                                                            node_distance_m=float(
+                                                                horizon_distance[
+                                                                    node_index
+                                                                ]
+                                                            ),
+                                                            low_motion_ok=bool(
+                                                                explicit_trial.audit[
+                                                                    "low_motion_ok"
+                                                                ]
+                                                            ),
+                                                            task_guard_m=(
+                                                                task_guard_m
+                                                            ),
+                                                        ):
+                                                            break
+                                                        explicit_attempt_q = (
+                                                            explicit_q.copy()
                                                         )
-                                                        if explicit_trial_prefix_ok:
-                                                            rollout_explicit_polish_success_count += 1
-                                                    print(
-                                                        "[SUFFIX-EXPLICIT-CONSTRAINT-POLISH] "
-                                                        f"source={source.suffix_seed_kind} "
-                                                        f"node={node_index} "
-                                                        "guard_um="
-                                                        f"{explicit_constraint_guard_m * 1.0e6:.3f} "
-                                                        f"status={int(explicit_result.status)} "
-                                                        f"success={bool(explicit_result.success)} "
-                                                        f"nit={int(getattr(explicit_result, 'nit', 0))} "
-                                                        f"nfev={explicit_nfev} "
-                                                        "constraint_margin_um="
-                                                        f"{explicit_constraint_margin_m * 1.0e6:.3f} "
-                                                        "prefix_ok="
-                                                        f"{explicit_trial_prefix_ok}",
-                                                        flush=True,
-                                                    )
 
                                         selected_node_trial = min(
                                             node_trials,
@@ -10797,6 +10966,9 @@ def main() -> None:
                                                 rollout_explicit_polish_min_margin_m=(
                                                     rollout_explicit_polish_min_margin_m
                                                 ),
+                                                rollout_explicit_polish_source_q_rad=(
+                                                    rollout_explicit_polish_source_q_rad.copy()
+                                                ),
                                                 rollout_explicit_polish_status=(
                                                     rollout_explicit_polish_status.copy()
                                                 ),
@@ -10814,6 +10986,27 @@ def main() -> None:
                                                 ),
                                                 rollout_explicit_polish_q_rad=(
                                                     rollout_explicit_polish_q_rad.copy()
+                                                ),
+                                                rollout_explicit_polish_restart_attempt_count=(
+                                                    rollout_explicit_polish_restart_attempt_count.copy()
+                                                ),
+                                                rollout_explicit_polish_restart_status=(
+                                                    rollout_explicit_polish_restart_status.copy()
+                                                ),
+                                                rollout_explicit_polish_restart_solver_success=(
+                                                    rollout_explicit_polish_restart_solver_success.copy()
+                                                ),
+                                                rollout_explicit_polish_restart_prefix_ok=(
+                                                    rollout_explicit_polish_restart_prefix_ok.copy()
+                                                ),
+                                                rollout_explicit_polish_restart_nfev=(
+                                                    rollout_explicit_polish_restart_nfev.copy()
+                                                ),
+                                                rollout_explicit_polish_restart_constraint_margin_m=(
+                                                    rollout_explicit_polish_restart_constraint_margin_m.copy()
+                                                ),
+                                                rollout_explicit_polish_restart_q_rad=(
+                                                    rollout_explicit_polish_restart_q_rad.copy()
                                                 ),
                                             )
                                         )
@@ -10892,6 +11085,9 @@ def main() -> None:
                                             rollout_explicit_polish_min_margin_m=(
                                                 rollout_explicit_polish_min_margin_m
                                             ),
+                                            rollout_explicit_polish_source_q_rad=(
+                                                rollout_explicit_polish_source_q_rad.copy()
+                                            ),
                                             rollout_explicit_polish_status=(
                                                 rollout_explicit_polish_status.copy()
                                             ),
@@ -10909,6 +11105,27 @@ def main() -> None:
                                             ),
                                             rollout_explicit_polish_q_rad=(
                                                 rollout_explicit_polish_q_rad.copy()
+                                            ),
+                                            rollout_explicit_polish_restart_attempt_count=(
+                                                rollout_explicit_polish_restart_attempt_count.copy()
+                                            ),
+                                            rollout_explicit_polish_restart_status=(
+                                                rollout_explicit_polish_restart_status.copy()
+                                            ),
+                                            rollout_explicit_polish_restart_solver_success=(
+                                                rollout_explicit_polish_restart_solver_success.copy()
+                                            ),
+                                            rollout_explicit_polish_restart_prefix_ok=(
+                                                rollout_explicit_polish_restart_prefix_ok.copy()
+                                            ),
+                                            rollout_explicit_polish_restart_nfev=(
+                                                rollout_explicit_polish_restart_nfev.copy()
+                                            ),
+                                            rollout_explicit_polish_restart_constraint_margin_m=(
+                                                rollout_explicit_polish_restart_constraint_margin_m.copy()
+                                            ),
+                                            rollout_explicit_polish_restart_q_rad=(
+                                                rollout_explicit_polish_restart_q_rad.copy()
                                             ),
                                         )
                                     )
@@ -11080,6 +11297,20 @@ def main() -> None:
                                     ],
                                     dtype=np.float64,
                                 ),
+                                "candidate_rollout_explicit_polish_source_q_rad": np.stack(
+                                    [
+                                        getattr(
+                                            candidate,
+                                            "rollout_explicit_polish_source_q_rad",
+                                            np.full(
+                                                (node_count, TOTAL_DOF),
+                                                np.nan,
+                                                dtype=np.float64,
+                                            ),
+                                        )
+                                        for candidate in horizon_candidates
+                                    ]
+                                ),
                                 "candidate_rollout_explicit_polish_status": np.stack(
                                     [
                                         getattr(
@@ -11152,6 +11383,100 @@ def main() -> None:
                                         getattr(
                                             candidate,
                                             "rollout_explicit_polish_q_rad",
+                                            np.full(
+                                                (node_count, TOTAL_DOF),
+                                                np.nan,
+                                                dtype=np.float64,
+                                            ),
+                                        )
+                                        for candidate in horizon_candidates
+                                    ]
+                                ),
+                                "candidate_rollout_explicit_polish_restart_attempt_count": np.stack(
+                                    [
+                                        getattr(
+                                            candidate,
+                                            "rollout_explicit_polish_restart_attempt_count",
+                                            np.zeros(
+                                                node_count,
+                                                dtype=np.int16,
+                                            ),
+                                        )
+                                        for candidate in horizon_candidates
+                                    ]
+                                ),
+                                "candidate_rollout_explicit_polish_restart_status": np.stack(
+                                    [
+                                        getattr(
+                                            candidate,
+                                            "rollout_explicit_polish_restart_status",
+                                            np.full(
+                                                node_count,
+                                                -999,
+                                                dtype=np.int16,
+                                            ),
+                                        )
+                                        for candidate in horizon_candidates
+                                    ]
+                                ),
+                                "candidate_rollout_explicit_polish_restart_solver_success": np.stack(
+                                    [
+                                        getattr(
+                                            candidate,
+                                            "rollout_explicit_polish_restart_solver_success",
+                                            np.zeros(
+                                                node_count,
+                                                dtype=np.bool_,
+                                            ),
+                                        )
+                                        for candidate in horizon_candidates
+                                    ]
+                                ),
+                                "candidate_rollout_explicit_polish_restart_prefix_ok": np.stack(
+                                    [
+                                        getattr(
+                                            candidate,
+                                            "rollout_explicit_polish_restart_prefix_ok",
+                                            np.zeros(
+                                                node_count,
+                                                dtype=np.bool_,
+                                            ),
+                                        )
+                                        for candidate in horizon_candidates
+                                    ]
+                                ),
+                                "candidate_rollout_explicit_polish_restart_nfev": np.stack(
+                                    [
+                                        getattr(
+                                            candidate,
+                                            "rollout_explicit_polish_restart_nfev",
+                                            np.zeros(
+                                                node_count,
+                                                dtype=np.int32,
+                                            ),
+                                        )
+                                        for candidate in horizon_candidates
+                                    ]
+                                ),
+                                "candidate_rollout_explicit_polish_restart_constraint_margin_m": np.stack(
+                                    [
+                                        getattr(
+                                            candidate,
+                                            "rollout_explicit_polish_restart_constraint_margin_m",
+                                            np.full(
+                                                node_count,
+                                                np.nan,
+                                                dtype=np.float64,
+                                            ),
+                                        )
+                                        for candidate in horizon_candidates
+                                    ]
+                                ),
+                                "candidate_rollout_explicit_polish_restart_q_rad": np.stack(
+                                    [
+                                        getattr(
+                                            candidate,
+                                            "rollout_explicit_polish_restart_q_rad",
                                             np.full(
                                                 (node_count, TOTAL_DOF),
                                                 np.nan,
