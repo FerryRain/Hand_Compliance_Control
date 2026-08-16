@@ -1902,3 +1902,11 @@ PowerShell AST及`git diff --check`均exit0。所有冻结硬门和runner参数�
 **正在执行/下一步：**由主代理复核最终diff与FerryRain本机身份后commit/push main并更新issue #7；随后同参数
 GPU因果重跑。除确认valid cache block seed外，还必须确认rollout source中cache未被特殊basin挤掉；完整plan/
 collision/terminal/low-motion/dynamics通过前仍不录像，Level 2仍 **NOT PASS**。
+### `09aee58` certified-cache Acceptance seed42 GPU 因果重跑启动（2026-08-16 17:41 CST）
+
+- stem=`baseline2_capsule_cachecontinuity_0to50_acceptance_seed42_20260816_174111_780`；runtime commit=`09aee58bcefaa6b869fcb5249b0987cd007b7695`；
+- 完全复用上一轮 Acceptance seed42 参数，只替换 plan/failure 输出路径；headless、`cuda:0`，没有录像参数；
+- 首次用 Codex `$PSHOME` 启动器因路径不存在而未创建 Python/GPU 进程，仅生成 manifest，不能记作仿真失败；17:41:31 改用系统 Windows PowerShell 隐藏启动器成功；
+- wrapper PID=`39996`、`.venv` shim PID=`90360`、真实 DMtactile Python PID=`1696`；
+- initial physical-tip clearance=`[-0.451,-0.253,-0.260,-0.058] mm`，protected-self minimum=`0.537514 mm`，FR3 final-approach clearance=`16.571 mm`；初始硬门通过；
+- 当前正在规划；46.09375 mm 必须实际打印 valid `SUFFIX-CERTIFIED-CACHE` 并越过旧停点。完整 plan、collision、terminal、rolling-low-motion、dynamics 全过前不录像，Level 2 仍 **NOT PASS**。

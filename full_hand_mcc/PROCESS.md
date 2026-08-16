@@ -3551,3 +3551,25 @@ non-suffix clear；源码AST另确认生产planner只有两个helper call site�
 本轮Acceptance seed42 launch，仅更换输出stem做GPU因果验证。日志必须同时证明cache validation=true、block
 seed被保留，并在需要rollout时进入4-source集合；越过46.09375 mm后继续到50 mm。若生成plan，再做Acceptance
 plan audit、全帧collision/terminal/rolling-low-motion与dynamics；全部PASS后才允许录像和视觉验收。
+### `09aee58` certified-cache Acceptance seed42 GPU 因果重跑启动（2026-08-16 17:41 CST）
+
+#### 身份、参数与进程
+
+- stem=`baseline2_capsule_cachecontinuity_0to50_acceptance_seed42_20260816_174111_780`；runtime commit=`09aee58bcefaa6b869fcb5249b0987cd007b7695`；
+- source launch=`baseline2_capsule_explicitpolish_0to50_acceptance_seed42_20260816_162323_062_launch.json`；逐项复用其 arguments，仅替换 `--mpc-failure-prefix-output` 与 `--plan-output`；
+- Acceptance、seed42、capsule=`0.10/0.17 m`、route=`0--0.05 m`、40 base keyframes、800 motion frames、`cuda:0`、headless；无视频参数；
+- 首次在17:41:11以 Codex runtime `$PSHOME` 启动，因该目录没有 `powershell.exe` 而在创建 Python/GPU 前失败；只留下 launch manifest，无log/exitcode/仿真结果，不计入方法失败；
+- 17:41:31 改用 `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe` 且 `-WindowStyle Hidden` 成功启动同一 stem；wrapper PID=`39996`、`.venv` shim PID=`90360`、真实 `D:\Environment\Anaconda\envs\DMtactile\python.exe` PID=`1696`；
+- GitHub写操作继续只用本机 `gh` active=`FerryRain`；origin=`https://github.com/FerryRain/Hand_Compliance_Control.git`；禁止使用 yoyozhang 身份。
+
+#### 初始化硬门
+
+- RTX 4090 D 场景初始化成功；physics step=`0.002 s`、env step=`0.01 s`；
+- initial physical-tip clearance=`[-0.451,-0.253,-0.260,-0.058] mm`，全部高于`-1 mm`；
+- initial protected MCP--DIP clearance=`[0.537514,0.721975,0.598799] mm`，active self=0；
+- CPU final-approach FR3 clearance=`16.571 mm`、nearest=`fr3v2_link4_collision`；
+- 首个 raw surface seed FR3=`15.38 mm`、non-tip hand=`-0.20 mm`、tip=`-0.51 mm`、pad=`29.03 deg`、self=`0/0`；
+- stderr仅有既知“robot有2个keyframe、只使用第一个”UserWarning，无Traceback/RuntimeError。
+
+**正在执行：**低频只读监控accepted path。38.75 mm继续验证prospective 20/21 low-motion；45.9375 mm验证H5；
+auto-refine后的46.09375 mm必须打印`[SUFFIX-CERTIFIED-CACHE] valid=True`且cache进入block/rollout候选。只有plan、全帧FR3/hand/tip/self/pad、terminal nominal4/4、rolling-low-motion和dynamics全部PASS后才允许录像；Level 2仍 **NOT PASS**。
