@@ -1847,3 +1847,58 @@ Python AST、Level-2 PowerShell AST与`git diff --check`全部exit0，仅有既�
 **正在执行：**低频只读监控accepted path；38.750 mm先核对prospective low-motion，45.9375 mm读取
 `[SUFFIX-EXPLICIT-CONSTRAINT-POLISH]`与formal 50 um exact结果。plan/full collision/terminal/
 rolling-low-motion/dynamics全部PASS前不录像，Level 2仍 **NOT PASS**。
+
+### `f45db64` GPU终审结果与 certified-suffix cache P0 修复（2026-08-16）
+
+同stem运行结束并以exit=`1`安全fail-close。prospective low-motion门在38.750 mm检测到窗口
+37.250--38.500 mm仅2/4指推进，并先细分38.125 mm；45.9375 mm的H5显式SLSQP虽以status9结束，
+但正式exact audit通过，最低task slack=`50.988 um`，因此accepted path首次到达45.9375 mm。随后失败目标为
+46.09375 mm、last accepted=`45.9375 mm`；只有launch/log/stderr/exitcode/failure-prefix，无plan、
+dynamics、audit或视频，Level 2仍 **NOT PASS**。
+
+失败H5的前4节点全部hard/interior通过，terminal节点碰撞、4 contacts、publisher与rolling-low-motion也通过；
+首败仅为terminal monotonic margin=`-230.507 um`、tip motion=
+`[203.822,-7.964,-430.507,237.584] um`，仅2/4达到`21.09375 um`，并派生interior false。全部16个
+20-frame窗口仍通过，最差3指quorum余量=`+1.202828 mm`。证据SHA256：log=
+`C78D8CB8958CA76320C098C852D8AE8B6ADEC57E7FBD985A762690412A230419`；stderr=
+`EF0772C80041DE1BA494488CD7B2BD03B157627BC659D67572BE4C5D009B0B84`；failure-prefix=
+`9F496CE951CCF1D346F3FE4EC54862C2899765633828EF04203F9EF1B6D63364`。
+
+交叉审计定位到更早的确定性根因：45.9375 mm通过时已保存覆盖未来节点的certified suffix，但后续只插入
+future midpoint的`insert_auto_refinement()`无条件清空了cache；46.09375 mm证据中因此没有
+`certified_cache` seed，旧terminal解被丢弃。P0现在保留cache跨过这种未来细分，并在每次使用前继续严格核对
+anchor distance=`1e-12 m`、anchor q=`1e-10 rad`、shape/order/finite；不匹配即fail-close。重采样后的seed
+仍须经过原block solve、node/16-sample collision、dense publisher、terminal和low-motion exact audit；只有
+accepted且非suffix的真实状态提交仍会令cache失效。failure evidence新增旧knots和重采样seed，均为no-pickle
+数值数组。
+
+CPU全量=`118/118`，新增cache midpoint重采样、distance/q anchor mismatch、schema异常、紧seed cap与
+source-structure回归；demo `--help`、三文件Python AST、Level-2 PowerShell AST及`git diff --check`均exit0。
+所有40 deg pad、physical-tip/FR3/hand/self、task、joint/step、terminal4/4与rolling-low-motion门均未改。
+既有wandb临时目录atexit PermissionError仅为退出噪声，测试exit0。
+
+**正在执行/下一步：**本地P0与CPU/静态终审已完成；由主代理核对本机FerryRain身份并直接提交/push `main`、
+更新issue #7，随后复用完全相同Acceptance seed42 0--50 mm参数GPU因果重跑。重点确认
+46.09375 mm出现valid `certified_cache`并越过旧停点；plan/full collision/terminal/low-motion/dynamics全部
+PASS前不录像。
+
+### GPU前独立审查封口：cache lifecycle与rollout保留（2026-08-16）
+
+独立review发现P0虽然确保`certified_cache`进入6个block seeds，但原rollout只取best + 2条
+protected-self、上限3；若block cache未直接通过，它可能在逐节点repair前再次被挤掉。现已把确定性优先级改为
+best overall -> exact `certified_cache` -> 最多2条不同protected-self -> 原rank填充，并把production rollout
+上限改为4；best本身若是cache/protected只计一次，无cache时保持旧best + 2 protected语义。
+
+同时把cache状态转换抽成并实际接线纯`apply_suffix_cache_event()`：auto-refine保留同一对象，suffix accepted
+以pending cache替换，non-suffix accepted清空，未知/不完整event直接报错。cache验证现先要求current/cached anchor
+distance是finite 0-D scalar，捕获数值转换异常，并要求horizon首点严格晚于anchor `1e-12 m`；length-1/2 array、
+NaN/Inf、非递增/逆序输入均不能进入seed。smoothstep回归新增`u=0.25 -> blend=0.15625`，避免只靠中点掩盖
+错误插值。
+
+定向新增/更新=`13/13`，全量CPU=`125/125`、exit0；demo `--help`、三文件Python AST、Level-2
+PowerShell AST及`git diff --check`均exit0。所有冻结硬门和runner参数未改，未加入task-motion P1，未运行GPU/
+生成视频。
+
+**正在执行/下一步：**由主代理复核最终diff与FerryRain本机身份后commit/push main并更新issue #7；随后同参数
+GPU因果重跑。除确认valid cache block seed外，还必须确认rollout source中cache未被特殊basin挤掉；完整plan/
+collision/terminal/low-motion/dynamics通过前仍不录像，Level 2仍 **NOT PASS**。

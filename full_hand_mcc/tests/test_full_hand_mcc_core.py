@@ -60,6 +60,29 @@ RUNNER_PATH = (
 )
 
 
+def load_demo_pure_function(name: str):
+    """Load one top-level pure helper without importing MJLab or MuJoCo."""
+
+    source = DEMO_PATH.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    function = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == name
+    )
+    module = ast.fix_missing_locations(
+        ast.Module(body=[function], type_ignores=[])
+    )
+    namespace = {
+        "np": np,
+        "smoothstep_joint_interpolation": (
+            DIAGNOSTICS.smoothstep_joint_interpolation
+        ),
+    }
+    exec(compile(module, str(DEMO_PATH), "exec"), namespace)
+    return namespace[name]
+
+
 class PlannerDiagnosticsTest(unittest.TestCase):
     @staticmethod
     def _candidate_rank(
@@ -144,6 +167,29 @@ class PlannerDiagnosticsTest(unittest.TestCase):
         )
         self.assertIn("certified_cache", retained)
 
+    def test_suffix_seed_tighter_cap_still_retains_certified_cache(self) -> None:
+        kinds = (
+            "previous",
+            "extrapolated",
+            "nullspace_combined",
+            "nullspace_joint_0",
+            "nullspace_joint_1",
+            "protected_self_small",
+            "protected_self_large",
+            "certified_cache",
+        )
+        indices = DIAGNOSTICS.prioritized_suffix_seed_indices(
+            kinds,
+            maximum_seeds=5,
+        )
+        self.assertEqual(indices, (0, 1, 5, 6, 7))
+        retained = tuple(kinds[index] for index in indices)
+        self.assertIn("certified_cache", retained)
+        self.assertEqual(
+            sum(kind.startswith("protected_self") for kind in retained),
+            2,
+        )
+
     def test_suffix_seed_cap_without_cache_still_keeps_two_protected(self) -> None:
         kinds = (
             "previous",
@@ -178,7 +224,7 @@ class PlannerDiagnosticsTest(unittest.TestCase):
             np.diff(base, axis=0),
         )
 
-    def test_suffix_rollout_keeps_two_protected_basins(self) -> None:
+    def test_suffix_rollout_without_cache_keeps_old_protected_order(self) -> None:
         kinds = (
             "previous",
             "extrapolated",
@@ -197,6 +243,44 @@ class PlannerDiagnosticsTest(unittest.TestCase):
             sum(kinds[index].startswith("protected_self") for index in indices),
             2,
         )
+
+    def test_suffix_rollout_keeps_best_cache_and_two_protected(self) -> None:
+        kinds = (
+            "previous",
+            "protected_self_small",
+            "nullspace_combined",
+            "certified_cache",
+            "protected_self_large",
+        )
+        indices = DIAGNOSTICS.prioritized_suffix_rollout_indices(
+            kinds,
+            (2, 0, 3, 4, 1),
+            maximum_sources=4,
+        )
+        self.assertEqual(indices, (2, 3, 4, 1))
+
+    def test_suffix_rollout_deduplicates_best_special_source(self) -> None:
+        cases = (
+            (
+                ("certified_cache", "generic", "protected_self_a"),
+                (0, 1, 2),
+                (0, 2, 1),
+            ),
+            (
+                ("protected_self_a", "generic", "certified_cache"),
+                (0, 1, 2),
+                (0, 2, 1),
+            ),
+        )
+        for kinds, ranked, expected in cases:
+            with self.subTest(best=kinds[ranked[0]]):
+                indices = DIAGNOSTICS.prioritized_suffix_rollout_indices(
+                    kinds,
+                    ranked,
+                    maximum_sources=3,
+                )
+                self.assertEqual(indices, expected)
+                self.assertEqual(len(indices), len(set(indices)))
 
     def test_suffix_rollout_respects_small_source_caps(self) -> None:
         kinds = ("previous", "protected_self_a", "protected_self_b")
@@ -1236,18 +1320,23 @@ class PlannerDiagnosticsTest(unittest.TestCase):
         )
         self.assertAlmostEqual(float(distances[-1]), 0.05, places=12)
 
-    def test_smoothstep_interpolation_matches_publisher_midpoint(self) -> None:
+    def test_smoothstep_interpolation_matches_publisher_off_midpoint(self) -> None:
         distance = np.asarray((0.0, 1.0, 2.0), dtype=np.float64)
         q = np.asarray(((0.0,), (2.0,), (4.0,)), dtype=np.float64)
-        sample = np.asarray((0.0, 0.5, 1.0, 1.5, 2.0), dtype=np.float64)
+        sample = np.asarray(
+            (0.0, 0.25, 0.5, 1.0, 1.5, 2.0),
+            dtype=np.float64,
+        )
         interpolated = DIAGNOSTICS.smoothstep_joint_interpolation(
             distance,
             q,
             sample,
         )
-        self.assertTrue(
-            np.allclose(interpolated[:, 0], (0.0, 1.0, 2.0, 3.0, 4.0))
+        np.testing.assert_allclose(
+            interpolated[:, 0],
+            (0.0, 0.3125, 1.0, 2.0, 3.0, 4.0),
         )
+        self.assertAlmostEqual(float(interpolated[1, 0] / 2.0), 0.15625)
 
     def test_horizon_joint_residuals_cover_all_nodes_and_steps(self) -> None:
         q = np.asarray(((0.2, 0.8), (0.25, 0.75)), dtype=np.float64)
@@ -1877,7 +1966,302 @@ class SurfaceGeometryTest(unittest.TestCase):
         )
 
 
+class CertifiedSuffixCacheTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.apply_cache_event = load_demo_pure_function(
+            "apply_suffix_cache_event"
+        )
+        self.validate_cache = load_demo_pure_function(
+            "validated_suffix_cache_seed"
+        )
+        self.cache = {
+            "anchor_distance_m": 0.0,
+            "anchor_q_rad": np.asarray([0.0, 0.0]),
+            "distance_m": np.asarray([1.0, 3.0]),
+            "q_rad": np.asarray([[1.0, 10.0], [3.0, 30.0]]),
+        }
+
+    def test_certified_cache_resamples_new_future_midpoint(self) -> None:
+        horizon = np.asarray([0.5, 2.0, 4.0])
+        seed, evidence = self.validate_cache(
+            self.cache,
+            current_anchor_distance_m=0.0,
+            current_anchor_q_rad=np.asarray([0.0, 0.0]),
+            horizon_distance_m=horizon,
+            total_dof=2,
+        )
+        self.assertIsNotNone(seed)
+        np.testing.assert_allclose(
+            seed,
+            np.asarray([[0.5, 5.0], [2.0, 20.0], [3.0, 30.0]]),
+        )
+        self.assertTrue(bool(evidence["cache_available"]))
+        self.assertTrue(bool(evidence["cache_schema_valid"]))
+        self.assertTrue(bool(evidence["cache_anchor_valid"]))
+        self.assertTrue(bool(evidence["cache_valid"]))
+        np.testing.assert_array_equal(
+            evidence["cache_distance_m"],
+            self.cache["distance_m"],
+        )
+        np.testing.assert_array_equal(
+            evidence["cache_q_rad"],
+            self.cache["q_rad"],
+        )
+        np.testing.assert_array_equal(
+            evidence["cache_seed_distance_m"],
+            horizon,
+        )
+        np.testing.assert_allclose(evidence["cache_seed_q_rad"], seed)
+        for value in evidence.values():
+            self.assertNotEqual(np.asarray(value).dtype, np.dtype("O"))
+
+    def test_cache_lifecycle_preserves_resamples_replaces_and_clears(
+        self,
+    ) -> None:
+        retained = self.apply_cache_event(
+            self.cache,
+            event="auto_refine",
+        )
+        self.assertIs(retained, self.cache)
+        seed, evidence = self.validate_cache(
+            retained,
+            current_anchor_distance_m=0.0,
+            current_anchor_q_rad=np.asarray([0.0, 0.0]),
+            horizon_distance_m=np.asarray([0.25, 2.0]),
+            total_dof=2,
+        )
+        self.assertIsNotNone(seed)
+        self.assertTrue(bool(evidence["cache_valid"]))
+        np.testing.assert_allclose(seed[0], np.asarray([0.15625, 1.5625]))
+
+        replacement = {
+            "anchor_distance_m": 0.25,
+            "anchor_q_rad": np.asarray(seed[0]).copy(),
+            "distance_m": np.asarray([2.0]),
+            "q_rad": np.asarray(seed[1:]).copy(),
+        }
+        committed = self.apply_cache_event(
+            retained,
+            event="suffix_commit",
+            pending_cache=replacement,
+        )
+        self.assertIs(committed, replacement)
+        cleared = self.apply_cache_event(
+            committed,
+            event="non_suffix_commit",
+        )
+        self.assertIsNone(cleared)
+
+    def test_cache_lifecycle_rejects_unknown_or_incomplete_event(self) -> None:
+        with self.assertRaisesRegex(ValueError, "unknown suffix cache event"):
+            self.apply_cache_event(self.cache, event="typo")
+        with self.assertRaisesRegex(ValueError, "requires a pending cache"):
+            self.apply_cache_event(self.cache, event="suffix_commit")
+
+    def test_certified_cache_anchor_mismatch_fails_closed(self) -> None:
+        for mismatch in ("distance", "q"):
+            with self.subTest(mismatch=mismatch):
+                seed, evidence = self.validate_cache(
+                    self.cache,
+                    current_anchor_distance_m=(
+                        2.0e-12 if mismatch == "distance" else 0.0
+                    ),
+                    current_anchor_q_rad=(
+                        np.asarray([0.0, 2.0e-10])
+                        if mismatch == "q"
+                        else np.asarray([0.0, 0.0])
+                    ),
+                    horizon_distance_m=np.asarray([0.5, 2.0]),
+                    total_dof=2,
+                )
+                self.assertIsNone(seed)
+                self.assertTrue(bool(evidence["cache_available"]))
+                self.assertTrue(bool(evidence["cache_schema_valid"]))
+                self.assertFalse(bool(evidence["cache_anchor_valid"]))
+                self.assertFalse(bool(evidence["cache_valid"]))
+                np.testing.assert_array_equal(
+                    evidence["cache_distance_m"],
+                    self.cache["distance_m"],
+                )
+                np.testing.assert_array_equal(
+                    evidence["cache_q_rad"],
+                    self.cache["q_rad"],
+                )
+
+    def test_certified_cache_schema_mismatch_fails_closed(self) -> None:
+        malformed_values = (
+            np.asarray([1.0, 1.0]),
+            np.asarray([1.0, np.nan]),
+            np.asarray([1.0, np.inf]),
+            np.asarray([3.0, 1.0]),
+        )
+        for malformed_distance in malformed_values:
+            with self.subTest(distance=malformed_distance):
+                malformed_cache = dict(self.cache)
+                malformed_cache["distance_m"] = malformed_distance
+                seed, evidence = self.validate_cache(
+                    malformed_cache,
+                    current_anchor_distance_m=0.0,
+                    current_anchor_q_rad=np.asarray([0.0, 0.0]),
+                    horizon_distance_m=np.asarray([0.5, 2.0]),
+                    total_dof=2,
+                )
+                self.assertIsNone(seed)
+                self.assertTrue(bool(evidence["cache_available"]))
+                self.assertFalse(bool(evidence["cache_schema_valid"]))
+                self.assertFalse(bool(evidence["cache_valid"]))
+
+    def test_current_anchor_distance_must_be_finite_scalar(self) -> None:
+        malformed_values = (
+            np.asarray([0.0]),
+            np.asarray([0.0, 0.0]),
+            np.nan,
+            np.inf,
+            "not-a-number",
+        )
+        for malformed_anchor in malformed_values:
+            with self.subTest(anchor=malformed_anchor):
+                with self.assertRaisesRegex(ValueError, "finite scalar"):
+                    self.validate_cache(
+                        self.cache,
+                        current_anchor_distance_m=malformed_anchor,
+                        current_anchor_q_rad=np.asarray([0.0, 0.0]),
+                        horizon_distance_m=np.asarray([0.5, 2.0]),
+                        total_dof=2,
+                    )
+
+    def test_cached_anchor_distance_must_be_numeric_finite_scalar(self) -> None:
+        malformed_values = (
+            np.asarray([0.0]),
+            np.asarray([0.0, 0.0]),
+            np.nan,
+            np.inf,
+            "not-a-number",
+        )
+        for malformed_anchor in malformed_values:
+            with self.subTest(anchor=malformed_anchor):
+                malformed_cache = dict(self.cache)
+                malformed_cache["anchor_distance_m"] = malformed_anchor
+                seed, evidence = self.validate_cache(
+                    malformed_cache,
+                    current_anchor_distance_m=0.0,
+                    current_anchor_q_rad=np.asarray([0.0, 0.0]),
+                    horizon_distance_m=np.asarray([0.5, 2.0]),
+                    total_dof=2,
+                )
+                self.assertIsNone(seed)
+                self.assertFalse(bool(evidence["cache_schema_valid"]))
+                self.assertFalse(bool(evidence["cache_valid"]))
+
+    def test_horizon_must_be_finite_ordered_and_after_anchor(self) -> None:
+        malformed_values = (
+            np.asarray([0.5, np.nan]),
+            np.asarray([0.5, np.inf]),
+            np.asarray([0.5, 0.4]),
+            np.asarray([0.0, 0.5]),
+            np.asarray([1.0e-12, 0.5]),
+        )
+        for malformed_horizon in malformed_values:
+            with self.subTest(horizon=malformed_horizon):
+                with self.assertRaisesRegex(ValueError, "after anchor"):
+                    self.validate_cache(
+                        self.cache,
+                        current_anchor_distance_m=0.0,
+                        current_anchor_q_rad=np.asarray([0.0, 0.0]),
+                        horizon_distance_m=malformed_horizon,
+                        total_dof=2,
+                    )
+
+
 class AdaptiveMPCSourceStructureTest(unittest.TestCase):
+    def test_auto_refinement_retains_only_validated_certified_cache(self) -> None:
+        source = DEMO_PATH.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        refinement_node = next(
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "insert_auto_refinement"
+        )
+        refinement = ast.get_source_segment(source, refinement_node)
+        self.assertIsNotNone(refinement)
+        self.assertIn("suffix_cache_retained=", refinement)
+
+        lifecycle_calls = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "apply_suffix_cache_event"
+        ]
+        self.assertEqual(len(lifecycle_calls), 2)
+        lifecycle_events = {
+            constant.value
+            for call in lifecycle_calls
+            for keyword in call.keywords
+            if keyword.arg == "event"
+            for constant in ast.walk(keyword.value)
+            if isinstance(constant, ast.Constant)
+            and isinstance(constant.value, str)
+        }
+        self.assertEqual(
+            lifecycle_events,
+            {"auto_refine", "suffix_commit", "non_suffix_commit"},
+        )
+
+        cache_helper_start = source.index("def validated_suffix_cache_seed")
+        cache_helper_end = source.index(
+            "def build_mpc_distance_grid", cache_helper_start
+        )
+        cache_helper = source[cache_helper_start:cache_helper_end]
+        for evidence_name in (
+            '"cache_anchor_distance_m"',
+            '"cache_anchor_q_rad"',
+            '"cache_distance_m"',
+            '"cache_q_rad"',
+            '"cache_seed_distance_m"',
+            '"cache_seed_q_rad"',
+        ):
+            self.assertIn(evidence_name, cache_helper)
+        self.assertIn("anchor_distance_error <= 1.0e-12", cache_helper)
+        self.assertIn("anchor_q_error <= 1.0e-10", cache_helper)
+
+        cache_use_start = source.index(
+            "cache_seed, cache_evidence = ("
+        )
+        cache_use_end = source.index("def audit_suffix", cache_use_start)
+        cache_use = source[cache_use_start:cache_use_end]
+        self.assertIn("validated_suffix_cache_seed(", cache_use)
+        self.assertIn(
+            "last_suffix_horizon_evidence.update(cache_evidence)",
+            cache_use,
+        )
+        self.assertLess(
+            cache_use.index(
+                'append_suffix_seed(cache_seed, "certified_cache")'
+            ),
+            cache_use.index("prioritized_suffix_seed_indices("),
+        )
+
+        final_evidence_start = source.index(
+            '"status": np.asarray("completed")',
+            cache_use_end,
+        )
+        final_evidence_end = source.index(
+            'print(\n                                "[SUFFIX-HORIZON] "',
+            final_evidence_start,
+        )
+        final_evidence = source[
+            final_evidence_start:final_evidence_end
+        ]
+        self.assertIn(
+            "last_suffix_horizon_evidence.update(",
+            final_evidence,
+        )
+        self.assertIn("cache_evidence", final_evidence)
+
+        self.assertIn("maximum_sources=4", source)
+
     def test_fallback_candidates_share_soft_pad_first_rank(self) -> None:
         source = DEMO_PATH.read_text(encoding="utf-8")
         fallback_start = source.index("def fallback_orientation_rank")

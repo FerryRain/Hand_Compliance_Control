@@ -3417,3 +3417,137 @@ Acceptance seed42 0--50 mm headless GPU。首先确认45.9375 mm实际打印expl
 **正在执行：**低频只读监控accepted path。38.750 mm必须继续由prospective 20-interval/21-sample门先审；
 45.9375 mm重点读取SLSQP status/constraint margin/exact prefix与formal 50 um。只有plan、全帧collision、
 terminal nominal4/4、rolling-low-motion和dynamics全部PASS后才允许录像；Level 2仍 **NOT PASS**。
+
+### `f45db64` explicit-polish GPU终审结果（2026-08-16）
+
+#### 终止位置与产物
+
+- stem=`baseline2_capsule_explicitpolish_0to50_acceptance_seed42_20260816_162323_062`；
+- started=`16:23:23`，ended约=`16:59:15`，exit=`1`；
+- 38.750 mm prospective low-motion窗口37.250--38.500 mm的tip advance=
+  `[0.241,0.047,0.113,0.456] mm`，仅2/4，门在commit前插入38.125 mm并随后通过；
+- 45.9375 mm的H5显式SLSQP两次为status9/success=false，但各自exact `prefix_ok=true`；selected H5最低
+  formal task slack=`50.988 um`、failed gates=0，故该节点被真实接受；
+- final last accepted=`45.9375 mm`，failure target=`46.09375 mm`、H5末端=`46.9375 mm`；
+- 只有launch/log/stderr/exitcode/failure-prefix，无plan、dynamics、standalone/full audit或视频；
+- log SHA256=`C78D8CB8958CA76320C098C852D8AE8B6ADEC57E7FBD985A762690412A230419`；
+- stderr SHA256=`EF0772C80041DE1BA494488CD7B2BD03B157627BC659D67572BE4C5D009B0B84`；
+- failure-prefix SHA256=`9F496CE951CCF1D346F3FE4EC54862C2899765633828EF04203F9EF1B6D63364`；
+- launch SHA256=`EF0BE4A6EEAC93DE10A14E1D21029EAE66756F9737D7D3904D3D6AA3FD75D558`；
+- exitcode SHA256=`6B86B273FF34FCE19D6B804EFF5A3F5747ADA4EAA22F1D49C01E52DDB7875B4B`。
+
+#### 46.09375 mm失败的精确分类
+
+selected index6=`rollout_partial_previous`，H5 nodes=
+`[46.09375,46.3046875,46.515625,46.7265625,46.9375] mm`。H1--H4的11列条件全部true；H5只有
+monotonic、motion和派生interior false：
+
+- terminal required motion=`21.09375 um`，四指实际=
+  `[203.822,-7.964,-430.507,237.584] um`，仅2/4；
+- terminal monotonic formal margin=`-230.506788 um`；progress=`30.377 um`、normal=`34.841 um`、
+  tangent=`121.794 um`；
+- terminal contacts=4，五节点contacts=`[4,4,3,3,4]`、motion=`[4,4,3,4,2]`；
+- collision全true、active self全0、dense publisher全true、rolling-low-motion=true；
+- FR3 margin=`14.57 mm`、non-tip hand hard margin=`17.4 um`、physical-tip hard margin=`121.5 um`；
+- 全部16个20-frame窗口均过，最差3-finger quorum margin=`+1.202828 mm`。
+
+candidate0=`previous`的五节点原hard、publisher和low-motion全部通过，但每个节点都欠50 um interior；在partial
+rollout修好H1--H4后，复用的terminal q相对新H4 predecessor出现上述monotonic/motion接口失败。此次9个候选的
+explicit attempt均为0：显式polish只允许interior-only节点，未错误绕过这次hard failure。
+
+#### 根因：未来细分错误丢弃已认证cache
+
+45.9375 mm accepted suffix已经持有覆盖到46.9375 mm的certified future q。下一普通目标46.25 mm失败并插入
+46.09375 mm时，last accepted anchor distance/q没有改变，但`insert_auto_refinement()`仍无条件执行
+`suffix_horizon_cache=None`。failure NPZ的seed kinds没有`certified_cache`，证明旧认证terminal basin没有参与
+46.09375 mm求解；这比继续增加SLSQP修复范围更早、更小且可直接因果验证。
+
+#### certified-cache P0最小修复
+
+- future midpoint insertion不再清空cache，并在`[AUTO-REFINE]`记录`suffix_cache_retained`；
+- 新纯函数`validated_suffix_cache_seed()`仍按原冻结精度验证cache：anchor distance误差不超过`1e-12 m`、
+  anchor q最大误差不超过`1e-10 rad`，且DoF shape、distance严格递增、所有值finite；任一不符即不添加seed；
+- 对新增future midpoint用publisher同款smoothstep从旧认证knots重采样；超过旧末knot只保持旧terminal q，保持旧语义；
+- cache只是优先warm start，没有验收权威：随后仍执行原block optimization、所有node/16-sample collision、
+  protected self、dense publisher、terminal4/4和20/21 rolling-low-motion exact audit；
+- accepted commit若选择非suffix，仍执行原`else None`真正失效cache；
+- `last_suffix_horizon_evidence`新增cache available/schema/anchor/valid、旧anchor、旧distance/q knots以及
+  resampled distance/q seed；全部是数值dtype，可由failure NPZ用`allow_pickle=False`读取。
+
+#### CPU与静态回归
+
+- 新增回归：新增0.5 midpoint时从旧`[0,1,3]` knots正确smoothstep重采样，并对超出末knot保持terminal；
+- distance mismatch=`2e-12 m`、q mismatch=`2e-10 rad`分别fail-close且保留旧knots证据；
+- 非递增cache schema fail-close；evidence全部非object dtype；
+- seed cap收紧至5时仍确定性保留previous、extrapolated、两条protected-self与certified-cache；
+- source结构确认auto-refine不再失效cache、cache append发生在seed cap前、accepted非suffix失效仍存在；
+- 定向新增=`5/5`，全量CPU=`118/118`，exit0；demo `--help`、三文件Python AST、Level-2 PowerShell AST及
+  `git diff --check`均exit0；
+- 既有wandb TemporaryDirectory atexit PermissionError仅为环境退出噪声，不影响exit0。
+
+所有40 deg pad、physical-tip>=-1 mm、FR3>=2 mm、non-tip hand>=-1 mm、active self=0、task/contact/
+joint/step、terminal nominal4/4及rolling-low-motion门均冻结不变；未实现task-motion P1，未运行修复后GPU，
+未生成plan/dynamics/audit/video。Level 2仍 **NOT PASS**。
+
+**正在执行/下一步：**本地P0与CPU/静态终审已完成；由主代理复核diff及本机`gh` FerryRain/origin/git author后
+commit/push main并同步issue #7。随后仅替换输出stem，
+复用本轮Acceptance seed42 0--50 mm launch做GPU因果重跑；46.09375 mm必须显示valid certified-cache seed并
+越过旧停点。若生成plan，立即依次做Acceptance plan audit、全帧FR3/hand/tip/self/pad/terminal/
+rolling-low-motion审计和dynamics；全部PASS后才录像并视觉复核。
+
+### GPU前独立review修复：cache rollout、输入边界与生命周期（2026-08-16）
+
+#### review阻塞项
+
+P0的6个block seed名额会保留`certified_cache`，但当所有block candidate均未直接通过时，旧
+`prioritized_suffix_rollout_indices()`只保留aggregate best和最多两条protected-self，production cap=`3`。
+因此cache即使成功重采样，也可能在逐节点bounded rollout repair前被删除；这会削弱本次因果验证，必须在GPU前
+修正。另有两个输入/测试盲点：`float(np.asarray([x]))`可能接受length-1数组，旧中点smoothstep测试无法区分
+linear blend与真实cubic smoothstep。
+
+#### rollout source冻结顺序
+
+- `prioritized_suffix_rollout_indices()`现在依次选aggregate best、rank中第一条kind严格等于
+  `certified_cache`、最多2条`protected_self*`，最后按原rank补空位；
+- 选取按index去重；best若本身是cache或protected会占对应特殊名额一次，不重复求解；
+- production `maximum_sources=4`，可同时容纳generic best + cache + 2 protected basins；
+- 无cache时仍得到旧语义best + 最多2 protected + rank fill；小cap仍先保护best；
+- 只改变参与原bounded rollout/exact audit的warm-start集合，不改变任何rank分数、solver、门或验收权威。
+
+#### cache lifecycle实际接线
+
+新增纯函数`apply_suffix_cache_event()`并在两个真实状态边界接线：
+
+1. `auto_refine`返回current cache同一对象，未来中点插入后交给`validated_suffix_cache_seed()`重采样；
+2. accepted suffix commit要求非空pending cache并以其替换旧cache；缺失pending直接抛出不变量错误；
+3. accepted non-suffix commit返回`None`，保持原真正失效语义；
+4. 未知event抛`ValueError`，避免拼写错误静默保留或删除cache。
+
+行为回归实际执行完整链：auto-refine identity preserve -> non-midpoint resample -> suffix replacement ->
+non-suffix clear；源码AST另确认生产planner只有两个helper call site，event集合精确为上述3种，不再以脆弱的
+`suffix_horizon_cache=None`字符串缺失作为主要正确性证据。
+
+#### validation与插值边界
+
+- current anchor distance先转为float64 ndarray，必须shape=`()`且finite；length-1、length-2、NaN、Inf及
+  非数值输入统一抛清晰`ValueError`；
+- cached anchor conversion/其余cache数组转换异常被捕获并fail-close；cached anchor同样必须0-D finite scalar，
+  数值array即使length-1也拒绝；
+- horizon必须1-D、finite、严格递增，且`horizon[0] > current_anchor + 1e-12 m`；位于anchor上/之前或刚好
+  `+1e-12 m`均拒绝；
+- cached knots继续要求严格递增、first knot晚于cached anchor、q shape/finite匹配；NaN/Inf/duplicate/reverse
+  全部fail-close；
+- publisher smoothstep回归新增`u=0.25`，明确断言`u^2(3-2u)=0.15625`及对应q，不再只检查`u=0.5`。
+
+#### 回归结论与边界
+
+- 定向lifecycle/cache/rollout/smoothstep/source=`13/13`；
+- 全量CPU=`125/125`，`4.088 s`、exit0；仅有既知wandb TemporaryDirectory atexit PermissionError噪声；
+- demo `--help`、demo/diagnostics/tests Python AST、Level-2 runner PowerShell AST、`git diff --check`均exit0；
+- 未改40 deg pad、physical-tip/FR3/hand/self、task/contact/joint/step、terminal4/4或20/21 rolling-low-motion门；
+- 未改runner/README，未加入P1 task-motion repair，未commit/push/GPU/gh，未生成plan/dynamics/audit/video。
+
+**正在执行/下一步：**由主代理复核diff和本机FerryRain身份后commit/push main、同步issue #7，然后完全复用
+本轮Acceptance seed42 launch，仅更换输出stem做GPU因果验证。日志必须同时证明cache validation=true、block
+seed被保留，并在需要rollout时进入4-source集合；越过46.09375 mm后继续到50 mm。若生成plan，再做Acceptance
+plan audit、全帧collision/terminal/rolling-low-motion与dynamics；全部PASS后才允许录像和视觉验收。

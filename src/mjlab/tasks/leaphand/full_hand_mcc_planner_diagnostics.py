@@ -224,12 +224,12 @@ def prioritized_suffix_rollout_indices(
     *,
     maximum_sources: int,
 ) -> tuple[int, ...]:
-    """Keep the best overall and up to two protected-self rollout basins.
+    """Keep best, certified-cache, and two protected rollout basins.
 
-    A measured self-separation direction can trade collision clearance against
-    progress, tangent, or joint margin in more than one local basin.  Retaining
-    only the best aggregate protected candidate discards that diversity before
-    the exact, step-bounded node repair gets a chance to evaluate it.
+    The best aggregate block candidate remains first.  A certified future path
+    is then retained exactly when present, followed by up to two distinct
+    protected-self basins and rank-ordered fill.  A special source already
+    selected as best counts once, so tight caps never duplicate work.
     """
 
     if not isinstance(maximum_sources, int) or maximum_sources <= 0:
@@ -248,7 +248,11 @@ def prioritized_suffix_rollout_indices(
 
     if ranked:
         append(ranked[0])
-    protected_target = min(2, maximum_sources)
+    for index in ranked:
+        if kinds[index] == "certified_cache":
+            append(index)
+            break
+    protected_target = 2
     for index in ranked:
         if kinds[index].startswith("protected_self"):
             append(index)

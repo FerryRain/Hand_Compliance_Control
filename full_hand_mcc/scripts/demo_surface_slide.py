@@ -119,6 +119,188 @@ PROTECTED_SELF_PAIR_NAMES = (
 )
 
 
+def apply_suffix_cache_event(
+    current_cache: dict[str, np.ndarray | float] | None,
+    *,
+    event: str,
+    pending_cache: dict[str, np.ndarray | float] | None = None,
+) -> dict[str, np.ndarray | float] | None:
+    """Apply one explicit certified-suffix cache lifecycle transition."""
+
+    if event == "auto_refine":
+        return current_cache
+    if event == "suffix_commit":
+        if pending_cache is None:
+            raise ValueError("suffix_commit requires a pending cache")
+        return pending_cache
+    if event == "non_suffix_commit":
+        return None
+    raise ValueError(f"unknown suffix cache event: {event!r}")
+
+
+def validated_suffix_cache_seed(
+    cache: dict[str, np.ndarray | float] | None,
+    *,
+    current_anchor_distance_m: float,
+    current_anchor_q_rad: np.ndarray,
+    horizon_distance_m: np.ndarray,
+    total_dof: int,
+) -> tuple[np.ndarray | None, dict[str, np.ndarray]]:
+    """Validate and resample an immutable certified suffix warm start.
+
+    Auto-refinement inserts only a future shooting distance and does not move
+    the last accepted anchor.  A previously certified suffix therefore remains
+    a useful basin seed across that insertion, but it never gains acceptance
+    authority: the caller still optimizes and exact-audits every resampled
+    node.  Anchor, shape, ordering, and finiteness mismatches fail closed while
+    retaining no-pickle numerical evidence for diagnosis.
+    """
+
+    try:
+        current_anchor_distance = np.asarray(
+            current_anchor_distance_m,
+            dtype=np.float64,
+        )
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(
+            "current anchor distance must be a finite scalar"
+        ) from exc
+    if current_anchor_distance.shape != () or not bool(
+        np.isfinite(current_anchor_distance)
+    ):
+        raise ValueError("current anchor distance must be a finite scalar")
+    anchor_distance = float(current_anchor_distance)
+    try:
+        anchor_q = np.asarray(current_anchor_q_rad, dtype=np.float64)
+        horizon_distance = np.asarray(horizon_distance_m, dtype=np.float64)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("anchor q and horizon must be numeric") from exc
+    if total_dof <= 0:
+        raise ValueError("total_dof must be positive")
+    if anchor_q.shape != (total_dof,) or not np.all(np.isfinite(anchor_q)):
+        raise ValueError("current anchor q must be a finite DoF vector")
+    if (
+        horizon_distance.ndim != 1
+        or horizon_distance.size == 0
+        or not np.all(np.isfinite(horizon_distance))
+        or np.any(np.diff(horizon_distance) <= 0.0)
+        or horizon_distance[0] <= anchor_distance + 1.0e-12
+    ):
+        raise ValueError(
+            "horizon distances must be finite, increasing, and after anchor"
+        )
+
+    evidence: dict[str, np.ndarray] = {
+        "cache_available": np.asarray(cache is not None, dtype=np.bool_),
+        "cache_valid": np.asarray(False, dtype=np.bool_),
+    }
+    if cache is None:
+        return None, evidence
+
+    required_keys = (
+        "anchor_distance_m",
+        "anchor_q_rad",
+        "distance_m",
+        "q_rad",
+    )
+    if any(key not in cache for key in required_keys):
+        evidence["cache_schema_valid"] = np.asarray(False, dtype=np.bool_)
+        return None, evidence
+
+    try:
+        cached_anchor_distance_array = np.asarray(
+            cache["anchor_distance_m"], dtype=np.float64
+        )
+        cached_anchor_q = np.asarray(
+            cache["anchor_q_rad"], dtype=np.float64
+        )
+        cached_distance = np.asarray(cache["distance_m"], dtype=np.float64)
+        cached_q = np.asarray(cache["q_rad"], dtype=np.float64)
+    except (TypeError, ValueError, OverflowError):
+        evidence["cache_conversion_valid"] = np.asarray(
+            False, dtype=np.bool_
+        )
+        evidence["cache_schema_valid"] = np.asarray(False, dtype=np.bool_)
+        return None, evidence
+    evidence["cache_conversion_valid"] = np.asarray(True, dtype=np.bool_)
+    evidence.update(
+        {
+            "cache_anchor_distance_m": cached_anchor_distance_array.copy(),
+            "cache_anchor_q_rad": cached_anchor_q.copy(),
+            "cache_distance_m": cached_distance.copy(),
+            "cache_q_rad": cached_q.copy(),
+        }
+    )
+    cached_anchor_scalar_valid = bool(
+        cached_anchor_distance_array.shape == ()
+        and np.isfinite(cached_anchor_distance_array)
+    )
+    if not cached_anchor_scalar_valid:
+        evidence["cache_schema_valid"] = np.asarray(False, dtype=np.bool_)
+        return None, evidence
+    cached_anchor_distance = float(cached_anchor_distance_array)
+    schema_valid = bool(
+        cached_anchor_q.shape == (total_dof,)
+        and np.all(np.isfinite(cached_anchor_q))
+        and cached_distance.ndim == 1
+        and cached_distance.size >= 1
+        and np.all(np.isfinite(cached_distance))
+        and np.all(np.diff(cached_distance) > 0.0)
+        and cached_distance[0] > cached_anchor_distance + 1.0e-12
+        and cached_q.shape == (cached_distance.size, total_dof)
+        and np.all(np.isfinite(cached_q))
+    )
+    evidence["cache_schema_valid"] = np.asarray(
+        schema_valid, dtype=np.bool_
+    )
+    if not schema_valid:
+        return None, evidence
+
+    anchor_distance_error = abs(
+        cached_anchor_distance - anchor_distance
+    )
+    anchor_q_error = float(np.max(np.abs(cached_anchor_q - anchor_q)))
+    evidence["cache_anchor_distance_error_m"] = np.asarray(
+        anchor_distance_error, dtype=np.float64
+    )
+    evidence["cache_anchor_q_max_error_rad"] = np.asarray(
+        anchor_q_error, dtype=np.float64
+    )
+    anchor_valid = bool(
+        anchor_distance_error <= 1.0e-12
+        and anchor_q_error <= 1.0e-10
+    )
+    evidence["cache_anchor_valid"] = np.asarray(anchor_valid, dtype=np.bool_)
+    if not anchor_valid:
+        return None, evidence
+
+    cache_knots_d = np.concatenate(
+        ([cached_anchor_distance], cached_distance)
+    )
+    cache_knots_q = np.vstack((cached_anchor_q, cached_q))
+    cache_rows: list[np.ndarray] = []
+    for node_distance in horizon_distance:
+        if node_distance <= cache_knots_d[-1] + 1.0e-12:
+            cache_rows.append(
+                smoothstep_joint_interpolation(
+                    cache_knots_d,
+                    cache_knots_q,
+                    np.asarray([node_distance], dtype=np.float64),
+                )[0]
+            )
+        else:
+            cache_rows.append(cache_knots_q[-1].copy())
+    cache_seed = np.stack(cache_rows)
+    evidence.update(
+        {
+            "cache_valid": np.asarray(True, dtype=np.bool_),
+            "cache_seed_distance_m": horizon_distance.copy(),
+            "cache_seed_q_rad": cache_seed.copy(),
+        }
+    )
+    return cache_seed, evidence
+
+
 def build_mpc_distance_grid(
     total_distance_m: float,
     base_keyframes: int,
@@ -4457,7 +4639,10 @@ def main() -> None:
                 )
                 auto_refine_inserted_distance_m.append(midpoint_m)
                 auto_refine_inserted_reason.append(reason)
-                suffix_horizon_cache = None
+                suffix_horizon_cache = apply_suffix_cache_event(
+                    suffix_horizon_cache,
+                    event="auto_refine",
+                )
                 print(
                     "[AUTO-REFINE] "
                     f"reason={reason} keyframe={keyframe}/{keyframe_count} "
@@ -4467,7 +4652,9 @@ def main() -> None:
                     f"new_step_mm={(midpoint_m - left_distance) * 1000:.3f} "
                     f"insertions="
                     f"{len(auto_refine_inserted_distance_m)}/"
-                    f"{args.mpc_auto_refine_max_insertions}",
+                    f"{args.mpc_auto_refine_max_insertions} "
+                    "suffix_cache_retained="
+                    f"{suffix_horizon_cache is not None}",
                     flush=True,
                 )
                 return True
@@ -8809,60 +8996,46 @@ def main() -> None:
                                     ),
                                     "protected_self",
                                 )
-                            cache_seed: np.ndarray | None = None
-                            if suffix_horizon_cache is not None:
-                                cached_anchor_distance = float(
-                                    suffix_horizon_cache["anchor_distance_m"]
+                            cache_seed, cache_evidence = (
+                                validated_suffix_cache_seed(
+                                    suffix_horizon_cache,
+                                    current_anchor_distance_m=float(
+                                        coarse_distance[keyframe - 1]
+                                    ),
+                                    current_anchor_q_rad=previous_q,
+                                    horizon_distance_m=horizon_distance,
+                                    total_dof=TOTAL_DOF,
                                 )
-                                cached_anchor_q = np.asarray(
-                                    suffix_horizon_cache["anchor_q_rad"]
-                                )
-                                cached_distance = np.asarray(
-                                    suffix_horizon_cache["distance_m"]
-                                )
-                                cached_q = np.asarray(
-                                    suffix_horizon_cache["q_rad"]
-                                )
-                                if (
-                                    abs(
-                                        cached_anchor_distance
-                                        - float(coarse_distance[keyframe - 1])
-                                    )
-                                    <= 1.0e-12
-                                    and np.allclose(
-                                        cached_anchor_q,
-                                        previous_q,
-                                        atol=1.0e-10,
-                                        rtol=0.0,
-                                    )
-                                    and cached_distance.ndim == 1
-                                    and cached_q.shape
-                                    == (cached_distance.size, TOTAL_DOF)
-                                    and cached_distance.size >= 1
-                                ):
-                                    cache_rows: list[np.ndarray] = []
-                                    cache_knots_d = np.concatenate(
-                                        (
-                                            [cached_anchor_distance],
-                                            cached_distance,
+                            )
+                            last_suffix_horizon_evidence.update(cache_evidence)
+                            if bool(cache_evidence["cache_available"]):
+                                cached_node_count = int(
+                                    np.asarray(
+                                        cache_evidence.get(
+                                            "cache_distance_m",
+                                            np.zeros(0),
                                         )
-                                    )
-                                    cache_knots_q = np.vstack(
-                                        (cached_anchor_q, cached_q)
-                                    )
-                                    for node_distance in horizon_distance:
-                                        if node_distance <= cache_knots_d[-1] + 1.0e-12:
-                                            cache_rows.append(
-                                                smoothstep_joint_interpolation(
-                                                    cache_knots_d,
-                                                    cache_knots_q,
-                                                    np.asarray([node_distance]),
-                                                )[0]
-                                            )
-                                        else:
-                                            cache_rows.append(cache_knots_q[-1])
-                                    cache_seed = np.stack(cache_rows)
-                                    append_suffix_seed(cache_seed, "certified_cache")
+                                    ).size
+                                )
+                                resampled_node_count = (
+                                    0
+                                    if cache_seed is None
+                                    else int(cache_seed.shape[0])
+                                )
+                                print(
+                                    "[SUFFIX-CERTIFIED-CACHE] "
+                                    "valid="
+                                    f"{bool(cache_evidence['cache_valid'])} "
+                                    "anchor_distance_m="
+                                    f"{float(coarse_distance[keyframe - 1]):.9f} "
+                                    "cached_nodes="
+                                    f"{cached_node_count} "
+                                    "resampled_nodes="
+                                    f"{resampled_node_count}",
+                                    flush=True,
+                                )
+                            if cache_seed is not None:
+                                append_suffix_seed(cache_seed, "certified_cache")
                             retained_seed_indices = prioritized_suffix_seed_indices(
                                 suffix_seed_kinds,
                                 maximum_seeds=6,
@@ -9722,7 +9895,7 @@ def main() -> None:
                                             for candidate in horizon_candidates
                                         ),
                                         ranked_rollout_source_indices,
-                                        maximum_sources=3,
+                                        maximum_sources=4,
                                     )
                                 )
                                 for source_index in rollout_source_indices:
@@ -11180,6 +11353,9 @@ def main() -> None:
                                     selected.suffix_passed, dtype=np.bool_
                                 ),
                             }
+                            last_suffix_horizon_evidence.update(
+                                cache_evidence
+                            )
                             print(
                                 "[SUFFIX-HORIZON] "
                                 f"distance_m={desired_distance:.9f} "
@@ -12654,10 +12830,14 @@ def main() -> None:
                 coarse_nfev[keyframe] = int(best.nfev)
                 if suffix_horizon_selected:
                     suffix_horizon_success_count += 1
-                suffix_horizon_cache = (
-                    pending_suffix_horizon
-                    if suffix_horizon_selected
-                    else None
+                suffix_horizon_cache = apply_suffix_cache_event(
+                    suffix_horizon_cache,
+                    event=(
+                        "suffix_commit"
+                        if suffix_horizon_selected
+                        else "non_suffix_commit"
+                    ),
+                    pending_cache=pending_suffix_horizon,
                 )
                 previous_delta = q - previous_q
                 previous_q = q
