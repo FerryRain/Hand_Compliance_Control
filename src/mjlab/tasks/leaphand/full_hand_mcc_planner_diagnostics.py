@@ -224,12 +224,12 @@ def prioritized_suffix_rollout_indices(
     *,
     maximum_sources: int,
 ) -> tuple[int, ...]:
-    """Keep the best overall and up to two protected-self rollout basins.
+    """Keep best, certified-cache, and two protected rollout basins.
 
-    A measured self-separation direction can trade collision clearance against
-    progress, tangent, or joint margin in more than one local basin.  Retaining
-    only the best aggregate protected candidate discards that diversity before
-    the exact, step-bounded node repair gets a chance to evaluate it.
+    The best aggregate block candidate remains first.  A certified future path
+    is then retained exactly when present, followed by up to two distinct
+    protected-self basins and rank-ordered fill.  A special source already
+    selected as best counts once, so tight caps never duplicate work.
     """
 
     if not isinstance(maximum_sources, int) or maximum_sources <= 0:
@@ -248,7 +248,11 @@ def prioritized_suffix_rollout_indices(
 
     if ranked:
         append(ranked[0])
-    protected_target = min(2, maximum_sources)
+    for index in ranked:
+        if kinds[index] == "certified_cache":
+            append(index)
+            break
+    protected_target = 2
     for index in ranked:
         if kinds[index].startswith("protected_self"):
             append(index)
@@ -909,8 +913,16 @@ def suffix_explicit_support_indices(
     nominal_normal_tolerance_m: float,
     required_motion_fingers: int,
     required_contact_fingers: int,
+    include_all_contacts: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Freeze deterministic moving/contact support sets for one SLSQP solve."""
+    """Freeze deterministic moving/contact support sets for one SLSQP solve.
+
+    The default path keeps its historical semantics: only fingers already
+    inside the nominal normal tolerance may enter the contact support.  The
+    opt-in path is reserved for the narrowly gated terminal 3-of-4 contact
+    repair and freezes all four fingers, including the one missing contact.
+    Motion support selection is identical in both modes.
+    """
 
     motion = np.asarray(tip_motion_m, dtype=np.float64)
     normal = np.asarray(normal_error_m, dtype=np.float64)
@@ -931,6 +943,10 @@ def suffix_explicit_support_indices(
         raise ValueError("required_motion_fingers must lie in [0, 4]")
     if not 0 <= required_contact_fingers <= 4:
         raise ValueError("required_contact_fingers must lie in [0, 4]")
+    if not isinstance(include_all_contacts, (bool, np.bool_)):
+        raise ValueError("include_all_contacts must be boolean")
+    if bool(include_all_contacts) and required_contact_fingers != 4:
+        raise ValueError("all-contact support requires four contact fingers")
 
     motion_candidates = np.flatnonzero(
         motion >= float(minimum_tip_motion_m) - 1.0e-12
@@ -938,8 +954,12 @@ def suffix_explicit_support_indices(
     motion_order = motion_candidates[
         np.argsort(-motion[motion_candidates], kind="stable")
     ]
-    contact_candidates = np.flatnonzero(
-        normal <= float(nominal_normal_tolerance_m) + 1.0e-12
+    contact_candidates = (
+        np.arange(4, dtype=np.int64)
+        if bool(include_all_contacts)
+        else np.flatnonzero(
+            normal <= float(nominal_normal_tolerance_m) + 1.0e-12
+        )
     )
     contact_order = contact_candidates[
         np.argsort(normal[contact_candidates], kind="stable")
@@ -947,6 +967,163 @@ def suffix_explicit_support_indices(
     return (
         motion_order[:required_motion_fingers].astype(np.int64, copy=False),
         contact_order[:required_contact_fingers].astype(np.int64, copy=False),
+    )
+
+
+def suffix_terminal_contact_repair_required(
+    *,
+    node_condition_ok: np.ndarray,
+    node_metric_margin_m: np.ndarray,
+    node_metric_margin_rad: np.ndarray,
+    node_contact_count: np.ndarray,
+    node_index: int,
+    publisher_first_failure_distance_m: float,
+    node_distance_m: float,
+    terminal_start_m: float,
+    low_motion_ok: bool,
+    task_guard_m: float,
+) -> bool:
+    """Admit only the terminal 3-of-4 contact/normal repair state.
+
+    This is deliberately independent of the ordinary interior-polish
+    predicate.  Every prior node must be fully certified.  At the current
+    terminal node, exactly contact, normal, and interior must be false; the
+    contact count must be exactly three; and every task hard-boundary
+    shortfall must be no larger than 50 microns.  Collision clearances retain
+    the full task interior guard, while palm, joint, step, motion, collision,
+    publisher-prefix, and low-motion gates must already pass.
+    """
+
+    conditions = np.asarray(node_condition_ok, dtype=bool)
+    metrics_m = np.asarray(node_metric_margin_m, dtype=np.float64)
+    metrics_rad = np.asarray(node_metric_margin_rad, dtype=np.float64)
+    try:
+        contact_count = np.asarray(node_contact_count, dtype=np.float64)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("node contact counts must be numeric") from exc
+    if conditions.ndim != 2 or conditions.shape[1] != 11:
+        raise ValueError("node conditions must contain the eleven frozen gates")
+    node_count = conditions.shape[0]
+    if metrics_m.shape != (node_count, 8):
+        raise ValueError("node metric margins must have shape (nodes, 8)")
+    if metrics_rad.shape != (node_count, 2):
+        raise ValueError("node angular margins must have shape (nodes, 2)")
+    if contact_count.shape != (node_count,):
+        raise ValueError("node contact counts must match the node count")
+    if node_index < 0 or node_index >= node_count:
+        raise ValueError("node_index is outside the audited horizon")
+    scalars = np.asarray(
+        (node_distance_m, terminal_start_m, task_guard_m), dtype=np.float64
+    )
+    if not np.all(np.isfinite(scalars)) or scalars[2] < 0.0:
+        raise ValueError("terminal distances and task guard must be finite")
+    if (
+        not np.all(np.isfinite(metrics_m))
+        or not np.all(np.isfinite(metrics_rad))
+        or not np.all(np.isfinite(contact_count))
+        or np.any(contact_count < 0.0)
+        or np.any(contact_count > 4.0)
+        or np.any(contact_count != np.floor(contact_count))
+    ):
+        raise ValueError("terminal repair evidence must be finite and valid")
+
+    if float(node_distance_m) < float(terminal_start_m) - 1.0e-12:
+        return False
+    if node_index > 0 and not bool(np.all(conditions[:node_index])):
+        return False
+
+    expected_current = np.ones(11, dtype=bool)
+    expected_current[[1, 2, 10]] = False
+    if not np.array_equal(conditions[node_index], expected_current):
+        return False
+    if int(contact_count[node_index]) != 3:
+        return False
+
+    # "Miss" is measured against the unchanged hard boundary.  The final
+    # exact audit still requires the positive task guard below.
+    maximum_hard_miss_m = 50.0e-6
+    current_task_margins = metrics_m[node_index, :4]
+    normal_is_narrow_miss = bool(
+        -maximum_hard_miss_m - 1.0e-12
+        <= current_task_margins[1]
+        < 0.0
+    )
+    task_miss_is_narrow = bool(
+        np.all(current_task_margins >= -maximum_hard_miss_m - 1.0e-12)
+    )
+    other_task_hard_ok = bool(
+        np.all(current_task_margins[[0, 2, 3]] >= -1.0e-12)
+    )
+    task_interior_is_missing = bool(
+        np.any(current_task_margins < float(task_guard_m) - 1.0e-12)
+    )
+    collision_interior_ok = bool(
+        np.all(
+            metrics_m[node_index, 5:8]
+            >= float(task_guard_m) - 1.0e-12
+        )
+    )
+    palm_ok = bool(metrics_m[node_index, 4] >= -1.0e-12)
+    angular_ok = bool(np.all(metrics_rad[node_index] >= -1.0e-12))
+    publisher_prefix_ok = bool(
+        not np.isfinite(publisher_first_failure_distance_m)
+        or float(publisher_first_failure_distance_m)
+        > float(node_distance_m) + 1.0e-12
+    )
+    return bool(
+        normal_is_narrow_miss
+        and task_miss_is_narrow
+        and other_task_hard_ok
+        and task_interior_is_missing
+        and collision_interior_ok
+        and palm_ok
+        and angular_ok
+        and publisher_prefix_ok
+        and bool(low_motion_ok)
+    )
+
+
+def suffix_terminal_contact_repair_restart_required(
+    *,
+    q_rad: np.ndarray,
+    expected_dof: int,
+    explicit_prefix_ok: bool,
+    node_condition_ok: np.ndarray,
+    node_metric_margin_m: np.ndarray,
+    node_metric_margin_rad: np.ndarray,
+    node_contact_count: np.ndarray,
+    node_index: int,
+    publisher_first_failure_distance_m: float,
+    node_distance_m: float,
+    terminal_start_m: float,
+    low_motion_ok: bool,
+    task_guard_m: float,
+) -> bool:
+    """Allow one restart only while the same narrow repair state remains."""
+
+    if expected_dof <= 0:
+        raise ValueError("expected_dof must be positive")
+    try:
+        q = np.asarray(q_rad, dtype=np.float64)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    if q.shape != (expected_dof,) or not np.all(np.isfinite(q)):
+        return False
+    if bool(explicit_prefix_ok):
+        return False
+    return suffix_terminal_contact_repair_required(
+        node_condition_ok=node_condition_ok,
+        node_metric_margin_m=node_metric_margin_m,
+        node_metric_margin_rad=node_metric_margin_rad,
+        node_contact_count=node_contact_count,
+        node_index=node_index,
+        publisher_first_failure_distance_m=(
+            publisher_first_failure_distance_m
+        ),
+        node_distance_m=node_distance_m,
+        terminal_start_m=terminal_start_m,
+        low_motion_ok=low_motion_ok,
+        task_guard_m=task_guard_m,
     )
 
 
@@ -1047,6 +1224,62 @@ def suffix_node_needs_explicit_task_polish(
         and current_hard_ok
         and not current_interior_ok
         and current_task_miss
+    )
+
+
+def suffix_explicit_restart_required(
+    *,
+    q_rad: np.ndarray,
+    expected_dof: int,
+    explicit_prefix_ok: bool,
+    node_condition_ok: np.ndarray,
+    node_metric_margin_m: np.ndarray,
+    node_index: int,
+    publisher_first_failure_distance_m: float,
+    node_distance_m: float,
+    low_motion_ok: bool,
+    task_guard_m: float,
+) -> bool:
+    """Allow one explicit restart only for the same exact-only task miss."""
+
+    if expected_dof <= 0:
+        raise ValueError("expected_dof must be positive")
+    try:
+        q = np.asarray(q_rad, dtype=np.float64)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    if q.shape != (expected_dof,) or not np.all(np.isfinite(q)):
+        return False
+    if bool(explicit_prefix_ok):
+        return False
+    metrics = np.asarray(node_metric_margin_m, dtype=np.float64)
+    if metrics.ndim != 2 or metrics.shape[1] < 8:
+        raise ValueError(
+            "node metrics must contain task, palm, and collision margins"
+        )
+    return bool(
+        suffix_prefix_needs_interior_polish(
+            node_condition_ok=node_condition_ok,
+            node_index=node_index,
+            publisher_first_failure_distance_m=(
+                publisher_first_failure_distance_m
+            ),
+            node_distance_m=node_distance_m,
+            low_motion_ok=low_motion_ok,
+        )
+        and suffix_node_needs_explicit_task_polish(
+            node_condition_ok=node_condition_ok,
+            node_metric_margin_m=node_metric_margin_m,
+            node_index=node_index,
+            task_guard_m=task_guard_m,
+        )
+        # Columns 0:4 are task-interior margins.  Palm (column 4) is a
+        # hard-only margin; only arm/hand/tip clearances in columns 5:8
+        # belong to the remaining interior gate.
+        and np.all(
+            metrics[node_index, 5:8]
+            >= float(task_guard_m) - 1.0e-12
+        )
     )
 
 
@@ -1212,17 +1445,23 @@ def build_receding_horizon_distances(
             float(route_end_m) - float(terminal_start_m),
             0.0,
         )
-    lookahead_reach = float(first_distance_m) + max(
+    terminal_lookahead_reach = float(first_distance_m) + max(
         float(nominal_step_m) * float(horizon_nodes + 1),
         terminal_tail_span,
     )
-    for sentinel in (terminal_start_m, route_end_m):
-        if sentinel is None:
-            continue
-        sentinel_value = float(sentinel)
+    # The terminal-contact boundary may be previewed beyond the nominal local
+    # horizon so that the optimizer starts restoring 4/4 contact before the
+    # published tail.  The route endpoint must not borrow that long preview:
+    # forcing it into a fixed-size H-node grid stretches every local segment
+    # after the terminal boundary and can make dense publisher interpolation
+    # fail even when the retained certified local knots remain feasible.
+    # ``uniform_end`` is already clipped to ``route_end_m``, so the endpoint is
+    # included automatically once it is genuinely inside the local horizon.
+    if terminal_start_m is not None:
+        sentinel_value = float(terminal_start_m)
         if (
             sentinel_value > first_distance_m + 1.0e-12
-            and sentinel_value <= lookahead_reach + 1.0e-12
+            and sentinel_value <= terminal_lookahead_reach + 1.0e-12
         ):
             witness_end = max(witness_end, sentinel_value)
     witness_end = min(witness_end, float(route_end_m))
@@ -2071,6 +2310,9 @@ def save_mpc_failure_prefix(
     rephase_offset_m: np.ndarray,
     budget_values: Mapping[str, object],
     failure_metrics: Mapping[str, object],
+    coarse_provenance: Mapping[str, object] | None = None,
+    refinement_provenance: Mapping[str, object] | None = None,
+    rolling_provenance: Mapping[str, object] | None = None,
     bridge_record: Mapping[str, object] | None = None,
     rejected_moving_bridge: RejectedMovingBridgeCandidate | None = None,
 ) -> Path:
@@ -2082,24 +2324,197 @@ def save_mpc_failure_prefix(
             "together so their metrics and state cannot be mispaired"
         )
 
+    if isinstance(keyframe, (bool, np.bool_)) or not isinstance(
+        keyframe, (int, np.integer)
+    ):
+        raise ValueError("keyframe must be an integer committed-row count")
+    if isinstance(keyframe_count, (bool, np.bool_)) or not isinstance(
+        keyframe_count, (int, np.integer)
+    ):
+        raise ValueError("keyframe_count must be an integer")
+    committed_rows = int(keyframe)
+    total_keyframes = int(keyframe_count)
+    if committed_rows < 1 or total_keyframes < committed_rows:
+        raise ValueError(
+            "keyframe/keyframe_count do not describe a committed prefix"
+        )
+    failure_distance = float(failure_distance_m)
+    if not np.isfinite(failure_distance):
+        raise ValueError("failure_distance_m must be finite")
+
+    prefix_distance = np.asarray(last_feasible_distance_m, dtype=np.float64)
+    if (
+        prefix_distance.ndim != 1
+        or prefix_distance.size == 0
+        or not np.all(np.isfinite(prefix_distance))
+        or abs(float(prefix_distance[0])) > 1.0e-12
+        or np.any(np.diff(prefix_distance) <= 0.0)
+        or float(prefix_distance[-1]) >= failure_distance - 1.0e-12
+    ):
+        raise ValueError(
+            "last_feasible_distance_m must start at zero, be finite and "
+            "strictly increasing, and end before the failure distance"
+        )
+    prefix_rows = int(prefix_distance.size)
+    if committed_rows != prefix_rows:
+        raise ValueError(
+            "keyframe must equal the committed last-feasible row count"
+        )
+    prefix_q = np.asarray(last_feasible_q_rad, dtype=np.float64)
+    prefix_points = np.asarray(last_feasible_points_m, dtype=np.float64)
+    prefix_arcs = np.asarray(last_feasible_arcs_m, dtype=np.float64)
+    if (
+        prefix_q.ndim != 2
+        or prefix_points.ndim != 3
+        or prefix_arcs.ndim != 2
+    ):
+        raise ValueError(
+            "last-feasible q/points/arcs must be finite row-aligned arrays"
+        )
+    if (
+        prefix_q.shape != (prefix_rows, 23)
+        or prefix_arcs.shape != (prefix_rows, 5)
+        or prefix_points.shape != (prefix_rows, 5, 3)
+        or not all(
+            np.all(np.isfinite(array))
+            for array in (prefix_q, prefix_points, prefix_arcs)
+        )
+    ):
+        raise ValueError(
+            "last-feasible q/points/arcs must be finite row-aligned arrays"
+        )
+
+    coarse_specs = {
+        "auto_rephase_offset_m": ((4,), np.dtype(np.float64), np.nan),
+        "progress_m": ((5,), np.dtype(np.float64), np.nan),
+        "target_progress_m": ((5,), np.dtype(np.float64), np.nan),
+        "feasibility_bridge": ((), np.dtype(np.bool_), False),
+        "suffix_horizon": ((), np.dtype(np.bool_), False),
+        "static_feasibility_bridge": ((), np.dtype(np.bool_), False),
+        "static_bridge_dwell_m": ((), np.dtype(np.float64), np.nan),
+        "recovery_bridge": ((), np.dtype(np.bool_), False),
+        "recovery_bridge_dwell_m": ((), np.dtype(np.float64), np.nan),
+        "normal_error_m": ((5,), np.dtype(np.float64), np.nan),
+        "palm_target_m": ((3,), np.dtype(np.float64), np.nan),
+        "palm_position_error_m": ((), np.dtype(np.float64), np.nan),
+        "cost": ((), np.dtype(np.float64), np.nan),
+        "nfev": ((), np.dtype(np.int32), -1),
+    }
+    coarse_arrays: dict[str, np.ndarray] = {}
+    if coarse_provenance is None:
+        for name, (trailing_shape, dtype, sentinel) in coarse_specs.items():
+            coarse_arrays[name] = np.full(
+                (prefix_rows, *trailing_shape),
+                sentinel,
+                dtype=dtype,
+            )
+    else:
+        missing = tuple(name for name in coarse_specs if name not in coarse_provenance)
+        if missing:
+            raise ValueError(
+                "coarse_provenance is missing required fields: "
+                + ", ".join(missing)
+            )
+        for name, (trailing_shape, dtype, _sentinel) in coarse_specs.items():
+            array = np.asarray(coarse_provenance[name], dtype=dtype)
+            expected_shape = (prefix_rows, *trailing_shape)
+            if array.shape != expected_shape:
+                raise ValueError(
+                    f"coarse_provenance[{name!r}] must have shape "
+                    f"{expected_shape}, got {array.shape}"
+                )
+            if dtype == np.dtype(np.float64) and not np.all(np.isfinite(array)):
+                raise ValueError(
+                    f"coarse_provenance[{name!r}] must be finite"
+                )
+            coarse_arrays[name] = array.copy()
+
+    if refinement_provenance is None:
+        refinement_distance = np.zeros(0, dtype=np.float64)
+        refinement_reason = np.zeros(0, dtype="<U1")
+    else:
+        try:
+            refinement_distance = np.asarray(
+                refinement_provenance["inserted_distance_m"],
+                dtype=np.float64,
+            )
+            refinement_reason = np.asarray(
+                refinement_provenance["inserted_reason"],
+                dtype=np.str_,
+            )
+        except KeyError as exc:
+            raise ValueError(
+                "refinement_provenance requires inserted distance and reason"
+            ) from exc
+        if (
+            refinement_distance.ndim != 1
+            or refinement_reason.ndim != 1
+            or refinement_distance.shape != refinement_reason.shape
+            or not np.all(np.isfinite(refinement_distance))
+        ):
+            raise ValueError(
+                "refinement provenance arrays must be finite aligned vectors"
+            )
+        refinement_distance = refinement_distance.copy()
+        refinement_reason = refinement_reason.copy()
+
+    if rolling_provenance is None:
+        rolling_frame_distance = np.zeros(0, dtype=np.float64)
+        rolling_window_frames = np.asarray(-1, dtype=np.int32)
+        rolling_forward_progress_ratio = np.asarray(np.nan, dtype=np.float64)
+        rolling_required_forward_fingers = np.asarray(-1, dtype=np.int8)
+    else:
+        try:
+            rolling_frame_distance = np.asarray(
+                rolling_provenance["frame_target_distance_m"],
+                dtype=np.float64,
+            )
+            rolling_window_frames = np.asarray(
+                rolling_provenance["window_frames"],
+                dtype=np.int32,
+            )
+            rolling_forward_progress_ratio = np.asarray(
+                rolling_provenance["forward_progress_ratio"],
+                dtype=np.float64,
+            )
+            rolling_required_forward_fingers = np.asarray(
+                rolling_provenance["required_forward_fingers"],
+                dtype=np.int8,
+            )
+        except KeyError as exc:
+            raise ValueError(
+                "rolling_provenance is missing a required field"
+            ) from exc
+        if (
+            rolling_frame_distance.ndim != 1
+            or rolling_frame_distance.size == 0
+            or not np.all(np.isfinite(rolling_frame_distance))
+            or np.any(np.diff(rolling_frame_distance) <= 0.0)
+            or rolling_window_frames.shape != ()
+            or int(rolling_window_frames) <= 0
+            or rolling_forward_progress_ratio.shape != ()
+            or not np.isfinite(rolling_forward_progress_ratio)
+            or float(rolling_forward_progress_ratio) < 0.0
+            or rolling_required_forward_fingers.shape != ()
+            or not 0 <= int(rolling_required_forward_fingers) <= 4
+        ):
+            raise ValueError("rolling provenance is malformed")
+        rolling_frame_distance = rolling_frame_distance.copy()
+
     payload: dict[str, np.ndarray] = {
-        "schema_version": np.asarray(2, dtype=np.int32),
+        "schema_version": np.asarray(3, dtype=np.int32),
         "reason": np.asarray(str(reason)),
         "keyframe": np.asarray(keyframe, dtype=np.int32),
         "keyframe_count": np.asarray(keyframe_count, dtype=np.int32),
-        "failure_distance_m": np.asarray(failure_distance_m, dtype=np.float64),
-        "last_feasible_distance_m": np.asarray(
-            last_feasible_distance_m, dtype=np.float64
+        "failure_distance_m": np.asarray(failure_distance, dtype=np.float64),
+        "committed_coarse_row_count": np.asarray(
+            committed_rows,
+            dtype=np.int32,
         ),
-        "last_feasible_coarse_q_rad": np.asarray(
-            last_feasible_q_rad, dtype=np.float64
-        ),
-        "last_feasible_coarse_points_m": np.asarray(
-            last_feasible_points_m, dtype=np.float64
-        ),
-        "last_feasible_coarse_arcs_m": np.asarray(
-            last_feasible_arcs_m, dtype=np.float64
-        ),
+        "last_feasible_distance_m": prefix_distance,
+        "last_feasible_coarse_q_rad": prefix_q,
+        "last_feasible_coarse_points_m": prefix_points,
+        "last_feasible_coarse_arcs_m": prefix_arcs,
         "failure_final_best_desired_arcs_m": np.asarray(
             final_best_desired_arcs_m, dtype=np.float64
         ),
@@ -2113,7 +2528,29 @@ def save_mpc_failure_prefix(
             final_best_arcs_m, dtype=np.float64
         ),
         "rephase_offset_m": np.asarray(rephase_offset_m, dtype=np.float64),
+        "last_feasible_coarse_provenance_available": np.asarray(
+            coarse_provenance is not None,
+            dtype=np.bool_,
+        ),
+        "refinement_provenance_available": np.asarray(
+            refinement_provenance is not None,
+            dtype=np.bool_,
+        ),
+        "auto_refine_inserted_distance_m": refinement_distance,
+        "auto_refine_inserted_reason": refinement_reason,
+        "rolling_provenance_available": np.asarray(
+            rolling_provenance is not None,
+            dtype=np.bool_,
+        ),
+        "rolling_frame_target_distance_m": rolling_frame_distance,
+        "rolling_window_frames": rolling_window_frames,
+        "rolling_forward_progress_ratio": rolling_forward_progress_ratio,
+        "rolling_required_forward_fingers": (
+            rolling_required_forward_fingers
+        ),
     }
+    for name, array in coarse_arrays.items():
+        payload[f"last_feasible_coarse_{name}"] = array
     for prefix, values in (
         ("budget", budget_values),
         ("metric", failure_metrics),
