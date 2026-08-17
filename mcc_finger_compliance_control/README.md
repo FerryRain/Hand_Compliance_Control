@@ -214,7 +214,7 @@ python mcc_finger_compliance_control/scripts/deploy_dp_inverse.py \
 
 仓库内示例：[`outputs/active_capsule_dp_mcc_direction-1_400mm.mp4`](outputs/active_capsule_dp_mcc_direction-1_400mm.mp4)。
 该次运行完成 `313.0 mm` 可达路径，`>=3` 指接触率为 `98.9%`，四指接触率为
-`94.2%`，最大指尖力为 `2.10 N`。
+`93.7%`，最大指尖力为 `1.98 N`。
 
 ```bash
 MUJOCO_GL=egl MPLCONFIGDIR=/tmp/matplotlib WARP_CACHE_PATH=/tmp/warp \
@@ -223,7 +223,7 @@ python mcc_finger_compliance_control/scripts/deploy_dp_inverse.py \
   --episode-id 216 --mode live_dp --viewer video --device cuda:0 \
   --video-output mcc_finger_compliance_control/outputs/active_capsule_dp_mcc_direction-1_400mm.mp4 \
   --video-fps 30 --video-width 960 --video-height 720 \
-  --video-camera-distance 0.45 --video-camera-azimuth 150 --video-camera-elevation -10 \
+  --video-camera-distance 0.45 --video-camera-azimuth 315 --video-camera-elevation -10 \
   --max-steps 2150 --inference-steps 10 \
   --chunk-execution --dp-replan-interval 20 \
   --execution-layer fullhand_mcc --mcc-direction-source oracle \

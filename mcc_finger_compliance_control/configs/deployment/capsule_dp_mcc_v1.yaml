@@ -47,5 +47,5 @@ demo:
   video_width: 960
   video_height: 720
   camera_distance_m: 0.45
-  camera_azimuth_deg: 150.0
+  camera_azimuth_deg: 315.0
   camera_elevation_deg: -10.0
