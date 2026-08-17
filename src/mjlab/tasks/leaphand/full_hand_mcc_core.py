@@ -150,12 +150,13 @@ class FingertipNormalAdmittance:
             g.dt,
             g.virtual_mass,
             g.virtual_damping,
-            g.virtual_stiffness,
             g.max_normal_offset,
             g.max_normal_speed,
             g.max_normal_acceleration,
         ) <= 0.0:
             raise ValueError("Fingertip admittance gains and limits must be positive")
+        if g.virtual_stiffness < 0.0:
+            raise ValueError("Fingertip virtual stiffness must be non-negative")
 
         measured_normal = np.einsum("bfi,bfi->bf", forces, normals)
         if not self._filter_initialized:

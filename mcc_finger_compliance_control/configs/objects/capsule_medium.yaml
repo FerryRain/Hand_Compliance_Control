@@ -1,0 +1,18 @@
+id: capsule_medium
+display_name: Capsule (current baseline)
+family: smooth_convex
+rgba: [0.20, 0.60, 1.00, 1.00]
+
+geoms:
+  - type: capsule
+    size: [0.15, 0.08]
+
+motion:
+  translation:
+    allowed_axes: [principal_x, principal_y, principal_z]
+    distance_mode: object_extent_ratio
+    distance_ratio_range: [0.15, 0.45]
+    absolute_max_m: 0.060
+  rotation:
+    allowed_axes: [principal_x, principal_y, principal_z, uniform_sphere]
+    angle_range_deg: [60.0, 300.0]

@@ -13,6 +13,9 @@ artifacts/
 .venv/
 render_robots.py
 benchmark_results/
+# Third-party mesh datasets are downloaded locally and tracked through
+# source/license manifests, not committed as repository payloads.
+assets_external/
 finger_compliance_control/data/
 palm_compliance_control/data/
 mcc_finger_compliance_control/data/
@@ -21,4 +24,3 @@ CLAUDE.md
 # Documentation outputs.
 **/_build/*
 **/generated/*
-
