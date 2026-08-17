@@ -21,6 +21,10 @@ from mjlab.rl import RslRlVecEnvWrapper
 from mjlab.sensor import ContactSensor
 from mjlab.viewer import NativeMujocoViewer, ViserPlayViewer
 
+from active_capsule_palm_planner import (
+    ActiveCapsulePalmPlanner,
+    ActiveCapsulePalmPlannerConfig,
+)
 from dp_dataset import ENV_STATE_DIM, ROBOT_STATE_DIM
 from dp_chunk_scheduler import DPChunkScheduler, DPChunkSchedulerConfig
 from fingertip_impedance import (
@@ -88,7 +92,7 @@ class MCCPrecontactConfig:
     overforce_trigger_ratio: float = 1.20
     overforce_release_ratio: float = 0.90
     overforce_hard_ratio: float = 1.4
-    thumb_overforce_hard_ratio: float | None = None
+    thumb_overforce_hard_ratio: float | None = 1.8
     overforce_retreat_step_m: float = 0.00008
     overforce_recovery_step_m: float = 0.00002
     overforce_max_offset_m: float = 0.020
@@ -100,7 +104,9 @@ class MCCPrecontactConfig:
     force_servo_deadband: float = 0.05
     force_servo_max_step_m: float = 0.00008
     force_servo_hard_step_m: float = 0.00020
+    thumb_force_servo_hard_step_m: float | None = 0.00010
     force_servo_search_step_m: float = 0.00050
+    thumb_force_servo_search_step_m: float | None = 0.00025
     force_servo_weak_contact_step_m: float = 0.00020
     force_filter_alpha: float = 0.25
 
@@ -677,6 +683,7 @@ def run_inverse(
     ],
     mcc_desired_force: float,
     mcc_precontact_config: MCCPrecontactConfig,
+    active_palm_planner_config: ActiveCapsulePalmPlannerConfig | None,
     hand_servo_stiffness: float,
     hand_servo_damping: float,
     hand_servo_effort_limit: float,
@@ -726,7 +733,8 @@ def run_inverse(
             waypoint_count=runtime.planner_waypoints,
             step_frames=runtime.planner_step_frames,
         ).reshape(len(data["palm_pose_object"]), -1)
-        if runtime.state_schema
+        if active_palm_planner_config is None
+        and runtime.state_schema
         in ("contact_geometry_planner", "contact_geometry_planner_manifold")
         else None
     )
@@ -821,8 +829,14 @@ def run_inverse(
                         force_servo_hard_step=(
                             mcc_precontact_config.force_servo_hard_step_m
                         ),
+                        thumb_force_servo_hard_step=(
+                            mcc_precontact_config.thumb_force_servo_hard_step_m
+                        ),
                         force_servo_search_step=(
                             mcc_precontact_config.force_servo_search_step_m
+                        ),
+                        thumb_force_servo_search_step=(
+                            mcc_precontact_config.thumb_force_servo_search_step_m
                         ),
                         force_servo_weak_contact_step=(
                             mcc_precontact_config.force_servo_weak_contact_step_m
@@ -895,6 +909,23 @@ def run_inverse(
             )
             self.fullhand_last_command_q = data["q_hand"][0].copy()
             self.fullhand_phase = "bootstrap"
+            self.active_palm_planner = (
+                ActiveCapsulePalmPlanner(
+                    data["palm_pose_object"][0], active_palm_planner_config
+                )
+                if active_palm_planner_config is not None
+                else None
+            )
+            self.current_palm_pose = data["palm_pose_object"][0].copy()
+            self.current_palm_twist = np.zeros(6, dtype=np.float32)
+            self.current_planner_feature = (
+                np.zeros(
+                    runtime.planner_waypoints * 6,
+                    dtype=np.float32,
+                )
+                if self.active_palm_planner is not None
+                else None
+            )
             # FullHandMCC-style viewer state.  Planning targets retain each
             # finger's colour; live markers encode physical contact state.
             self.visual_surface_targets = np.full((4, 3), np.nan)
@@ -947,8 +978,24 @@ def run_inverse(
             self.fullhand_control_direction_valid = False
 
         def _set_palm(self, t: int) -> None:
+            if self.active_palm_planner is not None:
+                self.current_palm_pose = (
+                    self.active_palm_planner.pose_object
+                )
+                self.current_palm_twist = (
+                    self.active_palm_planner.twist_object
+                )
+                self.current_planner_feature = (
+                    self.active_palm_planner.planner_feature(
+                        waypoint_count=runtime.planner_waypoints,
+                        step_frames=runtime.planner_step_frames,
+                    )
+                )
+            else:
+                self.current_palm_pose = data["palm_pose_object"][t].copy()
+                self.current_palm_twist = data["palm_twist_object"][t].copy()
             pose = torch.as_tensor(
-                data["palm_pose_object"][t],
+                self.current_palm_pose,
                 device=env.device,
                 dtype=torch.float32,
             )
@@ -995,9 +1042,9 @@ def run_inverse(
             state_forces = forces
             state_normals = state_normals_live
             state_positions = state_positions_live
-            state_twist = data["palm_twist_object"][t]
+            state_twist = self.current_palm_twist
             if runtime.input_frame == "palm":
-                palm_pose = data["palm_pose_object"][t]
+                palm_pose = self.current_palm_pose
                 palm_quaternion = palm_pose[3:7]
                 state_forces = _vectors_object_to_palm(
                     forces, palm_quaternion
@@ -1031,13 +1078,15 @@ def run_inverse(
             if runtime.state_schema in GEOMETRY_STATE_SCHEMAS:
                 state_parts.append(found.astype(np.float32))
             state_parts.append(state_twist)
-            if planner_features is not None:
+            if self.current_planner_feature is not None:
+                state_parts.append(self.current_planner_feature)
+            elif planner_features is not None:
                 state_parts.append(planner_features[t])
             if runtime.state_schema == "contact_geometry_planner_manifold":
                 self.surface_position_buffer.append(state_positions_live.copy())
                 self.surface_normal_buffer.append(state_normals_live.copy())
                 self.surface_mask_buffer.append(found.astype(np.float32))
-                self.surface_pose_buffer.append(data["palm_pose_object"][t].copy())
+                self.surface_pose_buffer.append(self.current_palm_pose.copy())
                 surface_points = _causal_surface_gp_points(
                     np.asarray(self.surface_position_buffer),
                     np.asarray(self.surface_normal_buffer),
@@ -1096,9 +1145,13 @@ def run_inverse(
                     predicted_absolute
                 )
             self.dp_calls += 1
-            teacher_target = data["q_hand"][
-                min(t + runtime.stride, len(data["q_hand"]) - 1)
-            ]
+            teacher_target = (
+                self.nominal_q
+                if self.active_palm_planner is not None
+                else data["q_hand"][
+                    min(t + runtime.stride, len(data["q_hand"]) - 1)
+                ]
+            )
             prediction_error = float(
                 np.abs(self.segment_target - teacher_target).mean()
             )
@@ -1144,13 +1197,18 @@ def run_inverse(
             t = min(self.frame, frames - 1)
             self._set_palm(t)
             if t <= bootstrap_end:
+                bootstrap_q = (
+                    data["q_hand"][0]
+                    if self.active_palm_planner is not None
+                    else data["q_hand"][t]
+                )
                 q_teacher = torch.as_tensor(
-                    data["q_hand"][t], device=env.device
+                    bootstrap_q, device=env.device
                 ).unsqueeze(0)
                 robot.write_joint_state_to_sim(
                     position=q_teacher, velocity=torch.zeros_like(q_teacher)
                 )
-                self.nominal_q = data["q_hand"][t].copy()
+                self.nominal_q = bootstrap_q.copy()
             env.sim.forward()
             (
                 live_state,
@@ -1230,7 +1288,11 @@ def run_inverse(
                     self._plan(t, live_state)
 
             if t <= bootstrap_end:
-                desired = data["q_hand"][t]
+                desired = (
+                    data["q_hand"][0]
+                    if self.active_palm_planner is not None
+                    else data["q_hand"][t]
+                )
             elif self.chunk_scheduler is not None:
                 desired = self.chunk_scheduler.next_command()
             else:
@@ -1255,7 +1317,7 @@ def run_inverse(
             mcc_safety_offset = np.zeros(4, dtype=np.float32)
             if self.fullhand_mcc is not None:
                 self.fullhand_search_delta[:] = 0.0
-                palm_pose = data["palm_pose_object"][t]
+                palm_pose = self.current_palm_pose
                 force_magnitude = np.linalg.norm(live_forces, axis=-1)
                 normal_valid = live_found & (
                     np.linalg.norm(live_normals, axis=-1) > 1.0e-6
@@ -1735,8 +1797,8 @@ def run_inverse(
                     "normal_world": live_normals,
                     "contact_pos_world": live_contact_positions,
                     "found": live_found,
-                    "palm_position_world": data["palm_pose_object"][t, :3],
-                    "palm_quaternion_wxyz": data["palm_pose_object"][t, 3:7],
+                    "palm_position_world": self.current_palm_pose[:3],
+                    "palm_quaternion_wxyz": self.current_palm_pose[3:7],
                 }
                 if t <= bootstrap_end:
                     self.impedance.prime(q_nominal=desired, **impedance_inputs)
@@ -1768,7 +1830,12 @@ def run_inverse(
                     ]
             raw_action = (desired - q_live) / ACTION_SCALE
             raw_action = np.clip(raw_action, -2.0, 2.0)
-            q_error = float(np.abs(q_live - data["q_hand"][t]).mean())
+            q_reference = (
+                self.nominal_q
+                if self.active_palm_planner is not None
+                else data["q_hand"][t]
+            )
+            q_error = float(np.abs(q_live - q_reference).mean())
             if t >= bootstrap_end:
                 self.contact3_frames += int(found_contacts >= 3)
                 self.contact4_frames += int(found_contacts >= 4)
@@ -1788,6 +1855,25 @@ def run_inverse(
                     "frame": t,
                     "dp_calls": self.dp_calls,
                     "q_teacher_mae_rad": q_error,
+                    "palm_source": (
+                        "active_capsule"
+                        if self.active_palm_planner is not None
+                        else "teacher"
+                    ),
+                    "active_palm_progress_m": (
+                        self.active_palm_planner.progress_m
+                        if self.active_palm_planner is not None
+                        else 0.0
+                    ),
+                    "active_palm_speed_m_s": (
+                        self.active_palm_planner.surface_velocity
+                        if self.active_palm_planner is not None
+                        else 0.0
+                    ),
+                    "active_palm_contact_paused": int(
+                        self.active_palm_planner is not None
+                        and self.active_palm_planner.paused_for_contact
+                    ),
                     "found_contacts": found_contacts,
                     "loaded_contacts": loaded_contacts,
                     "force_max_N": force_max,
@@ -1954,7 +2040,7 @@ def run_inverse(
                 row[f"q_live_{joint}"] = float(q_live[joint])
                 row[f"q_dp_{joint}"] = float(dp_desired[joint])
                 row[f"q_cmd_{joint}"] = float(desired[joint])
-                row[f"q_teacher_{joint}"] = float(data["q_hand"][t, joint])
+                row[f"q_teacher_{joint}"] = float(q_reference[joint])
             self.rows.append(row)
             if t % 100 == 0:
                 if self.fullhand_mcc is not None:
@@ -1987,6 +2073,17 @@ def run_inverse(
                     f"thumb(found={int(live_found[3])} "
                     f"F={np.linalg.norm(live_forces[3]):.3f}N "
                     f"{thumb_summary})"
+                )
+            if self.active_palm_planner is not None:
+                self.active_palm_planner.step(
+                    found_contacts,
+                    enabled=(
+                        t >= bootstrap_end
+                        and (
+                            self.fullhand_mcc is None
+                            or self.fullhand_mcc_calibrated
+                        )
+                    ),
                 )
             self.frame += 1
             return torch.as_tensor(
@@ -2087,6 +2184,16 @@ def run_inverse(
             ],
             dtype=float,
         )
+        active_planner_summary = ""
+        if policy.active_palm_planner is not None:
+            active_planner_summary = (
+                " palm_progress="
+                f"{1000.0 * policy.active_palm_planner.progress_m:.1f}mm"
+                " palm_motion_frames="
+                f"{policy.active_palm_planner.motion_steps}"
+                " palm_contact_pause_frames="
+                f"{policy.active_palm_planner.pause_steps}"
+            )
         print(
             f"[RESULT] mode={mode} frames={frames} calls={policy.dp_calls} "
             f"q_mae={q_errors.mean():.6f}rad "
@@ -2097,6 +2204,7 @@ def run_inverse(
             f"tip_found={np.round(100*policy.per_tip_found_frames/active,1).tolist()}% "
             f"tip_loaded={np.round(100*policy.per_tip_loaded_frames/active,1).tolist()}% "
             f"report={report}"
+            f"{active_planner_summary}"
         )
         wrapped.close()
 
@@ -2136,6 +2244,25 @@ def main() -> None:
     parser.add_argument("--max-steps", type=int, default=0)
     parser.add_argument("--max-dp-calls", type=int, default=0)
     parser.add_argument("--contact-threshold", type=float, default=0.05)
+    parser.add_argument(
+        "--palm-source",
+        choices=("teacher", "active_capsule"),
+        default="teacher",
+        help=(
+            "teacher replays palm_pose_object from H5; active_capsule uses "
+            "only its first pose and then advances a contact-gated FullHand "
+            "meridian palm plan online."
+        ),
+    )
+    parser.add_argument("--active-palm-surface-speed-mm-s", type=float, default=8.0)
+    parser.add_argument("--active-palm-travel-mm", type=float, default=40.0)
+    parser.add_argument(
+        "--active-palm-direction", type=int, choices=(-1, 1), default=1
+    )
+    parser.add_argument(
+        "--active-palm-max-acceleration-mm-s2", type=float, default=40.0
+    )
+    parser.add_argument("--active-palm-min-contact-fingers", type=int, default=3)
     parser.add_argument(
         "--execution-layer",
         choices=("joint_position", "fullhand_mcc"),
@@ -2190,9 +2317,9 @@ def main() -> None:
         type=float,
         default=20.0,
         help=(
-            "Bidirectional tactile admittance range. The validated 20 mm "
-            "default lets sensor-normal contact recovery absorb site-to-pad "
-            "geometric residuals."
+            "Bidirectional tactile admittance range. The 20 mm default "
+            "retains enough inward recovery travel for the current DP/MCC "
+            "deployment when the nominal fingertip target misses the surface."
         ),
     )
     parser.add_argument(
@@ -2240,7 +2367,7 @@ def main() -> None:
     parser.add_argument("--mcc-overforce-release-ratio", type=float, default=0.90)
     parser.add_argument("--mcc-overforce-hard-ratio", type=float, default=1.4)
     parser.add_argument(
-        "--mcc-thumb-overforce-hard-ratio", type=float, default=None
+        "--mcc-thumb-overforce-hard-ratio", type=float, default=1.8
     )
     parser.add_argument("--mcc-overforce-retreat-step-mm", type=float, default=0.08)
     parser.add_argument("--mcc-overforce-recovery-step-mm", type=float, default=0.02)
@@ -2257,7 +2384,13 @@ def main() -> None:
     parser.add_argument("--mcc-force-servo-deadband", type=float, default=0.05)
     parser.add_argument("--mcc-force-servo-max-step-mm", type=float, default=0.08)
     parser.add_argument("--mcc-force-servo-hard-step-mm", type=float, default=0.20)
+    parser.add_argument(
+        "--mcc-thumb-force-servo-hard-step-mm", type=float, default=0.10
+    )
     parser.add_argument("--mcc-force-servo-search-step-mm", type=float, default=0.50)
+    parser.add_argument(
+        "--mcc-thumb-force-servo-search-step-mm", type=float, default=0.25
+    )
     parser.add_argument(
         "--mcc-force-servo-weak-contact-step-mm", type=float, default=0.20
     )
@@ -2412,6 +2545,23 @@ def main() -> None:
     runtime = DPRuntime(
         args.model, device, args.inference_steps, args.seed
     )
+    if args.palm_source == "active_capsule":
+        if args.mode != "live_dp":
+            raise ValueError("--palm-source active_capsule requires --mode live_dp")
+        if runtime.state_schema not in (
+            "contact_geometry_planner",
+            "contact_geometry_planner_manifold",
+        ):
+            raise ValueError(
+                "Active palm deployment requires a planner-conditioned DP checkpoint"
+            )
+        if args.execution_layer != "fullhand_mcc":
+            raise ValueError(
+                "Active palm deployment currently requires "
+                "--execution-layer fullhand_mcc"
+            )
+        if not 1 <= args.active_palm_min_contact_fingers <= 4:
+            raise ValueError("--active-palm-min-contact-fingers must be in [1, 4]")
     report = args.report or args.model.parent / (
         f"deploy_{args.mode}_episode{args.episode_id}.csv"
     )
@@ -2428,6 +2578,7 @@ def main() -> None:
         f"stride={runtime.stride} obs={runtime.obs_horizon} "
         f"pred={runtime.pred_horizon} inference={runtime.policy.diffusion.num_inference_steps} "
         f"execution_layer={args.execution_layer} "
+        f"palm_source={args.palm_source} "
         f"mcc_direction={args.mcc_direction_source} "
         f"surface_source={'analytic_capsule_oracle' if args.mcc_direction_source == 'oracle' else 'live_contact_sensor'}"
     )
@@ -2574,13 +2725,36 @@ def main() -> None:
                 force_servo_hard_step_m=(
                     args.mcc_force_servo_hard_step_mm / 1000.0
                 ),
+                thumb_force_servo_hard_step_m=(
+                    args.mcc_thumb_force_servo_hard_step_mm / 1000.0
+                ),
                 force_servo_search_step_m=(
                     args.mcc_force_servo_search_step_mm / 1000.0
+                ),
+                thumb_force_servo_search_step_m=(
+                    args.mcc_thumb_force_servo_search_step_mm / 1000.0
                 ),
                 force_servo_weak_contact_step_m=(
                     args.mcc_force_servo_weak_contact_step_mm / 1000.0
                 ),
                 force_filter_alpha=args.mcc_force_filter_alpha,
+            ),
+            (
+                ActiveCapsulePalmPlannerConfig(
+                    surface_speed_m_s=(
+                        args.active_palm_surface_speed_mm_s / 1000.0
+                    ),
+                    travel_m=args.active_palm_travel_mm / 1000.0,
+                    direction=args.active_palm_direction,
+                    max_surface_acceleration_m_s2=(
+                        args.active_palm_max_acceleration_mm_s2 / 1000.0
+                    ),
+                    min_contact_fingers=(
+                        args.active_palm_min_contact_fingers
+                    ),
+                )
+                if args.palm_source == "active_capsule"
+                else None
             ),
             args.hand_servo_stiffness,
             args.hand_servo_damping,

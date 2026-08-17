@@ -1,0 +1,51 @@
+# Reproducible deployment preset for the capsule DP + FullHandMCC demo.
+release_tag: dp-capsule-v1
+
+artifacts:
+  model: mcc_finger_compliance_control/data/models/so3_uniform_v2_palm_geometry_local_planner_absolute_q_dp_25k/best.pt
+  replay_h5: mcc_finger_compliance_control/data/inverted/so3_uniform_v2_255x2500_relaxed999_inverted.h5
+  training_h5: mcc_finger_compliance_control/data/inverted/so3_uniform_v2_255x2500_relaxed999_palm_geometry_local_planner_dp.h5
+
+policy:
+  architecture: lerobot_diffusion_conditional_unet1d
+  input_frame: palm
+  state_schema: contact_geometry_planner
+  state_dim: 56
+  action_representation: absolute_q
+  observation_horizon: 16
+  prediction_horizon: 32
+  training_diffusion_steps: 100
+  inference_steps: 10
+  chunk_execution: true
+  dp_replan_interval: 20
+
+execution:
+  mode: live_dp
+  layer: fullhand_mcc
+  mcc_direction_source: oracle
+  contact_threshold_n: 0.05
+  desired_normal_force_n: 1.0
+  max_normal_offset_mm: 20.0
+  command_rate_limit_rad: 0.02
+  command_ema_alpha: 0.65
+
+active_capsule_planner:
+  direction: -1
+  requested_travel_mm: 400.0
+  # A single capsule meridian is shorter than 400 mm; the planner clamps the
+  # request to the remaining reachable arc (about 313 mm for episode 216).
+  surface_speed_mm_s: 20.0
+  max_acceleration_mm_s2: 40.0
+  min_contact_fingers: 3
+
+demo:
+  episode_id: 216
+  max_steps: 2150
+  seed: 42
+  camera_body: robot/palm_lower
+  video_fps: 30
+  video_width: 960
+  video_height: 720
+  camera_distance_m: 0.45
+  camera_azimuth_deg: 225.0
+  camera_elevation_deg: -10.0

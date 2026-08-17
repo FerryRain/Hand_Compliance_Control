@@ -46,12 +46,16 @@ MCC_TIP_SITE_LOCAL_POSITIONS = (
     (-0.0106151, -0.0326103, 0.0140386),
     (-0.0106383, -0.0453895, -0.0144321),
 )
-CONTACT_SOLREF = (-200.0, -18.0)
-CONTACT_SOLIMP = (0.90, 0.98, 0.018, 0.5, 2.0)
+# Keep deployment contact close to FullHandMCC while allowing a slightly more
+# compliant fingertip transition.  The previous collection-style contact
+# (-200, -18) with an 18 mm width was far too soft; this midpoint retains a
+# millimetre-scale transition without making the hand visually rigid.
+CONTACT_SOLREF = (-10_000.0, -280.0)
+CONTACT_SOLIMP = (0.90, 0.98, 0.002, 0.5, 2.0)
 
 
 def _apply_contact_material(spec: mujoco.MjSpec) -> None:
-    """Match the softened contact material used by the collection task."""
+    """Apply the moderately compliant FullHandMCC deployment material."""
     for geom in spec.geoms:
         if geom.contype == 0 and geom.conaffinity == 0:
             continue

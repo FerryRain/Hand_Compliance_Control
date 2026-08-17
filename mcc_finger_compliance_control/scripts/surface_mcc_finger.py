@@ -938,7 +938,9 @@ class FullHandMCCFingerConfig:
     force_servo_deadband: float = 0.05
     force_servo_max_step: float = 0.00008
     force_servo_hard_step: float = 0.00020
+    thumb_force_servo_hard_step: float | None = None
     force_servo_search_step: float = 0.00050
+    thumb_force_servo_search_step: float | None = None
     force_servo_weak_contact_step: float = 0.00020
     project_nominal_normal_motion: bool = False
     overforce_trigger_ratio: float = 1.20
@@ -1550,8 +1552,13 @@ class FullHandMCCFingerController:
                 & (self.overforce_recontact_hold == 0)
             )
             offset_step[held_missing] = 0.0
+            search_step = np.full(
+                4, cfg.force_servo_search_step, dtype=np.float64
+            )
+            if cfg.thumb_force_servo_search_step is not None:
+                search_step[3] = cfg.thumb_force_servo_search_step
             offset_step[search_missing] = np.maximum(
-                offset_step[search_missing], cfg.force_servo_search_step
+                offset_step[search_missing], search_step[search_missing]
             )
             # Geometry-only contact with a released force hysteresis is a
             # middle state: the pad is close enough that the full missing-tip
@@ -1581,8 +1588,13 @@ class FullHandMCCFingerController:
                 self.overforce_recontact_hold[held_missing] - 1,
                 0,
             )
+            hard_step = np.full(
+                4, cfg.force_servo_hard_step, dtype=np.float64
+            )
+            if cfg.thumb_force_servo_hard_step is not None:
+                hard_step[3] = cfg.thumb_force_servo_hard_step
             offset_step[hard_overforce] = np.minimum(
-                offset_step[hard_overforce], -cfg.force_servo_hard_step
+                offset_step[hard_overforce], -hard_step[hard_overforce]
             )
             lower_offset = np.full(4, -cfg.max_normal_offset)
             if cfg.thumb_max_outward_offset is not None:

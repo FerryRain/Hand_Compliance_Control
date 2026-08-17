@@ -1,0 +1,2 @@
+# Per-frame deployment reports are reproducible diagnostics and can be large.
+*.csv
