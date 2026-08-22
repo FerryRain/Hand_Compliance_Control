@@ -1,6 +1,6 @@
 # Agent Progress
 
-更新时间：2026-08-23 02:00 Asia/Shanghai
+更新时间：2026-08-23 04:00 Asia/Shanghai
 
 ## 本轮完成
 
@@ -20,30 +20,42 @@ src/mjlab/scripts/hand_only_compliance_demo.py
 ## 当前最新正式 run
 
 ```text
-20260823T020021_random_inhand_grasp_maintain
+20260823T040050_random_inhand_grasp_maintain
 ```
 
 关键产物：
 
-- `artifacts/datasets/20260823T020021_random_inhand_grasp_maintain_trajectory_forward.h5`
-- `artifacts/datasets/20260823T020021_random_inhand_grasp_maintain_trajectory_inversion.h5`
-- `artifacts/videos/20260823T020021_random_inhand_grasp_maintain_demo.mp4`
-- `screenshots/20260823T020021_random_inhand_grasp_maintain_start.png`
-- `screenshots/20260823T020021_random_inhand_grasp_maintain_mid.png`
-- `screenshots/20260823T020021_random_inhand_grasp_maintain_end.png`
-- `logs/20260823T020021_random_inhand_grasp_maintain_summary.json`
+- `artifacts/datasets/20260823T040050_random_inhand_grasp_maintain_trajectory_forward.h5`
+- `artifacts/datasets/20260823T040050_random_inhand_grasp_maintain_trajectory_inversion.h5`
+- `artifacts/videos/20260823T040050_random_inhand_grasp_maintain_demo.mp4`
+- `screenshots/20260823T040050_random_inhand_grasp_maintain_start.png`
+- `screenshots/20260823T040050_random_inhand_grasp_maintain_mid.png`
+- `screenshots/20260823T040050_random_inhand_grasp_maintain_end.png`
+- `logs/20260823T040050_random_inhand_grasp_maintain_summary.json`
 - `logs/latest_status.json`
 
 ## 运行方式
 
 ```bash
 cd /home/ferry/data/Code2/Research/hand_comliance_control
-/home/ferry/data/Anaconda/envs/handcomp/bin/python \
+MUJOCO_GL=egl /home/ferry/data/Anaconda/envs/handcomp/bin/python \
   src/mjlab/scripts/hand_only_compliance_demo.py \
   --duration-s 4.0 \
   --video-fps 20 \
   --output-tag random_inhand
 ```
+
+## 本次摘要指标
+
+- `gravity = [0.0, 0.0, 0.0]`
+- `num_steps = 2000`
+- `num_video_frames = 81`
+- `mean_palm_force = 229.7016`
+- `max_palm_force = 276.9551`
+- `mean_object_angvel_norm = 11.5106`
+- `max_object_angvel_norm = 27.6247`
+- `mean_translation_error_m = 7.67e-17`
+- `max_rotation_error_fro = 8.08e-15`
 
 ## 备注
 
