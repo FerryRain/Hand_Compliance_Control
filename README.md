@@ -1,13 +1,22 @@
 # Hand Compliance Control
 
+> **E05 说明（2026-08-22）**：仓库未来的正式 E05 已改为 FR3–Leap Hand 的双层控制
+> 评测，包含规定式 wrist tracking 的 Finger-level 对比，以及共享 6D Wrist MCC 的
+> Whole-hand 对比；analytical whole-hand baseline 还需要 resultant/internal Contact Force
+> Coordinator。控制器尚未实现，四个单元均为 `NOT_STARTED`，当前不要运行 E05。
+> 设计见 [`Module/E05_EVALUATION_PLAN.md`](Module/E05_EVALUATION_PLAN.md) 和
+> [`Module/WHOLE_HAND_COMPLIANCE_DESIGN.md`](Module/WHOLE_HAND_COMPLIANCE_DESIGN.md)。下述
+> hand-only 脚本只是现有独立采集入口，不属于正式 E05。
+
 当前仓库的**直接可运行入口**是一个 hand-only 的 MuJoCoLab 数据采集/演示脚本，
 用于生成“手掌朝上 + 关闭重力 + 掌内大物体随机转动 + 手指柔顺控制持续生效”的
 仿真轨迹、截图、视频和 `T_HO` 反演结果。
 
-这次任务**只保留 hand-only 范围**：
+当前可运行的旧采集入口仍只保留 hand-only 范围：
 
 - 不使用机械臂；
-- 不恢复旧的 full-hand MCC / arm-related 路径；
+- 不恢复旧的 full-hand MCC / arm-related 路径；未来 FR3–Leap 控制器应在获得实现授权后
+  按 Module 新架构重新建立，而不是复活旧路径；
 - 不重新 clone 或重装 MuJoCoLab；
 - 直接复用当前仓库里的现有安装与资产。
 
@@ -102,19 +111,19 @@ cd /home/ferry/data/Code2/Research/hand_comliance_control
 以 `logs/latest_status.json` 为准。当前最新正式 run 为：
 
 ```text
-20260822T220030_random_inhand_grasp_maintain
+20260823T000026_random_inhand_grasp_maintain
 ```
 
 对应关键产物：
 
-- 视频：`artifacts/videos/20260822T220030_random_inhand_grasp_maintain_demo.mp4`
+- 视频：`artifacts/videos/20260823T000026_random_inhand_grasp_maintain_demo.mp4`
 - 截图：
-  - `screenshots/20260822T220030_random_inhand_grasp_maintain_start.png`
-  - `screenshots/20260822T220030_random_inhand_grasp_maintain_mid.png`
-  - `screenshots/20260822T220030_random_inhand_grasp_maintain_end.png`
-- 前向 H5：`artifacts/datasets/20260822T220030_random_inhand_grasp_maintain_trajectory_forward.h5`
-- 反演 H5：`artifacts/datasets/20260822T220030_random_inhand_grasp_maintain_trajectory_inversion.h5`
-- 汇总：`logs/20260822T220030_random_inhand_grasp_maintain_summary.json`
+  - `screenshots/20260823T000026_random_inhand_grasp_maintain_start.png`
+  - `screenshots/20260823T000026_random_inhand_grasp_maintain_mid.png`
+  - `screenshots/20260823T000026_random_inhand_grasp_maintain_end.png`
+- 前向 H5：`artifacts/datasets/20260823T000026_random_inhand_grasp_maintain_trajectory_forward.h5`
+- 反演 H5：`artifacts/datasets/20260823T000026_random_inhand_grasp_maintain_trajectory_inversion.h5`
+- 汇总：`logs/20260823T000026_random_inhand_grasp_maintain_summary.json`
 
 ## 最小检查
 
