@@ -1,0 +1,57 @@
+{
+  "demo": "M0_TO_M4_E05_MCC_VISUAL_GALLERY",
+  "gallery": "Module/generated/visual_demo/index.html",
+  "modules": {
+    "M01": {
+      "candidate_count": 12,
+      "clearance_m": 0.016,
+      "mesh_extent_m": [
+        0.3,
+        0.23251266678617022,
+        0.2973691672991965
+      ],
+      "module": "M01",
+      "output": "Module/generated/visual_demo/module_1_surface_model.png",
+      "passed": true
+    },
+    "M02": {
+      "animation": {
+        "frame_count": 60,
+        "output": "Module/generated/visual_demo/module_2_curved_surface.gif"
+      },
+      "dashboard": {
+        "cylinder_rmse_n": 0.019801980198019833,
+        "output": "Module/generated/visual_demo/module_2_fingertip_mcc.png",
+        "sphere_rmse_n": 0.019801980198019754,
+        "static_rmse_n": {
+          "1.0": 0.009900990099009912,
+          "2.0": 0.019801980198019823,
+          "3.0": 0.029702970297029292
+        }
+      },
+      "module": "M02",
+      "passed": true
+    },
+    "M03": {
+      "blockage_detection_s": 0.15,
+      "immediate_reasons": [
+        "TIP_OVERFORCE",
+        "JOINT_LIMIT",
+        "SELF_COLLISION"
+      ],
+      "module": "M03",
+      "output": "Module/generated/visual_demo/module_3_runtime_guards.png",
+      "passed": true
+    },
+    "M0_M04_FR3": {
+      "artifacts": [
+        "Module/generated/visual_demo/fr3_leap_model_audit.png",
+        "Module/generated/visual_demo/fr3_leap_e05_f_mcc.mp4",
+        "Module/generated/visual_demo/fr3_leap_e05_h_mcc.mp4",
+        "Module/generated/visual_demo/fr3_leap_mcc_dashboard.png"
+      ],
+      "passed": true
+    }
+  },
+  "passed": true
+}

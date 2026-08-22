@@ -1,0 +1,11 @@
+{
+  "dashboard": "Module/generated/visual_demo/fr3_leap_mcc_dashboard.png",
+  "dp_evaluated": false,
+  "page": "Module/generated/visual_demo/fr3_leap_mcc.html",
+  "source_experiment": "E05-MCC-FR3-v1",
+  "source_protocol_sha256": "483bd7ccf98ad5afec9bfb2d2912d2b9882d2a4045a194582b879b8adc51664a",
+  "videos": [
+    "Module/generated/visual_demo/fr3_leap_e05_f_mcc.mp4",
+    "Module/generated/visual_demo/fr3_leap_e05_h_mcc.mp4"
+  ]
+}

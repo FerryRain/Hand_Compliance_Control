@@ -1,147 +1,78 @@
 # Hand Compliance Control
 
-> **E05 说明（2026-08-22）**：仓库未来的正式 E05 已改为 FR3–Leap Hand 的双层控制
-> 评测，包含规定式 wrist tracking 的 Finger-level 对比，以及共享 6D Wrist MCC 的
-> Whole-hand 对比；analytical whole-hand baseline 还需要 resultant/internal Contact Force
-> Coordinator。控制器尚未实现，四个单元均为 `NOT_STARTED`，当前不要运行 E05。
-> 设计见 [`Module/E05_EVALUATION_PLAN.md`](Module/E05_EVALUATION_PLAN.md) 和
-> [`Module/WHOLE_HAND_COMPLIANCE_DESIGN.md`](Module/WHOLE_HAND_COMPLIANCE_DESIGN.md)。下述
-> hand-only 脚本只是现有独立采集入口，不属于正式 E05。
+当前仓库以 [`Module/`](Module/) 为唯一的新架构入口。现阶段已完成 M0–M3 的
+FR3+Leap Hand 扩展、M04 整手 MCC，并正式评测 `E05-F-MCC` 与 `E05-H-MCC`。
+Finger DP 本轮明确延期：没有实现、训练、运行或指标。
 
-当前仓库的**直接可运行入口**是一个 hand-only 的 MuJoCoLab 数据采集/演示脚本，
-用于生成“手掌朝上 + 关闭重力 + 掌内大物体随机转动 + 手指柔顺控制持续生效”的
-仿真轨迹、截图、视频和 `T_HO` 反演结果。
+## 当前结论
 
-当前可运行的旧采集入口仍只保留 hand-only 范围：
+| 项目 | 状态 |
+| --- | --- |
+| M0-FR3 full-robot contract | `PASSED` |
+| M01-FR3 live robot geometry | `PASSED` |
+| M02-FR3 four-finger MCC | `PASSED` |
+| M03-FR3 grouped runtime guards | `PASSED` |
+| M04-R/W/C/H whole-hand MCC | `BLOCKED`（控制结构通过；80 mm invisible mount 待修） |
+| E05-F-MCC | `EVALUATED / NOT_MET` |
+| E05-H-MCC | `EVALUATED / NOT_MET` |
+| Finger DP | `DEFERRED` |
 
-- 不使用机械臂；
-- 不恢复旧的 full-hand MCC / arm-related 路径；未来 FR3–Leap 控制器应在获得实现授权后
-  按 Module 新架构重新建立，而不是复活旧路径；
-- 不重新 clone 或重装 MuJoCoLab；
-- 直接复用当前仓库里的现有安装与资产。
+`EVALUATED` 表示冻结实验完整运行；`NOT_MET` 表示有性能阈值未满足，不能写成实验
+`FAILED`。两个 MCC 单元都保持了约 `99.990%` 的连续接触，但 force peak、settling 等
+指标仍需改进。提交前复核还发现 link8 到 palm 使用了 80 mm 不可见刚性偏移；当前
+E05 数值仅作为 mount 修复前基线，修复后必须重测。完整说明见
+[`Module/README.md`](Module/README.md)。
 
-## 本次已验证的 conda 环境
+## 先看可视化
 
-推荐并已实际跑通：`handcomp`
+打开 [`Module/generated/visual_demo/index.html`](Module/generated/visual_demo/index.html)。
+其中包含：
 
-```bash
-conda activate handcomp
-```
+- 23-DoF FR3+Leap 模型和指尖指肚接触 close-up；
+- M01 Oracle、M02 Fingertip MCC、M03 runtime guards；
+- 两段完整 `15 s` 的 `E05-F-MCC` / `E05-H-MCC` MuJoCo 视频；
+- contact、force、二维 traversal、wrist wrench、曲率与突变恢复 dashboard。
 
-如果不方便激活环境，也可以直接调用：
+视频中的物体固定在 world，palm trajectory 由 FR3 七个关节实际执行；不是 fixed palm、
+inverse object motion 或无物理引擎动画。
 
-```bash
-/home/ferry/data/Anaconda/envs/handcomp/bin/python
-```
+## 环境与复现
 
-> 本 README 中的 hand-only 入口、截图、视频和最新 `latest_status.json` 都是用
-> `/home/ferry/data/Anaconda/envs/handcomp/bin/python` 生成的。
-
-## 先看哪里
-
-如果你是 OpenClaw / cron 任务，优先读这几个文件：
-
-1. `docs/openclaw_compliance_order.md`
-2. `docs/agent_progress.md`
-3. `logs/latest_status.json`
-
-## hand-only 入口
-
-脚本：
-
-```text
-src/mjlab/scripts/hand_only_compliance_demo.py
-```
-
-它会做这些事：
-
-- 加载 `src/mjlab/asset_zoo/robots/leaphand_only.xml`
-- 使用掌心朝上的 hand-only 模型
-- 验证重力为 `0 0 0`
-- 在掌内放置一个相对较大的 box 物体
-- 对物体持续施加随机平滑扰动，让它在掌内随机转动
-- 始终保持手指柔顺控制器激活
-- 记录前向轨迹（包含 `T_HO`、`T_OH`、`T_WH`、`T_WO`）
-- 计算轨迹反演并输出数值误差检查
-- 导出截图、MP4 演示视频、JSON 汇总和 `logs/latest_status.json`
-
-## 运行方法
-
-### 正式 4 秒采集
+固定使用现有 `handcomp` 环境：
 
 ```bash
 cd /home/ferry/data/Code2/Research/hand_comliance_control
 /home/ferry/data/Anaconda/envs/handcomp/bin/python \
-  src/mjlab/scripts/hand_only_compliance_demo.py \
-  --duration-s 4.0 \
-  --video-fps 20 \
-  --output-tag random_inhand
+  -m unittest discover -s Module/tests -v
 ```
 
-### 快速 smoke test
+重新运行正式 MCC-only E05：
 
 ```bash
-cd /home/ferry/data/Code2/Research/hand_comliance_control
 /home/ferry/data/Anaconda/envs/handcomp/bin/python \
-  src/mjlab/scripts/hand_only_compliance_demo.py \
-  --duration-s 0.6 \
-  --video-fps 10 \
-  --output-tag smoke
+  -m Module.module_4_whole_hand_mcc.demo
 ```
 
-## 输出位置
-
-脚本会按时间戳生成一组标准化文件：
-
-- 前向轨迹：`artifacts/datasets/*_trajectory_forward.{npz,h5,json}`
-- 轨迹反演：`artifacts/datasets/*_trajectory_inversion.{npz,h5,json}`
-- 视频：`artifacts/videos/*_demo.mp4`
-- 截图：`screenshots/*_{start,mid,end}.png`
-- 汇总：`logs/*_summary.json`
-- 最新状态：`logs/latest_status.json`
-
-其中：
-
-- forward H5 里包含 `T_HO`
-- inversion H5 里包含 `T_HO_source` 和反演得到的 `T_OH_inverted`
-- `logs/latest_status.json` 永远指向最近一次运行结果，方便后续 cron 直接读取
-
-## 当前最新一次正式结果
-
-以 `logs/latest_status.json` 为准。当前最新正式 run 为：
-
-```text
-20260823T000026_random_inhand_grasp_maintain
-```
-
-对应关键产物：
-
-- 视频：`artifacts/videos/20260823T000026_random_inhand_grasp_maintain_demo.mp4`
-- 截图：
-  - `screenshots/20260823T000026_random_inhand_grasp_maintain_start.png`
-  - `screenshots/20260823T000026_random_inhand_grasp_maintain_mid.png`
-  - `screenshots/20260823T000026_random_inhand_grasp_maintain_end.png`
-- 前向 H5：`artifacts/datasets/20260823T000026_random_inhand_grasp_maintain_trajectory_forward.h5`
-- 反演 H5：`artifacts/datasets/20260823T000026_random_inhand_grasp_maintain_trajectory_inversion.h5`
-- 汇总：`logs/20260823T000026_random_inhand_grasp_maintain_summary.json`
-
-## 最小检查
+从正式 trace 重建视频，并刷新总 gallery：
 
 ```bash
-cd /home/ferry/data/Code2/Research/hand_comliance_control
-/home/ferry/data/Anaconda/envs/handcomp/bin/python -m py_compile \
-  src/mjlab/scripts/hand_only_compliance_demo.py
+/home/ferry/data/Anaconda/envs/handcomp/bin/python -m Module.fr3_visual_demo
+/home/ferry/data/Anaconda/envs/handcomp/bin/python -m Module.visual_demo
 ```
 
-## 与迁移架构的关系
+## 文档入口
 
-仓库总体仍处在“wrist planner + finger DP”迁移过程中。相关架构和边界继续以这些
-文档为准：
+- [`Module/MASTER_PLAN.md`](Module/MASTER_PLAN.md)：唯一主任务记录与 Gate；
+- [`Module/README.md`](Module/README.md)：目录、模块 API、命令和 demo；
+- [`Module/PROTOCOL.md`](Module/PROTOCOL.md)：M0–M3 及 FR3 extensions；
+- [`Module/E05_MCC_FR3_PROTOCOL.md`](Module/E05_MCC_FR3_PROTOCOL.md)：冻结的 MCC-only E05；
+- [`Module/E05_EVALUATION_PLAN.md`](Module/E05_EVALUATION_PLAN.md)：F/H 两层定义；
+- [`Module/WHOLE_HAND_COMPLIANCE_DESIGN.md`](Module/WHOLE_HAND_COMPLIANCE_DESIGN.md)：
+  resultant/internal force decomposition。
 
-- `ARCHITECTURE.md`
-- `CONTROL_STRATEGIES.md`
-- `PROCESS.md`
-- `mcc_finger_compliance_control/README.md`
+## 当前边界
 
-但对当前这项任务来说，**唯一需要直接运行的是上面的 hand-only 采集脚本**。
-旧采集器、旧 arm/full-hand MCC 路径不再是当前目标，也不应恢复为默认入口。
+- 正式 E05 只有 MCC，不包含 DP，也不能得出 MCC-vs-DP 结论；
+- 正式 protocol 使用固定物体和 gravity-off，以隔离 contact controller；
+- 当前结果是 MuJoCo 动力学仿真，不是硬件验证；
+- 历史 fixed-palm `E05-PHY-v3` 仅保留为可追溯 evidence，不再是默认测试入口。
