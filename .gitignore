@@ -20,6 +20,10 @@ finger_compliance_control/data/
 palm_compliance_control/data/
 mcc_finger_compliance_control/data/
 CLAUDE.md
+/.idea/
+/screenshots/
+/data/collected/
+/data/hand_only_compliance/
 
 # Documentation outputs.
 **/_build/*
