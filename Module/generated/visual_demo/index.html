@@ -28,7 +28,7 @@
 <main>
   <span class="badge">handcomp · deterministic visual reproduction</span>
   <h1>M0–M4 与 MCC-only E05 到底做了什么？</h1>
-  <p class="lead">解析模块、23-DoF 物理机器人与正式 E05 trace 放在同一页。视频中的 FR3 真正在移动，物体固定在 world；没有 DP 结果。</p>
+  <p class="lead">解析模块、23-DoF 物理机器人与正式 MCC E05 trace 放在同一页。视频中的 FR3 真正在移动，物体固定在 world；没有正式 DP 指标。</p>
   <div class="flow">
     <div>0 · FR3+Leap Contract<small>7 arm + 16 finger 的分组状态、wrench frame/sign、传感器有效性和日志。</small></div>
     <div>1 · Geometry Oracle<small>告诉系统表面在哪里、法向是什么、link 还有多少 clearance。</small></div>
@@ -40,6 +40,8 @@
     <h2>M0–M3 · FR3 + Leap Hand 适配</h2>
     <p>模型严格为 <code>nq=nv=nu=23</code>。右上 close-up 是四个真实 fingertip-body 指腹 pad；surface 固定，整只手由 FR3 执行 2D traversal。</p>
     <img src="fr3_leap_model_audit.png" alt="FR3 Leap model and fingertip belly audit">
+    <p>下面两个独立视角专门检查安装口。橙色只用于突出显示显式 adapter；数值栏给出 flange/palm mesh 最近距离和固定父子关系。</p>
+    <img src="fr3_leap_mount_closeup.png" alt="FR3 flange to Leap palm mount close-up audit">
   </section>
 
   <section>
@@ -74,7 +76,7 @@
     <img src="fr3_leap_mcc_dashboard.png" alt="Formal MCC-only E05 dashboard">
   </section>
 
-  <p class="boundary"><strong>当前边界：</strong>M0–M4/E05 视频是 MuJoCo 动力学证据，不是硬件结果；正式协议关闭 gravity 以隔离 contact control。E05 只评测 MCC，DP 未实现、未运行、未填写指标。实验完整执行记为 EVALUATED，性能由 MET/NOT_MET 单独表达。</p>
+  <p class="boundary"><strong>当前边界：</strong>M0–M4/E05 视频是 MuJoCo 动力学证据，不是硬件结果；正式协议关闭 gravity 以隔离 contact control。本页只展示正式 MCC；历史 DP release 的 3 s raw compatibility trial 是 EVIDENCE_ONLY，不是正式 DP 指标。实验完整执行记为 EVALUATED，性能由 MET/NOT_MET 单独表达。</p>
 </main>
 </body>
 </html>

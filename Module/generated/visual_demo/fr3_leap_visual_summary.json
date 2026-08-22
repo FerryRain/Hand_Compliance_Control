@@ -1,9 +1,10 @@
 {
   "dashboard": "Module/generated/visual_demo/fr3_leap_mcc_dashboard.png",
   "dp_evaluated": false,
+  "mount_closeup": "Module/generated/visual_demo/fr3_leap_mount_closeup.png",
   "page": "Module/generated/visual_demo/fr3_leap_mcc.html",
-  "source_experiment": "E05-MCC-FR3-v1",
-  "source_protocol_sha256": "483bd7ccf98ad5afec9bfb2d2912d2b9882d2a4045a194582b879b8adc51664a",
+  "source_experiment": "E05-MCC-FR3-v2",
+  "source_protocol_sha256": "2858b8b30211d4a83015dd0e1e414abc995e0650f28254788e484d3e8eab5196",
   "videos": [
     "Module/generated/visual_demo/fr3_leap_e05_f_mcc.mp4",
     "Module/generated/visual_demo/fr3_leap_e05_h_mcc.mp4"

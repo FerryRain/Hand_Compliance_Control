@@ -1,0 +1,49 @@
+{
+  "all_pads_face_down": true,
+  "arm_dof": 7,
+  "fixed_object": true,
+  "flange_palm_mesh_distance_m": 2.062032495354764e-05,
+  "gravity_m_s2": 0.0,
+  "hand_dof": 16,
+  "model": "FR3_LEAP_MCC_V2",
+  "mount_adapter_present": true,
+  "mount_geometrically_closed": true,
+  "mount_interface_tolerance_m": 0.001,
+  "mount_origin_gap_m": 0.011199999999999988,
+  "mount_parent_is_link8": true,
+  "mount_witness_world_m": [
+    0.5762591362859699,
+    0.02253605555383653,
+    0.6246006504747377,
+    0.5762591362842961,
+    0.02253605555517995,
+    0.6245800301497841
+  ],
+  "nq": 23,
+  "nu": 23,
+  "nv": 23,
+  "object_mocap_id": -1,
+  "object_position_m": [
+    0.5394994780317353,
+    0.245,
+    0.5273024294875894
+  ],
+  "pad_normal_world_z": [
+    -0.999953823815075,
+    -0.9999538241288636,
+    -0.9999538209909801,
+    -0.9999996008076026
+  ],
+  "pad_parent_body_names": [
+    "fingertip",
+    "fingertip_2",
+    "fingertip_3",
+    "thumb_fingertip"
+  ],
+  "palm_position_m": [
+    0.5224994778580889,
+    0.04799999988423575,
+    0.6113024294875894
+  ],
+  "plant_structure_valid": true
+}

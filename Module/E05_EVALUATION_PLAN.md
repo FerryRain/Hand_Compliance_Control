@@ -1,9 +1,9 @@
-# E05 当前评测定义：MCC-only
+# E05 当前评测定义：正式 MCC-only + DP compatibility 边界
 
 > 状态：`EVALUATED`
 > 日期：`2026-08-23`
 > 环境：`handcomp`
-> 当前范围：只评测 MCC；DP 延后，不实现、不运行、不填占位指标。
+> 当前正式范围：只评测 MCC；历史 DP raw trial 仅为 `EVIDENCE_ONLY`，不填正式指标。
 
 ## 1. 两个单元
 
@@ -22,10 +22,11 @@
 - 同一 nominal 15 秒 2D traversal、4 mm away step、force target 和 seeds；
 - 同一真实 fingertip-body belly pads、`mj_contactForce`、joint-torque wrench estimator；
 - 同一 Runtime Guards、日志与 evaluator；
-- DP 没有 checkpoint、observation、action、fallback 或隐藏后处理分支。
+- 正式 MCC evaluator 不读取 DP checkpoint、observation、action、fallback 或隐藏后处理；
+  外部历史 release 只在独立 compatibility tool 中读取。
 
 正式参数、三组配对扰动和阈值只以
-[`E05_MCC_FR3_PROTOCOL.md`](E05_MCC_FR3_PROTOCOL.md) 为准。
+[`E05_MCC_FR3_V2_PROTOCOL.md`](E05_MCC_FR3_V2_PROTOCOL.md) 为准。
 
 ## 3. E05-F-MCC
 
@@ -76,17 +77,26 @@ internal leakage 和 projector transition。
 | episodes | 3/3 | 3/3 |
 | execution | `EVALUATED` | `EVALUATED` |
 | performance | `NOT_MET` | `NOT_MET` |
-| mean contact continuity | 99.990% | 99.990% |
-| mean force RMSE | 0.773 N | 1.017 N |
-| worst peak force | 11.08 N | 13.19 N |
-| mean traversal Y | 173.9 mm | 175.3 mm |
-| mean controller P95 | 1.249 ms | 1.263 ms |
+| mean contact continuity | 100.000% | 99.981% |
+| mean force RMSE | 0.782 N | 1.020 N |
+| worst peak force | 11.113 N | 15.751 N |
+| mean traversal Y | 174.0 mm | 175.3 mm |
+| mean controller P95 | 1.200 ms | 1.270 ms |
 
-F 的未达项为 deadline-miss probability、force-violation probability、peak force。H 的未达
-项为 force RMSE、force settling 和 peak force。逐 episode 原始值位于
-`generated/e05_mcc_fr3_v1/summary.json` 与 `episodes.csv`。
+F 的未达项为 force-violation probability 和 peak force。H 的未达项为 force RMSE、
+force settling、force-violation probability 和 peak force。逐 episode 原始值位于
+`generated/e05_mcc_fr3_v2/summary.json` 与 `episodes.csv`。
 
-## 7. 历史预验证边界
+## 7. DP release compatibility 边界
+
+`dp-capsule-v1` 的 checkpoint、normalization、训练/teacher H5 和部署代码已确认齐全，且
+state dict / 10-step diffusion inference 通过。但其 frozen deployment 是
+`DP nominal + FullHandMCC`，不是 standalone Finger DP。关闭 MCC 后接入当前 E05 的 3 s
+raw trial 最终四指全失触，只能写成 `EVIDENCE_ONLY`。正式 E05-F-DP 仍为
+`NOT_EVALUATED`；在用户选择 standalone DP 或 DP+shared-MCC 的公平契约前，不得增加 DP
+列。完整审计见 `evidence/2026-08-23_DP_STRATEGY_AUDIT.md`。
+
+## 8. 历史预验证边界
 
 `E05-PHY-v3` 继续登记为 `E05-PRE-FMCC`：固定 palm、反向 mocap object 的旧 finger-only
 证据。其协议和结果保持不可变，不能替代本轮 FR3 E05，也没有被新结果覆盖。

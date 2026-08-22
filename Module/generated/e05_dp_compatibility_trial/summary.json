@@ -1,0 +1,29 @@
+{
+  "average_contact_count": 0.067,
+  "checkpoint_sha256": "89044a1045ae44e28bec129c71998d3b389f08e4349e8a18441ba10bdd073ef0",
+  "contact_continuity_probability": 0.067,
+  "dp_calls": 12,
+  "dp_inference_mean_s": 0.09235525258342629,
+  "dp_inference_p95_s": 0.09741272095029671,
+  "duration_s": 3.0,
+  "execution_status": "EVIDENCE_ONLY",
+  "final_contacts": [
+    0,
+    0,
+    0,
+    0
+  ],
+  "first_target_max_delta_from_initial_rad": 1.1562163842201234,
+  "force_rmse_n": 2.0199153857275647,
+  "formal_e05": false,
+  "interpretation": "Raw absolute-q compatibility trial only. The released deployment contract expects a DP nominal followed by FullHandMCC.",
+  "max_tip_force_n": 13.156268575231618,
+  "minimum_contact_count": 0,
+  "non_tip_contact_count_accumulated": 0,
+  "parameter_count": 75851152,
+  "postprocess_mcc": false,
+  "traversal_y_m": 0.029749174673625624,
+  "trial": "E05-F-DP-RAW-3S-COMPATIBILITY",
+  "video": "Module/generated/e05_dp_compatibility_trial/e05_f_dp_raw_compatibility.mp4",
+  "zero_contact_time_s": 1.866
+}

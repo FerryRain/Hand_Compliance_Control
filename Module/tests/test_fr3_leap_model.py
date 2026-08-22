@@ -51,6 +51,17 @@ class FR3LeapModelTest(unittest.TestCase):
       ["fingertip", "fingertip_2", "fingertip_3", "thumb_fingertip"],
     )
 
+  def test_flange_and_palm_are_parented_and_geometrically_closed(self) -> None:
+    audit = model_audit(self.handles)
+    self.assertTrue(audit["mount_parent_is_link8"])
+    self.assertTrue(audit["mount_adapter_present"])
+    self.assertTrue(audit["mount_geometrically_closed"])
+    self.assertLessEqual(audit["mount_origin_gap_m"], 0.02)
+    self.assertLessEqual(
+      abs(audit["flange_palm_mesh_distance_m"]),
+      audit["mount_interface_tolerance_m"],
+    )
+
   def test_m01_adapter_uses_live_arm_state_and_physics_narrow_phase(self) -> None:
     data = self.data_at_home()
     adapter = FullRobotGeometryAdapter(self.handles)

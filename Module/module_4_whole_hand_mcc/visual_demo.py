@@ -217,6 +217,106 @@ def render_video(
   return output_path
 
 
+def render_mount_closeup(
+  trace: E05MCCTrace,
+  audit: dict[str, Any],
+  output_path: Path,
+) -> Path:
+  """Render two unobstructed views of the physical flange-to-palm interface."""
+
+  handles = build_full_robot(
+    FullRobotModelConfig(
+      surface="extreme",
+      gravity_m_s2=0.0,
+      arm_kp=1800.0,
+      arm_damping_ratio=0.9,
+    )
+  )
+  data = mujoco.MjData(handles.model)
+  index = int(np.argmin(np.abs(trace.time_s - 2.0)))
+  data.qpos[handles.arm_qpos_adrs] = trace.arm_q_rad[index]
+  data.qpos[handles.hand_qpos_adrs] = trace.finger_q_rad[index]
+  mujoco.mj_forward(handles.model, data)
+
+  adapter_id = mujoco.mj_name2id(
+    handles.model,
+    mujoco.mjtObj.mjOBJ_GEOM,
+    "fr3_leap_mount_adapter",
+  )
+  if adapter_id < 0:
+    raise RuntimeError("compiled model has no fr3_leap_mount_adapter")
+  handles.model.geom_rgba[adapter_id] = np.array([0.96, 0.55, 0.08, 1.0])
+
+  palm = np.asarray(data.site_xpos[handles.palm_site_id], dtype=np.float64)
+  wrist = np.asarray(data.site_xpos[handles.wrist_site_id], dtype=np.float64)
+  lookat = tuple((0.68 * wrist + 0.32 * palm).tolist())
+  views = (
+    ("VIEW A · oblique", 135.0, -8.0, 0.18),
+    ("VIEW B · opposite", 45.0, -8.0, 0.18),
+  )
+  rendered: list[Image.Image] = []
+  for label, azimuth, elevation, distance in views:
+    renderer = mujoco.Renderer(handles.model, width=600, height=410)
+    try:
+      renderer.update_scene(
+        data,
+        camera=_camera(
+          lookat,
+          distance=distance,
+          azimuth=azimuth,
+          elevation=elevation,
+        ),
+      )
+      panel = Image.fromarray(renderer.render().copy()).convert("RGB")
+      panel_draw = ImageDraw.Draw(panel)
+      panel_draw.rounded_rectangle((14, 12, 212, 48), 8, fill=(8, 22, 38, 220))
+      panel_draw.text((27, 21), label, font=_font(15, bold=True), fill="white")
+      panel_draw.rounded_rectangle((14, 350, 322, 394), 8, fill=(8, 22, 38, 220))
+      panel_draw.text(
+        (27, 362),
+        "orange = explicit mount adapter",
+        font=_font(14, bold=True),
+        fill=(255, 209, 121),
+      )
+      rendered.append(panel)
+    finally:
+      renderer.close()
+
+  canvas = Image.new("RGB", (1240, 650), (244, 248, 251))
+  canvas.paste(rendered[0], (20, 90))
+  canvas.paste(rendered[1], (620, 90))
+  draw = ImageDraw.Draw(canvas)
+  draw.text((22, 18), "FR3 flange → Leap Hand palm mount audit", font=_font(30, bold=True), fill=(23, 50, 77))
+  draw.text(
+    (22, 57),
+    "Two independent camera views; adapter color is highlighted only in this audit image.",
+    font=_font(16),
+    fill=(91, 110, 128),
+  )
+  distance_mm = 1000.0 * float(audit["flange_palm_mesh_distance_m"])
+  tolerance_mm = 1000.0 * float(audit["mount_interface_tolerance_m"])
+  origin_gap_mm = 1000.0 * float(audit["mount_origin_gap_m"])
+  draw.rounded_rectangle((20, 515, 1220, 630), 13, fill=(8, 22, 38))
+  draw.text(
+    (42, 535),
+    f"direct fixed child: {str(audit['mount_parent_is_link8']).upper()}    "
+    f"adapter present: {str(audit['mount_adapter_present']).upper()}    "
+    f"geometrically closed: {str(audit['mount_geometrically_closed']).upper()}",
+    font=_font(19, bold=True),
+    fill=(151, 231, 209),
+  )
+  draw.text(
+    (42, 578),
+    f"flange/palm mesh distance = {distance_mm:.4f} mm  (limit {tolerance_mm:.1f} mm)"
+    f"    ·    body-origin gap = {origin_gap_mm:.1f} mm",
+    font=_font(17),
+    fill=(213, 226, 238),
+  )
+  output_path.parent.mkdir(parents=True, exist_ok=True)
+  canvas.save(output_path)
+  return output_path
+
+
 def render_dashboard(
   f_trace: E05MCCTrace,
   h_trace: E05MCCTrace,
@@ -282,12 +382,13 @@ def _index_html(summary: dict[str, Any]) -> str:
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>FR3 + Leap MCC Visual Demo</title>
 <style>body{{margin:0;background:#f3f6f9;color:#17324d;font-family:system-ui,sans-serif}}main{{width:min(1120px,94vw);margin:36px auto 70px}}section{{background:white;border:1px solid #dbe4ec;border-radius:16px;padding:20px;margin:18px 0}}video,img{{width:100%;border-radius:11px;border:1px solid #dbe4ec}}code{{background:#edf2f6;padding:2px 6px;border-radius:5px}}.badge{{display:inline-block;background:#dff7ef;color:#146c5b;padding:5px 10px;border-radius:999px;font-weight:700}}p{{line-height:1.65;color:#5b6e80}}</style></head>
-<body><main><span class="badge">formal trace replay · no DP</span><h1>FR3 + Leap Hand：MCC-only E05</h1>
+<body><main><span class="badge">formal MCC trace replay</span><h1>FR3 + Leap Hand：MCC-only E05</h1>
 <p>两个视频都来自同一冻结对象、trajectory 和 nominal seed。物体固定在 world；画面中的 palm 位移由 7-DoF FR3 真实执行。右上 inset 显示四个真实 fingertip-body belly pads。</p>
 <section><h2>E05-F-MCC</h2><p>规定式 FR3 wrist tracking；四个 Finger MCC 使用完整 local force error。执行状态 <code>{f['execution_status']}</code>，性能 <code>{f['performance_verdict']}</code>。</p><video controls preload="metadata" src="fr3_leap_e05_f_mcc.mp4"></video></section>
 <section><h2>E05-H-MCC</h2><p>同一 nominal trajectory；FR3 Wrist MCC 调 resultant wrench，Finger MCC 只调 internal/differential error。执行状态 <code>{h['execution_status']}</code>，性能 <code>{h['performance_verdict']}</code>。</p><video controls preload="metadata" src="fr3_leap_e05_h_mcc.mp4"></video></section>
+<section><h2>安装口审计</h2><p>橙色仅用于突出显示显式 mount adapter；两个独立视角和几何距离共同确认 FR3 flange 与 Leap palm 闭合。</p><img src="fr3_leap_mount_closeup.png"></section>
 <section><h2>数值与模型审计</h2><img src="fr3_leap_mcc_dashboard.png"><img src="fr3_leap_model_audit.png"></section>
-<p>边界：本页只评测 MCC。DP 未实现、未运行、未产生指标；gravity 在冻结协议中关闭，以隔离 contact control，不能把本结果外推为 gravity-on 或硬件结果。</p></main></body></html>"""
+<p>边界：本页只评测 MCC。历史 DP release 仅完成独立 compatibility audit，没有正式 DP 指标；gravity 在冻结协议中关闭，以隔离 contact control，不能把本结果外推为 gravity-on 或硬件结果。</p></main></body></html>"""
 
 
 def run_visual_demo(
@@ -295,6 +396,7 @@ def run_visual_demo(
   output_dir: Path = DEFAULT_VISUAL_DIR,
 ) -> dict[str, Any]:
   summary = json.loads((result_dir / "summary.json").read_text(encoding="utf-8"))
+  audit = json.loads((result_dir / "model_audit.json").read_text(encoding="utf-8"))
   trace_path = result_dir / "base_traces.npz"
   f_trace = load_base_trace(trace_path, "E05-F-MCC")
   h_trace = load_base_trace(trace_path, "E05-H-MCC")
@@ -311,6 +413,11 @@ def run_visual_demo(
     output_dir / "fr3_leap_e05_h_mcc.mp4",
     output_dir / "fr3_leap_h_mcc_frame.png",
   )
+  mount_closeup = render_mount_closeup(
+    f_trace,
+    audit,
+    output_dir / "fr3_leap_mount_closeup.png",
+  )
   dashboard = render_dashboard(
     f_trace,
     h_trace,
@@ -324,6 +431,7 @@ def run_visual_demo(
     "source_protocol_sha256": summary["protocol"]["sha256"],
     "dp_evaluated": False,
     "videos": [str(f_video), str(h_video)],
+    "mount_closeup": str(mount_closeup),
     "dashboard": str(dashboard),
     "page": str(page),
   }

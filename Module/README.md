@@ -1,7 +1,10 @@
-# Module 使用说明：M0–M4 与 MCC-only E05
+# Module 使用说明：M0–M4、MCC E05 与 DP release 审计
 
-当前版本已经完成 FR3 + Leap Hand 的 MCC 分支。E05 只评测 `E05-F-MCC` 和
-`E05-H-MCC`；DP 未实现、未运行，也没有 DP 指标。固定环境为 `handcomp`。
+当前版本已经完成 FR3 + Leap Hand 的 M0–M4 MCC 分支，并在修正 flange–palm 安装口后
+重新评测 `E05-F-MCC` 和 `E05-H-MCC`。历史 `dp-capsule-v1` checkpoint 已完成资产、
+state-dict、推理和 raw physics compatibility 审计；由于它的正式 executor 是
+`FullHandMCC`，不符合 standalone Finger DP 的公平比较契约，因此没有生成正式 DP 指标。
+固定环境为 `handcomp`。
 
 ## 当前状态
 
@@ -11,20 +14,22 @@
 | M01-FR3 | `PASSED` | live FR3 link capsules、Oracle clearance、MuJoCo pad/object distance |
 | M02-FR3 | `PASSED` | moving-wrist finger IK、signed force error、transition reset |
 | M03-FR3 | `PASSED` | arm/finger 分组 stall、wrench/torque/limit/sensor/controller guards |
-| M04-R/W/C/H | `PASSED_STRUCTURE / MOUNT_REVIEW_OPEN` | 控制链通过；发现 link8→palm 有 80 mm 不可见 mount offset，待下一版修复并重测 |
+| M04-R/W/C/H | `PASSED_STRUCTURE / MOUNT_FIXED` | link8→palm direct child + visible adapter；mesh gap `0.0206 mm` |
 | E05-F-MCC | `EVALUATED / NOT_MET` | 三个正式 episode 全部执行；force peak 等阈值未全部满足 |
 | E05-H-MCC | `EVALUATED / NOT_MET` | 三个正式 episode 全部执行；force RMSE/settling/peak 未全部满足 |
+| historical DP assets | `COMPLETE / INFERENCE_PASSED` | release 权重、数据、normalization 和代码齐全；75.85M 参数完整加载 |
+| E05-F-DP raw compatibility | `EVIDENCE_ONLY` | 3 s 后四指全失触；契约不兼容，不能作为正式 DP 评测 |
 
 `EVALUATED` 表示实验完整有效；`NOT_MET` 表示控制性能仍需改进，不把已经完成的评测写成
 `FAILED`。
 
-### 审阅基线的已知问题
+### 当前未提交审阅层
 
-当前 `M04-R` 在 MuJoCo kinematic tree 中确实把 `palm_lower` 作为 `fr3v2_link8` 的固定
-child，因此并非自由漂浮；但 v1 使用 `MOUNT_POSITION_LINK8_M=[0,0,0.08]`，中间没有
-显式 adapter geometry，视觉上和机械定义上都留下了 `80 mm` 的不可见连接段。该问题
-已确认，当前正式 E05 结果只作为修复前基线；修正 mount 后必须重新运行全部 MCC 评测
-和视频，不能沿用这里的数值。
+已推送的第一阶段 review baseline 仍保留修复前结果。当前工作树中的 v2 是第二阶段、尚未
+提交的审阅内容：`palm_lower` 是 `fr3v2_link8` 的 direct fixed child，child transform 为
+`11.2 mm`，并有显式 adapter。MuJoCo narrow-phase 的 flange/palm mesh distance 为
+`0.0206203 mm`（冻结阈值 `1 mm`）。MCC-v2 与 DP compatibility 结果在用户审阅前不会形成
+第二次 commit。
 
 ## 目录结构
 
@@ -33,7 +38,8 @@ Module/
 ├── README.md                         # 本文件：结构、API、复现与结果
 ├── MASTER_PLAN.md                    # 唯一主任务记录和 Gate
 ├── PROTOCOL.md                       # M0–M3 协议及 FR3 extension
-├── E05_MCC_FR3_PROTOCOL.md           # MCC-only E05 冻结协议/阈值/seed
+├── E05_MCC_FR3_PROTOCOL.md           # pre-mount review baseline；非当前默认协议
+├── E05_MCC_FR3_V2_PROTOCOL.md        # mount 修复后的冻结复测协议
 ├── E05_EVALUATION_PLAN.md            # E05-F/H 当前定义
 ├── WHOLE_HAND_COMPLIANCE_DESIGN.md   # resultant/internal 数学与符号
 ├── fr3_visual_demo.py                # 正式 trace -> FR3 视频/dashboard
@@ -64,16 +70,21 @@ Module/
 │   └── demo.py / visual_demo.py       # CLI 与正式 trace renderer
 ├── e05_physics/                      # fixed-palm PHY-v3 历史实现，不是默认入口
 ├── assets/                           # Bunny mesh 与 attribution
-├── tests/                            # 49 个 unittest 回归测试
-├── evidence/                         # 命令、hash、环境和 verdict
+├── tests/                            # 50 个 unittest 回归测试
+├── evidence/
+│   ├── 2026-08-23_FR3_MOUNT_V2_MCC_RETEST.md
+│   ├── 2026-08-23_DP_STRATEGY_AUDIT.md
+│   └── run_dp_release_compatibility.py # raw DP 3 s 兼容性诊断；非正式 evaluator
 └── generated/
-    ├── e05_mcc_fr3_v1/
+    ├── e05_mcc_fr3_v1/              # 已推送 review baseline；非当前默认结果
     │   ├── summary.json              # 正式 aggregate/threshold verdict
     │   ├── episodes.csv              # 六个 episode 的逐项指标
     │   ├── base_traces.npz           # 视频和复盘使用的完整 trace
     │   ├── model_audit.json
     │   └── generated_fr3_leap.xml    # 本次实际编译的 exact MJCF
-    ├── visual_demo/                  # gallery、PNG、GIF、两段 15 s MP4
+    ├── e05_mcc_fr3_v2/              # 当前 mount-fixed 正式 MCC trace/summary/XML
+    ├── e05_dp_compatibility_trial/  # EVIDENCE_ONLY raw DP JSON + 3 s failure video
+    ├── visual_demo/                  # gallery、mount close-up、PNG/GIF、两段 15 s MP4
     └── e05_physics_v3/               # fixed-palm 历史 evidence
 ```
 
@@ -85,7 +96,7 @@ Module/
 直接打开 `Module/generated/visual_demo/index.html`。页面包含：
 
 - M01 Oracle、M02 analytical MCC、M03 guards；
-- 23-DoF FR3+Leap 整机与 fingertip-belly close-up；
+- 23-DoF FR3+Leap 整机、fingertip-belly close-up 与双视角 mount audit；
 - `E05-F-MCC`、`E05-H-MCC` 两段完整 15 秒正式 trace 视频；
 - contact、force、2D palm path、wrist wrench、curvature 与 recovery dashboard。
 
@@ -132,7 +143,7 @@ $PYTHON -m unittest \
   Module.tests.test_whole_hand_mcc -v
 ```
 
-该组检查 23-DoF 分组契约、四个 belly pad 的 parent/orientation、live FR3 geometry、
+该组检查 23-DoF 分组契约、四个 belly pad 的 parent/orientation、flange/palm mesh closure、live FR3 geometry、
 moving-wrist MCC、full-robot guards、projector algebra、palm IK 和 wrench sign。
 
 ### 3. 运行短物理 smoke（不覆盖正式结果）
@@ -152,7 +163,7 @@ $PYTHON -m Module.module_4_whole_hand_mcc.demo
 ```
 
 这会严格运行 `3 seeds x 2 cells x 15 s`，并重建
-`Module/generated/e05_mcc_fr3_v1/{summary.json,episodes.csv,base_traces.npz,
+`Module/generated/e05_mcc_fr3_v2/{summary.json,episodes.csv,base_traces.npz,
 model_audit.json,generated_fr3_leap.xml}`。正式判定看 `summary.json` 中彼此独立的
 `execution_status` 与 `performance_verdict`。
 
@@ -172,7 +183,7 @@ $PYTHON -m Module.visual_demo
 $PYTHON -m unittest discover -s Module/tests -v
 ```
 
-当前基线应输出 `Ran 49 tests ... OK`。
+当前工作树应输出 `Ran 50 tests ... OK`。
 
 ## 模块用法
 
@@ -249,31 +260,53 @@ FR3 torque wrench -> Wrist MCC          4 x Fingertip MCC
   -m Module.module_4_whole_hand_mcc.demo
 ```
 
-正式 protocol SHA-256：
+当前 v2 protocol SHA-256：
 
 ```text
-483bd7ccf98ad5afec9bfb2d2912d2b9882d2a4045a194582b879b8adc51664a
+2858b8b30211d4a83015dd0e1e414abc995e0650f28254788e484d3e8eab5196
 ```
 
 命令、模型审计、代码哈希、视频元数据和逐项 verdict 已登记在
-[`evidence/2026-08-23_M0_M04_E05_MCC_FR3.md`](evidence/2026-08-23_M0_M04_E05_MCC_FR3.md)。
+[`evidence/2026-08-23_FR3_MOUNT_V2_MCC_RETEST.md`](evidence/2026-08-23_FR3_MOUNT_V2_MCC_RETEST.md)。
 
 三个配对 episode 的 aggregate：
 
 | 指标 | E05-F-MCC | E05-H-MCC |
 | --- | ---: | ---: |
-| mean contact continuity | 99.990% | 99.990% |
-| mean contact count | 3.750 | 3.710 |
-| mean force RMSE | 0.773 N | 1.017 N |
-| worst peak force | 11.08 N | 13.19 N |
-| mean Y traversal | 173.9 mm | 175.3 mm |
-| mean controller P95 | 1.249 ms | 1.263 ms |
-| H wrist Fz RMSE | — | 1.984 N |
-| H internal leakage P95 | — | 0.0135 N |
+| mean contact continuity | 100.000% | 99.981% |
+| mean contact count | 3.748 | 3.709 |
+| mean force RMSE | 0.782 N | 1.020 N |
+| worst peak force | 11.113 N | 15.751 N |
+| mean Y traversal | 174.0 mm | 175.3 mm |
+| mean controller P95 | 1.200 ms | 1.270 ms |
+| H wrist Fz RMSE | — | 2.006 N |
+| H internal leakage P95 | — | 0.0121 N |
 
-F 未达：deadline miss（一个 episode 略超）、force-violation probability、8 N peak。H 未达：
-force RMSE、force settling（noisy-pose worst `5.998 s`）、8 N peak。两者都保持
+F 未达：force-violation probability、8 N peak。H 未达：force RMSE、force settling、
+force-violation probability、8 N peak。两者都保持
 `EVALUATED`。
+
+## 历史 DP strategy 审计与试跑
+
+DP release 的完整性结论是 `ASSET_COMPLETE / INFERENCE_PASSED`，不是“仓库缺 checkpoint”。
+但其 config 明确指定 `execution.layer: fullhand_mcc`，且策略在 capsule grasp 上输出 future
+absolute-q。为检验能否直接迁移，已运行无 Finger MCC 的 3 s raw compatibility trial：
+
+```bash
+PYTHONPATH=/path/to/lerobot-0.4.4-deps \
+  /home/ferry/data/Anaconda/envs/handcomp/bin/python \
+  -m Module.evidence.run_dp_release_compatibility \
+  --checkpoint /home/ferry/data/tmp/dp-capsule-v1-artifacts/best.pt \
+  --output /home/ferry/data/tmp/e05_dp_compatibility_trial.json \
+  --video /home/ferry/data/tmp/e05_f_dp_raw_compatibility.mp4
+```
+
+结果为 contact continuity `6.7%`、zero-contact `1.866 s`，最终 contact set 为空；首个
+policy target 与当前抓持姿态最大相差 `1.156 rad`。这只能说明**不能直接插入当前 E05**，
+不能作为正式 DP 性能或 MCC-vs-DP 结论。当前可视诊断位于
+`generated/e05_dp_compatibility_trial/e05_f_dp_raw_compatibility.mp4`；下载、SHA、环境与
+缺失方法选择见
+[`evidence/2026-08-23_DP_STRATEGY_AUDIT.md`](evidence/2026-08-23_DP_STRATEGY_AUDIT.md)。
 
 ## 测试
 
@@ -284,8 +317,8 @@ force RMSE、force settling（noisy-pose worst `5.998 s`）、8 N peak。两者�
 
 ## 边界
 
-- 本轮没有 DP，不能形成 MCC-vs-DP 结论；
+- 历史 DP 只完成 release/inference/compatibility 审计；正式 E05-F-DP 仍未评测，不能形成 MCC-vs-DP 结论；
 - 正式协议关闭 gravity 以隔离 contact control，不能外推为 gravity-on 或硬件；
 - `E05_PHYSICS_PROTOCOL.md` 与 `generated/e05_physics_v3/` 是 fixed-palm 历史证据，未被
   新结果覆盖；
-- v1 暴露的 force peak/settling 问题只能在新 v2 协议中修正，不能回写本次结果。
+- mount v2 已完成，但 force peak/settling 仍未达到 readiness；禁止自动进入 planner integration。

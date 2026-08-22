@@ -3,7 +3,7 @@
 > 状态：`IMPLEMENTED / MODULE_TESTED / E05_MCC_EVALUATED`
 > 更新日期：`2026-08-23`
 > 固定环境：`handcomp`
-> 当前实现范围只包含 MCC；DP 延后。
+> 当前正式实现范围只包含 MCC；历史 DP release 仅完成 compatibility audit，不构成 DP 单元。
 
 ## 1. 冻结的核心定义
 
@@ -172,7 +172,8 @@ Finger MCC 不得再次积分已分配给 wrist 的 collective component。hando
   resultant error，因此 finger controller 使用完整、可实现的 local force error；
 - `E05-H-MCC`：必须启用上述 coordinator；Wrist MCC 接收 resultant error，Finger MCC
   只接收 internal/differential correction；
-- 当前没有 `E05-F-DP/E05-H-DP` 单元，不能填写 DP placeholder 或形成 MCC-vs-DP 结论。
+- 当前没有正式 `E05-F-DP/E05-H-DP` 单元；3 s raw compatibility trial 不能填写 DP
+  placeholder 或形成 MCC-vs-DP 结论。
 
 ## 5. Planner / compliance direction decomposition
 

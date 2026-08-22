@@ -58,10 +58,14 @@ MODEL_HOME_QPOS = np.concatenate(
   (ARM_HOME_Q, Q_NOMINAL[np.asarray(HAND_MODEL_JOINT_ORDER, dtype=np.int32)])
 ).astype(np.float64)
 
-# Static transform from fr3v2_link8 to the Leap palm root.  At ARM_HOME_Q this
-# gives the source E05 palm world rotation [[0,1,0],[-1,0,0],[0,0,1]], hence
-# all four body-registered pad normals point toward world -Z.
-MOUNT_POSITION_LINK8_M = np.array([0.0, 0.0, 0.08], dtype=np.float64)
+# Static transform from the FR3 flange body (fr3v2_link8) to the Leap palm
+# root.  The upstream hand-only XML used 80 mm as a world placement offset;
+# carrying that number into the child transform created an invisible 68.8 mm
+# mesh gap.  11.2 mm closes the measured link7/palm mesh interface while a
+# visible, massless adapter spans the remaining body-origin offset.
+MOUNT_POSITION_LINK8_M = np.array([0.0, 0.0, 0.0112], dtype=np.float64)
+MOUNT_ADAPTER_RADIUS_M = 0.028
+MOUNT_INTERFACE_TOLERANCE_M = 0.001
 MOUNT_QUATERNION_LINK8 = np.array(
   [0.0, 0.38272878, 0.92386075, 0.0],
   dtype=np.float64,
@@ -454,6 +458,23 @@ def _assemble_xml(config: FullRobotModelConfig) -> tuple[str, NDArray[np.float64
     raise RuntimeError("FR3 source is missing fr3v2_link8")
   ET.SubElement(
     link8,
+    "geom",
+    {
+      "name": "fr3_leap_mount_adapter",
+      "type": "cylinder",
+      "size": _vector_text(
+        (MOUNT_ADAPTER_RADIUS_M, float(MOUNT_POSITION_LINK8_M[2] / 2.0))
+      ),
+      "pos": _vector_text((0.0, 0.0, float(MOUNT_POSITION_LINK8_M[2] / 2.0))),
+      "density": "0",
+      "contype": "0",
+      "conaffinity": "0",
+      "group": "0",
+      "rgba": "0.22 0.24 0.28 1",
+    },
+  )
+  ET.SubElement(
+    link8,
     "site",
     {"name": "fr3_wrist_site", "size": "0.006", "rgba": "0.95 0.2 0.2 0.8"},
   )
@@ -593,14 +614,49 @@ def model_audit(handles: FullRobotHandles) -> dict[str, object]:
     [data.site_xmat[site].reshape(3, 3)[:, 2] for site in handles.tip_site_ids],
     dtype=np.float64,
   )
+  link8_body_id = mujoco.mj_name2id(
+    handles.model, mujoco.mjtObj.mjOBJ_BODY, "fr3v2_link8"
+  )
+  link7_geom_id = mujoco.mj_name2id(
+    handles.model, mujoco.mjtObj.mjOBJ_GEOM, "fr3v2_link7_collision"
+  )
+  palm_geom_id = mujoco.mj_name2id(
+    handles.model, mujoco.mjtObj.mjOBJ_GEOM, "palm_lower_collision"
+  )
+  adapter_geom_id = mujoco.mj_name2id(
+    handles.model, mujoco.mjtObj.mjOBJ_GEOM, "fr3_leap_mount_adapter"
+  )
+  mount_witness = np.zeros(6, dtype=np.float64)
+  mount_mesh_distance = float(
+    mujoco.mj_geomDistance(
+      handles.model,
+      data,
+      link7_geom_id,
+      palm_geom_id,
+      1.0,
+      mount_witness,
+    )
+  )
+  mount_origin_gap = float(
+    np.linalg.norm(data.xpos[handles.palm_body_id] - data.xpos[link8_body_id])
+  )
+  mount_parent_is_link8 = bool(
+    handles.model.body_parentid[handles.palm_body_id] == link8_body_id
+  )
+  mount_geometrically_closed = bool(
+    mount_parent_is_link8
+    and adapter_geom_id >= 0
+    and mount_origin_gap <= 0.02
+    and abs(mount_mesh_distance) <= MOUNT_INTERFACE_TOLERANCE_M
+  )
   return {
-    "model": "FR3_LEAP_MCC_V1",
+    "model": "FR3_LEAP_MCC_V2",
     "nq": int(handles.model.nq),
     "nv": int(handles.model.nv),
     "nu": int(handles.model.nu),
     "arm_dof": len(handles.arm_joint_ids),
     "hand_dof": len(handles.hand_joint_ids),
-    "fixed_object": bool(handles.model.jnt_type.size == 23),
+    "fixed_object": bool(handles.model.body_jntnum[handles.object_body_id] == 0),
     "object_mocap_id": int(handles.model.body_mocapid[handles.object_body_id]),
     "pad_parent_body_names": [
       mujoco.mj_id2name(handles.model, mujoco.mjtObj.mjOBJ_BODY, int(body_id))
@@ -608,6 +664,13 @@ def model_audit(handles: FullRobotHandles) -> dict[str, object]:
     ],
     "pad_normal_world_z": pad_normals[:, 2].tolist(),
     "all_pads_face_down": bool(np.all(pad_normals[:, 2] < -0.95)),
+    "mount_parent_is_link8": mount_parent_is_link8,
+    "mount_adapter_present": bool(adapter_geom_id >= 0),
+    "mount_origin_gap_m": mount_origin_gap,
+    "flange_palm_mesh_distance_m": mount_mesh_distance,
+    "mount_interface_tolerance_m": MOUNT_INTERFACE_TOLERANCE_M,
+    "mount_geometrically_closed": mount_geometrically_closed,
+    "mount_witness_world_m": mount_witness.tolist(),
     "palm_position_m": data.site_xpos[handles.palm_site_id].tolist(),
     "object_position_m": handles.object_position_m.tolist(),
     "gravity_m_s2": handles.config.gravity_m_s2,
