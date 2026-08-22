@@ -1,6 +1,6 @@
 # Agent Progress
 
-更新时间：2026-08-23 00:00 Asia/Shanghai
+更新时间：2026-08-23 02:00 Asia/Shanghai
 
 ## 本轮完成
 
@@ -20,18 +20,18 @@ src/mjlab/scripts/hand_only_compliance_demo.py
 ## 当前最新正式 run
 
 ```text
-20260823T000026_random_inhand_grasp_maintain
+20260823T020021_random_inhand_grasp_maintain
 ```
 
 关键产物：
 
-- `artifacts/datasets/20260823T000026_random_inhand_grasp_maintain_trajectory_forward.h5`
-- `artifacts/datasets/20260823T000026_random_inhand_grasp_maintain_trajectory_inversion.h5`
-- `artifacts/videos/20260823T000026_random_inhand_grasp_maintain_demo.mp4`
-- `screenshots/20260823T000026_random_inhand_grasp_maintain_start.png`
-- `screenshots/20260823T000026_random_inhand_grasp_maintain_mid.png`
-- `screenshots/20260823T000026_random_inhand_grasp_maintain_end.png`
-- `logs/20260823T000026_random_inhand_grasp_maintain_summary.json`
+- `artifacts/datasets/20260823T020021_random_inhand_grasp_maintain_trajectory_forward.h5`
+- `artifacts/datasets/20260823T020021_random_inhand_grasp_maintain_trajectory_inversion.h5`
+- `artifacts/videos/20260823T020021_random_inhand_grasp_maintain_demo.mp4`
+- `screenshots/20260823T020021_random_inhand_grasp_maintain_start.png`
+- `screenshots/20260823T020021_random_inhand_grasp_maintain_mid.png`
+- `screenshots/20260823T020021_random_inhand_grasp_maintain_end.png`
+- `logs/20260823T020021_random_inhand_grasp_maintain_summary.json`
 - `logs/latest_status.json`
 
 ## 运行方式
