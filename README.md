@@ -102,19 +102,19 @@ cd /home/ferry/data/Code2/Research/hand_comliance_control
 以 `logs/latest_status.json` 为准。当前最新正式 run 为：
 
 ```text
-20260822T180019_random_inhand_grasp_maintain
+20260822T200024_random_inhand_grasp_maintain
 ```
 
 对应关键产物：
 
-- 视频：`artifacts/videos/20260822T180019_random_inhand_grasp_maintain_demo.mp4`
+- 视频：`artifacts/videos/20260822T200024_random_inhand_grasp_maintain_demo.mp4`
 - 截图：
-  - `screenshots/20260822T180019_random_inhand_grasp_maintain_start.png`
-  - `screenshots/20260822T180019_random_inhand_grasp_maintain_mid.png`
-  - `screenshots/20260822T180019_random_inhand_grasp_maintain_end.png`
-- 前向 H5：`artifacts/datasets/20260822T180019_random_inhand_grasp_maintain_trajectory_forward.h5`
-- 反演 H5：`artifacts/datasets/20260822T180019_random_inhand_grasp_maintain_trajectory_inversion.h5`
-- 汇总：`logs/20260822T180019_random_inhand_grasp_maintain_summary.json`
+  - `screenshots/20260822T200024_random_inhand_grasp_maintain_start.png`
+  - `screenshots/20260822T200024_random_inhand_grasp_maintain_mid.png`
+  - `screenshots/20260822T200024_random_inhand_grasp_maintain_end.png`
+- 前向 H5：`artifacts/datasets/20260822T200024_random_inhand_grasp_maintain_trajectory_forward.h5`
+- 反演 H5：`artifacts/datasets/20260822T200024_random_inhand_grasp_maintain_trajectory_inversion.h5`
+- 汇总：`logs/20260822T200024_random_inhand_grasp_maintain_summary.json`
 
 ## 最小检查
 
