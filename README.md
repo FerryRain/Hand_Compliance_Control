@@ -63,18 +63,18 @@ MUJOCO_GL=egl /home/ferry/data/Anaconda/envs/handcomp/bin/python \
 ## 最新正式 run
 
 ```text
-20260823T140024_random_inhand_grasp_maintain
+20260823T200018_random_inhand_grasp_maintain
 ```
 
 关键产物：
 
-- `artifacts/datasets/20260823T140024_random_inhand_grasp_maintain_trajectory_forward.h5`
-- `artifacts/datasets/20260823T140024_random_inhand_grasp_maintain_trajectory_inversion.h5`
-- `artifacts/videos/20260823T140024_random_inhand_grasp_maintain_demo.mp4`
-- `screenshots/20260823T140024_random_inhand_grasp_maintain_start.png`
-- `screenshots/20260823T140024_random_inhand_grasp_maintain_mid.png`
-- `screenshots/20260823T140024_random_inhand_grasp_maintain_end.png`
-- `logs/20260823T140024_random_inhand_grasp_maintain_summary.json`
+- `artifacts/datasets/20260823T200018_random_inhand_grasp_maintain_trajectory_forward.h5`
+- `artifacts/datasets/20260823T200018_random_inhand_grasp_maintain_trajectory_inversion.h5`
+- `artifacts/videos/20260823T200018_random_inhand_grasp_maintain_demo.mp4`
+- `screenshots/20260823T200018_random_inhand_grasp_maintain_start.png`
+- `screenshots/20260823T200018_random_inhand_grasp_maintain_mid.png`
+- `screenshots/20260823T200018_random_inhand_grasp_maintain_end.png`
+- `logs/20260823T200018_random_inhand_grasp_maintain_summary.json`
 - `logs/latest_status.json`
 
 ## 本次运行满足的约束
@@ -88,7 +88,7 @@ MUJOCO_GL=egl /home/ferry/data/Anaconda/envs/handcomp/bin/python \
 - inversion 输出 `T_OH`
 - 反演误差保持在数值精度量级
 
-本次 14:00 run 的摘要指标：
+本次 20:00 run 的摘要指标：
 
 - `num_steps = 2000`
 - `num_video_frames = 81`
