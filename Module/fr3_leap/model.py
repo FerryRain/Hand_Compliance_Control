@@ -38,7 +38,6 @@ from Module.e05_physics.scene import (
   FINGERS,
   PAD_HALF_SIZE_M,
   PAD_LOCAL_ROTATION,
-  Q_NOMINAL,
 )
 
 
@@ -52,19 +51,72 @@ ARM_HOME_Q = np.array(
   [0.0, 0.0, 0.0, -1.57079, 0.0, 1.57079, -0.7853],
   dtype=np.float64,
 )
-FULL_HOME_Q = np.concatenate((ARM_HOME_Q, Q_NOMINAL)).astype(np.float64)
+# Exact measured q_hand at t=2.000 s in the already published raw-DP video.
+# It was re-extracted deterministically from commit c5090d6 and checkpoint
+# SHA-256 89044a...ef0, rather than approximated by the checkpoint mean.  The
+# three long fingers are naturally curled and the thumb is opposed.  E05-MCC
+# uses this as its posture null-space reference; it is not a DP command and
+# does not make DP part of the MCC controller.
+HAND_NATURAL_Q = np.array(
+  [
+    0.21093411785976737,
+    0.005229204743344924,
+    0.4035944678008984,
+    0.5287342369050559,
+    0.20371661194285254,
+    0.00995644973119566,
+    0.40966995188205774,
+    0.5316287796080648,
+    0.2090436955272734,
+    0.012743144261669894,
+    0.40656648217964514,
+    0.528036463232157,
+    -0.05238612040473543,
+    1.5615033691412608,
+    0.3896256643566552,
+    0.5183713092524893,
+  ],
+  dtype=np.float64,
+)
+FULL_HOME_Q = np.concatenate((ARM_HOME_Q, HAND_NATURAL_Q)).astype(np.float64)
 HAND_MODEL_JOINT_ORDER = (1, 0, 2, 3, 5, 4, 6, 7, 9, 8, 10, 11, 12, 13, 14, 15)
 MODEL_HOME_QPOS = np.concatenate(
-  (ARM_HOME_Q, Q_NOMINAL[np.asarray(HAND_MODEL_JOINT_ORDER, dtype=np.int32)])
+  (
+    ARM_HOME_Q,
+    HAND_NATURAL_Q[np.asarray(HAND_MODEL_JOINT_ORDER, dtype=np.int32)],
+  )
 ).astype(np.float64)
 
-# Static transform from fr3v2_link8 to the Leap palm root.  At ARM_HOME_Q this
-# gives the source E05 palm world rotation [[0,1,0],[-1,0,0],[0,0,1]], hence
-# all four body-registered pad normals point toward world -Z.
-MOUNT_POSITION_LINK8_M = np.array([0.0, 0.0, 0.08], dtype=np.float64)
+# The Leap XML body origin lies near a motor/knuckle.  Mounting that origin to
+# link8 made the kinematic tree valid but put the physical connector on the
+# motor cluster.  The explicit mount point below lies on the central palm mesh
+# (about 50/54 percent through its X/Y bounding box).  The palm root transform
+# is solved so this point, rather than the body origin, meets the FR3 axis.
+# Local Z is the flange-facing exterior of the palm mesh.  Using the opposite
+# face would bury the adapter about 23 mm inside the palm even though its axis
+# passed through the right X/Y location.
+PALM_MOUNT_LOCAL_M = np.array(
+  [-0.048, -0.032, 0.0112776],
+  dtype=np.float64,
+)
+MOUNT_INTERFACE_POSITION_LINK8_M = np.array([0.0, 0.0, 0.0112], dtype=np.float64)
+MOUNT_ADAPTER_RADIUS_M = 0.028
+MOUNT_INTERFACE_TOLERANCE_M = 0.001
 MOUNT_QUATERNION_LINK8 = np.array(
   [0.0, 0.38272878, 0.92386075, 0.0],
   dtype=np.float64,
+)
+
+
+def _quaternion_to_matrix(quaternion: NDArray[np.float64]) -> NDArray[np.float64]:
+  matrix = np.zeros(9, dtype=np.float64)
+  mujoco.mju_quat2Mat(matrix, quaternion)
+  return matrix.reshape(3, 3)
+
+
+MOUNT_PALM_ROOT_POSITION_LINK8_M = (
+  MOUNT_INTERFACE_POSITION_LINK8_M
+  - _quaternion_to_matrix(MOUNT_QUATERNION_LINK8) @ PALM_MOUNT_LOCAL_M
 )
 
 # The fixed surface is a rigid translation of the old fixed-palm coordinate
@@ -74,7 +126,9 @@ SOURCE_PALM_WORLD_POSITION_M = np.array([0.0, 0.0, 0.08], dtype=np.float64)
 SOURCE_OBJECT_POSITIONS_M = {
   "plane": np.array([-0.025, -0.025, -0.010], dtype=np.float64),
   "sphere": np.array([0.005, -0.005, -0.443], dtype=np.float64),
-  "extreme": np.array([-0.015, 0.245, -0.006], dtype=np.float64),
+  # Raised 11 mm relative to the retired stretched-finger seed so the exact
+  # t=2.0 s DP-video posture starts within a small physical MAKE distance.
+  "extreme": np.array([-0.015, 0.245, 0.005], dtype=np.float64),
 }
 
 
@@ -127,9 +181,12 @@ class FullRobotHandles:
   tip_site_ids: NDArray[np.int32]
   palm_body_id: int
   palm_site_id: int
+  palm_mount_site_id: int
   wrist_site_id: int
+  mount_interface_site_id: int
   object_body_id: int
   object_geom_id: int
+  object_mocap_id: int
   robot_geom_ids: NDArray[np.int32]
   arm_joint_ranges_rad: NDArray[np.float64]
   hand_joint_ranges_rad: NDArray[np.float64]
@@ -209,7 +266,7 @@ def _prepare_palm(hand_root: ET.Element) -> ET.Element:
   legacy_object = palm.find("./body[@name='object_body']")
   if legacy_object is not None:
     palm.remove(legacy_object)
-  palm.set("pos", _vector_text(MOUNT_POSITION_LINK8_M))
+  palm.set("pos", _vector_text(MOUNT_PALM_ROOT_POSITION_LINK8_M))
   palm.set("quat", _vector_text(MOUNT_QUATERNION_LINK8))
   palm.set("childclass", "fr3_leap_hand")
 
@@ -243,7 +300,7 @@ def _prepare_palm(hand_root: ET.Element) -> ET.Element:
         "contype": "1",
         "conaffinity": "2",
         "friction": "0.9 0.01 0.001",
-        "solref": "0.02 1",
+        "solref": "0.028 1",
         "solimp": "0.90 0.95 0.001",
         "rgba": _vector_text(finger.color),
         "group": "2",
@@ -288,6 +345,18 @@ def _prepare_palm(hand_root: ET.Element) -> ET.Element:
       "rgba": "0.15 0.95 0.30 0.8",
     },
   )
+  ET.SubElement(
+    palm,
+    "site",
+    {
+      "name": "fr3_palm_mount_site",
+      "pos": _vector_text(PALM_MOUNT_LOCAL_M),
+      "type": "sphere",
+      "size": "0.0045",
+      "rgba": "0.10 0.95 0.35 0.9",
+      "group": "3",
+    },
+  )
   return palm
 
 
@@ -328,7 +397,7 @@ def _add_fixed_surface(
     "contype": "2",
     "conaffinity": "1",
     "friction": "0.9 0.01 0.001",
-    "solref": "0.02 1",
+    "solref": "0.028 1",
     "solimp": "0.90 0.95 0.001",
     "rgba": "0.18 0.38 0.78 0.96",
     "group": "2",
@@ -454,8 +523,41 @@ def _assemble_xml(config: FullRobotModelConfig) -> tuple[str, NDArray[np.float64
     raise RuntimeError("FR3 source is missing fr3v2_link8")
   ET.SubElement(
     link8,
+    "geom",
+    {
+      "name": "fr3_leap_mount_adapter",
+      "type": "cylinder",
+      "size": _vector_text(
+        (
+          MOUNT_ADAPTER_RADIUS_M,
+          float(MOUNT_INTERFACE_POSITION_LINK8_M[2] / 2.0),
+        )
+      ),
+      "pos": _vector_text(
+        (0.0, 0.0, float(MOUNT_INTERFACE_POSITION_LINK8_M[2] / 2.0))
+      ),
+      "density": "0",
+      "contype": "0",
+      "conaffinity": "0",
+      "group": "0",
+      "rgba": "0.22 0.24 0.28 1",
+    },
+  )
+  ET.SubElement(
+    link8,
     "site",
     {"name": "fr3_wrist_site", "size": "0.006", "rgba": "0.95 0.2 0.2 0.8"},
+  )
+  ET.SubElement(
+    link8,
+    "site",
+    {
+      "name": "fr3_mount_interface_site",
+      "pos": _vector_text(MOUNT_INTERFACE_POSITION_LINK8_M),
+      "size": "0.0045",
+      "rgba": "0.98 0.70 0.10 0.9",
+      "group": "3",
+    },
   )
   link8.append(_prepare_palm(hand_root))
 
@@ -560,9 +662,16 @@ def build_full_robot(config: FullRobotModelConfig | None = None) -> FullRobotHan
     tip_site_ids=tip_site_ids,
     palm_body_id=mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "palm_lower"),
     palm_site_id=mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, "fr3_palm_control_site"),
+    palm_mount_site_id=mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, "fr3_palm_mount_site"),
     wrist_site_id=mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, "fr3_wrist_site"),
+    mount_interface_site_id=mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, "fr3_mount_interface_site"),
     object_body_id=mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "fr3_e05_object"),
     object_geom_id=mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, "fr3_e05_object_geom"),
+    object_mocap_id=int(
+      model.body_mocapid[
+        mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "fr3_e05_object")
+      ]
+    ),
     robot_geom_ids=robot_geom_ids,
     arm_joint_ranges_rad=np.array(model.jnt_range[arm_joint_ids], dtype=np.float64, copy=True),
     hand_joint_ranges_rad=np.array(model.jnt_range[hand_joint_ids], dtype=np.float64, copy=True),
@@ -585,29 +694,94 @@ def model_audit(handles: FullRobotHandles) -> dict[str, object]:
 
   data = mujoco.MjData(handles.model)
   data.qpos[handles.arm_qpos_adrs] = ARM_HOME_Q
-  data.qpos[handles.hand_qpos_adrs] = Q_NOMINAL
+  data.qpos[handles.hand_qpos_adrs] = HAND_NATURAL_Q
   data.ctrl[handles.arm_actuator_ids] = ARM_HOME_Q
-  data.ctrl[handles.hand_actuator_ids] = Q_NOMINAL
+  data.ctrl[handles.hand_actuator_ids] = HAND_NATURAL_Q
   mujoco.mj_forward(handles.model, data)
   pad_normals = np.array(
     [data.site_xmat[site].reshape(3, 3)[:, 2] for site in handles.tip_site_ids],
     dtype=np.float64,
   )
+  link8_body_id = mujoco.mj_name2id(
+    handles.model, mujoco.mjtObj.mjOBJ_BODY, "fr3v2_link8"
+  )
+  palm_geom_id = mujoco.mj_name2id(
+    handles.model, mujoco.mjtObj.mjOBJ_GEOM, "palm_lower_collision"
+  )
+  adapter_geom_id = mujoco.mj_name2id(
+    handles.model, mujoco.mjtObj.mjOBJ_GEOM, "fr3_leap_mount_adapter"
+  )
+  mount_witness = np.zeros(6, dtype=np.float64)
+  adapter_palm_mesh_distance = float(
+    mujoco.mj_geomDistance(
+      handles.model,
+      data,
+      adapter_geom_id,
+      palm_geom_id,
+      1.0,
+      mount_witness,
+    )
+  )
+  mount_origin_gap = float(
+    np.linalg.norm(data.xpos[handles.palm_body_id] - data.xpos[link8_body_id])
+  )
+  mount_parent_is_link8 = bool(
+    handles.model.body_parentid[handles.palm_body_id] == link8_body_id
+  )
+  mount_center_error = float(
+    np.linalg.norm(
+      data.site_xpos[handles.palm_mount_site_id]
+      - data.site_xpos[handles.mount_interface_site_id]
+    )
+  )
+  mesh_id = int(handles.model.geom_dataid[palm_geom_id])
+  vertex_start = int(handles.model.mesh_vertadr[mesh_id])
+  vertex_count = int(handles.model.mesh_vertnum[mesh_id])
+  vertices = np.array(
+    handles.model.mesh_vert[vertex_start : vertex_start + vertex_count],
+    dtype=np.float64,
+    copy=True,
+  )
+  geom_rotation = _quaternion_to_matrix(handles.model.geom_quat[palm_geom_id])
+  vertices = vertices @ geom_rotation.T + handles.model.geom_pos[palm_geom_id]
+  lower = np.min(vertices[:, :2], axis=0)
+  upper = np.max(vertices[:, :2], axis=0)
+  center_fraction = (PALM_MOUNT_LOCAL_M[:2] - lower) / (upper - lower)
+  mount_is_central = bool(np.all(np.abs(center_fraction - 0.5) <= 0.12))
+  mount_geometrically_closed = bool(
+    mount_parent_is_link8
+    and adapter_geom_id >= 0
+    and mount_center_error <= 1e-9
+    and mount_is_central
+    and abs(adapter_palm_mesh_distance) <= MOUNT_INTERFACE_TOLERANCE_M
+  )
   return {
-    "model": "FR3_LEAP_MCC_V1",
+    "model": "FR3_LEAP_NATURAL_ROUGH_LOCAL_REVIEW",
     "nq": int(handles.model.nq),
     "nv": int(handles.model.nv),
     "nu": int(handles.model.nu),
     "arm_dof": len(handles.arm_joint_ids),
     "hand_dof": len(handles.hand_joint_ids),
-    "fixed_object": bool(handles.model.jnt_type.size == 23),
-    "object_mocap_id": int(handles.model.body_mocapid[handles.object_body_id]),
+    "fixed_object": bool(handles.object_mocap_id < 0),
+    "object_mocap_id": handles.object_mocap_id,
     "pad_parent_body_names": [
       mujoco.mj_id2name(handles.model, mujoco.mjtObj.mjOBJ_BODY, int(body_id))
       for body_id in handles.tip_body_ids
     ],
     "pad_normal_world_z": pad_normals[:, 2].tolist(),
-    "all_pads_face_down": bool(np.all(pad_normals[:, 2] < -0.95)),
+    "all_pads_face_down": bool(np.all(pad_normals[:, 2] < -0.50)),
+    "natural_hand_q_rad": HAND_NATURAL_Q.tolist(),
+    "natural_pose_source": "published raw-DP video q_hand at t=2.000 s",
+    "mount_parent_is_link8": mount_parent_is_link8,
+    "mount_adapter_present": bool(adapter_geom_id >= 0),
+    "mount_origin_gap_m": mount_origin_gap,
+    "mount_center_alignment_error_m": mount_center_error,
+    "mount_center_xy_fraction": center_fraction.tolist(),
+    "mount_is_central": mount_is_central,
+    "adapter_palm_mesh_distance_m": adapter_palm_mesh_distance,
+    "mount_interface_tolerance_m": MOUNT_INTERFACE_TOLERANCE_M,
+    "mount_geometrically_closed": mount_geometrically_closed,
+    "mount_witness_world_m": mount_witness.tolist(),
     "palm_position_m": data.site_xpos[handles.palm_site_id].tolist(),
     "object_position_m": handles.object_position_m.tolist(),
     "gravity_m_s2": handles.config.gravity_m_s2,

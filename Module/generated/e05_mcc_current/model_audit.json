@@ -1,0 +1,74 @@
+{
+  "adapter_palm_mesh_distance_m": -4.1697414127103337e-10,
+  "all_pads_face_down": true,
+  "arm_dof": 7,
+  "fixed_object": true,
+  "gravity_m_s2": 0.0,
+  "hand_dof": 16,
+  "model": "FR3_LEAP_NATURAL_ROUGH_LOCAL_REVIEW",
+  "mount_adapter_present": true,
+  "mount_center_alignment_error_m": 2.6045308656748866e-10,
+  "mount_center_xy_fraction": [
+    0.5057786288080802,
+    0.5406180523750138
+  ],
+  "mount_geometrically_closed": true,
+  "mount_interface_tolerance_m": 0.001,
+  "mount_is_central": true,
+  "mount_origin_gap_m": 0.061913185457536324,
+  "mount_parent_is_link8": true,
+  "mount_witness_world_m": [
+    0.5629525218454926,
+    0.009048298125444264,
+    0.6133024294875893,
+    0.5629525218454927,
+    0.009048298125444266,
+    0.6133024299045635
+  ],
+  "natural_hand_q_rad": [
+    0.21093411785976737,
+    0.005229204743344924,
+    0.4035944678008984,
+    0.5287342369050559,
+    0.20371661194285254,
+    0.00995644973119566,
+    0.40966995188205774,
+    0.5316287796080648,
+    0.2090436955272734,
+    0.012743144261669894,
+    0.40656648217964514,
+    0.528036463232157,
+    -0.05238612040473543,
+    1.5615033691412608,
+    0.3896256643566552,
+    0.5183713092524893
+  ],
+  "natural_pose_source": "published raw-DP video q_hand at t=2.000 s",
+  "nq": 23,
+  "nu": 23,
+  "nv": 23,
+  "object_mocap_id": -1,
+  "object_position_m": [
+    0.5714994783471848,
+    0.1969999999030963,
+    0.5270248294375894
+  ],
+  "pad_normal_world_z": [
+    -0.5918514638906694,
+    -0.5808280666476625,
+    -0.5840629111338612,
+    -0.6557309224298056
+  ],
+  "pad_parent_body_names": [
+    "fingertip",
+    "fingertip_2",
+    "fingertip_3",
+    "thumb_fingertip"
+  ],
+  "palm_position_m": [
+    0.5544994781735385,
+    -2.126679388148034e-10,
+    0.6000248294375894
+  ],
+  "plant_structure_valid": true
+}

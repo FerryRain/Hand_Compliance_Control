@@ -11,8 +11,13 @@ import numpy as np
 from numpy.typing import NDArray
 
 from Module.e05_physics.extreme_surface import query_surface as query_extreme_surface
-from Module.e05_physics.scene import FINGERS, PAD_HALF_SIZE_M, Q_NOMINAL
-from Module.fr3_leap import ARM_HOME_Q, FullRobotModelConfig, build_full_robot
+from Module.e05_physics.scene import FINGERS, PAD_HALF_SIZE_M
+from Module.fr3_leap import (
+  ARM_HOME_Q,
+  HAND_NATURAL_Q,
+  FullRobotModelConfig,
+  build_full_robot,
+)
 from Module.module_2_fingertip_mcc import FingertipMCC, MCCConfig
 from Module.module_3_runtime_guards import (
   FullRobotGuardConfig,
@@ -242,7 +247,9 @@ def _finger_ik(
     [int(name) for name in FINGERS[finger_index].joint_names],
     dtype=np.int32,
   )
-  command = current_q + gain * delta + 0.01 * (Q_NOMINAL[nominal_indices] - current_q)
+  command = current_q + gain * delta + 0.01 * (
+    HAND_NATURAL_Q[nominal_indices] - current_q
+  )
   # A resolved-rate target can jump when the hfield normal changes rapidly.
   # Rate-limit the commanded joint displacement before actuator/joint clipping
   # so a narrow ridge cannot become a one-frame impact command.
@@ -316,7 +323,11 @@ def _initialize_data(handles: Any, config: E05MCCConfig) -> mujoco.MjData:
   rng = np.random.default_rng(config.seed)
   data = mujoco.MjData(handles.model)
   arm_q = ARM_HOME_Q + rng.normal(0.0, config.initial_joint_noise_std_rad, 7)
-  finger_q = Q_NOMINAL + rng.normal(0.0, config.initial_joint_noise_std_rad, 16)
+  finger_q = HAND_NATURAL_Q + rng.normal(
+    0.0,
+    config.initial_joint_noise_std_rad,
+    16,
+  )
   arm_q = np.clip(
     arm_q,
     handles.arm_joint_ranges_rad[:, 0] + 0.04,

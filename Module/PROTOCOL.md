@@ -123,4 +123,17 @@ go/no-go gate。
 - home hold 50 physics steps 后状态有限且 gravity-off arm drift `<1e-9 rad`。
 
 FR3 physics E05 的任务、阈值和 hash 不写在本历史协议中，单独冻结于
-`E05_MCC_FR3_PROTOCOL.md`。
+`E05_MCC_CURRENT_PROTOCOL.md`。
+
+## 2026-08-23：当前 central-mount 补充
+
+本补充替代旧的 body-origin mount 判据，但不改变 M0–M3 数值阈值：
+
+- hand posture reference 必须是原 DP 视频 `t=2.000 s` 提取的 exact 16-D q；
+- `fr3_palm_mount_site` 与 `fr3_mount_interface_site` 的 world error `<=1e-9 m`；
+- mount 在 palm mesh XY normalized range 中必须落入 `[0.38,0.62]^2`；
+- adapter/palm signed geometry distance 绝对值 `<=1 mm`；
+- 当前 E05 对象必须固定在 world，满足 `nmocap=0`；
+- adapter 必须可见、无质量且不参与碰撞，不能通过隐藏 arm geometry 或移动相机伪造闭合。
+
+DP 的 observation、数据与 safety 协议尚未重新冻结，不属于本补充。

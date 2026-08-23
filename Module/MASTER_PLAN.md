@@ -6,23 +6,27 @@
 
 | 项目 | 当前值 |
 | --- | --- |
-| 计划版本 | `v1.6` |
+| 计划版本 | `v1.9` |
 | 最近更新 | `2026-08-23` |
-| 授权状态 | `AUTHORIZED_M0_M04_MCC_ONLY_E05_F_H` |
-| 实施状态 | `M0_M04_IMPLEMENTED_E05_MCC_EVALUATED` |
-| 当前活动模块 | `M04_R_MOUNT_GAP_CONFIRMED_AWAITING_FIX` |
-| 当前 Gate | `G1_LOCKED_PENDING_MOUNT_FIX_AND_MCC_RETEST` |
+| 授权状态 | `AUTHORIZED_MCC_ONLY_PUBLISH_DP_REWORK_LOCAL` |
+| 实施状态 | `CURRENT_MCC_EVALUATED_DP_REJECTED` |
+| 当前活动模块 | `DP_PROTOCOL_REDESIGN_AFTER_MCC_PUBLISH` |
+| 当前 Gate | `G1_NO_GO_DP_REWORK_REQUIRED` |
 | 固定环境 | `handcomp` |
 | Python | `/home/ferry/data/Anaconda/envs/handcomp/bin/python` |
 
-本轮已按用户最新授权完成 M0–M3 的 FR3+Leap Hand 扩展、M04 的 MCC 控制链，并只运行
-`E05-F-MCC` 与 `E05-H-MCC`。Finger DP 明确延期：未实现、未训练、未运行，也不填写
-任何 DP 指标。FR3+Leap 模型为 `7 arm + 16 finger = 23 DoF`；物体固定在 world，wrist
-运动由 FR3 关节实际产生，不再用移动物体或 fixed palm 冒充。
+本轮已完成 M0–M3 的 FR3+Leap Hand 扩展、M04 的 MCC 控制链和 central-palm mount 修正。
+FR3+Leap 模型为 `7 arm + 16 finger = 23 DoF`；MCC 初始 hand q 精确取自原 DP 视频
+`t=2.000 s`。mount site 位于 palm mesh XY 分数 `[0.506,0.541]`，interface alignment
+error 约 `2.6e-10 m`，不再把偏置 body origin 安到电机区域。
 
-两个 E05 单元均完成 3 个冻结 paired episodes，因此执行状态为 `EVALUATED`；二者均有
+两个 MCC 单元均完成 3 个冻结 paired episodes，因此执行状态为 `EVALUATED`；二者均有
 预冻结性能阈值未满足，所以性能结论为 `NOT_MET`，不是 `FAILED`。本次正式协议关闭
 gravity 以隔离接触控制，结果不能外推为 gravity-on 或硬件性能。
+
+上一版 standalone DP 的数据、因果 observation schema、训练量和短时评测均未通过用户
+验收，因此整体标记为 `REWORK_REQUIRED / NOT_EVALUATED`。旧代码、数据、checkpoint、
+视频和数字不进入当前 main 提交，也不能被引用为正式 E05-DP 结果。
 
 已有 `E05-PHY-v3` 仅登记为 `E05-PRE-FMCC` 预验证证据：它验证 fixed-palm 下的真实
 指腹、拇指接触和 `15 s / 480 mm` 复杂曲面链路，但不包含 FR3、Wrist MCC 或 Finger DP，
@@ -95,14 +99,15 @@ Baseline 的 Fingertip MCC 只解决高频法向力和小局部法向误差，�
 | 2b | M02-FR3 | moving-wrist 四指 MCC、signed coordinated error | M0-FR3, M02 | `PASSED` |
 | 3a | M03 | hand-only Runtime Guards | P0 | `PASSED` |
 | 3b | M03-FR3 | arm/finger 分组 guards 与全局/局部处置 | M0-FR3, M03 | `PASSED` |
-| 4d | M04-DP | Finger DP control-only | M0-FR3, M03-FR3 | `DEFERRED` |
-| 4r | M04-R | 23-DoF FR3+Leap MuJoCo plant | M0-FR3 | `BLOCKED`（结构测试通过；80 mm 不可见 mount 待修） |
+| 4d | M04-DP | Finger DP control-only | M0-FR3, M03-FR3 | `REWORK_REQUIRED / NOT_EVALUATED` |
+| 4r | M04-R | 23-DoF FR3+Leap MuJoCo plant | M0-FR3 | `PASSED`（central mount + exact 2 s posture） |
 | 4w | M04-W | palm pose IK、wrench estimator 与 6D Wrist MCC | M04-R, M03-FR3 | `PASSED` |
 | 4c | M04-C | Resultant/internal Contact Force Coordinator | M01-FR3, M02-FR3, M04-W | `PASSED` |
 | 4h | M04-H | Wrist MCC + coordinated Fingertip MCC integration | M04-C | `PASSED` |
 | 5pre | E05-PRE-FMCC | Fixed-palm Fingertip-MCC 物理预验证 | M01–M03 | `EVIDENCE_ONLY` |
 | 5a | E05-F-MCC | 规定式 FR3 wrist + 四指 Fingertip MCC | M04-R, M02-FR3 | `EVALUATED / NOT_MET` |
 | 5b | E05-H-MCC | FR3 Wrist MCC + coordinator + Fingertip MCC | M04-H | `EVALUATED / NOT_MET` |
+| 5c | E05-F-DP | standalone Finger DP 公平控制评测 | M04-DP, M03-FR3 | `NOT_STARTED`（等待重做） |
 | 6 | M06 | Transactional Prefix Executor | G1, M02, M03 | `NOT_STARTED` |
 | 7 | M07 | ContactModeGraph | P0 | `NOT_STARTED` |
 | 8 | M08 | CheapCert | M01, M07 | `NOT_STARTED` |
@@ -318,10 +323,13 @@ known collision、arm/finger joint limit、controller limit 与 actuator saturat
 
 ## Module 4：FR3+Leap 整手 MCC
 
-### Module 4DP：Finger DP（本轮延期）
+### Module 4DP：Finger DP（验收不合格，重做）
 
-用户明确要求本轮不做 DP。该分支保持 `DEFERRED`：没有 policy、checkpoint、训练、推理
-或指标，也不把 MCC 的输出冒充 DP。未来只有获得新授权后才冻结 DP protocol。
+上一版 DP 不进入当前 main。重做前必须重新冻结因果 observation/action schema、force
+history encoder、数据量、train/validation/held-out 划分、完整执行时长和安全门限。训练输入
+不得使用未来接触 geometry；DP runtime 不得隐藏调用 Fingertip MCC 或 analytical force
+fallback。只有新协议先冻结并通过完整 held-out 物理评测后，状态才能从
+`REWORK_REQUIRED / NOT_EVALUATED` 改为 `EVALUATED`。
 
 ### Module 4R：FR3+Leap dynamic plant
 
@@ -329,7 +337,8 @@ known collision、arm/finger joint limit、controller limit 与 actuator saturat
 
 - 7 个 FR3 position actuators 与 16 个 Leap Hand position actuators；
 - `(nq,nv,nu)=(23,23,23)`，物体固定在 world，`nmocap=0`；
-- palm/flange 显式安装，四个 belly pad 绑定真实 fingertip body；
+- flange 轴显式对准 central palm mesh，而不是偏置 body origin；四个 belly pad 绑定真实
+  fingertip body；
 - 初始拇指关节使 thumb belly 朝向并接触曲面，不再缺失拇指接触；
 - 正式 E05 的 wrist trajectory 由 FR3 关节执行。
 
@@ -368,7 +377,7 @@ transition 时 blend/reset，避免旧 projector 保留执行影响。
 
 实现、符号和审计细节见 `WHOLE_HAND_COMPLIANCE_DESIGN.md`；复现入口见 `Module/README.md`。
 
-## Experiment 5：MCC-only E05 双层评测
+## Experiment 5：E05 Finger/Whole-hand 分层评测
 
 本轮正式矩阵只包含：
 
@@ -376,10 +385,9 @@ transition 时 blend/reset，避免旧 projector 保留执行影响。
 | --- | --- | --- |
 | 规定式 FR3 wrist tracking | `E05-F-MCC` | `EVALUATED / NOT_MET` |
 | FR3 6D Wrist MCC（normal projector） | `E05-H-MCC` | `EVALUATED / NOT_MET` |
+| 与 F-MCC 相同的 FR3 wrist tracking | `E05-F-DP`（无 finger MCC） | `NOT_STARTED`（等待重做） |
 
-DP 两列已从本轮 protocol 和 evaluator 中移除。正式协议为
-`E05_MCC_FR3_PROTOCOL.md`，SHA-256 为
-`483bd7ccf98ad5afec9bfb2d2912d2b9882d2a4045a194582b879b8adc51664a`。
+当前只有 `E05_MCC_CURRENT_PROTOCOL.md` 是有效执行协议。新 DP 协议尚未冻结。
 
 ### 冻结场景
 
@@ -393,19 +401,21 @@ wrist trajectory、噪声、seed、runtime guards、control rate 和 evaluator �
 | aggregate 指标 | E05-F-MCC | E05-H-MCC |
 | --- | ---: | ---: |
 | 完成 episodes | 3/3 | 3/3 |
-| mean contact continuity | 99.990% | 99.990% |
-| mean contact count | 3.750 | 3.710 |
-| mean force RMSE | 0.773 N | 1.017 N |
-| worst peak force | 11.08 N | 13.19 N |
-| mean Y traversal | 173.9 mm | 175.3 mm |
-| controller P95 mean | 1.249 ms | 1.263 ms |
-| wrist Fz RMSE | — | 1.984 N |
-| internal leakage P95 | — | 0.0135 N |
+| mean contact continuity | 100.000% | 99.748% |
+| mean contact count | 3.752 | 3.474 |
+| mean force RMSE | 1.751 N | 1.857 N |
+| worst peak force | 18.165 N | 14.886 N |
+| mean Y traversal | 170.84 mm | 172.86 mm |
+| controller P95 mean | 1.887 ms | 1.887 ms |
+| wrist Fz RMSE | — | 2.414 N |
+| internal leakage P95 | — | 0.0052 N |
 
-F 未满足 deadline-miss、force-violation probability 和 `8 N` peak 阈值；H 未满足 force
-RMSE、force settling（noisy-pose worst `5.998 s`）和 `8 N` peak 阈值。完整运行有效，
+F 未满足 deadline、force RMSE/settling/violation 和 `8 N` peak 阈值；H 还未满足
+four-contact recovery、wrist compliance 和部分 zero-contact 阈值。完整运行有效，
 所以是 `EVALUATED / NOT_MET`，而不是 `FAILED`。H 在本协议中并未改善 force RMSE；只能
 报告其 traversal 略高且 internal leakage 较小，不能据此声称整手 MCC 已优于 F。
+
+上一版 DP 结果因数据和评测协议未获验收已撤出当前实验矩阵，不制作 MCC/DP 排名表。
 
 ### E05-PRE-FMCC：历史预验证
 
@@ -414,9 +424,9 @@ RMSE、force settling（noisy-pose worst `5.998 s`）和 `8 N` peak 阈值。完
 
 ### Gate G1 当前判断
 
-MCC 子门已完成有效评测，但性能为 `NOT_MET`；DP 子门按用户要求延期。因此完整 G1 仍是
-No-Go，不自动进入 planner/executor 集成。下一步若继续控制器，应冻结新的 v2 protocol
-后针对 peak force 与 recovery settling 修正，不能回写本次冻结结果。
+MCC 已完成有效评测但性能为 `NOT_MET`；DP 必须重做且尚未形成有效指标。因此完整 G1
+仍是 No-Go，不自动进入 planner/executor 集成。新 DP 必须与 MCC 使用相同 wrist
+trajectories 和 guard authority，再进行正式 control-only benchmark。
 
 ## Module 6：Transactional Prefix Executor
 
@@ -732,7 +742,7 @@ Main     = GPIS + Wrist Planner + shared Wrist MCC + Finger DP
 | 问题 | 对应实验 |
 | --- | --- |
 | Q1a — 规定式 wrist 下的 Fingertip MCC 与协调整手 MCC 分别表现如何？ | 当前 E05-F-MCC + E05-H-MCC |
-| Q1b — Finger DP 与 Fingertip MCC 在相同 wrist 条件下分别表现如何？ | `DEFERRED`，未来需单独冻结 DP protocol |
+| Q1b — Finger DP 与 Fingertip MCC 在相同 wrist 条件下分别表现如何？ | DP 重做后使用完全相同 wrist/guard authority 正式配对 |
 | Q2 — Variable contact modes 是否扩大 feasible region？ | Oracle Fixed vs. Variable Contact |
 | Q3 — 是否需要显式高维 finger/contact planning？ | Oracle Explicit vs. Main |
 | Q4 — 未知物体上能否高效闭环探索？ | GPIS Explicit vs. Main |
@@ -741,7 +751,7 @@ Main     = GPIS + Wrist Planner + shared Wrist MCC + Finger DP
 
 | Gate | Go 条件 | No-Go 后动作 |
 | --- | --- | --- |
-| G1 | 当前 MCC 两单元达到 safety/readiness；若恢复 DP 比较，再完成其独立子门 | 当前 MCC 为 `EVALUATED / NOT_MET`，先修复 peak/settling，禁止 planner 集成 |
+| G1 | MCC 与 standalone DP 都达到 safety/readiness | MCC 继续修复；DP 重做，禁止 planner 集成 |
 | G2 | Variable mode 真实突破 fixed-contact 局部可行域 | 检查 mode legality/optimizer/audit，不引入 GPIS |
 | G3 | Oracle 下长期连续 traversal 且无 dead end | 修复 planner/executor/certificate，禁止 GPIS 集成 |
 | G4 | 换成 GPIS 后仍能安全闭环 | 修复 SurfaceModel/uncertainty margin，禁止 full comparison |
@@ -759,20 +769,21 @@ Main     = GPIS + Wrist Planner + shared Wrist MCC + Finger DP
 5.  [DONE] M04-W 6D Wrist MCC + wrench estimator
 6.  [DONE] M04-C/H resultant/internal coordinator and integration
 7.  [EVALUATED / NOT_MET] E05-F-MCC + E05-H-MCC
-8.  [DEFERRED] Finger DP and DP E05 cells; only after explicit authorization
-9.  [G1 NO-GO] Tune MCC under a newly frozen v2 protocol, or obtain a gate revision
-10. Transactional Prefix Executor
-11. ContactModeGraph
-12. CheapCert
-13. ContinuousOptimize
-14. ExactPrefixAudit
-15. LazyBeamSearch
-16. ShadowSucc
-17. Oracle Continuous Traversal
-18. Oracle Explicit vs. Main
-19. GPIS SurfaceModel
-20. GPIS Active Exploration
-21. Full Main vs. Baseline
+8.  [REJECTED / NOT PUBLISHED] Retire unaccepted DP attempt
+9.  [NOT_STARTED] Freeze causal DP protocol and rebuild data/train/evaluation
+10. [G1 NO-GO] Improve MCC/DP and align wrist trajectories/guard authority
+11. Transactional Prefix Executor
+12. ContactModeGraph
+13. CheapCert
+14. ContinuousOptimize
+15. ExactPrefixAudit
+16. LazyBeamSearch
+17. ShadowSucc
+18. Oracle Continuous Traversal
+19. Oracle Explicit vs. Main
+20. GPIS SurfaceModel
+21. GPIS Active Exploration
+22. Full Main vs. Baseline
 ```
 
 不得因为某个后续模块更容易展示而跳过顺序或 Gate。

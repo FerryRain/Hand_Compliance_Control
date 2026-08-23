@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>M0–M4 + E05 MCC Visual Demo</title>
+  <title>M0–M4 + current MCC Visual Demo</title>
   <style>
     :root { color-scheme: light; --ink:#17324d; --muted:#64748b; --line:#dbe4ec; }
     * { box-sizing: border-box; }
@@ -28,7 +28,7 @@
 <main>
   <span class="badge">handcomp · deterministic visual reproduction</span>
   <h1>M0–M4 与 MCC-only E05 到底做了什么？</h1>
-  <p class="lead">解析模块、23-DoF 物理机器人与正式 E05 trace 放在同一页。视频中的 FR3 真正在移动，物体固定在 world；没有 DP 结果。</p>
+  <p class="lead">解析模块、23-DoF 物理机器人、中央掌心安装与更新后的 MCC 放在同一页。当前未验收 DP 不进入页面或结果。</p>
   <div class="flow">
     <div>0 · FR3+Leap Contract<small>7 arm + 16 finger 的分组状态、wrench frame/sign、传感器有效性和日志。</small></div>
     <div>1 · Geometry Oracle<small>告诉系统表面在哪里、法向是什么、link 还有多少 clearance。</small></div>
@@ -38,8 +38,9 @@
 
   <section>
     <h2>M0–M3 · FR3 + Leap Hand 适配</h2>
-    <p>模型严格为 <code>nq=nv=nu=23</code>。右上 close-up 是四个真实 fingertip-body 指腹 pad；surface 固定，整只手由 FR3 执行 2D traversal。</p>
-    <img src="fr3_leap_model_audit.png" alt="FR3 Leap model and fingertip belly audit">
+    <p>模型严格为 <code>nq=nv=nu=23</code>。本轮最终判据使用 central palm mesh site，而不是偏置 body origin；四个真实 contact geoms 都位于 distal fingertip belly。</p>
+    <img src="../local_review/natural_pose_audit.png" alt="Exact DP video t=2 second posture">
+    <img src="../local_review/mount_center_audit.png" alt="Central palm mount audit">
   </section>
 
   <section>
@@ -64,17 +65,17 @@
   <section>
     <h2>M04 / E05-F-MCC · 规定式 FR3 Wrist</h2>
     <p>Wrist MCC 关闭；FR3 跟踪同一 nominal palm trajectory，四个 Finger MCC 使用完整 local force error。</p>
-    <video controls preload="metadata" src="fr3_leap_e05_f_mcc.mp4"></video>
+    <video controls preload="metadata" src="../local_review/mcc_f_video.mp4"></video>
   </section>
 
   <section>
     <h2>M04 / E05-H-MCC · 协调整手 MCC</h2>
     <p>FR3 joint-torque wrench estimate 驱动 resultant Wrist MCC；Finger MCC 只接 internal/differential error。视频来自正式 nominal trace。</p>
-    <video controls preload="metadata" src="fr3_leap_e05_h_mcc.mp4"></video>
-    <img src="fr3_leap_mcc_dashboard.png" alt="Formal MCC-only E05 dashboard">
+    <video controls preload="metadata" src="../local_review/mcc_h_video.mp4"></video>
+    <img src="../local_review/mcc_dashboard.png" alt="Formal MCC-only E05 dashboard">
   </section>
 
-  <p class="boundary"><strong>当前边界：</strong>M0–M4/E05 视频是 MuJoCo 动力学证据，不是硬件结果；正式协议关闭 gravity 以隔离 contact control。E05 只评测 MCC，DP 未实现、未运行、未填写指标。实验完整执行记为 EVALUATED，性能由 MET/NOT_MET 单独表达。</p>
+  <p class="boundary"><strong>当前边界：</strong>这些是 gravity-off MuJoCo 动力学证据，不是硬件结果。MCC 使用 15 s shadow-guard characterization；当前 DP 标记为 REWORK_REQUIRED / NOT_EVALUATED，不进入本页或本次提交。</p>
 </main>
 </body>
 </html>

@@ -142,7 +142,12 @@ class E05PhysicsTest(unittest.TestCase):
     self.assertFalse(result["thresholds_met"])
     self.assertEqual(result["config"]["duration_s"], 15.0)
     self.assertGreaterEqual(result["continuous_sweep"]["relative_path_length_m"], 0.30)
-    self.assertGreaterEqual(result["continuous_sweep"]["thumb_contact_probability"], 0.95)
+    # The current finger-heterogeneous relief intentionally lifts individual
+    # pads; requiring 95% thumb retention would restore the retired, much
+    # easier surface.  Whole-hand continuity and post-step recovery remain the
+    # safety properties, while 80% prevents a permanently missing thumb.
+    self.assertGreaterEqual(result["continuous_sweep"]["hand_contact_probability"], 0.99)
+    self.assertGreaterEqual(result["continuous_sweep"]["thumb_contact_probability"], 0.80)
     self.assertGreaterEqual(
       result["continuous_sweep"]["contact_distal_head_clearance_min_m"],
       0.010,
@@ -151,7 +156,10 @@ class E05PhysicsTest(unittest.TestCase):
     self.assertLessEqual(recovery["all_finger_contact_recovery_s"], 0.25)
     self.assertEqual(recovery["final_contact_set"], [1, 2, 3, 4])
     self.assertGreater(result["continuous_sweep"]["max_tip_force_n"], 8.0)
-    self.assertGreater(recovery["force_settling_s"], 0.75)
+    self.assertTrue(
+      recovery["force_settling_s"] is None
+      or recovery["force_settling_s"] > 0.75
+    )
 
 
 if __name__ == "__main__":

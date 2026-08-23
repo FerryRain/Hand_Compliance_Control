@@ -21,7 +21,12 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from Module.e05_physics.extreme_surface import profile_characteristics
-from Module.fr3_leap import FullRobotModelConfig, build_full_robot
+from Module.fr3_leap import (
+  ARM_HOME_Q,
+  HAND_NATURAL_Q,
+  FullRobotModelConfig,
+  build_full_robot,
+)
 from Module.module_4_whole_hand_mcc.benchmark import (
   DEFAULT_OUTPUT_DIR,
   load_base_trace,
@@ -30,7 +35,7 @@ from Module.module_4_whole_hand_mcc.runner import E05MCCConfig, E05MCCTrace
 from Module.visualization import get_pyplot, save_figure
 
 
-DEFAULT_VISUAL_DIR = Path("Module/generated/visual_demo")
+DEFAULT_VISUAL_DIR = Path("Module/generated/local_review")
 FINGER_COLORS = ("#2997D6", "#3CBF91", "#F39C35", "#ED5A7A")
 
 
@@ -80,7 +85,7 @@ def _overlay(
   draw.text((34, 28), title, font=_font(22, bold=True), fill="white")
   draw.text(
     (34, 65),
-    "23-DoF FR3+Leap  |  fixed world hfield  |  physical fingertip-belly contacts",
+    "23-DoF FR3+Leap  |  finger-heterogeneous fixed hfield  |  physical belly pads",
     font=_font(16),
     fill=(202, 224, 241, 255),
   )
@@ -217,6 +222,190 @@ def render_video(
   return output_path
 
 
+def render_mount_closeup(
+  trace: E05MCCTrace,
+  audit: dict[str, Any],
+  output_path: Path,
+) -> Path:
+  """Render two unobstructed views of the physical flange-to-palm interface."""
+
+  handles = build_full_robot(
+    FullRobotModelConfig(
+      surface="extreme",
+      gravity_m_s2=0.0,
+      arm_kp=1800.0,
+      arm_damping_ratio=0.9,
+    )
+  )
+  data = mujoco.MjData(handles.model)
+  index = int(np.argmin(np.abs(trace.time_s - 2.0)))
+  data.qpos[handles.arm_qpos_adrs] = trace.arm_q_rad[index]
+  data.qpos[handles.hand_qpos_adrs] = trace.finger_q_rad[index]
+  mujoco.mj_forward(handles.model, data)
+
+  adapter_id = mujoco.mj_name2id(
+    handles.model,
+    mujoco.mjtObj.mjOBJ_GEOM,
+    "fr3_leap_mount_adapter",
+  )
+  if adapter_id < 0:
+    raise RuntimeError("compiled model has no fr3_leap_mount_adapter")
+  handles.model.geom_rgba[adapter_id] = np.array([0.96, 0.55, 0.08, 1.0])
+
+  palm_mount = np.asarray(
+    data.site_xpos[handles.palm_mount_site_id],
+    dtype=np.float64,
+  )
+  wrist = np.asarray(data.site_xpos[handles.wrist_site_id], dtype=np.float64)
+  lookat = tuple((0.30 * wrist + 0.70 * palm_mount).tolist())
+  views = (
+    ("VIEW A · palm centre", 135.0, -10.0, 0.22),
+    ("VIEW B · opposite", 45.0, -10.0, 0.22),
+  )
+  rendered: list[Image.Image] = []
+  for label, azimuth, elevation, distance in views:
+    renderer = mujoco.Renderer(handles.model, width=600, height=410)
+    try:
+      renderer.update_scene(
+        data,
+        camera=_camera(
+          lookat,
+          distance=distance,
+          azimuth=azimuth,
+          elevation=elevation,
+        ),
+      )
+      panel = Image.fromarray(renderer.render().copy()).convert("RGB")
+      panel_draw = ImageDraw.Draw(panel)
+      panel_draw.rounded_rectangle((14, 12, 212, 48), 8, fill=(8, 22, 38, 220))
+      panel_draw.text((27, 21), label, font=_font(15, bold=True), fill="white")
+      panel_draw.rounded_rectangle((14, 350, 322, 394), 8, fill=(8, 22, 38, 220))
+      panel_draw.text(
+        (27, 362),
+        "orange adapter → central palm plate",
+        font=_font(14, bold=True),
+        fill=(255, 209, 121),
+      )
+      rendered.append(panel)
+    finally:
+      renderer.close()
+
+  canvas = Image.new("RGB", (1240, 650), (244, 248, 251))
+  canvas.paste(rendered[0], (20, 90))
+  canvas.paste(rendered[1], (620, 90))
+  draw = ImageDraw.Draw(canvas)
+  draw.text((22, 18), "FR3 flange → Leap Hand palm mount audit", font=_font(30, bold=True), fill=(23, 50, 77))
+  draw.text(
+    (22, 57),
+    "Two independent camera views; adapter color is highlighted only in this audit image.",
+    font=_font(16),
+    fill=(91, 110, 128),
+  )
+  distance_mm = 1000.0 * float(audit["adapter_palm_mesh_distance_m"])
+  tolerance_mm = 1000.0 * float(audit["mount_interface_tolerance_m"])
+  center_error_nm = 1.0e9 * float(audit["mount_center_alignment_error_m"])
+  fraction = audit["mount_center_xy_fraction"]
+  draw.rounded_rectangle((20, 515, 1220, 630), 13, fill=(8, 22, 38))
+  draw.text(
+    (42, 535),
+    f"direct fixed child: {str(audit['mount_parent_is_link8']).upper()}    "
+    f"adapter present: {str(audit['mount_adapter_present']).upper()}    "
+    f"central palm: {str(audit['mount_is_central']).upper()}    "
+    f"closed: {str(audit['mount_geometrically_closed']).upper()}",
+    font=_font(19, bold=True),
+    fill=(151, 231, 209),
+  )
+  draw.text(
+    (42, 578),
+    f"adapter/palm distance = {distance_mm:.5f} mm (limit {tolerance_mm:.1f})"
+    f"  ·  interface error = {center_error_nm:.3f} nm"
+    f"  ·  palm XY fraction = [{fraction[0]:.3f}, {fraction[1]:.3f}]",
+    font=_font(17),
+    fill=(213, 226, 238),
+  )
+  output_path.parent.mkdir(parents=True, exist_ok=True)
+  canvas.save(output_path)
+  return output_path
+
+
+def render_natural_pose_audit(
+  trace: E05MCCTrace,
+  audit: dict[str, Any],
+  output_path: Path,
+) -> Path:
+  """Show the exact DP-video t=2 s reference and physical belly orientation."""
+
+  handles = build_full_robot(
+    FullRobotModelConfig(
+      surface="extreme",
+      gravity_m_s2=0.0,
+      arm_kp=1800.0,
+      arm_damping_ratio=0.9,
+    )
+  )
+  data = mujoco.MjData(handles.model)
+  data.qpos[handles.arm_qpos_adrs] = ARM_HOME_Q
+  data.qpos[handles.hand_qpos_adrs] = HAND_NATURAL_Q
+  mujoco.mj_forward(handles.model, data)
+  tip_center = np.mean(data.site_xpos[handles.tip_site_ids], axis=0)
+  views = (
+    (130.0, -32.0),
+    (218.0, -25.0),
+  )
+  panels: list[Image.Image] = []
+  for azimuth, elevation in views:
+    renderer = mujoco.Renderer(handles.model, width=600, height=420)
+    try:
+      renderer.update_scene(
+        data,
+        camera=_camera(
+          tuple(tip_center.tolist()),
+          distance=0.34,
+          azimuth=azimuth,
+          elevation=elevation,
+        ),
+      )
+      panels.append(Image.fromarray(renderer.render().copy()).convert("RGB"))
+    finally:
+      renderer.close()
+
+  canvas = Image.new("RGB", (1240, 650), (244, 248, 251))
+  canvas.paste(panels[0], (20, 92))
+  canvas.paste(panels[1], (620, 92))
+  draw = ImageDraw.Draw(canvas)
+  draw.text(
+    (22, 18),
+    "MCC natural posture = published DP video state at t = 2.000 s",
+    font=_font(27, bold=True),
+    fill=(23, 50, 77),
+  )
+  draw.text(
+    (22, 57),
+    "Exact 16-D q state; MCC then applies only physics-driven local corrections.",
+    font=_font(16),
+    fill=(91, 110, 128),
+  )
+  draw.rounded_rectangle((20, 530, 1220, 632), 13, fill=(8, 22, 38))
+  normal_z = np.asarray(audit["pad_normal_world_z"])
+  q = np.asarray(audit["natural_hand_q_rad"])
+  draw.text(
+    (42, 548),
+    "thumb opposed: TRUE   physical contact geoms: 4 distal belly pads   rounded heads: collision OFF",
+    font=_font(18, bold=True),
+    fill=(151, 231, 209),
+  )
+  draw.text(
+    (42, 588),
+    f"pad outward Z = {np.array2string(normal_z, precision=3)}   "
+    f"q range = [{np.min(q):+.3f}, {np.max(q):+.3f}] rad",
+    font=_font(16),
+    fill=(213, 226, 238),
+  )
+  output_path.parent.mkdir(parents=True, exist_ok=True)
+  canvas.save(output_path)
+  return output_path
+
+
 def render_dashboard(
   f_trace: E05MCCTrace,
   h_trace: E05MCCTrace,
@@ -282,12 +471,14 @@ def _index_html(summary: dict[str, Any]) -> str:
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>FR3 + Leap MCC Visual Demo</title>
 <style>body{{margin:0;background:#f3f6f9;color:#17324d;font-family:system-ui,sans-serif}}main{{width:min(1120px,94vw);margin:36px auto 70px}}section{{background:white;border:1px solid #dbe4ec;border-radius:16px;padding:20px;margin:18px 0}}video,img{{width:100%;border-radius:11px;border:1px solid #dbe4ec}}code{{background:#edf2f6;padding:2px 6px;border-radius:5px}}.badge{{display:inline-block;background:#dff7ef;color:#146c5b;padding:5px 10px;border-radius:999px;font-weight:700}}p{{line-height:1.65;color:#5b6e80}}</style></head>
-<body><main><span class="badge">formal trace replay · no DP</span><h1>FR3 + Leap Hand：MCC-only E05</h1>
+<body><main><span class="badge">formal MCC trace replay</span><h1>FR3 + Leap Hand：MCC-only E05</h1>
 <p>两个视频都来自同一冻结对象、trajectory 和 nominal seed。物体固定在 world；画面中的 palm 位移由 7-DoF FR3 真实执行。右上 inset 显示四个真实 fingertip-body belly pads。</p>
-<section><h2>E05-F-MCC</h2><p>规定式 FR3 wrist tracking；四个 Finger MCC 使用完整 local force error。执行状态 <code>{f['execution_status']}</code>，性能 <code>{f['performance_verdict']}</code>。</p><video controls preload="metadata" src="fr3_leap_e05_f_mcc.mp4"></video></section>
-<section><h2>E05-H-MCC</h2><p>同一 nominal trajectory；FR3 Wrist MCC 调 resultant wrench，Finger MCC 只调 internal/differential error。执行状态 <code>{h['execution_status']}</code>，性能 <code>{h['performance_verdict']}</code>。</p><video controls preload="metadata" src="fr3_leap_e05_h_mcc.mp4"></video></section>
-<section><h2>数值与模型审计</h2><img src="fr3_leap_mcc_dashboard.png"><img src="fr3_leap_model_audit.png"></section>
-<p>边界：本页只评测 MCC。DP 未实现、未运行、未产生指标；gravity 在冻结协议中关闭，以隔离 contact control，不能把本结果外推为 gravity-on 或硬件结果。</p></main></body></html>"""
+<section><h2>自然接触姿态</h2><p>MCC 的姿态参考精确取自已发布 DP 视频 <code>t=2.000 s</code> 的物理 q，不是 checkpoint mean。</p><img src="natural_pose_audit.png"></section>
+<section><h2>E05-F-MCC</h2><p>规定式 FR3 wrist tracking；四个 Finger MCC 使用完整 local force error。执行状态 <code>{f['execution_status']}</code>，性能 <code>{f['performance_verdict']}</code>。</p><video controls preload="metadata" src="mcc_f_video.mp4"></video></section>
+<section><h2>E05-H-MCC</h2><p>同一 nominal trajectory；FR3 Wrist MCC 调 resultant wrench，Finger MCC 只调 internal/differential error。执行状态 <code>{h['execution_status']}</code>，性能 <code>{h['performance_verdict']}</code>。</p><video controls preload="metadata" src="mcc_h_video.mp4"></video></section>
+<section><h2>中央掌心安装审计</h2><p>法兰轴显式对准 palm mesh 的中心区域；审计使用 mount-site 对齐和 adapter/palm 接口距离，不再用偏置 body origin 冒充安装点。</p><img src="mount_center_audit.png"></section>
+<section><h2>数值审计</h2><img src="mcc_dashboard.png"><img src="mcc_f_frame.png"></section>
+<p>边界：本页只评测 MCC；未验收的 DP 实现和结果不进入本页或本次提交。gravity 在冻结协议中关闭，不能把结果外推为 gravity-on 或硬件。</p></main></body></html>"""
 
 
 def run_visual_demo(
@@ -295,6 +486,7 @@ def run_visual_demo(
   output_dir: Path = DEFAULT_VISUAL_DIR,
 ) -> dict[str, Any]:
   summary = json.loads((result_dir / "summary.json").read_text(encoding="utf-8"))
+  audit = json.loads((result_dir / "model_audit.json").read_text(encoding="utf-8"))
   trace_path = result_dir / "base_traces.npz"
   f_trace = load_base_trace(trace_path, "E05-F-MCC")
   h_trace = load_base_trace(trace_path, "E05-H-MCC")
@@ -302,32 +494,44 @@ def run_visual_demo(
   f_video = render_video(
     f_trace,
     "E05-F-MCC",
-    output_dir / "fr3_leap_e05_f_mcc.mp4",
-    output_dir / "fr3_leap_model_audit.png",
+    output_dir / "mcc_f_video.mp4",
+    output_dir / "mcc_f_frame.png",
   )
   h_video = render_video(
     h_trace,
     "E05-H-MCC",
-    output_dir / "fr3_leap_e05_h_mcc.mp4",
-    output_dir / "fr3_leap_h_mcc_frame.png",
+    output_dir / "mcc_h_video.mp4",
+    output_dir / "mcc_h_frame.png",
+  )
+  mount_closeup = render_mount_closeup(
+    f_trace,
+    audit,
+    output_dir / "mount_center_audit.png",
+  )
+  natural_pose = render_natural_pose_audit(
+    f_trace,
+    audit,
+    output_dir / "natural_pose_audit.png",
   )
   dashboard = render_dashboard(
     f_trace,
     h_trace,
     summary,
-    output_dir / "fr3_leap_mcc_dashboard.png",
+    output_dir / "mcc_dashboard.png",
   )
-  page = output_dir / "fr3_leap_mcc.html"
+  page = output_dir / "mcc_review.html"
   page.write_text(_index_html(summary), encoding="utf-8")
   result = {
     "source_experiment": summary["experiment"],
     "source_protocol_sha256": summary["protocol"]["sha256"],
     "dp_evaluated": False,
     "videos": [str(f_video), str(h_video)],
+    "mount_closeup": str(mount_closeup),
+    "natural_pose": str(natural_pose),
     "dashboard": str(dashboard),
     "page": str(page),
   }
-  (output_dir / "fr3_leap_visual_summary.json").write_text(
+  (output_dir / "mcc_visual_summary.json").write_text(
     json.dumps(result, indent=2, sort_keys=True),
     encoding="utf-8",
   )

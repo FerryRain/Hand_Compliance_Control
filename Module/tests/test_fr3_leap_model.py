@@ -5,9 +5,9 @@ import unittest
 import mujoco
 import numpy as np
 
-from Module.e05_physics.scene import Q_NOMINAL
 from Module.fr3_leap import (
   ARM_HOME_Q,
+  HAND_NATURAL_Q,
   FullRobotModelConfig,
   build_full_robot,
   model_audit,
@@ -29,9 +29,9 @@ class FR3LeapModelTest(unittest.TestCase):
   def data_at_home(self) -> mujoco.MjData:
     data = mujoco.MjData(self.handles.model)
     data.qpos[self.handles.arm_qpos_adrs] = ARM_HOME_Q
-    data.qpos[self.handles.hand_qpos_adrs] = Q_NOMINAL
+    data.qpos[self.handles.hand_qpos_adrs] = HAND_NATURAL_Q
     data.ctrl[self.handles.arm_actuator_ids] = ARM_HOME_Q
-    data.ctrl[self.handles.hand_actuator_ids] = Q_NOMINAL
+    data.ctrl[self.handles.hand_actuator_ids] = HAND_NATURAL_Q
     mujoco.mj_forward(self.handles.model, data)
     return data
 
@@ -49,6 +49,21 @@ class FR3LeapModelTest(unittest.TestCase):
     self.assertEqual(
       audit["pad_parent_body_names"],
       ["fingertip", "fingertip_2", "fingertip_3", "thumb_fingertip"],
+    )
+
+  def test_flange_and_palm_are_parented_and_geometrically_closed(self) -> None:
+    audit = model_audit(self.handles)
+    self.assertTrue(audit["mount_parent_is_link8"])
+    self.assertTrue(audit["mount_adapter_present"])
+    self.assertTrue(audit["mount_geometrically_closed"])
+    self.assertTrue(audit["mount_is_central"])
+    self.assertLessEqual(
+      audit["mount_center_alignment_error_m"],
+      1e-9,
+    )
+    self.assertLessEqual(
+      abs(audit["adapter_palm_mesh_distance_m"]),
+      audit["mount_interface_tolerance_m"],
     )
 
   def test_m01_adapter_uses_live_arm_state_and_physics_narrow_phase(self) -> None:

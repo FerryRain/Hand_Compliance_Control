@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FR3 + Leap MCC Visual Demo</title>
+<style>body{margin:0;background:#f3f6f9;color:#17324d;font-family:system-ui,sans-serif}main{width:min(1120px,94vw);margin:36px auto 70px}section{background:white;border:1px solid #dbe4ec;border-radius:16px;padding:20px;margin:18px 0}video,img{width:100%;border-radius:11px;border:1px solid #dbe4ec}code{background:#edf2f6;padding:2px 6px;border-radius:5px}.badge{display:inline-block;background:#dff7ef;color:#146c5b;padding:5px 10px;border-radius:999px;font-weight:700}p{line-height:1.65;color:#5b6e80}</style></head>
+<body><main><span class="badge">formal MCC trace replay</span><h1>FR3 + Leap Hand：MCC-only E05</h1>
+<p>两个视频都来自同一冻结对象、trajectory 和 nominal seed。物体固定在 world；画面中的 palm 位移由 7-DoF FR3 真实执行。右上 inset 显示四个真实 fingertip-body belly pads。</p>
+<section><h2>自然接触姿态</h2><p>MCC 的姿态参考精确取自已发布 DP 视频 <code>t=2.000 s</code> 的物理 q，不是 checkpoint mean。</p><img src="natural_pose_audit.png"></section>
+<section><h2>E05-F-MCC</h2><p>规定式 FR3 wrist tracking；四个 Finger MCC 使用完整 local force error。执行状态 <code>EVALUATED</code>，性能 <code>NOT_MET</code>。</p><video controls preload="metadata" src="mcc_f_video.mp4"></video></section>
+<section><h2>E05-H-MCC</h2><p>同一 nominal trajectory；FR3 Wrist MCC 调 resultant wrench，Finger MCC 只调 internal/differential error。执行状态 <code>EVALUATED</code>，性能 <code>NOT_MET</code>。</p><video controls preload="metadata" src="mcc_h_video.mp4"></video></section>
+<section><h2>中央掌心安装审计</h2><p>法兰轴显式对准 palm mesh 的中心区域；审计使用 mount-site 对齐和 adapter/palm 接口距离，不再用偏置 body origin 冒充安装点。</p><img src="mount_center_audit.png"></section>
+<section><h2>数值审计</h2><img src="mcc_dashboard.png"><img src="mcc_f_frame.png"></section>
+<p>边界：本页只评测 MCC；未验收的 DP 实现和结果不进入本页或本次提交。gravity 在冻结协议中关闭，不能把结果外推为 gravity-on 或硬件。</p></main></body></html>

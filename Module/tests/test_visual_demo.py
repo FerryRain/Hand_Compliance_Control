@@ -42,6 +42,7 @@ class VisualDemoTest(unittest.TestCase):
       gallery = (output / "index.html").read_text(encoding="utf-8")
       self.assertIn("Module 1 · Oracle SurfaceModel", gallery)
       self.assertIn("module_2_curved_surface.gif", gallery)
+      self.assertNotIn("Standalone Finger DP", gallery)
       self.assertTrue((output / "summary.json").is_file())
 
 

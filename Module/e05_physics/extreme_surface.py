@@ -1,4 +1,10 @@
-"""Long, two-dimensional multi-scale C-infinity surface for E05-PHY v3."""
+"""Long, finger-heterogeneous C-infinity height field for current E05.
+
+The broad waves preserve a long traversable object, while the short oblique
+wave, cross-wave and staggered local bumps make fingers separated by 40--50 mm
+see different height changes.  That is intentional: one pad may be compressed
+or lifted while its neighbours remain on a different part of the profile.
+"""
 
 from __future__ import annotations
 
@@ -21,6 +27,13 @@ _DIAGONAL_DIRECTION /= np.linalg.norm(_DIAGONAL_DIRECTION)
 _CROSS_AMPLITUDE_M = 0.0014
 _CROSS_X_LENGTH_M = 0.18
 _CROSS_Y_LENGTH_M = 0.26
+_FINGER_WAVE_AMPLITUDE_M = 0.0038
+_FINGER_WAVE_LENGTH_M = 0.067
+_FINGER_WAVE_DIRECTION = np.array([0.96, 0.28], dtype=np.float64)
+_FINGER_WAVE_DIRECTION /= np.linalg.norm(_FINGER_WAVE_DIRECTION)
+_FINGER_CROSS_AMPLITUDE_M = 0.0028
+_FINGER_CROSS_X_LENGTH_M = 0.052
+_FINGER_CROSS_Y_LENGTH_M = 0.118
 _RIDGE_AMPLITUDE_M = 0.0038
 _RIDGE_CENTER_M = 0.20
 _RIDGE_WIDTH_M = 0.007
@@ -33,6 +46,16 @@ _GAUSSIANS = (
   (-0.0100, 0.08, -0.08, 0.040, 0.030),
   (0.0065, -0.04, 0.10, 0.022, 0.016),
   (-0.0050, 0.13, 0.25, 0.028, 0.018),
+  # Staggered finger-scale events.  Adjacent finger tracks encounter
+  # different signs/times instead of rising and falling as one rigid row.
+  (0.0085, -0.075, -0.290, 0.020, 0.018),
+  (-0.0075, -0.028, -0.220, 0.018, 0.016),
+  (0.0090, 0.018, -0.140, 0.019, 0.017),
+  (-0.0090, 0.092, -0.060, 0.024, 0.019),
+  (-0.0070, -0.075, -0.030, 0.020, 0.018),
+  (0.0080, -0.028, 0.050, 0.019, 0.018),
+  (-0.0080, 0.018, 0.130, 0.019, 0.017),
+  (0.0090, 0.092, 0.205, 0.024, 0.020),
 )
 
 
@@ -137,6 +160,68 @@ def height_full_derivatives(
     * cross_y_sine
   )
   dyy -= _CROSS_AMPLITUDE_M * cross_y_number**2 * cross_x_sine * cross_y_cosine
+
+  finger_wave_number = 2.0 * np.pi / _FINGER_WAVE_LENGTH_M
+  finger_coordinate = (
+    _FINGER_WAVE_DIRECTION[0] * x
+    + _FINGER_WAVE_DIRECTION[1] * y
+    + 0.187
+  )
+  finger_phase = finger_wave_number * finger_coordinate
+  finger_sine = np.sin(finger_phase)
+  finger_cosine = np.cos(finger_phase)
+  finger_first = _FINGER_WAVE_AMPLITUDE_M * finger_wave_number * finger_cosine
+  finger_second = (
+    -_FINGER_WAVE_AMPLITUDE_M * finger_wave_number**2 * finger_sine
+  )
+  height += _FINGER_WAVE_AMPLITUDE_M * finger_sine
+  dx += finger_first * _FINGER_WAVE_DIRECTION[0]
+  dy += finger_first * _FINGER_WAVE_DIRECTION[1]
+  dxx += finger_second * _FINGER_WAVE_DIRECTION[0] ** 2
+  dxy += finger_second * np.prod(_FINGER_WAVE_DIRECTION)
+  dyy += finger_second * _FINGER_WAVE_DIRECTION[1] ** 2
+
+  finger_x_number = 2.0 * np.pi / _FINGER_CROSS_X_LENGTH_M
+  finger_y_number = 2.0 * np.pi / _FINGER_CROSS_Y_LENGTH_M
+  finger_x_sine = np.sin(finger_x_number * (x + 0.011))
+  finger_x_cosine = np.cos(finger_x_number * (x + 0.011))
+  finger_y_sine = np.sin(finger_y_number * (y + 0.017))
+  finger_y_cosine = np.cos(finger_y_number * (y + 0.017))
+  finger_cross = (
+    _FINGER_CROSS_AMPLITUDE_M * finger_x_sine * finger_y_cosine
+  )
+  height += finger_cross
+  dx += (
+    _FINGER_CROSS_AMPLITUDE_M
+    * finger_x_number
+    * finger_x_cosine
+    * finger_y_cosine
+  )
+  dy -= (
+    _FINGER_CROSS_AMPLITUDE_M
+    * finger_y_number
+    * finger_x_sine
+    * finger_y_sine
+  )
+  dxx -= (
+    _FINGER_CROSS_AMPLITUDE_M
+    * finger_x_number**2
+    * finger_x_sine
+    * finger_y_cosine
+  )
+  dxy -= (
+    _FINGER_CROSS_AMPLITUDE_M
+    * finger_x_number
+    * finger_y_number
+    * finger_x_cosine
+    * finger_y_sine
+  )
+  dyy -= (
+    _FINGER_CROSS_AMPLITUDE_M
+    * finger_y_number**2
+    * finger_x_sine
+    * finger_y_cosine
+  )
 
   for gaussian in _GAUSSIANS:
     terms = _gaussian_terms(x, y, *gaussian)
