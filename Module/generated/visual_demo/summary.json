@@ -43,6 +43,16 @@
       "output": "Module/generated/visual_demo/module_3_runtime_guards.png",
       "passed": true
     },
+    "M04_DP_DATASET_D": {
+      "artifacts": [
+        "Module/generated/visual_demo/spatial_inverse_v1/forward_spatial_inverse_replay.mp4",
+        "Module/generated/visual_demo/spatial_inverse_v1/forward_replay_audit.png",
+        "Module/generated/visual_demo/spatial_inverse_v1/forward_replay_pair.h5",
+        "Module/generated/visual_demo/spatial_inverse_v1/summary.json"
+      ],
+      "not_dp_evaluation": true,
+      "passed": true
+    },
     "M0_M04_FR3": {
       "artifacts": [
         "Module/generated/local_review/natural_pose_audit.png",

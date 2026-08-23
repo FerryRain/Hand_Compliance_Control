@@ -1,4 +1,4 @@
-"""Generate the M0–M4 and MCC-only visual gallery."""
+"""Generate the M0–M4, MCC, and inverse-data diagnostic visual gallery."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ def _gallery_html() -> str:
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>M0–M4 + current MCC Visual Demo</title>
+  <title>M0–M4 + MCC + inverse-data Visual Demo</title>
   <style>
     :root { color-scheme: light; --ink:#17324d; --muted:#64748b; --line:#dbe4ec; }
     * { box-sizing: border-box; }
@@ -48,8 +48,8 @@ def _gallery_html() -> str:
 <body>
 <main>
   <span class="badge">handcomp · deterministic visual reproduction</span>
-  <h1>M0–M4 与 MCC-only E05 到底做了什么？</h1>
-  <p class="lead">解析模块、23-DoF 物理机器人、中央掌心安装与更新后的 MCC 放在同一页。当前未验收 DP 不进入页面或结果。</p>
+  <h1>M0–M4、MCC 与 inverse-data 到底做了什么？</h1>
+  <p class="lead">解析模块、23-DoF 物理机器人、中央掌心安装、当前 MCC，以及尚未训练 DP 之前的真实空间反演数据链放在同一页。</p>
   <div class="flow">
     <div>0 · FR3+Leap Contract<small>7 arm + 16 finger 的分组状态、wrench frame/sign、传感器有效性和日志。</small></div>
     <div>1 · Geometry Oracle<small>告诉系统表面在哪里、法向是什么、link 还有多少 clearance。</small></div>
@@ -96,7 +96,15 @@ def _gallery_html() -> str:
     <img src="../local_review/mcc_dashboard.png" alt="Formal MCC-only E05 dashboard">
   </section>
 
-  <p class="boundary"><strong>当前边界：</strong>这些是 gravity-off MuJoCo 动力学证据，不是硬件结果。MCC 使用 15 s shadow-guard characterization；当前 DP 标记为 REWORK_REQUIRED / NOT_EVALUATED，不进入本页或本次提交。</p>
+  <section>
+    <h2>M04-DP data · 真实 forward → spatial inverse → physical replay</h2>
+    <p>左侧是 moving-object 的真实 forward physics；右侧是 fixed-object FR3+LEAP replay。时间不反转，finger command 原序逐样本复用，force/contact 在右侧重新测量，且 replay 没有 Finger IK/MCC/linear repair。</p>
+    <video controls preload="metadata" src="spatial_inverse_v1/forward_spatial_inverse_replay.mp4"></video>
+    <img src="spatial_inverse_v1/forward_replay_audit.png" alt="Spatial inverse raw replay audit">
+    <p class="boundary"><strong>数据边界：</strong>raw replay mechanics 已通过，但 forward collector 使用 simulator Fingertip MCC，所以这里只是 Dataset-D pipeline diagnostic；正式 Dataset-I、DP training 与 E05-DP 仍不存在。</p>
+  </section>
+
+  <p class="boundary"><strong>当前边界：</strong>这些是 gravity-off MuJoCo 动力学证据，不是硬件结果。MCC 使用 15 s shadow-guard characterization；DP 仍为 NOT_TRAINED / NOT_EVALUATED，本页新增的是数据链证据，不是策略性能。</p>
 </main>
 </body>
 </html>
@@ -125,17 +133,37 @@ def run_visual_demo(
     output_dir.parent / "local_review/mcc_dashboard.png",
   )
   fr3_ready = all(path.is_file() and path.stat().st_size > 0 for path in fr3_paths)
+  inverse_paths = (
+    output_dir / "spatial_inverse_v1/forward_spatial_inverse_replay.mp4",
+    output_dir / "spatial_inverse_v1/forward_replay_audit.png",
+    output_dir / "spatial_inverse_v1/forward_replay_pair.h5",
+    output_dir / "spatial_inverse_v1/summary.json",
+  )
+  inverse_ready = all(path.is_file() and path.stat().st_size > 0 for path in inverse_paths)
   gallery = output_dir / "index.html"
   gallery.write_text(_gallery_html(), encoding="utf-8")
   result = {
+    # Preserve the published machine-readable gallery identifier.  The new
+    # inverse-data section is an additive diagnostic, not a renamed E05 result.
     "demo": "M0_TO_M4_E05_MCC_VISUAL_GALLERY",
-    "passed": bool(module_1["passed"] and module_2["passed"] and module_3["passed"] and fr3_ready),
+    "passed": bool(
+      module_1["passed"]
+      and module_2["passed"]
+      and module_3["passed"]
+      and fr3_ready
+      and inverse_ready
+    ),
     "gallery": str(gallery),
     "modules": {
       "M01": module_1,
       "M02": module_2,
       "M03": module_3,
       "M0_M04_FR3": {"passed": fr3_ready, "artifacts": [str(path) for path in fr3_paths]},
+      "M04_DP_DATASET_D": {
+        "passed": inverse_ready,
+        "artifacts": [str(path) for path in inverse_paths],
+        "not_dp_evaluation": True,
+      },
     },
   }
   (output_dir / "summary.json").write_text(
