@@ -19,6 +19,15 @@
 `EVALUATED` 表示 evaluator 和完整 episode 有效；`NOT_MET` 表示控制性能未达到预先冻结
 阈值，不等于实验执行失败。
 
+## MCC 版本边界
+
+- 唯一当前协议是 `E05_MCC_CURRENT_PROTOCOL.md`；
+- 唯一当前正式结果目录是 `generated/e05_mcc_current/`；
+- fixed-palm `E05-PHY-v3` 不再作为独立 MCC 版本、协议或实验结论保留；
+- `e05_physics/scene.py` 与 `extreme_surface.py` 仅作为当前 FR3+LEAP 评测共享环境保留；
+- `Module/` 外的历史目录不属于本模块清理范围，保持不变；
+- DP 当前只允许讨论协议，不实现、不采集、不训练、不评测。
+
 ## 先看可视化
 
 直接打开 [`generated/visual_demo/index.html`](generated/visual_demo/index.html)。其中包含：
@@ -49,7 +58,7 @@ Module/
 ├── module_2_fingertip_mcc/           # M02：单指/四指 analytical MCC
 ├── module_3_runtime_guards/          # M03：hand-only/full-robot guards
 ├── module_4_whole_hand_mcc/          # Wrist MCC、coordinator、E05 evaluator
-├── e05_physics/                      # 当前异质强起伏 surface/physics
+├── e05_physics/                      # 共享强起伏 surface/scene；无独立 evaluator
 ├── tests/                            # 单元与回归测试
 └── generated/
     ├── e05_mcc_current/              # summary/CSV/trace/exact MJCF

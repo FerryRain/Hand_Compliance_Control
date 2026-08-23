@@ -6,11 +6,11 @@
 
 | 项目 | 当前值 |
 | --- | --- |
-| 计划版本 | `v1.9` |
+| 计划版本 | `v2.0` |
 | 最近更新 | `2026-08-23` |
-| 授权状态 | `AUTHORIZED_MCC_ONLY_PUBLISH_DP_REWORK_LOCAL` |
+| 授权状态 | `AUTHORIZED_MCC_CLEANUP_DP_DISCUSSION_ONLY` |
 | 实施状态 | `CURRENT_MCC_EVALUATED_DP_REJECTED` |
-| 当前活动模块 | `DP_PROTOCOL_REDESIGN_AFTER_MCC_PUBLISH` |
+| 当前活动模块 | `DP_PROTOCOL_DISCUSSION_ONLY` |
 | 当前 Gate | `G1_NO_GO_DP_REWORK_REQUIRED` |
 | 固定环境 | `handcomp` |
 | Python | `/home/ferry/data/Anaconda/envs/handcomp/bin/python` |
@@ -28,10 +28,9 @@ gravity 以隔离接触控制，结果不能外推为 gravity-on 或硬件性能
 验收，因此整体标记为 `REWORK_REQUIRED / NOT_EVALUATED`。旧代码、数据、checkpoint、
 视频和数字不进入当前 main 提交，也不能被引用为正式 E05-DP 结果。
 
-已有 `E05-PHY-v3` 仅登记为 `E05-PRE-FMCC` 预验证证据：它验证 fixed-palm 下的真实
-指腹、拇指接触和 `15 s / 480 mm` 复杂曲面链路，但不包含 FR3、Wrist MCC 或 Finger DP，
-不占正式 E05 单元且不能解锁 Gate G1。其冻结协议、trace 和 `MET/NOT_MET` 性能记录
-保持不变。
+旧 fixed-palm `E05-PHY-v3` evaluator、协议、报告和生成结果已经退役。其通用复杂曲面与
+MuJoCo scene primitives 仍由当前 FR3+LEAP E05-F/H 使用，因此作为共享环境代码保留，
+不再形成独立 MCC 版本或独立实验结论。
 
 ## 核心推进原则
 
@@ -417,16 +416,12 @@ four-contact recovery、wrist compliance 和部分 zero-contact 阈值。完整�
 
 上一版 DP 结果因数据和评测协议未获验收已撤出当前实验矩阵，不制作 MCC/DP 排名表。
 
-### E05-PRE-FMCC：历史预验证
-
-`E05-PHY-v3` 只作为 fixed-palm 的历史工程证据；它不含 FR3/Wrist MCC/DP，也不覆盖本次
-正式结果。旧 trace 保留可追溯，但不是当前默认控制测试。
-
 ### Gate G1 当前判断
 
 MCC 已完成有效评测但性能为 `NOT_MET`；DP 必须重做且尚未形成有效指标。因此完整 G1
-仍是 No-Go，不自动进入 planner/executor 集成。新 DP 必须与 MCC 使用相同 wrist
-trajectories 和 guard authority，再进行正式 control-only benchmark。
+仍是 No-Go，不自动进入 planner/executor 集成。当前只讨论并冻结新 DP 协议，不实现、
+不采集、不训练、不推理。未来 DP 必须与 MCC 使用相同 wrist trajectories 和 guard
+authority，再进行正式 control-only benchmark。
 
 ## Module 6：Transactional Prefix Executor
 

@@ -1,24 +1,9 @@
-"""MuJoCo physical validation for the E05 MCC baseline arm only.
+"""Shared rough-surface geometry and MuJoCo scene primitives.
 
-The public runner objects are loaded lazily so ``visual_demo`` can select a
-headless OpenGL backend before importing MuJoCo.
+Current FR3+LEAP MCC evaluation reuses :mod:`extreme_surface` and :mod:`scene`
+from this package. This package does not define a standalone evaluator.
 """
 
-from __future__ import annotations
+from Module.e05_physics.extreme_surface import query_surface
 
-from typing import Any
-
-
-__all__ = ["PhysicsConfig", "PhysicsTrace", "run_scenario"]
-
-
-def __getattr__(name: str) -> Any:
-  if name in __all__:
-    from Module.e05_physics.runner import PhysicsConfig, PhysicsTrace, run_scenario
-
-    return {
-      "PhysicsConfig": PhysicsConfig,
-      "PhysicsTrace": PhysicsTrace,
-      "run_scenario": run_scenario,
-    }[name]
-  raise AttributeError(name)
+__all__ = ["query_surface"]
