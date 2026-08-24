@@ -199,20 +199,15 @@ def main() -> None:
     robot = env.scene["robot"]
     target_mocap_idx = int(env.scene["target"].data.indexing.mocap_id)
 
-    # Recorded world positions include the source parallel environment origin.
-    # Remove it and add the single replay environment origin.
-    if lowest_anchor is not None and fixed_palm_target is not None:
-        canonical_anchor = fixed_palm_target[0, :3].copy()
-        canonical_anchor[2] += lowest_clearance
-        source_origin = lowest_anchor[0] - canonical_anchor
-    else:
-        source_origin = object_pose[0, :3] - np.asarray(
-            object_config.initial_pos, dtype=np.float32
-        )
+    # Keep the recorded relative palm/object placement.  In planner_inverse
+    # trajectories the first object pose is deliberately reanchored after
+    # contact preparation and is therefore *not* object_config.initial_pos.
+    # Inferring a source origin from the YAML pose moves the object away from
+    # the recorded arm q and produces a visibly dislocated replay.
     replay_origin = env.scene.env_origins[0].detach().cpu().numpy()
-    object_pose[:, :3] += replay_origin - source_origin
-    tip_pose[:, :, :3] += replay_origin - source_origin
-    contact_pos += replay_origin - source_origin
+    object_pose[:, :3] += replay_origin
+    tip_pose[:, :, :3] += replay_origin
+    contact_pos += replay_origin
 
     class ReplayPolicy:
         def __init__(self) -> None:
