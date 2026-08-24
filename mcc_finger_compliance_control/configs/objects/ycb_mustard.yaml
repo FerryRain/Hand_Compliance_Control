@@ -1,0 +1,83 @@
+id: ycb_mustard
+display_name: YCB 006 mustard bottle
+family: smooth_convex
+rgba: [0.96, 0.72, 0.08, 1.0]
+
+body:
+  name: target_ball
+  mocap: true
+  total_mass_kg: 0.45
+  initial_pos: [0.7007, 0.0003, 0.80]
+  # Lay the bottle along the palm plane instead of presenting its bottom cap
+  # to all four fingertips.
+  initial_rot: [0.70710678, 0.0, 0.70710678, 0.0]
+
+collection:
+  # The 2.8x hand-sized scale is baked into visual_scaled.obj before V-HACD.
+  # Runtime scaling must remain 1.0 to avoid scaling the object twice.
+  size_scale_range: [1.0, 1.0]
+  # Hollow-fist posture (2026-08-19, user-directed): every joint at roughly
+  # half its travel range.  The side-swing signs must be calibrated from FK
+  # before adding per-finger offsets; zero remains the neutral baseline.
+  # Order per finger: [flexion, side, middle, distal].
+  # Small opposing side-swing on index/ring gives the fixed-grasp teacher a
+  # shallow wrap without forcing a curved envelope.  Middle stays centered.
+  # Thumb exception: its long distal link needs more distal curl while the
+  # root stays open.  q12 is moved back to the open seed (0.85), and q15 is
+  # curled 0.06 rad farther inward; opposition q13 is unchanged.
+  pregrasp_q: [0.958, -0.18, 0.6895, 0.838,
+               0.958, 0.00, 0.6895, 0.838,
+               0.958, 0.18, 0.6895, 0.838,
+               0.85, 1.30, 0.70, 0.44]
+  # Move the complete hand-object interaction lower in the world while
+  # preserving the calibrated relative palm/object placement.
+  # palm_target_offset_world: [0.0, 0.0, -0.0100]
+
+geoms:
+  - type: mesh
+    # Pipeline order: original PLY -> center/scale 2.8x -> OBJ -> V-HACD-256
+    # -> one MuJoCo convex mesh geom per collision_part_*.obj.
+    file: assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/visual_scaled.obj
+    collision_dir: assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage
+    # The preprocessing step already centered the mesh at the origin.
+    pos: [0.0, 0.0, 0.0]
+    size: [1.0, 1.0, 1.0]
+
+motion:
+  translation:
+    # Never freeze the commanded object motion on contact loss.  Quality
+    # metrics must expose recovery failures instead of rewarding a stopped
+    # trajectory.
+    contact_gated: false
+    allowed_axes: [principal_x, principal_y, principal_z]
+    speed_range_m_s: [0.002, 0.005]
+    distance_mode: object_extent_ratio
+    distance_ratio_range: [0.04, 0.10]
+    absolute_max_m: 0.020
+  rotation:
+    contact_gated: false
+    allowed_axes: [principal_x, principal_y, principal_z]
+    # 0.02--0.05 rad/s produced only a few tens of degrees in a normal
+    # collection window, so its contact score mostly measured a static hold.
+    # This range yields meaningful long rotations while the differential QP
+    # supplies surface-velocity feed-forward to the fingers.
+    angular_speed_range_rad_s: [0.06, 0.12]
+    angle_range_deg: [60.0, 140.0]
+  orbit:
+    # Palm-orbit excitation (motion-mode orbit_palm).  Half-amplitude per
+    # side is angle_range_deg / 2 = 30-50 deg; the palm sweeps the ~0.14 m
+    # orbit radius at ~6-10 mm/s.  With the orbit-mode defaults
+    # (trajectory 4000 steps, motion window 3000 steps) a full up-down
+    # triangle leg fits inside the recording window.
+    #
+    # Amplitude is capped by the bottle's elliptical cross-section (121 x
+    # 83 mm): past ~40 deg the index pad slides off the receding surface
+    # (measured: 42 deg / 0.078 rad/s kept all four pads loaded only 84%
+    # of the time).  30-50 deg keeps the envelope contact-safe; push with
+    # --orbit-amplitude-deg if the gate may filter loss frames.  Index
+    # side-axis adduction 0.50 -> 0.70 was tested to extend the negative
+    # side of the envelope: only 89.4% -> 89.9% all-four-loaded at 38 deg,
+    # so 0.50 is retained (the unload is a reach/gap limit of the orbit
+    # radius vs the bottle cross-section, not a pad-angle effect).
+    angular_speed_range_rad_s: [0.04, 0.07]
+    angle_range_deg: [60.0, 100.0]

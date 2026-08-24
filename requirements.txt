@@ -1,0 +1,16 @@
+# =============================================================================
+# DP (Diffusion Policy) Finger Compliance Control — extra dependencies
+# =============================================================================
+# Usage:
+#   pip install -e .                   # mjlab + torch/mujoco/warp-lang/...
+#   pip install -r requirements.txt    # DP training + deployment extras
+#
+# Note: LeRobot pulls in diffusers, accelerate, einops, safetensors,
+# huggingface_hub, datasets, etc. as transitive dependencies.
+# =============================================================================
+
+# Diffusion Policy framework (LeRobot)
+lerobot>=0.4.4
+
+# HDF5 I/O (training data storage, not in mjlab deps)
+h5py>=3.16.0

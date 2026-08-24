@@ -1,4 +1,7 @@
 collection:
+  # Isotropic geometric scale sampled once per collection run.  Keep mass
+  # fixed so this first robustness sweep isolates contact geometry.
+  size_scale_range: [0.80, 1.20]
   quality:
     min_three_finger_ratio: 0.85
     min_four_finger_ratio: 0.45

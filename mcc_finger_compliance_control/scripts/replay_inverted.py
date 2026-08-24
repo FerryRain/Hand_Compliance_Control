@@ -24,6 +24,7 @@ from mjlab.sensor import ContactMatch, ContactSensor, ContactSensorCfg
 from mjlab.sim import MujocoCfg, SimulationCfg
 from mjlab.viewer import NativeMujocoViewer, ViewerConfig, ViserPlayViewer
 from mjlab.utils.lab_api.math import quat_apply_inverse
+from object_catalog import add_object_body, load_object_config
 
 
 HAND_XML = Path("src/mjlab/asset_zoo/robots/xarm6_leap_hand/leap_hand_tactile.xml")
@@ -135,8 +136,20 @@ def _hand_spec() -> mujoco.MjSpec:
     return spec
 
 
-def _target_spec() -> mujoco.MjSpec:
+def _target_spec(object_config=None, object_scale: float = 1.0) -> mujoco.MjSpec:
     spec = mujoco.MjSpec()
+    if object_config is not None:
+        add_object_body(
+            spec,
+            object_config,
+            body_name=object_config.body_name,
+            pos=(0.0, 0.0, 0.0),
+            quat=(1.0, 0.0, 0.0, 0.0),
+            mocap=True,
+            scale=object_scale,
+        )
+        _apply_contact_material(spec)
+        return spec
     body = spec.worldbody.add_body(name="target_ball", mocap=True)
     body.add_geom(
         name="target_capsule_medium_geom",
@@ -149,14 +162,14 @@ def _target_spec() -> mujoco.MjSpec:
     return spec
 
 
-def _sensor_cfgs() -> tuple[ContactSensorCfg, ...]:
+def _sensor_cfgs(target_body_name: str = "target_ball") -> tuple[ContactSensorCfg, ...]:
     sensors: list[ContactSensorCfg] = []
     for site_name, geom_name in zip(MCC_TIP_NAMES, MCC_TIP_GEOM_NAMES):
         primary = ContactMatch(
             mode="geom", pattern=f"^{geom_name}$", entity="robot"
         )
         secondary = ContactMatch(
-            mode="body", pattern="^target_ball$", entity="target"
+            mode="body", pattern=f"^{target_body_name}$", entity="target"
         )
         sensors.append(
             ContactSensorCfg(
@@ -188,6 +201,8 @@ def replay_env_cfg(
     thumb_stiffness: float | None = None,
     thumb_damping: float | None = None,
     thumb_effort_limit: float | None = None,
+    object_config=None,
+    object_scale: float = 1.0,
 ) -> ManagerBasedRlEnvCfg:
     thumb_stiffness = (
         hand_stiffness if thumb_stiffness is None else thumb_stiffness
@@ -226,7 +241,11 @@ def replay_env_cfg(
         ),
         init_state=EntityCfg.InitialStateCfg(pos=(0.0, 0.0, 0.0), joint_pos={"13": 1.57}),
     )
-    target = EntityCfg(spec_fn=_target_spec, init_state=EntityCfg.InitialStateCfg(pos=(0, 0, 0)))
+    target_name = object_config.body_name if object_config is not None else "target_ball"
+    target = EntityCfg(
+        spec_fn=lambda: _target_spec(object_config, object_scale),
+        init_state=EntityCfg.InitialStateCfg(pos=(0, 0, 0)),
+    )
     observations = {
         "policy": ObservationGroupCfg(
             {
@@ -250,7 +269,7 @@ def replay_env_cfg(
         scene=SceneCfg(
             terrain=None,
             entities={"robot": robot, "target": target},
-            sensors=_sensor_cfgs(),
+        sensors=_sensor_cfgs(target_name),
             num_envs=1,
             env_spacing=2.0,
         ),
@@ -316,6 +335,9 @@ def replay(
         q_hand = episode("q_hand")
         tip_teacher = episode("fingertip_pose_object")
         control_dt = float(file.attrs.get("control_dt", 0.01))
+        object_id = str(file.attrs.get("object_id", ""))
+        object_scale = float(file.attrs.get("object_scale", 1.0))
+    object_config = load_object_config(object_id) if object_id else None
     qvel_hand = np.zeros_like(q_hand)
     qvel_hand[1:] = (q_hand[1:] - q_hand[:-1]) / control_dt
     if len(qvel_hand) > 1:
@@ -323,7 +345,13 @@ def replay(
     frames = len(palm) if max_steps <= 0 else min(len(palm), max_steps)
 
     run_device = device or ("cuda:0" if torch.cuda.is_available() else "cpu")
-    env = ManagerBasedRlEnv(cfg=replay_env_cfg(), device=run_device)
+    env = ManagerBasedRlEnv(
+        cfg=replay_env_cfg(
+            object_config=object_config,
+            object_scale=object_scale,
+        ),
+        device=run_device,
+    )
     wrapped = RslRlVecEnvWrapper(env)
     robot = env.scene["robot"]
     tip_indices = [_find_site_index(env, name) for name in MCC_TIP_NAMES]

@@ -18,6 +18,8 @@ from typing import Any
 
 import mujoco
 import numpy as np
+from scipy.spatial import cKDTree
+from scipy.spatial.transform import Rotation
 import trimesh
 import yaml
 
@@ -40,8 +42,27 @@ _SIZE_LENGTHS = {
     "ellipsoid": 3,
     "box": 3,
     "rounded_box": 3,
+    # A mesh geom's size is an isotropic per-axis scale factor of the source
+    # OBJ, not a physical half-extent.
+    "mesh": 3,
 }
-_SUPPORTED_GEOM_TYPES = {*_GEOM_TYPES, "rounded_box"}
+_SUPPORTED_GEOM_TYPES = {*_GEOM_TYPES, "rounded_box", "mesh"}
+# Files outside the repository root (e.g. /tmp YCB exports) can be addressed
+# with an absolute path in the YAML; everything else is resolved relative to
+# the repository root so configs stay machine independent.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+CONFIG_ROOT = Path(__file__).resolve().parents[1] / "configs"
+OBJECT_CONFIG_DIR = CONFIG_ROOT / "objects"
+FAMILY_CONFIG_DIR = CONFIG_ROOT / "families"
+
+
+def _resolve_asset_path(path_value: str) -> Path:
+    candidate = Path(path_value)
+    if candidate.is_absolute():
+        resolved = candidate
+    else:
+        resolved = _REPO_ROOT / candidate
+    return resolved.resolve()
 
 
 @dataclass(frozen=True)
@@ -54,6 +75,10 @@ class ObjectGeomConfig:
     mass_fraction: float
     rounding_radius: float = 0.0
     mesh_subdivisions: int = 0
+    # mesh-only: source visual OBJ and convex collision-part directory.  The
+    # mesh is translated so ``pos`` lands on the origin and scaled by ``size``.
+    file: str = ""
+    collision_dir: str = ""
 
 
 @dataclass(frozen=True)
@@ -64,6 +89,8 @@ class ObjectConfig:
     body_name: str
     mocap: bool
     total_mass_kg: float
+    initial_pos: tuple[float, float, float]
+    initial_rot: tuple[float, float, float, float]
     contact: dict[str, Any]
     collection: dict[str, Any]
     motion: dict[str, Any]
@@ -140,6 +167,22 @@ def load_object_config(object_id: str) -> ObjectConfig:
     total_mass = float(body.get("total_mass_kg", 1.0))
     if not np.isfinite(total_mass) or total_mass <= 0.0:
         raise ValueError(f"Object {object_id!r} must have positive total mass")
+    initial_pos = _float_tuple(
+        body.get("initial_pos", (0.7007, 0.0003, 0.8377)),
+        3,
+        "body.initial_pos",
+    )
+    initial_rot_array = np.asarray(
+        _float_tuple(
+            body.get("initial_rot", (1.0, 0.0, 0.0, 0.0)),
+            4,
+            "body.initial_rot",
+        )
+    )
+    initial_rot_norm = float(np.linalg.norm(initial_rot_array))
+    if initial_rot_norm < 1.0e-9:
+        raise ValueError(f"Object {object_id!r} body.initial_rot cannot be zero")
+    initial_rot = tuple(float(item) for item in initial_rot_array / initial_rot_norm)
     default_rgba = _float_tuple(
         resolved.get("rgba", (0.5, 0.5, 0.5, 1.0)), 4, "rgba"
     )
@@ -205,10 +248,35 @@ def load_object_config(object_id: str) -> ObjectConfig:
                 raise ValueError(
                     f"geoms[{index}].mesh_subdivisions must be in [1, 4]"
                 )
-        elif rounding_radius != 0.0 or mesh_subdivisions != 0:
-            raise ValueError(
-                f"geoms[{index}] rounding options require type=rounded_box"
-            )
+        elif geom_type == "mesh":
+            if rounding_radius != 0.0 or mesh_subdivisions != 0:
+                raise ValueError(
+                    f"geoms[{index}] rounding options require type=rounded_box"
+                )
+            file_value = str(raw.get("file", ""))
+            collision_value = str(raw.get("collision_dir", ""))
+            if not file_value:
+                raise ValueError(f"geoms[{index}] type=mesh requires 'file'")
+            file_path = _resolve_asset_path(file_value)
+            if not file_path.is_file():
+                raise FileNotFoundError(
+                    f"geoms[{index}] visual mesh not found: {file_path}"
+                )
+            if collision_value:
+                collision_path = _resolve_asset_path(collision_value)
+                if not collision_path.is_dir():
+                    raise NotADirectoryError(
+                        f"geoms[{index}] collision_dir not found: {collision_path}"
+                    )
+            else:
+                collision_path = None
+        else:
+            if rounding_radius != 0.0 or mesh_subdivisions != 0:
+                raise ValueError(
+                    f"geoms[{index}] rounding options require type=rounded_box"
+                )
+            file_path = None
+            collision_path = None
         geoms.append(
             ObjectGeomConfig(
                 geom_type=geom_type,
@@ -227,6 +295,10 @@ def load_object_config(object_id: str) -> ObjectConfig:
                 mass_fraction=float(mass_fraction),
                 rounding_radius=rounding_radius,
                 mesh_subdivisions=mesh_subdivisions,
+                file=str(file_path) if file_path is not None else "",
+                collision_dir=(
+                    str(collision_path) if collision_path is not None else ""
+                ),
             )
         )
 
@@ -248,12 +320,220 @@ def load_object_config(object_id: str) -> ObjectConfig:
         body_name=str(body.get("name", "target_ball")),
         mocap=bool(body.get("mocap", True)),
         total_mass_kg=total_mass,
+        initial_pos=initial_pos,
+        initial_rot=initial_rot,
         contact=deepcopy(contact),
         collection=deepcopy(collection),
         motion=deepcopy(motion),
         geoms=tuple(geoms),
         resolved=deepcopy(resolved),
     )
+
+
+class MeshNormalOracle:
+    """Smooth contact normals from the high-resolution source OBJ vertices.
+
+    MuJoCo contacts collide against the convex-decomposed collision parts,
+    whose seams introduce artificial normal discontinuities (measured up to
+    ~90 deg across seams).  This oracle ignores the collision mesh for
+    normals: it re-samples the contact point on the visual mesh point cloud
+    and fits a local least-squares plane (PCA) inside a fixed radius, which
+    both removes seam jumps and low-pass filters the discrete face normals.
+    """
+
+    def __init__(
+        self,
+        geom_configs: list[ObjectGeomConfig],
+        scale: float = 1.0,
+        radius_m: float = 0.01,
+        min_neighbours: int = 16,
+    ) -> None:
+        meshes = [
+            _load_scaled_mesh(Path(geom.file), geom, scale)
+            for geom in geom_configs
+            if geom.geom_type == "mesh"
+        ]
+        if not meshes:
+            raise ValueError("MeshNormalOracle requires at least one mesh geom")
+        self.vertices = np.vstack([mesh.vertices for mesh in meshes])
+        self.tree = cKDTree(self.vertices)
+        # Outward sign reference: the source mesh's own (consistently wound)
+        # face normals.  A center-based rule fails on horizontal bands whose
+        # outward normal is perpendicular to the point-center ray (cap lip,
+        # neck taper), which made the PCA sign flip ~180 deg between probes.
+        self.face_centroids = np.vstack(
+            [np.asarray(mesh.triangles_center) for mesh in meshes]
+        )
+        self.face_normals = np.vstack(
+            [np.asarray(mesh.face_normals) for mesh in meshes]
+        )
+        self.face_tree = cKDTree(self.face_centroids)
+        self.radius_m = float(radius_m)
+        # Coarse patches of the source mesh (e.g. the label back of the
+        # mustard bottle) can leave fewer than a handful of vertices inside
+        # the ball; a 3-point fit is degenerate and its normal arbitrary.
+        self.min_neighbours = int(min_neighbours)
+        # Reference direction for outward signs: vertices already live in a
+        # frame where the object sits roughly at the origin.
+        self.center = self.vertices.mean(axis=0)
+
+    @classmethod
+    def from_config(
+        cls,
+        config: ObjectConfig,
+        scale: float = 1.0,
+        radius_m: float = 0.01,
+    ) -> "MeshNormalOracle | None":
+        mesh_geoms = [geom for geom in config.geoms if geom.geom_type == "mesh"]
+        if not mesh_geoms:
+            return None
+        return cls(mesh_geoms, scale=scale, radius_m=radius_m)
+
+    def query_object_frame(self, points: np.ndarray) -> np.ndarray:
+        """Estimate outward normals for points given in the object frame."""
+
+        points = np.asarray(points, dtype=np.float64)
+        single = points.ndim == 1
+        batch = points[None, :] if single else points
+        normals = np.zeros_like(batch)
+        for index, point in enumerate(batch):
+            neighbours = self.tree.query_ball_point(point, self.radius_m)
+            if len(neighbours) < self.min_neighbours:
+                # Sparse source-mesh patch: grow the query to a fixed k
+                # neighbours so the plane fit stays well-posed.
+                _, nearest = self.tree.query(point, k=self.min_neighbours)
+                neighbours = nearest.tolist()
+            local = self.vertices[neighbours]
+            if len(neighbours) >= 3:
+                # Distance-weighted least-squares plane fit: near vertices
+                # dominate so ridges and adjacent walls cannot tilt the fit,
+                # and the fitted normal stays a genuine local surface normal.
+                deltas = local - point
+                dist2 = np.einsum("ij,ij->i", deltas, deltas)
+                # k-neighbour fallback grows the neighbourhood beyond the
+                # radius; widen sigma with it so weights never underflow.
+                sigma = max(self.radius_m, 0.5 * np.sqrt(dist2.max()))
+                weights = np.exp(-0.5 * dist2 / sigma**2)
+                if not np.isfinite(weights).all() or weights.sum() <= 0.0:
+                    weights = np.ones_like(dist2)
+                weights /= weights.sum()
+                weighted_mean = weights @ local
+                centered = local - weighted_mean
+                covariance = (centered * weights[:, None]).T @ centered
+                _, eigenvectors = np.linalg.eigh(covariance)
+                normal = eigenvectors[:, 0]
+            else:
+                normal = local[0] - point
+            if np.linalg.norm(normal) < 1.0e-12:
+                normal = np.array([0.0, 0.0, 1.0])
+            normal = normal / np.linalg.norm(normal)
+            # Outward sign: majority vote of the nearest source-mesh face
+            # normals (the source OBJ is consistently wound, unlike the
+            # collision parts).  A point-center rule breaks on horizontal
+            # bands whose outward normal is perpendicular to the radial ray.
+            _, nearest_faces = self.face_tree.query(point, k=5)
+            dots = self.face_normals[nearest_faces] @ normal
+            if np.max(np.abs(dots)) < 0.35:
+                # PCA fit degenerate here (normal nearly tangential to every
+                # local face -- sparse neck patches, double-walled regions):
+                # fall back to the nearest face normal, which is already
+                # outward by the mesh winding.
+                normal = self.face_normals[nearest_faces[0]].copy()
+            else:
+                if np.sum(dots > 0.0) < 2.5:
+                    normal = -normal
+            normals[index] = normal
+        return normals[0] if single else normals
+
+    def query_world(
+        self,
+        points_world: np.ndarray,
+        object_pos_world: np.ndarray,
+        object_quat_world: np.ndarray,
+    ) -> np.ndarray:
+        """Estimate outward world-frame normals for world-frame points.
+
+        ``object_quat_world`` is wxyz.  The object frame used here matches
+        ``_load_scaled_mesh``: config ``pos`` on the origin, scaled by
+        ``size * scale``.
+        """
+
+        quats = np.asarray(object_quat_world, dtype=np.float64).reshape(-1, 4)
+        # scipy uses xyzw; our wxyz goes in as [x, y, z, w].
+        rotmats = (
+            Rotation.from_quat(quats[:, [1, 2, 3, 0]]).as_matrix()
+            if quats.shape[0]
+            else np.empty((0, 3, 3))
+        )
+        points_object = np.einsum(
+            "ij,ikj->ik",
+            np.asarray(points_world) - np.asarray(object_pos_world),
+            rotmats,
+        )
+        normals_object = self.query_object_frame(points_object)
+        return np.einsum("ij,ijk->ik", normals_object, rotmats)
+
+
+def _load_scaled_mesh(
+    path: Path,
+    config: ObjectGeomConfig,
+    scale: float,
+) -> trimesh.Trimesh:
+    """Load an OBJ, move ``config.pos`` to the origin and apply size*scale."""
+
+    loaded = trimesh.load(path, force="mesh", process=False)
+    if isinstance(loaded, trimesh.Scene):
+        if not loaded.geometry:
+            raise ValueError(f"empty trimesh scene: {path}")
+        loaded = loaded.to_geometry()
+    if not isinstance(loaded, trimesh.Trimesh):
+        raise TypeError(f"expected Trimesh, got {type(loaded).__name__}: {path}")
+    if not len(loaded.vertices) or not len(loaded.faces):
+        raise ValueError(f"mesh has no triangle surface: {path}")
+    mesh = loaded.copy()
+    total_scale = np.asarray(config.size, dtype=np.float64) * scale
+    mesh.vertices = (mesh.vertices - np.asarray(config.pos)) * total_scale
+    return mesh
+
+
+def _add_mesh_geom(
+    spec: mujoco.MjSpec,
+    body: mujoco.MjsBody,
+    geom_name: str,
+    mesh: trimesh.Trimesh,
+    rgba: tuple[float, float, float, float],
+    mass: float,
+    *,
+    contact: dict[str, Any],
+    solref: tuple[float, float],
+    solimp: tuple[float, float, float, float, float],
+    friction: tuple[float, float, float],
+    contype: int = 1,
+    conaffinity: int = 1,
+) -> None:
+    mesh_name = f"{geom_name}_mesh"
+    spec.add_mesh(
+        name=mesh_name,
+        uservert=np.asarray(mesh.vertices, dtype=np.float64).ravel(),
+        userface=np.asarray(mesh.faces, dtype=np.int32).ravel(),
+        smoothnormal=1,
+    )
+    geom = body.add_geom(
+        name=geom_name,
+        type=mujoco.mjtGeom.mjGEOM_MESH,
+        meshname=mesh_name,
+        rgba=rgba,
+        mass=mass,
+        contype=contype,
+        conaffinity=conaffinity,
+    )
+    geom.solref[:] = solref
+    geom.solimp[:] = solimp
+    geom.friction[:] = friction
+    geom.margin = float(contact.get("margin_m", 0.0))
+    geom.gap = float(contact.get("gap_m", 0.0))
+    geom.priority = int(contact.get("priority", 10))
+    geom.condim = int(contact.get("condim", 3))
 
 
 def add_object_body(
@@ -264,8 +544,13 @@ def add_object_body(
     pos: tuple[float, float, float] = (0.0, 0.0, 0.0),
     quat: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0),
     mocap: bool | None = None,
+    scale: float = 1.0,
 ) -> mujoco.MjsBody:
-    """Add one configured object to an existing ``MjSpec``."""
+    """Add one configured object to an existing ``MjSpec``.
+
+    ``scale`` multiplies mesh geometry only (``collection.size_scale_range``);
+    primitive sizes are physical and stay untouched.
+    """
 
     name = body_name or config.body_name
     body = spec.worldbody.add_body(
@@ -304,30 +589,62 @@ def add_object_body(
             # primitive seams at the rounded edges.
             rounded = trimesh.convex.convex_hull(support_points)
             rounded.fix_normals()
-            mesh_name = f"{geom_name}_mesh"
-            spec.add_mesh(
-                name=mesh_name,
-                uservert=np.asarray(rounded.vertices, dtype=np.float64).ravel(),
-                userface=np.asarray(rounded.faces, dtype=np.int32).ravel(),
-                smoothnormal=1,
+            _add_mesh_geom(
+                spec, body, geom_name, rounded, geom_config.rgba,
+                config.total_mass_kg * geom_config.mass_fraction,
+                contact=contact, solref=solref, solimp=solimp, friction=friction,
             )
-            geom_kwargs.update(
-                type=mujoco.mjtGeom.mjGEOM_MESH,
-                meshname=mesh_name,
+        elif geom_config.geom_type == "mesh":
+            visual = _load_scaled_mesh(
+                Path(geom_config.file), geom_config, scale
             )
+            # Visual-only copy: never collides, carries no mass.
+            _add_mesh_geom(
+                spec, body, f"{geom_name}_visual", visual, geom_config.rgba,
+                0.0,
+                contact=contact, solref=solref, solimp=solimp, friction=friction,
+                contype=0, conaffinity=0,
+            )
+            part_paths = (
+                sorted(
+                    Path(geom_config.collision_dir).glob(
+                        "collision_part_*.obj"
+                    )
+                )
+                if geom_config.collision_dir
+                else []
+            )
+            if not part_paths:
+                raise ValueError(
+                    f"mesh geom {geom_name!r} has no collision parts in "
+                    f"{geom_config.collision_dir or '(none)'}"
+                )
+            mass_per_part = (
+                config.total_mass_kg * geom_config.mass_fraction
+                / len(part_paths)
+            )
+            for part_index, part_path in enumerate(part_paths):
+                part = _load_scaled_mesh(part_path, geom_config, scale)
+                _add_mesh_geom(
+                    spec, body,
+                    f"{geom_name}_collision_{part_index}", part,
+                    geom_config.rgba, mass_per_part,
+                    contact=contact, solref=solref, solimp=solimp,
+                    friction=friction,
+                )
         else:
             geom_kwargs.update(
                 type=_GEOM_TYPES[geom_config.geom_type],
                 size=geom_config.size,
             )
-        geom = body.add_geom(**geom_kwargs)
-        geom.solref[:] = solref
-        geom.solimp[:] = solimp
-        geom.friction[:] = friction
-        geom.margin = float(contact.get("margin_m", 0.0))
-        geom.gap = float(contact.get("gap_m", 0.0))
-        geom.priority = int(contact.get("priority", 10))
-        geom.condim = int(contact.get("condim", 3))
+            geom = body.add_geom(**geom_kwargs)
+            geom.solref[:] = solref
+            geom.solimp[:] = solimp
+            geom.friction[:] = friction
+            geom.margin = float(contact.get("margin_m", 0.0))
+            geom.gap = float(contact.get("gap_m", 0.0))
+            geom.priority = int(contact.get("priority", 10))
+            geom.condim = int(contact.get("condim", 3))
     return body
 
 
@@ -345,8 +662,15 @@ def build_object_spec(
     return spec
 
 
-def object_local_aabb(config: ObjectConfig) -> tuple[np.ndarray, np.ndarray]:
-    """Return a conservative local-frame AABB for gallery and motion limits."""
+def object_local_aabb(
+    config: ObjectConfig,
+    scale: float = 1.0,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return a conservative local-frame AABB for gallery and motion limits.
+
+    ``scale`` must match the scale passed to :func:`add_object_body`; mesh
+    extents are measured from the scaled source OBJ.
+    """
 
     lower = np.full(3, np.inf)
     upper = np.full(3, -np.inf)
@@ -361,6 +685,18 @@ def object_local_aabb(config: ObjectConfig) -> tuple[np.ndarray, np.ndarray]:
             extent = np.asarray((geom.size[0], geom.size[0], geom.size[1]))
         elif geom.geom_type in ("ellipsoid", "box", "rounded_box"):
             extent = np.asarray(geom.size)
+        elif geom.geom_type == "mesh":
+            mesh = _load_scaled_mesh(Path(geom.file), geom, scale)
+            if not np.all(np.isfinite(mesh.vertices)):
+                raise ValueError(f"mesh {geom.file!r} contains non-finite vertices")
+            extent = 0.5 * (mesh.bounds[1] - mesh.bounds[0])
+            rotation = np.empty(9, dtype=np.float64)
+            mujoco.mju_quat2Mat(rotation, np.asarray(geom.quat))
+            rotated_extent = np.abs(rotation.reshape(3, 3)) @ extent
+            center = 0.5 * (mesh.bounds[1] + mesh.bounds[0])
+            lower = np.minimum(lower, center - rotated_extent)
+            upper = np.maximum(upper, center + rotated_extent)
+            continue
         else:
             raise AssertionError(f"Unhandled geom type {geom.geom_type!r}")
         rotation = np.empty(9, dtype=np.float64)
@@ -375,13 +711,13 @@ def object_local_aabb(config: ObjectConfig) -> tuple[np.ndarray, np.ndarray]:
 def get_motion_config(config: ObjectConfig) -> dict[str, Any]:
     """Merge family-level ``motion_defaults`` with object-level ``motion``.
 
-    Returns a dict with keys ``translation`` and ``rotation``, each containing
-    the fully-resolved parameters for that motion axis.
+    Returns a dict with keys ``translation``, ``rotation`` and ``orbit``,
+    each containing the fully-resolved parameters for that motion axis.
     """
     defaults = config.resolved.get("motion_defaults", {})
     specific = config.resolved.get("motion", {})
     result: dict[str, Any] = {}
-    for axis in ("translation", "rotation"):
+    for axis in ("translation", "rotation", "orbit"):
         base = defaults.get(axis, {})
         override = specific.get(axis, {})
         if not isinstance(base, dict) or not isinstance(override, dict):

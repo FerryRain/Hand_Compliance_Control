@@ -38,6 +38,22 @@ mesh translucently and overlays the collision hulls.  Open it with MuJoCo's
 viewer before accepting an asset.  In addition to visual inspection, require
 the expected cavities/holes to remain contact-free under geometric probes.
 
+For a fixed enlarged YCB asset, bake centering and scale before decomposition
+so V-HACD resolution and reported millimetre errors refer to the final MuJoCo
+dimensions. The tool serializes and reloads ``visual_scaled.obj`` before
+running V-HACD:
+
+```bash
+python mcc_finger_compliance_control/scripts/decompose_collision_mesh.py \
+  INPUT.ply --output-dir OUTPUT \
+  --backend vhacd --max-hulls 256 --max-vertices 64 \
+  --pre-center CX CY CZ --pre-scale 2.8
+```
+
+Configure the resulting ``visual_scaled.obj`` with geom-local ``pos: [0,0,0]``
+and runtime ``size_scale_range: [1,1]``. Applying the old centre or scale again
+would move or enlarge both the visual and collision meshes twice.
+
 V-HACD is available through the existing ``trimesh[easy]`` dependency and is
 the reliable default for non-watertight scans.  For optional CoACD trials:
 
