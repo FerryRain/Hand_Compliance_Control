@@ -1,0 +1,54 @@
+{
+  "status": "CONTROLLER_SELECTION_EVIDENCE_ONLY",
+  "dp_started": false,
+  "selected": {
+    "hand_kp": 22.0,
+    "hand_damping_ratio": 1.5,
+    "contact_solref": [0.028, 1.0],
+    "hfield_spacing_mm": 2.0
+  },
+  "trials": [
+    {
+      "name": "hard_contact_precheck",
+      "hand_kp": 22.0,
+      "contact_solref_timeconst_s": 0.020,
+      "contact_continuity_probability": 0.994,
+      "max_tip_force_n": 64.75235636942013
+    },
+    {
+      "name": "very_soft_low_rate",
+      "hand_kp": 14.0,
+      "contact_solref_timeconst_s": 0.035,
+      "contact_continuity_probability": 0.8925714285714286,
+      "max_tip_force_n": 3.4441645377708636
+    },
+    {
+      "name": "middle_stiffness",
+      "hand_kp": 18.0,
+      "contact_solref_timeconst_s": 0.028,
+      "contact_continuity_probability": 0.989,
+      "max_tip_force_n": 11.689355280713265
+    },
+    {
+      "name": "selected",
+      "hand_kp": 22.0,
+      "contact_solref_timeconst_s": 0.028,
+      "contact_continuity_probability": 0.995,
+      "max_tip_force_n": 9.819642694056505
+    },
+    {
+      "name": "over_soft_contact",
+      "hand_kp": 22.0,
+      "contact_solref_timeconst_s": 0.030,
+      "contact_continuity_probability": 0.9942857142857143,
+      "max_tip_force_n": 11.814445589337573
+    },
+    {
+      "name": "one_mm_hfield",
+      "hand_kp": 22.0,
+      "contact_solref_timeconst_s": 0.028,
+      "contact_continuity_probability": 0.9941428571428571,
+      "max_tip_force_n": 10.249387471125855
+    }
+  ]
+}

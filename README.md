@@ -1,114 +1,113 @@
-# Hand Compliance Control
+# Hand-Only Compliance Control
 
-This repository separates the proposed research method from its explicit
-optimization baseline:
+当前仓库的 **当前任务入口** 是 hand-only MuJoCo 数据采集与演示，不是 arm / full-hand MCC 恢复路径。
 
-- [`PROPOSAL.md`](PROPOSAL.md) defines the main method: scalable inverse
-  demonstration generation, a wrist-conditioned finger Diffusion Policy, and
-  wrist-only ER-GPIS active exploration.
-- [`full_hand_mcc/`](full_hand_mcc/) implements **Baseline 2**, the explicit
-  FR3 + LEAP whole-hand optimizer and its low-level MCC controller.
-- [`minimalist_compliance_control/`](minimalist_compliance_control/) is retained
-  only as the upstream MCC reference from which the virtual
-  mass-damping-stiffness interpretation was derived.
+## 当前任务范围
 
-`full_hand_mcc/` is not the online architecture of the proposed main method.
-It receives an optimized wrist trajectory and four optimized Cartesian
-fingertip trajectories, then executes them with Wrist MCC and four independent
-fingertip-force MCC loops. The exact split between the main method and
-Baseline 2 is fixed in
-[`CONTROL_STRATEGIES.md`](CONTROL_STRATEGIES.md).
+本轮 OpenClaw 任务固定为：
 
-## Active repository structure
+- 只做 **hand-only** 仿真；
+- **不 clone、不重装**，直接复用现有仓库与已有 MuJoCoLab 安装；
+- 保持 **手掌朝上**；
+- 保持 **重力关闭**；
+- 在掌内放置一个 **相对较大的物体**；
+- 让物体在掌内 **随机转动**；
+- 手指 **compliance controller 始终激活**；
+- 记录轨迹，且至少包含 **`T_HO`**；
+- 生成 **trajectory inversion**；
+- 保存 **截图** 与 **demo 视频**；
+- 将最新运行状态写入 `logs/latest_status.json`。
 
-| Path | Purpose |
-| --- | --- |
-| `PROPOSAL.md` | Persistent research question, contribution, experiment plan, and development order |
-| `CONTROL_STRATEGIES.md` | Authoritative sensor semantics and low-level control laws for the main method and Baseline 2 |
-| `full_hand_mcc/` | Active FR3 + LEAP Baseline-2 implementation, tests, experiment entry point, and subproject process log |
-| `full_hand_mcc/BASELINE2_ACCEPTANCE.md` | Frozen Level 1–5 numerical, timing, generalization, and visual acceptance protocol |
-| `minimalist_compliance_control/` | Read-only upstream/reference MCC implementation; not an active demo entry point |
-| `PROCESS.md` | Repository-level decisions, current checkpoint, completed work, and unresolved work |
-
-Earlier superseded robot/controller experiments and rejected media are not
-active project entry points. Their historical reasoning is kept in the process
-logs and Git history, not in the current run instructions.
-
-## Baseline-2 controller in one view
+当前正式入口：
 
 ```text
-upper whole-hand optimizer
-  -> planned wrist pose trajectory
-     + measured/estimated wrist wrench
-     -> lower-bandwidth Wrist MCC -> FR3 command
-
-  -> four planned fingertip Cartesian trajectories
-     + four direct physical fingertip-force measurements
-     -> four normal-only Finger MCC loops -> fingertip IK -> LEAP commands
+src/mjlab/scripts/hand_only_compliance_demo.py
 ```
 
-Motor loads remain diagnostic and safety signals. They are not reconstructed
-into the four primary fingertip-force feedback channels. The palm-root point is
-a kinematic guide and need not contact the object. LEAP Hand contact outside
-the four pads may occur within its force and penetration limits but does not
-count toward fingertip contact retention. Any FR3/object contact is a hard
-failure.
+## 环境
 
-The direct-force runtime is now self-contained. Superseded task
-configurations, motor-force compatibility APIs, and the five historical
-controller variants have been removed; the active demo has no `--variant`
-switch. Read-only motor-load diagnostics remain available.
+已验证环境：
 
-## Windows environment
-
-Continue using the already validated project runtime until the current demo is
-complete:
-
-```powershell
-.\.venv\Scripts\python.exe
+```bash
+conda activate handcomp
 ```
 
-Migration to the `handcomp` Conda environment remains deferred. Do not change
-the active simulation environment midway through an acceptance sequence.
+或直接使用绝对 Python：
 
-From the repository root, check the active demo and run its regression suite:
-
-```powershell
-.\.venv\Scripts\python.exe -B `
-  full_hand_mcc\scripts\demo_surface_slide.py --help
-
-.\.venv\Scripts\python.exe -B -m unittest discover `
-  -s full_hand_mcc\tests -v
+```bash
+/home/ferry/data/Anaconda/envs/handcomp/bin/python
 ```
 
-The run commands and controller parameters are in
-[`full_hand_mcc/README.md`](full_hand_mcc/README.md). The project-level hard
-gates and object curriculum are frozen in
-[`full_hand_mcc/BASELINE2_ACCEPTANCE.md`](full_hand_mcc/BASELINE2_ACCEPTANCE.md).
+> 当前 OpenClaw 自动任务与 README 中的所有示例都默认使用这个 `handcomp` conda 环境。
 
-## Current validation boundary
+## 如何运行
 
-The cleaned direct-force working tree is `PASS-NUMERICAL-L1`: 17/17 unittests
-pass; demo, grasp-search, and grasp-optimization CLI checks exit 0; and the
-5 mm/750-step CUDA headless smoke exits 0. It records contact ratios
-`[0.9975,1.0,1.0,0.99]`, majority ratio `1.0`, average `3.9875/4`, minimum
-`3/4`, terminal `4/4=65` frames, filtered force peaks below 25 N, raw peaks
-below 40 N, and zero audited collision/penetration/incidental contact. No video
-was generated. Level 2–5 remain `NOT RUN`: this does not prove the 0.48 m
-bottom-to-top route, top-surface contact, timing variants, generalization, or a
-visually accepted delivery demo.
+```bash
+cd /home/ferry/data/Code2/Research/hand_comliance_control
+MUJOCO_GL=egl /home/ferry/data/Anaconda/envs/handcomp/bin/python \
+  src/mjlab/scripts/hand_only_compliance_demo.py \
+  --duration-s 4.0 \
+  --video-fps 20 \
+  --output-tag random_inhand
+```
 
-## Continuing the work
+默认行为：
 
-At the start of a new session, read these files in order:
+- 运行 4 秒 hand-only 仿真；
+- 输出 forward trajectory（`npz` / `h5` / `json`）；
+- 输出 inversion result（`npz` / `h5` / `json`）；
+- 输出 1 个 demo 视频；
+- 输出 `start / mid / end` 三张截图；
+- 刷新 `logs/latest_status.json`。
 
-1. [`PROPOSAL.md`](PROPOSAL.md)
-2. [`CONTROL_STRATEGIES.md`](CONTROL_STRATEGIES.md)
-3. [`full_hand_mcc/BASELINE2_ACCEPTANCE.md`](full_hand_mcc/BASELINE2_ACCEPTANCE.md)
-4. [`PROCESS.md`](PROCESS.md)
-5. [`full_hand_mcc/PROCESS.md`](full_hand_mcc/PROCESS.md)
-6. [`full_hand_mcc/README.md`](full_hand_mcc/README.md)
+## 最新正式 run
 
-The process documents intentionally retain failed experiments and superseded
-decisions as historical evidence. Their newest checkpoint, rather than an old
-command embedded in the history, defines what should happen next.
+```text
+20260823T140024_random_inhand_grasp_maintain
+```
+
+关键产物：
+
+- `artifacts/datasets/20260823T140024_random_inhand_grasp_maintain_trajectory_forward.h5`
+- `artifacts/datasets/20260823T140024_random_inhand_grasp_maintain_trajectory_inversion.h5`
+- `artifacts/videos/20260823T140024_random_inhand_grasp_maintain_demo.mp4`
+- `screenshots/20260823T140024_random_inhand_grasp_maintain_start.png`
+- `screenshots/20260823T140024_random_inhand_grasp_maintain_mid.png`
+- `screenshots/20260823T140024_random_inhand_grasp_maintain_end.png`
+- `logs/20260823T140024_random_inhand_grasp_maintain_summary.json`
+- `logs/latest_status.json`
+
+## 本次运行满足的约束
+
+从 `logs/latest_status.json` 可验证：
+
+- `gravity = [0.0, 0.0, 0.0]`
+- object half-size = `[0.038, 0.05, 0.028]` m
+- object mass = `0.140 kg`
+- trajectory 显式记录 `T_HO`
+- inversion 输出 `T_OH`
+- 反演误差保持在数值精度量级
+
+本次 14:00 run 的摘要指标：
+
+- `num_steps = 2000`
+- `num_video_frames = 81`
+- `mean_object_angvel_norm = 11.5106`
+- `max_object_angvel_norm = 27.6247`
+- `mean_translation_error_m = 7.67e-17`
+- `max_rotation_error_fro = 8.08e-15`
+
+## 输出位置约定
+
+- 前向轨迹：`artifacts/datasets/*_trajectory_forward.{npz,h5,json}`
+- 反演结果：`artifacts/datasets/*_trajectory_inversion.{npz,h5,json}`
+- 视频：`artifacts/videos/*_demo.mp4`
+- 截图：`screenshots/*_{start,mid,end}.png`
+- 运行摘要：`logs/*_summary.json`
+- 最新状态：`logs/latest_status.json`
+
+## 备注
+
+- 当前 scope 明确为 **hand-only**；
+- **不要** 把 arm / full-hand MCC 历史路径恢复成当前默认目标；
+- `Module/` 下其它 FR3 + Leap 工作可以保留，但不是这项自动任务的当前交付入口。

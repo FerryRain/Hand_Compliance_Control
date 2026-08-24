@@ -1,0 +1,1598 @@
+{
+  "cells": {
+    "E05-F-MCC": {
+      "episodes_completed": 3,
+      "execution_status": "EVALUATED",
+      "numeric_metrics": {
+        "actual_palm_path_length_m": {
+          "max": 0.20812841686051564,
+          "mean": 0.20723746080724978,
+          "min": 0.2066208968285714
+        },
+        "any_contact_recovery_s": {
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0
+        },
+        "average_contact_count": {
+          "max": 3.766142857142857,
+          "mean": 3.7519047619047616,
+          "min": 3.738142857142857
+        },
+        "contact_continuity_probability": {
+          "max": 1.0,
+          "mean": 1.0,
+          "min": 1.0
+        },
+        "contact_loss_events": {
+          "max": 957.0,
+          "mean": 882.0,
+          "min": 812.0
+        },
+        "controller_latency_mean_s": {
+          "max": 0.001647443759193023,
+          "mean": 0.0015351167875840071,
+          "min": 0.0014333410619952094
+        },
+        "controller_latency_p95_s": {
+          "max": 0.004161120600474532,
+          "mean": 0.002396817615226609,
+          "min": 0.0014806032970227534
+        },
+        "coordinator_condition_p95": {
+          "max": 168.00924719792903,
+          "mean": 111.81871683234873,
+          "min": 79.1548611530794
+        },
+        "coordinator_internal_leakage_p95_n": {
+          "max": 0.002124348644069801,
+          "mean": 0.0007105833992577345,
+          "min": 1.6477276450821498e-06
+        },
+        "coordinator_rank_min": {
+          "max": 2.0,
+          "mean": 1.6666666666666667,
+          "min": 1.0
+        },
+        "deadline_miss_probability": {
+          "max": 0.05466666666666667,
+          "mean": 0.02697777777777778,
+          "min": 0.0024
+        },
+        "duration_s": {
+          "max": 15.0,
+          "mean": 15.0,
+          "min": 15.0
+        },
+        "force_mae_n": {
+          "max": 0.8397588299742627,
+          "mean": 0.7824152985939768,
+          "min": 0.7044459166186816
+        },
+        "force_p95_n": {
+          "max": 3.2124012955756966,
+          "mean": 2.7354885990472098,
+          "min": 2.4562124271420926
+        },
+        "force_rmse_n": {
+          "max": 1.9943572919361707,
+          "mean": 1.7513757266323873,
+          "min": 1.4048822623657629
+        },
+        "force_settling_s": {
+          "max": 0.9879999999999995,
+          "mean": 0.9386666666666669,
+          "min": 0.8640000000000008
+        },
+        "force_violation_probability": {
+          "max": 0.02,
+          "mean": 0.016845238095238094,
+          "min": 0.011892857142857143
+        },
+        "force_violation_time_s": {
+          "max": 1.12,
+          "mean": 0.9433333333333334,
+          "min": 0.666
+        },
+        "four_contact_recovery_s": {
+          "max": 0.09600000000000009,
+          "mean": 0.08799999999999979,
+          "min": 0.07399999999999984
+        },
+        "loop_latency_p95_s": {
+          "max": 0.01185001555386406,
+          "mean": 0.010448760201931383,
+          "min": 0.008939292198556353
+        },
+        "max_abs_arm_external_torque_nm": {
+          "max": 11.355020864944324,
+          "mean": 10.79553758671796,
+          "min": 9.877283631763373
+        },
+        "max_tip_force_n": {
+          "max": 18.165471568091828,
+          "mean": 16.175469079342182,
+          "min": 13.484239604847884
+        },
+        "max_wrist_compliance_translation_m": {
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0
+        },
+        "measured_real_time_factor": {
+          "max": 0.3328168137458543,
+          "mean": 0.3175857676748755,
+          "min": 0.2952329015637798
+        },
+        "minimum_arm_joint_margin_rad": {
+          "max": 0.9775514936592236,
+          "mean": 0.9742005200527023,
+          "min": 0.9708217722875971
+        },
+        "minimum_contact_count": {
+          "max": 1.0,
+          "mean": 1.0,
+          "min": 1.0
+        },
+        "minimum_finger_joint_margin_rad": {
+          "max": 0.04591113052798934,
+          "mean": 0.045670079513993246,
+          "min": 0.04542388185958979
+        },
+        "non_tip_contact_count": {
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0
+        },
+        "palm_position_tracking_rmse_m": {
+          "max": 0.0066556876948611005,
+          "mean": 0.006470652301097407,
+          "min": 0.0063740388629444054
+        },
+        "physics_step_latency_p95_s": {
+          "max": 0.00028789629577659044,
+          "mean": 0.000271918148791883,
+          "min": 0.0002503235489712097
+        },
+        "planned_palm_path_length_m": {
+          "max": 0.21806200177575688,
+          "mean": 0.21806200177575685,
+          "min": 0.21806200177575685
+        },
+        "pose_step_peak_force_n": {
+          "max": 9.85832147127768,
+          "mean": 9.041928392166502,
+          "min": 7.450140722134426
+        },
+        "seed": {
+          "max": 19.0,
+          "mean": 12.333333333333334,
+          "min": 7.0
+        },
+        "traversal_y_m": {
+          "max": 0.17135890850353083,
+          "mean": 0.1708365292778866,
+          "min": 0.16989281200663245
+        },
+        "wrist_force_z_rmse_n": {
+          "max": 2.8372083003934074,
+          "mean": 2.6433256505137317,
+          "min": 2.472571194903364
+        },
+        "wrist_wrench_rmse_6d": {
+          "max": 3.222361353267455,
+          "mean": 3.006755631208256,
+          "min": 2.8751975814171096
+        },
+        "zero_contact_time_s": {
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0
+        }
+      },
+      "performance_verdict": "NOT_MET",
+      "unmet_metrics": [
+        "controller_latency_p95_s",
+        "deadline_miss_probability",
+        "force_rmse_n",
+        "force_settling_s",
+        "force_violation_probability",
+        "max_tip_force_n"
+      ]
+    },
+    "E05-H-MCC": {
+      "episodes_completed": 3,
+      "execution_status": "EVALUATED",
+      "numeric_metrics": {
+        "actual_palm_path_length_m": {
+          "max": 0.2192245035589665,
+          "mean": 0.21759097970506103,
+          "min": 0.2166531880664686
+        },
+        "any_contact_recovery_s": {
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0
+        },
+        "average_contact_count": {
+          "max": 3.537857142857143,
+          "mean": 3.4735238095238095,
+          "min": 3.359
+        },
+        "contact_continuity_probability": {
+          "max": 0.9994285714285714,
+          "mean": 0.9974761904761905,
+          "min": 0.995
+        },
+        "contact_loss_events": {
+          "max": 1101.0,
+          "mean": 940.0,
+          "min": 702.0
+        },
+        "controller_latency_mean_s": {
+          "max": 0.0016378800967873151,
+          "mean": 0.0016256907461278992,
+          "min": 0.0016140958625367298
+        },
+        "controller_latency_p95_s": {
+          "max": 0.00202406735224939,
+          "mean": 0.0020007926992548085,
+          "min": 0.0019795214466284926
+        },
+        "coordinator_condition_p95": {
+          "max": 121.9820252147534,
+          "mean": 95.27693044825848,
+          "min": 74.61531277294098
+        },
+        "coordinator_internal_leakage_p95_n": {
+          "max": 0.014014172796765957,
+          "mean": 0.005191504818754223,
+          "min": 1.6247876257229094e-06
+        },
+        "coordinator_rank_min": {
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0
+        },
+        "deadline_miss_probability": {
+          "max": 0.050666666666666665,
+          "mean": 0.050088888888888884,
+          "min": 0.0496
+        },
+        "duration_s": {
+          "max": 15.0,
+          "mean": 15.0,
+          "min": 15.0
+        },
+        "force_mae_n": {
+          "max": 1.3608205835456093,
+          "mean": 1.3512268077885485,
+          "min": 1.3403697358457474
+        },
+        "force_p95_n": {
+          "max": 6.9206571175821185,
+          "mean": 6.679781946288685,
+          "min": 6.313151691231182
+        },
+        "force_rmse_n": {
+          "max": 1.9524110322079564,
+          "mean": 1.856712817576237,
+          "min": 1.771923622375399
+        },
+        "force_settling_s": {
+          "max": 5.998000000000001,
+          "mean": 5.998000000000001,
+          "min": 5.998000000000001
+        },
+        "force_violation_probability": {
+          "max": 0.02639285714285714,
+          "mean": 0.015714285714285712,
+          "min": 0.006392857142857143
+        },
+        "force_violation_time_s": {
+          "max": 1.478,
+          "mean": 0.88,
+          "min": 0.358
+        },
+        "four_contact_recovery_s": {
+          "max": 1.4860000000000007,
+          "mean": 1.1493333333333335,
+          "min": 0.9139999999999997
+        },
+        "loop_latency_p95_s": {
+          "max": 0.00878439975567744,
+          "mean": 0.008654352250960074,
+          "min": 0.008572494345571611
+        },
+        "max_abs_arm_external_torque_nm": {
+          "max": 7.435170458139049,
+          "mean": 6.9895427919586695,
+          "min": 6.436366330532987
+        },
+        "max_tip_force_n": {
+          "max": 14.88601299930957,
+          "mean": 12.532485603861431,
+          "min": 9.819642694056505
+        },
+        "max_wrist_compliance_translation_m": {
+          "max": 0.015194588438614317,
+          "mean": 0.01362434663492631,
+          "min": 0.012152036588071919
+        },
+        "measured_real_time_factor": {
+          "max": 0.39667706776680806,
+          "mean": 0.39065493317298355,
+          "min": 0.3872723251273205
+        },
+        "minimum_arm_joint_margin_rad": {
+          "max": 0.9648306637672692,
+          "mean": 0.9599398151307975,
+          "min": 0.9564186071202228
+        },
+        "minimum_contact_count": {
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0
+        },
+        "minimum_finger_joint_margin_rad": {
+          "max": 0.04685559506579784,
+          "mean": 0.046552761365308115,
+          "min": 0.04639850637735665
+        },
+        "non_tip_contact_count": {
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0
+        },
+        "palm_position_tracking_rmse_m": {
+          "max": 0.006277112299477462,
+          "mean": 0.006185920705146804,
+          "min": 0.006025271561360435
+        },
+        "physics_step_latency_p95_s": {
+          "max": 0.0002149470004951581,
+          "mean": 0.00021446600076160393,
+          "min": 0.00021385319960245396
+        },
+        "planned_palm_path_length_m": {
+          "max": 0.21806200177575688,
+          "mean": 0.21806200177575685,
+          "min": 0.21806200177575685
+        },
+        "pose_step_peak_force_n": {
+          "max": 8.697391612881997,
+          "mean": 8.015550756433708,
+          "min": 7.522486036730023
+        },
+        "seed": {
+          "max": 19.0,
+          "mean": 12.333333333333334,
+          "min": 7.0
+        },
+        "traversal_y_m": {
+          "max": 0.17404796567579758,
+          "mean": 0.17286034370673117,
+          "min": 0.1720721065214092
+        },
+        "wrist_force_z_rmse_n": {
+          "max": 2.4425480821996715,
+          "mean": 2.414082620007433,
+          "min": 2.3616890933206305
+        },
+        "wrist_wrench_rmse_6d": {
+          "max": 2.8000405739164864,
+          "mean": 2.7612624622654294,
+          "min": 2.7230046084160775
+        },
+        "zero_contact_time_s": {
+          "max": 0.07,
+          "mean": 0.035333333333333335,
+          "min": 0.008
+        }
+      },
+      "performance_verdict": "NOT_MET",
+      "unmet_metrics": [
+        "controller_latency_p95_s",
+        "deadline_miss_probability",
+        "force_rmse_n",
+        "force_settling_s",
+        "force_violation_probability",
+        "four_contact_recovery_s",
+        "max_tip_force_n",
+        "max_wrist_compliance_translation_m",
+        "zero_contact_time_s"
+      ]
+    }
+  },
+  "dp_evaluated": false,
+  "dp_implemented": false,
+  "environment": {
+    "environment_name": "handcomp",
+    "mujoco": "3.6.0",
+    "numpy": "2.2.6",
+    "python": "3.10.0"
+  },
+  "episodes": [
+    {
+      "cell": "E05-F-MCC",
+      "config": {
+        "contact_threshold_n": 0.2,
+        "desired_force_n": 2.0,
+        "dt_s": 0.002,
+        "duration_s": 15.0,
+        "force_filter_alpha": 0.2,
+        "force_limit_n": 8.0,
+        "force_noise_std_n": 0.0,
+        "friction_coefficient": 0.9,
+        "initial_joint_noise_std_rad": 0.0,
+        "lateral_primary_amplitude_m": 0.018,
+        "lateral_secondary_amplitude_m": 0.007,
+        "mode": "E05-F-MCC",
+        "pose_step_m": 0.004,
+        "pose_step_time_s": 9.0,
+        "seed": 7,
+        "settling_time_s": 1.0,
+        "surface": "extreme",
+        "traversal_y_m": 0.18,
+        "wrist_update_period_steps": 10
+      },
+      "episode": "nominal",
+      "metrics": {
+        "actual_palm_path_length_m": 0.2066208968285714,
+        "any_contact_recovery_s": 0.0,
+        "average_contact_count": 3.7514285714285713,
+        "cell": "E05-F-MCC",
+        "contact_continuity_probability": 1.0,
+        "contact_loss_events": 877,
+        "controller": "MCC",
+        "controller_latency_mean_s": 0.001647443759193023,
+        "controller_latency_p95_s": 0.004161120600474532,
+        "coordinator_condition_p95": 79.1548611530794,
+        "coordinator_internal_leakage_p95_n": 1.6477276450821498e-06,
+        "coordinator_rank_min": 2,
+        "deadline_miss_probability": 0.05466666666666667,
+        "dp_evaluated": false,
+        "duration_s": 15.0,
+        "force_mae_n": 0.7044459166186816,
+        "force_p95_n": 2.53785207442384,
+        "force_rmse_n": 1.4048822623657629,
+        "force_settling_s": 0.9879999999999995,
+        "force_violation_probability": 0.011892857142857143,
+        "force_violation_time_s": 0.666,
+        "four_contact_recovery_s": 0.07399999999999984,
+        "guard_histogram": {
+          "NONE": 6667,
+          "TIP_OVERFORCE": 333
+        },
+        "loop_latency_p95_s": 0.01185001555386406,
+        "max_abs_arm_external_torque_nm": 9.877283631763373,
+        "max_tip_force_n": 13.484239604847884,
+        "max_wrist_compliance_translation_m": 0.0,
+        "measured_real_time_factor": 0.2952329015637798,
+        "minimum_arm_joint_margin_rad": 0.9775514936592236,
+        "minimum_contact_count": 1,
+        "minimum_finger_joint_margin_rad": 0.04567522615440062,
+        "non_tip_contact_count": 0,
+        "palm_position_tracking_rmse_m": 0.0063740388629444054,
+        "per_finger_contact_probability": [
+          0.948,
+          0.9162857142857143,
+          0.9168571428571428,
+          0.9702857142857143
+        ],
+        "physics_step_latency_p95_s": 0.00028789629577659044,
+        "planned_palm_path_length_m": 0.21806200177575685,
+        "pose_step_peak_force_n": 7.450140722134426,
+        "seed": 7,
+        "surface": "extreme",
+        "traversal_y_m": 0.17125786732349652,
+        "wrist_force_z_rmse_n": 2.472571194903364,
+        "wrist_wrench_rmse_6d": 2.9227079589402036,
+        "zero_contact_time_s": 0.0
+      },
+      "thresholds": {
+        "checks": {
+          "average_contact_count": {
+            "met": true,
+            "operator": ">=",
+            "threshold": 3.0,
+            "value": 3.7514285714285713
+          },
+          "contact_continuity_probability": {
+            "met": true,
+            "operator": ">=",
+            "threshold": 0.995,
+            "value": 1.0
+          },
+          "controller_latency_p95_s": {
+            "met": false,
+            "operator": "<=",
+            "threshold": 0.002,
+            "value": 0.004161120600474532
+          },
+          "deadline_miss_probability": {
+            "met": false,
+            "operator": "<=",
+            "threshold": 0.01,
+            "value": 0.05466666666666667
+          },
+          "force_rmse_n": {
+            "met": false,
+            "operator": "<=",
+            "threshold": 1.0,
+            "value": 1.4048822623657629
+          },
+          "force_settling_s": {
+            "met": false,
+            "operator": "<=",
+            "threshold": 0.75,
+            "value": 0.9879999999999995
+          },
+          "force_violation_probability": {
+            "met": false,
+            "operator": "<=",
+            "threshold": 0.001,
+            "value": 0.011892857142857143
+          },
+          "four_contact_recovery_s": {
+            "met": true,
+            "operator": "<=",
+            "threshold": 0.25,
+            "value": 0.07399999999999984
+          },
+          "max_tip_force_n": {
+            "met": false,
+            "operator": "<=",
+            "threshold": 8.0,
+            "value": 13.484239604847884
+          },
+          "minimum_arm_joint_margin_rad": {
+            "met": true,
+            "operator": ">=",
+            "threshold": 0.03,
+            "value": 0.9775514936592236
+          },
+          "minimum_finger_joint_margin_rad": {
+            "met": true,
+            "operator": ">=",
+            "threshold": 0.03,
+            "value": 0.04567522615440062
+          },
+          "non_tip_contact_count": {
+            "met": true,
+            "operator": "==",
+            "threshold": 0.0,
+            "value": 0.0
+          },
+          "palm_position_tracking_rmse_m": {
+            "met": true,
+            "operator": "<=",
+            "threshold": 0.008,
+            "value": 0.0063740388629444054
+          },
+          "traversal_y_m": {
+            "met": true,
+            "operator": ">=",
+            "threshold": 0.16,
+            "value": 0.17125786732349652
+          },
+          "zero_contact_time_s": {
+            "met": true,
+            "operator": "<=",
+            "threshold": 0.05,
+            "value": 0.0
+          }
+        },
+        "performance_met": false
+      }
+    },
+    {
+      "cell": "E05-F-MCC",
+      "config": {
+        "contact_threshold_n": 0.2,
+        "desired_force_n": 2.0,
+        "dt_s": 0.002,
+        "duration_s": 15.0,
+        "force_filter_alpha": 0.2,
+        "force_limit_n": 8.0,
+        "force_noise_std_n": 0.03,
+        "friction_coefficient": 0.75,
+        "initial_joint_noise_std_rad": 0.004,
+        "lateral_primary_amplitude_m": 0.018,
+        "lateral_secondary_amplitude_m": 0.007,
+        "mode": "E05-F-MCC",
+        "pose_step_m": 0.004,
+        "pose_step_time_s": 9.0,
+        "seed": 11,
+        "settling_time_s": 1.0,
+        "surface": "extreme",
+        "traversal_y_m": 0.18,
+        "wrist_update_period_steps": 10
+      },
+      "episode": "low_friction",
+      "metrics": {
+        "actual_palm_path_length_m": 0.20812841686051564,
+        "any_contact_recovery_s": 0.0,
+        "average_contact_count": 3.738142857142857,
+        "cell": "E05-F-MCC",
+        "contact_continuity_probability": 1.0,
+        "contact_loss_events": 957,
+        "controller": "MCC",
+        "controller_latency_mean_s": 0.0015245655415637885,
+        "controller_latency_p95_s": 0.0015487289481825425,
+        "coordinator_condition_p95": 88.29204214603776,
+        "coordinator_internal_leakage_p95_n": 5.7538260583207665e-06,
+        "coordinator_rank_min": 1,
+        "deadline_miss_probability": 0.023866666666666668,
+        "dp_evaluated": false,
+        "duration_s": 15.0,
+        "force_mae_n": 0.8030411491889862,
+        "force_p95_n": 3.2124012955756966,
+        "force_rmse_n": 1.854887625595228,
+        "force_settling_s": 0.9640000000000004,
+        "force_violation_probability": 0.01864285714285714,
+        "force_violation_time_s": 1.044,
+        "four_contact_recovery_s": 0.09600000000000009,
+        "guard_histogram": {
+          "NONE": 6478,
+          "TIP_OVERFORCE": 522
+        },
+        "loop_latency_p95_s": 0.010556972853373734,
+        "max_abs_arm_external_torque_nm": 11.355020864944324,
+        "max_tip_force_n": 16.876696065086836,
+        "max_wrist_compliance_translation_m": 0.0,
+        "measured_real_time_factor": 0.3247075877149925,
+        "minimum_arm_joint_margin_rad": 0.9742282942112861,
+        "minimum_contact_count": 1,
+        "minimum_finger_joint_margin_rad": 0.04591113052798934,
+        "non_tip_contact_count": 0,
+        "palm_position_tracking_rmse_m": 0.006382230345486716,
+        "per_finger_contact_probability": [
+          0.9624285714285714,
+          0.9038571428571428,
+          0.9028571428571428,
+          0.969
+        ],
+        "physics_step_latency_p95_s": 0.00027753460162784896,
+        "planned_palm_path_length_m": 0.21806200177575688,
+        "pose_step_peak_force_n": 9.85832147127768,
+        "seed": 11,
+        "surface": "extreme",
+        "traversal_y_m": 0.17135890850353083,
+        "wrist_force_z_rmse_n": 2.620197456244424,
+        "wrist_wrench_rmse_6d": 2.8751975814171096,
+        "zero_contact_time_s": 0.0
+      },
+      "thresholds": {
+        "checks": {
+          "average_contact_count": {
+            "met": true,
+            "operator": ">=",
+            "threshold": 3.0,
+            "value": 3.738142857142857
+          },
+          "contact_continuity_probability": {
+            "met": true,
+            "operator": ">=",
+            "threshold": 0.995,
+            "value": 1.0
+          },
+          "controller_latency_p95_s": {
+            "met": true,
+            "operator": "<=",
+            "threshold": 0.002,
+            "value": 0.0015487289481825425
+          },
+          "deadline_miss_probability": {
+            "met": false,
+            "operator": "<=",
+            "threshold": 0.01,
+            "value": 0.023866666666666668
+          },
+          "force_rmse_n": {
+            "met": false,
+            "operator": "<=",
+            "threshold": 1.0,
+            "value": 1.854887625595228
+          },
+          "force_settling_s": {
+            "met": false,
+            "operator": "<=",
+            "threshold": 0.75,
+            "value": 0.9640000000000004
+          },
+          "force_violation_probability": {
+            "met": false,
+            "operator": "<=",
+            "threshold": 0.001,
+            "value": 0.01864285714285714
+          },
+          "four_contact_recovery_s": {
+            "met": true,
+            "operator": "<=",
+            "threshold": 0.25,
+            "value": 0.09600000000000009
+          },
+          "max_tip_force_n": {
+            "met": false,
+            "operator": "<=",
+            "threshold": 8.0,
+            "value": 16.876696065086836
+          },
+          "minimum_arm_joint_margin_rad": {
+            "met": true,
+            "operator": ">=",
+            "threshold": 0.03,
+            "value": 0.9742282942112861
+          },
+          "minimum_finger_joint_margin_rad": {
+            "met": true,
+            "operator": ">=",
+            "threshold": 0.03,
+            "value": 0.04591113052798934
+          },
+          "non_tip_contact_count": {
+            "met": true,
+            "operator": "==",
+            "threshold": 0.0,
+            "value": 0.0
+          },
+          "palm_position_tracking_rmse_m": {
+            "met": true,
+            "operator": "<=",
+            "threshold": 0.008,
+            "value": 0.006382230345486716
+          },
+          "traversal_y_m": {
+            "met": true,
+            "operator": ">=",
+            "threshold": 0.16,
+            "value": 0.17135890850353083
+          },
+          "zero_contact_time_s": {
+            "met": true,
+            "operator": "<=",
+            "threshold": 0.05,
+            "value": 0.0
+          }
+        },
+        "performance_met": false
+      }
+    },
+    {
+      "cell": "E05-F-MCC",
+      "config": {
+        "contact_threshold_n": 0.2,
+        "desired_force_n": 2.0,
+        "dt_s": 0.002,
+        "duration_s": 15.0,
+        "force_filter_alpha": 0.2,
+        "force_limit_n": 8.0,
+        "force_noise_std_n": 0.05,
+        "friction_coefficient": 1.05,
+        "initial_joint_noise_std_rad": 0.006,
+        "lateral_primary_amplitude_m": 0.018,
+        "lateral_secondary_amplitude_m": 0.007,
+        "mode": "E05-F-MCC",
+        "pose_step_m": 0.004,
+        "pose_step_time_s": 9.0,
+        "seed": 19,
+        "settling_time_s": 1.0,
+        "surface": "extreme",
+        "traversal_y_m": 0.18,
+        "wrist_update_period_steps": 10
+      },
+      "episode": "noisy_pose",
+      "metrics": {
+        "actual_palm_path_length_m": 0.2069630687326622,
+        "any_contact_recovery_s": 0.0,
+        "average_contact_count": 3.766142857142857,
+        "cell": "E05-F-MCC",
+        "contact_continuity_probability": 1.0,
+        "contact_loss_events": 812,
+        "controller": "MCC",
+        "controller_latency_mean_s": 0.0014333410619952094,
+        "controller_latency_p95_s": 0.0014806032970227534,
+        "coordinator_condition_p95": 168.00924719792903,
+        "coordinator_internal_leakage_p95_n": 0.002124348644069801,
+        "coordinator_rank_min": 2,
+        "deadline_miss_probability": 0.0024,
+        "dp_evaluated": false,
+        "duration_s": 15.0,
+        "force_mae_n": 0.8397588299742627,
+        "force_p95_n": 2.4562124271420926,
+        "force_rmse_n": 1.9943572919361707,
+        "force_settling_s": 0.8640000000000008,
+        "force_violation_probability": 0.02,
+        "force_violation_time_s": 1.12,
+        "four_contact_recovery_s": 0.09399999999999942,
+        "guard_histogram": {
+          "NONE": 6440,
+          "TIP_OVERFORCE": 560
+        },
+        "loop_latency_p95_s": 0.008939292198556353,
+        "max_abs_arm_external_torque_nm": 11.154308263446183,
+        "max_tip_force_n": 18.165471568091828,
+        "max_wrist_compliance_translation_m": 0.0,
+        "measured_real_time_factor": 0.3328168137458543,
+        "minimum_arm_joint_margin_rad": 0.9708217722875971,
+        "minimum_contact_count": 1,
+        "minimum_finger_joint_margin_rad": 0.04542388185958979,
+        "non_tip_contact_count": 0,
+        "palm_position_tracking_rmse_m": 0.0066556876948611005,
+        "per_finger_contact_probability": [
+          0.9597142857142857,
+          0.9112857142857143,
+          0.9178571428571428,
+          0.9772857142857143
+        ],
+        "physics_step_latency_p95_s": 0.0002503235489712097,
+        "planned_palm_path_length_m": 0.21806200177575685,
+        "pose_step_peak_force_n": 9.817322983087404,
+        "seed": 19,
+        "surface": "extreme",
+        "traversal_y_m": 0.16989281200663245,
+        "wrist_force_z_rmse_n": 2.8372083003934074,
+        "wrist_wrench_rmse_6d": 3.222361353267455,
+        "zero_contact_time_s": 0.0
+      },
+      "thresholds": {
+        "checks": {
+          "average_contact_count": {
+            "met": true,
+            "operator": ">=",
+            "threshold": 3.0,
+            "value": 3.766142857142857
+          },
+          "contact_continuity_probability": {
+            "met": true,
+            "operator": ">=",
+            "threshold": 0.995,
+            "value": 1.0
+          },
+          "controller_latency_p95_s": {
+            "met": true,
+            "operator": "<=",
+            "threshold": 0.002,
+            "value": 0.0014806032970227534
+          },
+          "deadline_miss_probability": {
+            "met": true,
+            "operator": "<=",
+            "threshold": 0.01,
+            "value": 0.0024
+          },
+          "force_rmse_n": {
+            "met": false,
+            "operator": "<=",
+            "threshold": 1.0,
+            "value": 1.9943572919361707
+          },
+          "force_settling_s": {
+            "met": false,
+            "operator": "<=",
+            "threshold": 0.75,
+            "value": 0.8640000000000008
+          },
+          "force_violation_probability": {
+            "met": false,
+            "operator": "<=",
+            "threshold": 0.001,
+            "value": 0.02
+          },
+          "four_contact_recovery_s": {
+            "met": true,
+            "operator": "<=",
+            "threshold": 0.25,
+            "value": 0.09399999999999942
+          },
+          "max_tip_force_n": {
+            "met": false,
+            "operator": "<=",
+            "threshold": 8.0,
+            "value": 18.165471568091828
+          },
+          "minimum_arm_joint_margin_rad": {
+            "met": true,
+            "operator": ">=",
+            "threshold": 0.03,
+            "value": 0.9708217722875971
+          },
+          "minimum_finger_joint_margin_rad": {
+            "met": true,
+            "operator": ">=",
+            "threshold": 0.03,
+            "value": 0.04542388185958979
+          },
+          "non_tip_contact_count": {
+            "met": true,
+            "operator": "==",
+            "threshold": 0.0,
+            "value": 0.0
+          },
+          "palm_position_tracking_rmse_m": {
+            "met": true,
+            "operator": "<=",
+            "threshold": 0.008,
+            "value": 0.0066556876948611005
+          },
+          "traversal_y_m": {
+            "met": true,
+            "operator": ">=",
+            "threshold": 0.16,
+            "value": 0.16989281200663245
+          },
+          "zero_contact_time_s": {
+            "met": true,
+            "operator": "<=",
+            "threshold": 0.05,
+            "value": 0.0
+          }
+        },
+        "performance_met": false
+      }
+    },
+    {
+      "cell": "E05-H-MCC",
+      "config": {
+        "contact_threshold_n": 0.2,
+        "desired_force_n": 2.0,
+        "dt_s": 0.002,
+        "duration_s": 15.0,
+        "force_filter_alpha": 0.2,
+        "force_limit_n": 8.0,
+        "force_noise_std_n": 0.0,
+        "friction_coefficient": 0.9,
+        "initial_joint_noise_std_rad": 0.0,
+        "lateral_primary_amplitude_m": 0.018,
+        "lateral_secondary_amplitude_m": 0.007,
+        "mode": "E05-H-MCC",
+        "pose_step_m": 0.004,
+        "pose_step_time_s": 9.0,
+        "seed": 7,
+        "settling_time_s": 1.0,
+        "surface": "extreme",
+        "traversal_y_m": 0.18,
+        "wrist_update_period_steps": 10
+      },
+      "episode": "nominal",
+      "metrics": {
+        "actual_palm_path_length_m": 0.2192245035589665,
+        "any_contact_recovery_s": 0.0,
+        "average_contact_count": 3.5237142857142856,
+        "cell": "E05-H-MCC",
+        "contact_continuity_probability": 0.9994285714285714,
+        "contact_loss_events": 1017,
+        "controller": "MCC",
+        "controller_latency_mean_s": 0.0016378800967873151,
+        "controller_latency_p95_s": 0.00202406735224939,
+        "coordinator_condition_p95": 89.23345335708106,
+        "coordinator_internal_leakage_p95_n": 0.0015587168718709874,
+        "coordinator_rank_min": 0,
+        "deadline_miss_probability": 0.050666666666666665,
+        "dp_evaluated": false,
+        "duration_s": 15.0,
+        "force_mae_n": 1.3403697358457474,
+        "force_p95_n": 6.805537030052754,
+        "force_rmse_n": 1.8458037981453557,
+        "force_settling_s": 5.998000000000001,
+        "force_violation_probability": 0.014357142857142857,
+        "force_violation_time_s": 0.804,
+        "four_contact_recovery_s": 1.048,
+        "guard_histogram": {
+          "NONE": 6598,
+          "TIP_OVERFORCE": 402
+        },
+        "loop_latency_p95_s": 0.008606162651631166,
+        "max_abs_arm_external_torque_nm": 7.097091587203973,
+        "max_tip_force_n": 12.891801118218222,
+        "max_wrist_compliance_translation_m": 0.012152036588071919,
+        "measured_real_time_factor": 0.39667706776680806,
+        "minimum_arm_joint_margin_rad": 0.9648306637672692,
+        "minimum_contact_count": 0,
+        "minimum_finger_joint_margin_rad": 0.046404182652769854,
+        "non_tip_contact_count": 0,
+        "palm_position_tracking_rmse_m": 0.006277112299477462,
+        "per_finger_contact_probability": [
+          0.9427142857142857,
+          0.8241428571428572,
+          0.7901428571428571,
+          0.9667142857142857
+        ],
+        "physics_step_latency_p95_s": 0.0002145978021871997,
+        "planned_palm_path_length_m": 0.21806200177575685,
+        "pose_step_peak_force_n": 7.826774619689103,
+        "seed": 7,
+        "surface": "extreme",
+        "traversal_y_m": 0.17404796567579758,
+        "wrist_force_z_rmse_n": 2.4380106845019975,
+        "wrist_wrench_rmse_6d": 2.8000405739164864,
+        "zero_contact_time_s": 0.008
+      },
+      "thresholds": {
+        "checks": {
+          "average_contact_count": {
+            "met": true,
+            "operator": ">=",
+            "threshold": 3.0,
+            "value": 3.5237142857142856
+          },
+          "contact_continuity_probability": {
+            "met": true,
+            "operator": ">=",
+            "threshold": 0.995,
+            "value": 0.9994285714285714
+          },
+          "controller_latency_p95_s": {
+            "met": false,
+            "operator": "<=",
+            "threshold": 0.002,
+            "value": 0.00202406735224939
+          },
+          "coordinator_internal_leakage_p95_n": {
+            "met": true,
+            "operator": "<=",
+            "threshold": 0.05,
+            "value": 0.0015587168718709874
+          },
+          "deadline_miss_probability": {
+            "met": false,
+            "operator": "<=",
+            "threshold": 0.01,
+            "value": 0.050666666666666665
+          },
+          "force_rmse_n": {
+            "met": false,
+            "operator": "<=",
+            "threshold": 1.0,
+            "value": 1.8458037981453557
+          },
+          "force_settling_s": {
+            "met": false,
+            "operator": "<=",
+            "threshold": 0.75,
+            "value": 5.998000000000001
+          },
+          "force_violation_probability": {
+            "met": false,
+            "operator": "<=",
+            "threshold": 0.001,
+            "value": 0.014357142857142857
+          },
+          "four_contact_recovery_s": {
+            "met": false,
+            "operator": "<=",
+            "threshold": 0.25,
+            "value": 1.048
+          },
+          "max_tip_force_n": {
+            "met": false,
+            "operator": "<=",
+            "threshold": 8.0,
+            "value": 12.891801118218222
+          },
+          "max_wrist_compliance_translation_m": {
+            "met": false,
+            "operator": "<=",
+            "threshold": 0.0121,
+            "value": 0.012152036588071919
+          },
+          "minimum_arm_joint_margin_rad": {
+            "met": true,
+            "operator": ">=",
+            "threshold": 0.03,
+            "value": 0.9648306637672692
+          },
+          "minimum_finger_joint_margin_rad": {
+            "met": true,
+            "operator": ">=",
+            "threshold": 0.03,
+            "value": 0.046404182652769854
+          },
+          "non_tip_contact_count": {
+            "met": true,
+            "operator": "==",
+            "threshold": 0.0,
+            "value": 0.0
+          },
+          "palm_position_tracking_rmse_m": {
+            "met": true,
+            "operator": "<=",
+            "threshold": 0.008,
+            "value": 0.006277112299477462
+          },
+          "traversal_y_m": {
+            "met": true,
+            "operator": ">=",
+            "threshold": 0.16,
+            "value": 0.17404796567579758
+          },
+          "wrist_force_z_rmse_n": {
+            "met": true,
+            "operator": "<=",
+            "threshold": 2.5,
+            "value": 2.4380106845019975
+          },
+          "zero_contact_time_s": {
+            "met": true,
+            "operator": "<=",
+            "threshold": 0.05,
+            "value": 0.008
+          }
+        },
+        "performance_met": false
+      }
+    },
+    {
+      "cell": "E05-H-MCC",
+      "config": {
+        "contact_threshold_n": 0.2,
+        "desired_force_n": 2.0,
+        "dt_s": 0.002,
+        "duration_s": 15.0,
+        "force_filter_alpha": 0.2,
+        "force_limit_n": 8.0,
+        "force_noise_std_n": 0.03,
+        "friction_coefficient": 0.75,
+        "initial_joint_noise_std_rad": 0.004,
+        "lateral_primary_amplitude_m": 0.018,
+        "lateral_secondary_amplitude_m": 0.007,
+        "mode": "E05-H-MCC",
+        "pose_step_m": 0.004,
+        "pose_step_time_s": 9.0,
+        "seed": 11,
+        "settling_time_s": 1.0,
+        "surface": "extreme",
+        "traversal_y_m": 0.18,
+        "wrist_update_period_steps": 10
+      },
+      "episode": "low_friction",
+      "metrics": {
+        "actual_palm_path_length_m": 0.2166531880664686,
+        "any_contact_recovery_s": 0.0,
+        "average_contact_count": 3.537857142857143,
+        "cell": "E05-H-MCC",
+        "contact_continuity_probability": 0.998,
+        "contact_loss_events": 1101,
+        "controller": "MCC",
+        "controller_latency_mean_s": 0.0016250962790596531,
+        "controller_latency_p95_s": 0.001998789298886544,
+        "coordinator_condition_p95": 74.61531277294098,
+        "coordinator_internal_leakage_p95_n": 1.6247876257229094e-06,
+        "coordinator_rank_min": 0,
+        "deadline_miss_probability": 0.05,
+        "dp_evaluated": false,
+        "duration_s": 15.0,
+        "force_mae_n": 1.3608205835456093,
+        "force_p95_n": 6.9206571175821185,
+        "force_rmse_n": 1.9524110322079564,
+        "force_settling_s": 5.998000000000001,
+        "force_violation_probability": 0.02639285714285714,
+        "force_violation_time_s": 1.478,
+        "four_contact_recovery_s": 0.9139999999999997,
+        "guard_histogram": {
+          "NONE": 6261,
+          "TIP_OVERFORCE": 739
+        },
+        "loop_latency_p95_s": 0.008572494345571611,
+        "max_abs_arm_external_torque_nm": 7.435170458139049,
+        "max_tip_force_n": 14.88601299930957,
+        "max_wrist_compliance_translation_m": 0.013526414878092698,
+        "measured_real_time_factor": 0.388015406624822,
+        "minimum_arm_joint_margin_rad": 0.9564186071202228,
+        "minimum_contact_count": 0,
+        "minimum_finger_joint_margin_rad": 0.04639850637735665,
+        "non_tip_contact_count": 0,
+        "palm_position_tracking_rmse_m": 0.006255378254602516,
+        "per_finger_contact_probability": [
+          0.934,
+          0.8161428571428572,
+          0.822,
+          0.9657142857142857
+        ],
+        "physics_step_latency_p95_s": 0.00021385319960245396,
+        "planned_palm_path_length_m": 0.21806200177575688,
+        "pose_step_peak_force_n": 8.697391612881997,
+        "seed": 11,
+        "surface": "extreme",
+        "traversal_y_m": 0.1720721065214092,
+        "wrist_force_z_rmse_n": 2.3616890933206305,
+        "wrist_wrench_rmse_6d": 2.7230046084160775,
+        "zero_contact_time_s": 0.028
+      },
+      "thresholds": {
+        "checks": {
+          "average_contact_count": {
+            "met": true,
+            "operator": ">=",
+            "threshold": 3.0,
+            "value": 3.537857142857143
+          },
+          "contact_continuity_probability": {
+            "met": true,
+            "operator": ">=",
+            "threshold": 0.995,
+            "value": 0.998
+          },
+          "controller_latency_p95_s": {
+            "met": true,
+            "operator": "<=",
+            "threshold": 0.002,
+            "value": 0.001998789298886544
+          },
+          "coordinator_internal_leakage_p95_n": {
+            "met": true,
+            "operator": "<=",
+            "threshold": 0.05,
+            "value": 1.6247876257229094e-06
+          },
+          "deadline_miss_probability": {
+            "met": false,
+            "operator": "<=",
+            "threshold": 0.01,
+            "value": 0.05
+          },
+          "force_rmse_n": {
+            "met": false,
+            "operator": "<=",
+            "threshold": 1.0,
+            "value": 1.9524110322079564
+          },
+          "force_settling_s": {
+            "met": false,
+            "operator": "<=",
+            "threshold": 0.75,
+            "value": 5.998000000000001
+          },
+          "force_violation_probability": {
+            "met": false,
+            "operator": "<=",
+            "threshold": 0.001,
+            "value": 0.02639285714285714
+          },
+          "four_contact_recovery_s": {
+            "met": false,
+            "operator": "<=",
+            "threshold": 0.25,
+            "value": 0.9139999999999997
+          },
+          "max_tip_force_n": {
+            "met": false,
+            "operator": "<=",
+            "threshold": 8.0,
+            "value": 14.88601299930957
+          },
+          "max_wrist_compliance_translation_m": {
+            "met": false,
+            "operator": "<=",
+            "threshold": 0.0121,
+            "value": 0.013526414878092698
+          },
+          "minimum_arm_joint_margin_rad": {
+            "met": true,
+            "operator": ">=",
+            "threshold": 0.03,
+            "value": 0.9564186071202228
+          },
+          "minimum_finger_joint_margin_rad": {
+            "met": true,
+            "operator": ">=",
+            "threshold": 0.03,
+            "value": 0.04639850637735665
+          },
+          "non_tip_contact_count": {
+            "met": true,
+            "operator": "==",
+            "threshold": 0.0,
+            "value": 0.0
+          },
+          "palm_position_tracking_rmse_m": {
+            "met": true,
+            "operator": "<=",
+            "threshold": 0.008,
+            "value": 0.006255378254602516
+          },
+          "traversal_y_m": {
+            "met": true,
+            "operator": ">=",
+            "threshold": 0.16,
+            "value": 0.1720721065214092
+          },
+          "wrist_force_z_rmse_n": {
+            "met": true,
+            "operator": "<=",
+            "threshold": 2.5,
+            "value": 2.3616890933206305
+          },
+          "zero_contact_time_s": {
+            "met": true,
+            "operator": "<=",
+            "threshold": 0.05,
+            "value": 0.028
+          }
+        },
+        "performance_met": false
+      }
+    },
+    {
+      "cell": "E05-H-MCC",
+      "config": {
+        "contact_threshold_n": 0.2,
+        "desired_force_n": 2.0,
+        "dt_s": 0.002,
+        "duration_s": 15.0,
+        "force_filter_alpha": 0.2,
+        "force_limit_n": 8.0,
+        "force_noise_std_n": 0.05,
+        "friction_coefficient": 1.05,
+        "initial_joint_noise_std_rad": 0.006,
+        "lateral_primary_amplitude_m": 0.018,
+        "lateral_secondary_amplitude_m": 0.007,
+        "mode": "E05-H-MCC",
+        "pose_step_m": 0.004,
+        "pose_step_time_s": 9.0,
+        "seed": 19,
+        "settling_time_s": 1.0,
+        "surface": "extreme",
+        "traversal_y_m": 0.18,
+        "wrist_update_period_steps": 10
+      },
+      "episode": "noisy_pose",
+      "metrics": {
+        "actual_palm_path_length_m": 0.21689524748974798,
+        "any_contact_recovery_s": 0.0,
+        "average_contact_count": 3.359,
+        "cell": "E05-H-MCC",
+        "contact_continuity_probability": 0.995,
+        "contact_loss_events": 702,
+        "controller": "MCC",
+        "controller_latency_mean_s": 0.0016140958625367298,
+        "controller_latency_p95_s": 0.0019795214466284926,
+        "coordinator_condition_p95": 121.9820252147534,
+        "coordinator_internal_leakage_p95_n": 0.014014172796765957,
+        "coordinator_rank_min": 0,
+        "deadline_miss_probability": 0.0496,
+        "dp_evaluated": false,
+        "duration_s": 15.0,
+        "force_mae_n": 1.3524901039742894,
+        "force_p95_n": 6.313151691231182,
+        "force_rmse_n": 1.771923622375399,
+        "force_settling_s": 5.998000000000001,
+        "force_violation_probability": 0.006392857142857143,
+        "force_violation_time_s": 0.358,
+        "four_contact_recovery_s": 1.4860000000000007,
+        "guard_histogram": {
+          "NONE": 6821,
+          "TIP_OVERFORCE": 179
+        },
+        "loop_latency_p95_s": 0.00878439975567744,
+        "max_abs_arm_external_torque_nm": 6.436366330532987,
+        "max_tip_force_n": 9.819642694056505,
+        "max_wrist_compliance_translation_m": 0.015194588438614317,
+        "measured_real_time_factor": 0.3872723251273205,
+        "minimum_arm_joint_margin_rad": 0.9585701745049007,
+        "minimum_contact_count": 0,
+        "minimum_finger_joint_margin_rad": 0.04685559506579784,
+        "non_tip_contact_count": 0,
+        "palm_position_tracking_rmse_m": 0.006025271561360435,
+        "per_finger_contact_probability": [
+          0.8228571428571428,
+          0.8288571428571428,
+          0.7695714285714286,
+          0.9377142857142857
+        ],
+        "physics_step_latency_p95_s": 0.0002149470004951581,
+        "planned_palm_path_length_m": 0.21806200177575685,
+        "pose_step_peak_force_n": 7.522486036730023,
+        "seed": 19,
+        "surface": "extreme",
+        "traversal_y_m": 0.1724609589229867,
+        "wrist_force_z_rmse_n": 2.4425480821996715,
+        "wrist_wrench_rmse_6d": 2.7607422044637238,
+        "zero_contact_time_s": 0.07
+      },
+      "thresholds": {
+        "checks": {
+          "average_contact_count": {
+            "met": true,
+            "operator": ">=",
+            "threshold": 3.0,
+            "value": 3.359
+          },
+          "contact_continuity_probability": {
+            "met": true,
+            "operator": ">=",
+            "threshold": 0.995,
+            "value": 0.995
+          },
+          "controller_latency_p95_s": {
+            "met": true,
+            "operator": "<=",
+            "threshold": 0.002,
+            "value": 0.0019795214466284926
+          },
+          "coordinator_internal_leakage_p95_n": {
+            "met": true,
+            "operator": "<=",
+            "threshold": 0.05,
+            "value": 0.014014172796765957
+          },
+          "deadline_miss_probability": {
+            "met": false,
+            "operator": "<=",
+            "threshold": 0.01,
+            "value": 0.0496
+          },
+          "force_rmse_n": {
+            "met": false,
+            "operator": "<=",
+            "threshold": 1.0,
+            "value": 1.771923622375399
+          },
+          "force_settling_s": {
+            "met": false,
+            "operator": "<=",
+            "threshold": 0.75,
+            "value": 5.998000000000001
+          },
+          "force_violation_probability": {
+            "met": false,
+            "operator": "<=",
+            "threshold": 0.001,
+            "value": 0.006392857142857143
+          },
+          "four_contact_recovery_s": {
+            "met": false,
+            "operator": "<=",
+            "threshold": 0.25,
+            "value": 1.4860000000000007
+          },
+          "max_tip_force_n": {
+            "met": false,
+            "operator": "<=",
+            "threshold": 8.0,
+            "value": 9.819642694056505
+          },
+          "max_wrist_compliance_translation_m": {
+            "met": false,
+            "operator": "<=",
+            "threshold": 0.0121,
+            "value": 0.015194588438614317
+          },
+          "minimum_arm_joint_margin_rad": {
+            "met": true,
+            "operator": ">=",
+            "threshold": 0.03,
+            "value": 0.9585701745049007
+          },
+          "minimum_finger_joint_margin_rad": {
+            "met": true,
+            "operator": ">=",
+            "threshold": 0.03,
+            "value": 0.04685559506579784
+          },
+          "non_tip_contact_count": {
+            "met": true,
+            "operator": "==",
+            "threshold": 0.0,
+            "value": 0.0
+          },
+          "palm_position_tracking_rmse_m": {
+            "met": true,
+            "operator": "<=",
+            "threshold": 0.008,
+            "value": 0.006025271561360435
+          },
+          "traversal_y_m": {
+            "met": true,
+            "operator": ">=",
+            "threshold": 0.16,
+            "value": 0.1724609589229867
+          },
+          "wrist_force_z_rmse_n": {
+            "met": true,
+            "operator": "<=",
+            "threshold": 2.5,
+            "value": 2.4425480821996715
+          },
+          "zero_contact_time_s": {
+            "met": false,
+            "operator": "<=",
+            "threshold": 0.05,
+            "value": 0.07
+          }
+        },
+        "performance_met": false
+      }
+    }
+  ],
+  "execution_status": "EVALUATED",
+  "experiment": "E05-MCC-CURRENT",
+  "git": {
+    "commit": "b4847df91a6a62d28186ad15f03b6ffa7eb43d80",
+    "worktree_dirty": true
+  },
+  "model_audit": {
+    "adapter_palm_mesh_distance_m": -4.1697414127103337e-10,
+    "all_pads_face_down": true,
+    "arm_dof": 7,
+    "fixed_object": true,
+    "gravity_m_s2": 0.0,
+    "hand_dof": 16,
+    "model": "FR3_LEAP_NATURAL_ROUGH_LOCAL_REVIEW",
+    "mount_adapter_present": true,
+    "mount_center_alignment_error_m": 2.6045308656748866e-10,
+    "mount_center_xy_fraction": [
+      0.5057786288080802,
+      0.5406180523750138
+    ],
+    "mount_geometrically_closed": true,
+    "mount_interface_tolerance_m": 0.001,
+    "mount_is_central": true,
+    "mount_origin_gap_m": 0.061913185457536324,
+    "mount_parent_is_link8": true,
+    "mount_witness_world_m": [
+      0.5629525218454926,
+      0.009048298125444264,
+      0.6133024294875893,
+      0.5629525218454927,
+      0.009048298125444266,
+      0.6133024299045635
+    ],
+    "natural_hand_q_rad": [
+      0.21093411785976737,
+      0.005229204743344924,
+      0.4035944678008984,
+      0.5287342369050559,
+      0.20371661194285254,
+      0.00995644973119566,
+      0.40966995188205774,
+      0.5316287796080648,
+      0.2090436955272734,
+      0.012743144261669894,
+      0.40656648217964514,
+      0.528036463232157,
+      -0.05238612040473543,
+      1.5615033691412608,
+      0.3896256643566552,
+      0.5183713092524893
+    ],
+    "natural_pose_source": "published raw-DP video q_hand at t=2.000 s",
+    "nq": 23,
+    "nu": 23,
+    "nv": 23,
+    "object_mocap_id": -1,
+    "object_position_m": [
+      0.5714994783471848,
+      0.1969999999030963,
+      0.5270248294375894
+    ],
+    "pad_normal_world_z": [
+      -0.5918514638906694,
+      -0.5808280666476625,
+      -0.5840629111338612,
+      -0.6557309224298056
+    ],
+    "pad_parent_body_names": [
+      "fingertip",
+      "fingertip_2",
+      "fingertip_3",
+      "thumb_fingertip"
+    ],
+    "palm_position_m": [
+      0.5544994781735385,
+      -2.126679388148034e-10,
+      0.6000248294375894
+    ],
+    "plant_structure_valid": true
+  },
+  "protocol": {
+    "code_bundle_sha256": "59966b3c251b6a0c73ee2ce2d90edb8a53bf112350767452c62e387a71bd2ecc",
+    "path": "Module/E05_MCC_CURRENT_PROTOCOL.md",
+    "sha256": "4763c0517be386be0f225fd93358f474c564cee5bb02f93389f4ad72d651cd85"
+  },
+  "scope": [
+    "E05-F-MCC",
+    "E05-H-MCC"
+  ]
+}

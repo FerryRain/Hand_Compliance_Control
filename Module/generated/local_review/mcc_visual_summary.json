@@ -1,0 +1,13 @@
+{
+  "dashboard": "Module/generated/local_review/mcc_dashboard.png",
+  "dp_evaluated": false,
+  "mount_closeup": "Module/generated/local_review/mount_center_audit.png",
+  "natural_pose": "Module/generated/local_review/natural_pose_audit.png",
+  "page": "Module/generated/local_review/mcc_review.html",
+  "source_experiment": "E05-MCC-CURRENT",
+  "source_protocol_sha256": "4763c0517be386be0f225fd93358f474c564cee5bb02f93389f4ad72d651cd85",
+  "videos": [
+    "Module/generated/local_review/mcc_f_video.mp4",
+    "Module/generated/local_review/mcc_h_video.mp4"
+  ]
+}
