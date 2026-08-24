@@ -4338,10 +4338,10 @@ def main() -> None:
             raise ValueError(
                 "fixed-palm planned modes are incompatible with explicit translation/orbit modes"
             )
-        if args.initial_orientation_mode != "fixed":
+        if manifold_mode and args.initial_orientation_mode != "fixed":
             raise ValueError(
-                "fixed-palm planned modes require --initial-orientation-mode fixed "
-                "so the planned object-frame trajectory matches the reset pose"
+                "manifold_fixed_palm requires --initial-orientation-mode fixed "
+                "because its analytic path is tied to the reset pose"
             )
         if args.lock_horizontal_lowest_point_to_palm:
             raise ValueError(

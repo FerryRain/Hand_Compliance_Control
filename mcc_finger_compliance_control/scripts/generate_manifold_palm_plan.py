@@ -168,7 +168,10 @@ def generate(source: Path | None, output: Path, episode_id: int, frames: int,
              palm_rotvec_world: np.ndarray, path_mode: str,
              path_length_m: float, palm_outline_clearance_m: float,
              smoothing_sigma_frames: float,
-             palm_mean_clearance_m: float) -> None:
+             palm_mean_clearance_m: float,
+             object_rotation_mode: str = "fixed",
+             seed: int = 0,
+             ellipse_azimuth_deg: float = 0.0) -> None:
     if source is not None:
         with h5py.File(source, "r") as src:
             ids = np.asarray(src["episode_id"], dtype=np.int64)
@@ -186,6 +189,10 @@ def generate(source: Path | None, output: Path, episode_id: int, frames: int,
     else:
         config = load_object_config(object_id)
         object0 = np.concatenate((config.initial_pos, config.initial_rot)).astype(np.float64)
+        if object_rotation_mode == "uniform_so3":
+            rng = np.random.default_rng(seed)
+            random_rot = R.random(random_state=rng).as_quat()
+            object0[3:7] = random_rot[[3, 0, 1, 2]]
         palm0 = np.concatenate(
             (palm_pos_world, R.from_rotvec(palm_rotvec_world).as_quat()[[3, 0, 1, 2]])
         )
@@ -237,6 +244,16 @@ def generate(source: Path | None, output: Path, episode_id: int, frames: int,
         radial0 /= max(float(np.linalg.norm(radial0)), 1.0e-12)
         tangent0 = np.cross(long_axis, radial0)
         tangent0 /= max(float(np.linalg.norm(tangent0)), 1.0e-12)
+        # Select the ellipse plane explicitly in the object's local frame.
+        # The plane is the cross-section spanned by radial_ref/tangent_ref;
+        # rotating this basis around the PCA long axis changes the contact
+        # route, while the clearance solve below still uses the full palm
+        # outline and the source mesh.
+        azimuth = np.deg2rad(float(ellipse_azimuth_deg))
+        radial_ref = R.from_rotvec(long_axis * azimuth).apply(radial0)
+        radial_ref /= max(float(np.linalg.norm(radial_ref)), 1.0e-12)
+        tangent_ref = np.cross(long_axis, radial_ref)
+        tangent_ref /= max(float(np.linalg.norm(tangent_ref)), 1.0e-12)
 
         height = centered @ long_axis
         half_span = max(0.01, 0.06 * float(np.ptp(height)))
@@ -264,17 +281,17 @@ def generate(source: Path | None, output: Path, episode_id: int, frames: int,
             theta = direction * np.deg2rad(angle_deg) * smooth
             latitude = direction * path_length_m * smooth
             radial = (
-                radius_a * np.cos(theta) * radial0
-                + radius_b * np.sin(theta) * tangent0
+                radius_a * np.cos(theta) * radial_ref
+                + radius_b * np.sin(theta) * tangent_ref
             )
             normal = (
-                np.cos(theta) / radius_a * radial0
-                + np.sin(theta) / radius_b * tangent0
+                np.cos(theta) / radius_a * radial_ref
+                + np.sin(theta) / radius_b * tangent_ref
             )
             normal /= max(float(np.linalg.norm(normal)), 1.0e-12)
             base_position[i] = center + (height0 + latitude) * long_axis + radial
             ellipse_normal[i] = normal
-            rotations[i] = align_vector(radial0, normal) @ palm_rot_obj0
+            rotations[i] = align_vector(radial_ref, normal) @ palm_rot_obj0
 
         # Solve only one smooth scalar offset along the analytic ellipse
         # normal.  The objective is the mean distance of the complete palm
@@ -497,6 +514,9 @@ def generate(source: Path | None, output: Path, episode_id: int, frames: int,
         dst.attrs["planner_palm_mean_clearance_m"] = float(
             palm_mean_clearance_m
         )
+        dst.attrs["planner_object_rotation_mode"] = object_rotation_mode
+        dst.attrs["planner_seed"] = int(seed)
+        dst.attrs["planner_ellipse_azimuth_deg"] = float(ellipse_azimuth_deg)
     print(f"[SUCCESS] palm manifold plan saved to {output}")
 
 
@@ -541,6 +561,22 @@ def main() -> None:
     )
     parser.add_argument("--control-dt", type=float, default=0.01)
     parser.add_argument(
+        "--object-rotation-mode",
+        choices=("fixed", "uniform_so3"),
+        default="fixed",
+        help="Randomize the configured object's initial SO(3) pose for direct planning.",
+    )
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--ellipse-azimuth-deg",
+        type=float,
+        default=0.0,
+        help=(
+            "Object-local rotation of the clearance ellipse basis around the "
+            "PCA long axis; this selects the ellipse plane."
+        ),
+    )
+    parser.add_argument(
         "--initial-palm-pos", nargs=3, type=float,
         default=DEFAULT_PALM_POS_WORLD,
     )
@@ -556,6 +592,7 @@ def main() -> None:
         np.asarray(args.initial_palm_rotvec), args.path_mode,
         args.path_length_m, args.palm_outline_clearance_m,
         args.smoothing_sigma_frames, args.palm_mean_clearance_m,
+        args.object_rotation_mode, args.seed, args.ellipse_azimuth_deg,
     )
 
 
