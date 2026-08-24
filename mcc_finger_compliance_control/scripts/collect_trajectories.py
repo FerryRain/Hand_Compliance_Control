@@ -5451,12 +5451,17 @@ def main() -> None:
                         and episode_step >= args.motion_start
                         and (args.fixed_motion_start or ready)
                     ):
-                        motion_controller.reanchor_from_current_state()
-                        planner_pose_initialized = True
                         planner_settle_until = (
                             episode_step + args.planner_settle_steps
                         )
+                        # The inverse path's time parameter is tied to
+                        # ``motion_controller.motion_start``.  Set the
+                        # post-settle start before building the path; doing
+                        # this afterwards compresses the executed trajectory
+                        # and makes a requested 180-degree plan stop early.
                         motion_controller.motion_start = planner_settle_until
+                        motion_controller.reanchor_from_current_state()
+                        planner_pose_initialized = True
                         print(
                             "[PLANNER-INVERSE] object initialized at step "
                             f"{episode_step}; settling until {planner_settle_until}"
