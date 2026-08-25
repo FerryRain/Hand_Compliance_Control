@@ -4,10 +4,10 @@
 >
 > 状态：`REDESIGN_SPEC / IMPLEMENTATION_NOT_STARTED`
 >
-> 目的：记录 I04 的新实验定义，并明确 M06–M12 在新 I04 中应保留、删除、重构或迁移的职责。
-> 本文只新增设计说明，不代表现有 `I04_ORACLE_NEXT_POINT_PROTOCOL.md`、现有 I04 代码或历史
-> M06–M12 benchmark 已经完成迁移。现有 Explicit contact-mode implementation 与回归结果继续作为
->历史开发证据保留，不再作为新 I04 的目标架构。
+> 目的：记录 I04 的新实验定义，并明确 M06–M12 以及历史 I01–I03 在新 I04 中应保留、删除、重构或迁移的职责。
+> 本文只新增设计说明，不代表现有 `I04_ORACLE_NEXT_POINT_PROTOCOL.md`、现有 I04 代码、历史 I01–I03
+> 或 M06–M12 benchmark 已经完成迁移。现有 Explicit contact-mode implementation 与回归结果继续作为
+> 历史开发证据保留，不再作为新 I04 的目标架构或前置 Gate。
 
 ---
 
@@ -944,3 +944,358 @@ B: expose wrist + per-finger geometric target positions and test
 Neither branch receives desired contact states or contact-mode instructions;
 continuous fingertip contact and surface coverage are measured outcomes.
 ```
+
+---
+
+## 20. 在新架构下重新审视 I01–I03
+
+旧 I01–I03 是围绕 `Geometry-Oracle + Explicit contact-mode planner + MCC` 逐层搭出来的验证链：
+
+```text
+I01: 证明显式 variable contact / handover 比 fixed four-contact 能走得更远
+I02: 证明显式 finger REPOSITION 用 short prefix + fresh barrier 是否优于 long prefix
+I03: 证明 Explicit planner 的 terminal ShadowSucc 是否能避免 dead end
+```
+
+这些实验本身已有历史价值，但它们解决的不是新 I04-A/B 的核心问题。因此必须区分：
+
+```text
+历史实验是否有效        -> 是，保留结果与复现入口
+是否仍是新 I04 prerequisite -> 否
+是否仍应形成 G2/G3 Gate     -> 否
+其中的底层机制是否还能复用   -> 少量可以，但应降级为 regression/helper
+```
+
+### 20.1 新 I04 不再继承旧 G2/G3 Gate
+
+旧链路中：
+
+```text
+I01 -> G2
+I02 + I03 -> G3
+G3 -> 后续系统
+```
+
+这条 Gate 是为了证明 Explicit contact-mode planning stack 足够稳定后才能继续集成。
+
+新 I04 已经不使用该 stack，因此：
+
+```text
+I01 G2=GO       != 新 I04 prerequisite
+I02=NOT_MET     != 新 I04 blocker
+I03=MET         != 新 I04 prerequisite
+G3=NO_GO        != 禁止实现/运行新 I04
+```
+
+特别是当前 `G3=NO_GO` 主要来自旧 I02 short-prefix improvement 未达到冻结阈值；该结果不能继续阻塞
+`Wrist-only Oracle` 或 `Full-hand Geometric Oracle`，因为二者都不再执行 I02 中固定的显式
+`BREAK -> REPOSITION -> MAKE` transaction。
+
+建议后续 `MASTER_PLAN.md` 在真正开始新 I04 实现时，把 G2/G3 标为：
+
+```text
+LEGACY_EXPLICIT_GATES / EVIDENCE_ONLY_FOR_NEW_I04
+```
+
+而不是把历史结果改写成 PASS。历史数值与当时的结论继续原样保留。
+
+---
+
+## 21. I01：不再作为独立前置实验；保留一个更小的 Passive-MCC moving-wrist regression
+
+### 21.1 旧 I01 为什么不再必要
+
+旧 I01 的关键比较是：
+
+```text
+I01-A Fixed Contact:
+    强制 |A| = 4
+
+I01-B Variable Contact:
+    通过显式 topology transaction 实现 4 -> 3 -> 4 handover
+```
+
+其主要结论是 variable contact mode 比 fixed four-contact 可以在 Bunny 上走得更远。
+
+但新 I04 明确规定：
+
+```text
+- controller 不接收 desired contact mode
+- 不显式规划 MAKE/BREAK
+- 是否掉指/重新接触是自然 physics outcome
+```
+
+因此再证明一次“显式 variable contact mode 比 fixed mode 好”对新 I04 没有直接意义。
+`I01-B` 中由 M10 certificate 授权的 planned handover 甚至会违反新 I04 的信息边界。
+
+### 21.2 I01 中仍值得保留的能力
+
+旧 I01 最有价值的残留能力不是 handover planning，而是：
+
+> 在一个外部规定的 moving-wrist trajectory 下，基础 fingertip MCC 是否至少能够稳定运行、产生合理
+> compliant correction，并且不会因为 controller bug 立即发生严重过力/数值失稳。
+
+这正好是 I04-A-MCC 的低层 smoke test。
+
+因此建议把 I01 从“科学比较实验”降级为一个小型 regression，例如：
+
+```text
+R-I01: PASSIVE_MCC_MOVING_WRIST_SMOKE
+
+input:
+    a short prescribed outside-object wrist trajectory
+    initial real fingertip contacts
+
+controller:
+    basic passive Fingertip MCC only
+
+check only:
+    finite/stable commands
+    no controller-induced numerical failure
+    no joint/actuator/hard-force safety violation
+    wrist tracking works
+    contact/force trace can be measured and logged
+```
+
+明确不要求：
+
+```text
+4 -> 3 -> 4 handover
+variable-contact advantage
+minimum traversal distance
+99% contact continuity as a pass condition
+MAKE-before-BREAK
+contact-mode certificate
+```
+
+其中 contact continuity 应作为观察指标，而不是 regression 的硬通过条件，因为新 I04 正是要比较不同
+finger realization 对 contact continuity 的影响。
+
+### 21.3 旧 I01 文件与结果怎么处理
+
+```text
+I01_BUNNY_PROTOCOL.md
+Module/i01_bunny_physics/
+Module/generated/i01_bunny_physics/
+```
+
+全部保留，标记为：
+
+```text
+LEGACY_EXPLICIT_PHYSICS_EVIDENCE
+```
+
+不删除历史结果，不继续扩展其 fixed-vs-variable Gate，也不让新 I04 runner 依赖旧 I01 planner。
+
+---
+
+## 22. I02：独立实验可以退休；short-prefix/fresh-state 思想并入 M06 regression
+
+### 22.1 旧 I02 为什么不再必要
+
+旧 I02 特意构造：
+
+```text
+BREAK(3)
+ -> REPOSITION(3) 12 mm
+ -> MAKE(3)
+```
+
+然后比较：
+
+```text
+LONG  = 一次 12 mm explicit finger prefix
+SHORT = 3 x 4 mm，每段 fresh barrier 后重新 M09/M10
+```
+
+它测试的是 Explicit finger trajectory 对 live nonlinear kinematics error 的敏感性。
+
+新 I04-A 根本没有 explicit finger REPOSITION trajectory；finger motion 来自 Passive MCC 或 DPRef。
+新 I04-B 虽然有 whole-hand trajectory，但它是传统 geometric trajectory，不再由
+`BREAK/REPOSITION/MAKE` primitive 表示。
+
+因此旧 I02 的 paired experiment 不再回答新 I04 的核心问题，应从正式路线退休。
+
+### 22.2 仍值得保留的部分
+
+`short committed prefix + fresh real-state barrier` 作为执行工程思想仍然有价值，但不需要再作为一个
+独立 research Gate。
+
+它应被吸收到 M06 的通用 regression：
+
+```text
+R-M06-PREFIX:
+    take a wrist or whole-hand geometric trajectory
+    -> segment into short prefixes
+    -> execute prefix
+    -> obtain fresh measured q/wrist/contact/force
+    -> continue from the measured state
+```
+
+这个 regression 只验证：
+
+```text
+- executor 没有继续使用 stale state
+- prefix completion/barrier 正确
+- command provenance 正确
+- trajectory concatenation 连续
+```
+
+不再要求证明：
+
+```text
+SHORT statistically beats LONG
+terminal finger REPOSITION error improves by a frozen percentage
+contact-mode handover succeeds
+```
+
+### 22.3 对当前 `I02=NOT_MET` 的处理
+
+保留旧结果原样：
+
+```text
+I02 = EVALUATED / NOT_MET
+```
+
+但在新架构里它只表示：
+
+> 旧 Explicit finger-REPOSITION fixture 上，没有观察到预先冻结幅度的 short-prefix 优势。
+
+它不说明新的 M06 generic prefix executor 不可用，也不能阻塞新 I04。
+
+---
+
+## 23. I03：独立 runtime experiment 退休；future viability 迁移到 Privileged GT Oracle
+
+### 23.1 旧 I03 为什么不再必要
+
+旧 I03 比较：
+
+```text
+M11 Beam
+vs.
+M11 Beam + M12 ShadowSucc terminal filter
+```
+
+其核心问题是：Explicit planner 当前选出的 `SLIDE/MAKE/BREAK/...` edge 虽然立即可执行，是否会把
+未来 contact-mode search 带到 dead end。
+
+新 I04-A 没有 explicit contact-mode search；新 I04-B 的 finger target 已由 GT Oracle 给出，因此
+controller runtime 也没有 M11 candidate tree。
+
+所以旧 I03 的 `ShadowSucc` 不应继续作为被测 controller 的 hidden helper。
+
+### 23.2 I03 中真正有价值的思想放在哪里
+
+“不要给一个当前可达、下一步却彻底无解的 target”依然重要，但应成为 GT Oracle 的 privileged
+route-quality requirement：
+
+```text
+full object GT
+ -> candidate geometric target Y_k^GT
+ -> geometric reachability / collision check
+ -> continuation / remaining-coverage feasibility
+ -> choose next target
+```
+
+这个检查可以使用未来 GT、offline route graph 或 privileged witness，因为它属于 benchmark target
+construction；但 adapter 不得把 witness contact mode / finger role / handover sequence 暴露给 A/B controller。
+
+因此旧 I03 最适合迁移成：
+
+```text
+R-ORACLE-CONTINUATION:
+    verify generated GT target sequence has a physically feasible continuation
+```
+
+而不是 runtime `M12 ShadowSucc`。
+
+### 23.3 旧 I03 结果怎么处理
+
+旧 `I03=EVALUATED / MET` 继续保留为 Historical Explicit Planner evidence，说明 ShadowSucc 在当时固定
+fixture 上确实有效；但它不再构成新 I04 的 prerequisite，也不授权在新 I04 中偷偷调用 M12。
+
+---
+
+## 24. 新 I04 真正需要的前置验证链
+
+删除旧 I01–I03 Gate 之后，新 I04 不应该“什么都不验证就直接跑”。前置验证应改成与新架构直接对应
+的更小集合：
+
+```text
+R0  Robot / Sensor / Basic Controller
+    M0/M01/M02/M03 已有低层能力继续使用
+
+R1  Passive MCC Moving-Wrist Smoke
+    externally prescribed outside-object wrist motion
+    + basic fingertip MCC
+    -> stable executable low-level behavior
+
+R2  Geometric Target Generator
+    A: outside-object wrist targets are reachable/collision-valid
+    B: wrist + fingertip geometric targets admit terminal IK
+
+R3  Trajectory Generation
+    A: wrist trajectory tracks p_H^*
+    B: whole-hand geometric trajectory tracks (p_H^*, x_1:4^*)
+    without desired contact-mode constraints
+
+R4  Generic Execution/Safety
+    M10 simplified hardware-safety audit
+    + M06 prefix execution/fresh barrier
+
+R5  GT Oracle Continuation
+    target sequence is coverage-relevant and has privileged geometric continuation
+```
+
+这些都只是**系统有效性/regression**，不应预先要求高 contact continuity 或 high coverage；否则又会把 I04
+要评价的结果提前变成 Gate。
+
+通过这些最小有效性检查后，直接运行：
+
+```text
+I04-A-MCC
+I04-A-DPREF
+I04-B-MCC
+```
+
+然后由真实 physics outcome 比较 coverage、contact continuity、force、tracking 与安全。
+
+---
+
+## 25. I01–I03 / M06–M12 最终迁移总表
+
+| 旧 ID | 原作用 | 新 I04 是否需要 | 新位置 |
+| --- | --- | --- | --- |
+| I01 | Fixed vs explicit variable contact/handover | `NO` as experiment/Gate | 历史 evidence；抽取 Passive-MCC moving-wrist smoke |
+| I02 | Explicit finger long vs short REPOSITION prefix | `NO` as experiment/Gate | short-prefix/fresh-state 并入 M06 regression |
+| I03 | M12 ShadowSucc 避免 Explicit planner dead end | `NO` as runtime experiment/Gate | continuation 思想迁移到 GT Oracle regression |
+| M06 | Transaction/prefix/barrier executor | `YES` | 通用 trajectory executor，去 contact-mode 依赖 |
+| M07 | ContactModeGraph | `NO` | legacy Explicit only |
+| M08 | Primitive CheapCert | `NO/OPTIONAL` | Oracle-side geometric feasibility helper |
+| M09 | Primitive ContinuousOptimize | `YES, REDEFINE` | Wrist / Whole-hand Geometric Trajectory Generator |
+| M10 | Exact contact-aware prefix audit | `YES, SIMPLIFY` | hardware safety + trajectory integrity only |
+| M11 | Contact-mode Lazy Beam | `NO` | legacy Explicit only |
+| M12 | Shadow contact viability | `NO` runtime | Oracle-side continuation helper / legacy evidence |
+
+新的依赖关系应是：
+
+```text
+M0/M01/M02/M03
+ + GT Coverage Oracle helpers
+ + redefined M09
+ + simplified M10
+ + generic M06
+ + DPRef (only for I04-A-DPREF)
+        |
+        v
+      I04
+```
+
+而不再是：
+
+```text
+I01 -> I02 -> I03 -> G3 -> I04
+```
+
+这项迁移完成后，旧 I01–I03 和 M07–M12 仍可完整复现，但它们不会继续决定新 I04 能否推进。
