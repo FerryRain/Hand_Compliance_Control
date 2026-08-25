@@ -9,8 +9,9 @@ Interpreter、共享执行层和 Exp. 2 均已实现并运行。E05 Exp.1/2 现�
 限制越界统计，不再给策略设置 `PASS/FAIL` 或 `MET/NOT_MET`。DPRef validation 缺 RELEASE，
 所以 checkpoint 的 role coverage 仍受限。Exp.3 已移到 I05 之后，作为最终 active-planner
 ablation。用户另行授权的 MCC-only I01–I03 已在 Bunny 物理场景完成，且不使用 DP。
-I04 已从 active exploration 中拆出并冻结为 Oracle next-point 整手连续接触到达核心协议；
-本轮没有实现、训练或运行 I04，数值协议仍待冻结。
+I04 已从 active exploration 中拆出并冻结为 Oracle next-point 整手连续接触到达协议；
+Explicit MCC development implementation、专项测试和三轮物理回归已完成，但完整 274-goal
+traversal 尚未完成，DPRef 分支也未开始。当前结果只能解释为开发回归，不能宣称 full traversal。
 
 ## 当前状态
 
@@ -34,7 +35,7 @@ I04 已从 active exploration 中拆出并冻结为 Oracle next-point 整手连�
 | I01 Bunny physics | `EVALUATED / MET` | variable 3/3 pass，`58.429 mm`；fixed `19.885 mm`；`G2=GO` |
 | I02 Bunny prefix | `EVALUATED / NOT_MET` | LONG/SHORT 均 3/3 pass；误差 `1.476/1.467 mm`，未达冻结改善阈值 |
 | I03 Bunny viability | `EVALUATED / MET` | Beam/Shadow dead end `3/0`；支持距离中位数 `7.111/101.125 mm` |
-| I04 Oracle next-point traversal | `CORE_PROTOCOL_FROZEN / NUMERICS_TBD` | Oracle 给 surface goal、不指定 finger；比较整手 contact realization，不评价探索点选择 |
+| I04 Oracle next-point traversal | `EXPLICIT DEV IMPLEMENTED / FULL TRAVERSAL INCOMPLETE` | 274 个 required goals；三轮回归最多 7 个，当前阻塞在 two-anchor WRIST optimization |
 | G3 | `NO_GO` | I02 未 MET；不进入 GPIS |
 
 E05 的 `EVALUATED` 只表示 evaluator 与 episode 完整有效；策略优劣由连续指标与越界量描述。
@@ -87,7 +88,8 @@ Module/
 │   └── 2026-08-25_EXP2_CONTACT_PRIORITY_RERUN.md # 当前接触优先四策略重评
 ├── I01_BUNNY_PROTOCOL.md             # Bunny fixed/variable 物理对比冻结协议
 ├── I02_I03_BUNNY_PROTOCOL.md         # Bunny prefix/terminal viability 冻结协议
-├── I04_ORACLE_NEXT_POINT_PROTOCOL.md # I04 no-target-finger 核心协议；数值与实现未冻结
+├── I04_ORACLE_NEXT_POINT_PROTOCOL.md # I04 no-target-finger 核心协议与当前实现边界
+├── I04_RESUME_CHECKPOINT_2026-08-25.md # I04 回归证据、阻塞点与续作顺序
 ├── M4_DP_GUIDE.md                    # Diag-MCC/Dataset-I 与 DPRef 指导
 ├── WHOLE_HAND_COMPLIANCE_DESIGN.md   # Main/Explicit 共享 Wrist/Finger MCC 数学与职责
 ├── common/                           # hand/full-robot state 和 JSONL contract
@@ -107,6 +109,7 @@ Module/
 ├── module_12_shadow_viability/        # M12：prediction-only terminal continuation
 ├── i01_bunny_physics/                 # I01 Bunny scene、runner、benchmark 与可视化
 ├── i02_i03_bunny_physics/             # I02/I03 planner、物理 runner、benchmark 与可视化
+├── i04_oracle_next_point/              # I04 full-mesh graph、Explicit planner/runner/benchmark/demo
 ├── m06_m12_benchmark.py               # 冻结 benchmark、CSV、trace 与 provenance
 ├── m06_m12_visual_demo.py             # 同 visual_demo 风格的七模块 gallery
 ├── e05_physics/                      # 大尺寸连续强起伏 surface/scene
@@ -345,10 +348,32 @@ MCC 和 M03 guards。I04 只比较 given-good-next-point 下谁到达更多、�
 handover、力、关节余量和计算代价；不使用策略 `MET/NOT_MET`。uncertainty、GPIS frontier、
 information gain、next-best-touch 和 reconstruction 仍属于后续 GPIS。
 
-当前没有 I04 复现命令或生成结果。完整 mesh/surface graph、state-conditioned OracleRoute、
-容差、timeout、seeds、goal schema、DPRef conditioning/checkpoint、DPRef 分支的 M08/M12 权限、
-trace/evaluator 均需在实现前追加 numerical protocol；不得把
-`CORE_PROTOCOL_FROZEN` 误写成已经实现或评测。
+当前已实现完整 Bunny mesh graph、state-conditioned OracleRoute、Explicit M07–M12/M10/M06
+执行链、trace/evaluator 与可视化。development 数值为 25 mm coverage、12 mm mesh-geodesic
+arrival tolerance 和 55° normal tolerance；它们尚未升级为最终正式数值协议。三轮保存回归中
+最多完成 `7/274` goals；最长一轮 90 s 完成 `6/274`，接触连续率 `99.9839%`，但覆盖随后停滞。
+详细 provenance、已修问题及当前 two-anchor WRIST blocker 见
+[`I04_RESUME_CHECKPOINT_2026-08-25.md`](I04_RESUME_CHECKPOINT_2026-08-25.md)。
+
+```bash
+# 专项语义、规划器与 FR3+LEAP 回归
+$PY -m unittest -q \
+  Module.tests.test_m06_m12_planner \
+  Module.tests.test_i04_oracle_next_point \
+  Module.tests.test_fr3_leap_model
+
+# 短开发运行；输出写入 ignored generated 目录
+$PY -m Module.i04_oracle_next_point.benchmark \
+  --profile smoke --duration 45 --goals 5
+
+# 只回放同一次 canonical trace；可将编码器切到 h264_nvenc
+MUJOCO_GL=osmesa $PY -m Module.i04_oracle_next_point.visual_demo \
+  --reuse --speed 12 --codec h264_nvenc
+```
+
+正式入口为 `--profile formal`，但在 WRIST blocker 未解决前不应将其当作完成性实验启动。
+generated trace、视频和 checkpoint 默认由 `.gitignore` 排除；Git 中发布的是代码、协议、测试
+与可复现命令，不把本机回归二进制伪装成仓库内正式结果。
 
 ## Exp. 1 DP-direct 与历史 E05 复现
 

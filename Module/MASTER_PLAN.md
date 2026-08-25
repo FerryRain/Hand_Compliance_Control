@@ -6,11 +6,11 @@
 
 | 项目 | 当前值 |
 | --- | --- |
-| 计划版本 | `v3.4` |
+| 计划版本 | `v3.5` |
 | 最近更新 | `2026-08-25` |
-| 授权状态 | `AUTHORIZED_I04_CORE_PROTOCOL_ONLY` |
-| 实施状态 | `I04_NOT_IMPLEMENTED` |
-| 当前活动模块 | `I04_CORE_PROTOCOL_FROZEN_NUMERICS_TBD` |
+| 授权状态 | `AUTHORIZED_I04_EXPLICIT_MCC_DEVELOPMENT` |
+| 实施状态 | `I04_EXPLICIT_IMPLEMENTED_PHYSICAL_REGRESSION_INCOMPLETE` |
+| 当前活动模块 | `I04_TWO_ANCHOR_WRIST_OPTIMIZATION_BLOCKER` |
 | 当前 Gate | `G1a_ARCHIVED_PRE_RETUNE / G2_GO_BUNNY / G3_NO_GO_I02_NOT_MET` |
 | 固定环境 | `handcomp` |
 | Python | `/home/ferry/data/Anaconda/envs/handcomp/bin/python` |
@@ -89,6 +89,13 @@ execution、真实 barrier、MCC 与 MAKE-before-BREAK guard。ARRIVE 只由真�
 contact 与法向一致性判定。当前只冻结核心协议，未授权实现、训练或运行，数值层仍为 TBD；
 完整定义见 `I04_ORACLE_NEXT_POINT_PROTOCOL.md`。I04 不包含 uncertainty、frontier、information
 gain 或 next-best-touch selection，这些仍只属于 GPIS active exploration。
+
+2026-08-25 状态更新：I04 Explicit MCC development implementation 已累计接入 full-mesh
+surface graph、M07–M12、M10 certificate、M06 barrier、MCC/guards、benchmark 和 visual demo。
+三轮保存物理回归最多完成 `7/274` goals；90 s endurance 完成 `6/274`，接触连续率
+`99.9839%`，但在双锚点后的 WRIST candidate optimization 停滞。因此 I04 当前是
+`PHYSICAL_REGRESSION_INCOMPLETE`，不是 full traversal completed；DPRef/GPIS 仍关闭。完整续作
+证据和下一步见 `I04_RESUME_CHECKPOINT_2026-08-25.md`。
 
 ## 核心推进原则
 
@@ -185,7 +192,7 @@ D. Main Method vs. Explicit Baseline
 | 13 | I01 | Oracle Continuous Traversal | M01–M12 | `EVALUATED / MET`（Bunny MCC-only；`G2=GO`） |
 | 14 | I02 | Receding-horizon prefix 对比 | I01 | `EVALUATED / NOT_MET`（3/3 均完成，但稳健性改善阈值未达到） |
 | 15 | I03 | Terminal viability 对比 | I01, M12 | `EVALUATED / MET`（dead end `3 -> 0`） |
-| 16 | I04 | Oracle Next-Point Whole-Hand Contact Traversal | I01–I03, M04-H, M04-DPRef | `CORE_PROTOCOL_FROZEN / NUMERICS_TBD` |
+| 16 | I04 | Oracle Next-Point Whole-Hand Contact Traversal | I01–I03, M04-H, M04-DPRef | `EXPLICIT DEV IMPLEMENTED / FULL TRAVERSAL INCOMPLETE` |
 | 17 | M13 | GPIS SurfaceModel | G3, M01 | `NOT_STARTED` |
 | 18 | M14 | GPIS Active Exploration | M13 | `NOT_STARTED` |
 | 19 | I05 | GPIS Main vs. GPIS Baseline | G4, M14 | `NOT_STARTED` |
@@ -916,9 +923,10 @@ replan 和 I03 的 terminal continuation。Explicit 使用完整 M07–M12 plann
 让 Explicit planner 暗中替 DPRef 选择 finger。
 
 I04 比较的是 given-good-next-point 条件下的 whole-hand contact realization ability；它明确排除
-uncertainty、frontier、information gain、next-best-touch selection 和 reconstruction。正式实现
-前仍需冻结 mesh/route、数值 tolerance、timeout/seeds、goal schema、DPRef checkpoint 与 trace
-evaluator。本阶段没有实现或评测授权。
+uncertainty、frontier、information gain、next-best-touch selection 和 reconstruction。当前
+Explicit development implementation 已冻结 mesh fixture、274-goal route、development tolerance、
+trace 与 evaluator，并完成局部物理回归；这些数值仍不是最终 formal protocol。完整 required
+set 尚未完成，DPRef goal conditioning/checkpoint 与 method boundary 也未实现。
 
 ## Integration 5：GPIS Main vs. GPIS Explicit Baseline
 
@@ -1010,7 +1018,7 @@ I05 回答两个完整 GPIS 系统最终效果如何；I06/Exp. 3 则作为最�
 26. [EVALUATED / MET / G2 GO / BUNNY MCC-ONLY] Oracle Continuous Traversal
 27. [EVALUATED / NOT_MET / BUNNY MCC-ONLY] Receding-Horizon Prefix
 28. [EVALUATED / MET / BUNNY MCC-ONLY] Terminal Viability
-29. [CORE PROTOCOL FROZEN / NUMERICS TBD / NOT AUTHORIZED TO IMPLEMENT] Oracle Next-Point Whole-Hand Contact Traversal
+29. [EXPLICIT DEV IMPLEMENTED / PHYSICAL REGRESSION INCOMPLETE] Oracle Next-Point Whole-Hand Contact Traversal
 30. [BLOCKED BY G3] GPIS SurfaceModel
 31. [BLOCKED BY G3] GPIS Active Exploration
 32. [BLOCKED BY G3] Full GPIS Main vs. Baseline
@@ -1020,7 +1028,8 @@ I05 回答两个完整 GPIS 系统最终效果如何；I06/Exp. 3 则作为最�
 不得因为某个后续模块更容易展示而跳过顺序或 Gate。M06–M12 是用户明确授权的 MCC-only
 模块实现豁免；随后用户又单独授权并已完成 Bunny I01，所以该实验可独立给出 `G2=GO`。
 用户随后单独授权的 I02/I03 已完成；当前 G3=NO_GO，所以不能进入 GPIS。I04 已从 active
-exploration 中拆出并只冻结核心协议，不因 G3 状态被重新解释为 GPIS，也没有实现/运行授权。
+exploration 中拆出，Explicit development implementation 已形成但完整 traversal 未完成；它不因
+G3 状态被重新解释为 GPIS，DPRef/GPIS 也没有随之解锁。
 E05 Exp.1/2 不是系统解锁 Gate；I06/Exp.3 固定在 I05 之后执行。
 
 ## 每个模块开始前的 Protocol Freeze
