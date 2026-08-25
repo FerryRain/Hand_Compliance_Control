@@ -1,66 +1,90 @@
-# I04 重定义与 M06–M12 迁移方案
+# I04 重定义、I01–I03 退役与 M06–M12 迁移方案
 
 > 日期：`2026-08-25`
 >
 > 状态：`REDESIGN_SPEC / IMPLEMENTATION_NOT_STARTED`
 >
-> 目的：记录 I04 的新实验定义，并明确 M06–M12 以及历史 I01–I03 在新 I04 中应保留、删除、重构或迁移的职责。
-> 本文只新增设计说明，不代表现有 `I04_ORACLE_NEXT_POINT_PROTOCOL.md`、现有 I04 代码、历史 I01–I03
-> 或 M06–M12 benchmark 已经完成迁移。现有 Explicit contact-mode implementation 与回归结果继续作为
-> 历史开发证据保留，不再作为新 I04 的目标架构或前置 Gate。
+> 本文是新 I04 的设计迁移说明。它重新定义 I04 的实验问题，并说明历史 I01–I03 与 M06–M12 在新架构中的去留。
+> 现有 `I04_ORACLE_NEXT_POINT_PROTOCOL.md`、I01–I03、M06–M12 Explicit implementation 和物理回归结果继续保留为历史证据，
+> 但不再作为新 I04 的目标架构或前置 Gate。
 
 ---
 
-## 1. 为什么需要重定义 I04
+## 1. 新 I04 到底要回答什么
 
-当前 I04 implementation 把问题定义为：GT Oracle 只给一个无 finger-ID 的 surface point，随后
-Explicit planner 自己决定 explorer finger、SLIDE/MAKE/BREAK、contact-mode sequence、WRIST_ADJUST
-和局部 realization。这个定义实际上把 I04 变成了一个高维显式 contact-mode planning 问题。
+旧 I04 把问题定义成：GT Oracle 只给一个无 finger-ID 的 surface point，然后 Explicit planner 自己决定：
+
+```text
+哪个 finger 去
+SLIDE / REPOSITION / MAKE / BREAK
+什么时候 WRIST_ADJUST
+contact-mode sequence
+handover sequence
+```
+
+这实际上把 I04 变成了一个高维显式 contact-mode planning 问题。
 
 新的 I04 不再测试这个问题。
 
 新的核心问题是：
 
-> 在完整物体 GT 已知、下一步理想几何目标已经由 privileged Oracle 给出的情况下，机器人是否能够
-> 在整手移动过程中维持真实 fingertip interaction，并最终把整个物体覆盖一遍？
+> 在完整物体 GT 已知、下一步理想几何目标已经由 privileged Oracle 给出的情况下，机器人能否通过正常的轨迹规划和低层控制，
+> 在整手移动过程中维持真实 fingertip interaction，并最终覆盖整个物体？
 
-I04 不研究 unknown-object active exploration，不研究 information gain，也不要求被测方法自己寻找
-next-best target。GT Oracle 负责给“正确的下一步几何目标”；被测方法只负责实现这个目标。
+I04 不研究 unknown-object active exploration，也不研究 information gain / next-best-touch selection。
+GT Oracle 负责提供“正确的下一目标”；被测方法只负责实现这些目标。
 
-新 I04 分为两个互补实验：
+新 I04 分成两个互补实验：
 
-1. `I04-A: Wrist-only Oracle`：只给 wrist/palm 的外侧目标位置，比较最基础 Passive MCC 与
-   DPRef+MCC 在没有 fingertip target 时的 whole-hand traversal 能力；
-2. `I04-B: Full-hand Geometric Oracle`：同时给 wrist 与每根 fingertip 的精确几何目标位置，再用
-   传统 trajectory planning + MCC 执行，测试在 high-dimensional target 已知时传统控制能否完成
-   whole-object coverage。
+1. **I04-A: Wrist-only Oracle**
+   - Oracle 只暴露完整 wrist/palm 目标位姿 `X_H^* ∈ SE(3)`；
+   - 比较最基础 Passive MCC 与 DPRef+MCC；
+   - 两边使用完全相同的 wrist trajectory；
+   - 不给任何 fingertip geometric target。
 
-二者都禁止 Oracle 输出 desired contact state、contact mode、MAKE/BREAK/KEEP/RELEASE 指令。
-真实 contact 只能是执行时 observation、MCC feedback 和最终 evaluation signal，而不能是 Oracle
-给出的答案。
+2. **I04-B: Full-hand Geometric Oracle**
+   - Oracle 暴露同一个 wrist pose `X_H^*`，再额外暴露四根 fingertip 的几何目标位置；
+   - 使用传统 whole-hand trajectory planning + basic MCC 执行；
+   - 测试 high-dimensional geometric target 已知时，传统 robot control 是否能完成 coverage。
+
+两个实验都明确禁止 Oracle 输出：
+
+```text
+desired contact state
+contact mode
+KEEP / RELEASE / FREE / MAKE
+SLIDE / REPOSITION / MAKE / BREAK
+anchor/explorer role
+handover sequence
+MAKE-before-BREAK answer
+```
+
+真实 contact 只能是 controller feedback、physics outcome、coverage update 和 evaluation signal。
 
 ---
 
-## 2. 共同的 Privileged GT Coverage Oracle
+# 2. Privileged GT Coverage Oracle
 
-I04 使用完整、准确、固定版本的 object GT mesh。Oracle 可以读取：
+I04 使用完整、准确、固定版本的 object GT mesh / SDF。
+
+Oracle 可以读取：
 
 ```text
-- full object mesh / SDF / normals
-- current real robot configuration
-- current real fingertip contact points for coverage bookkeeping
-- already-covered surface ledger
-- robot joint/workspace/collision limits
+full object mesh / SDF / normals
+current real robot configuration
+current real wrist pose
+current real fingertip contact points for coverage bookkeeping
+already-covered surface ledger
+robot joint/workspace/collision limits
 ```
 
-Oracle 的职责是从尚未覆盖区域中选择下一个 physically feasible、具有 continuation 的理想目标。
-它属于 privileged benchmark infrastructure，不属于被测控制方法。
+Oracle 的职责是从尚未覆盖区域中选择下一组 physically meaningful、可达并具有 continuation 的理想几何目标。
 
-建议 Oracle 内部统一构造一个完整的 latent geometric target：
+建议 Oracle 内部统一构造：
 
 ```text
 Y_k^GT = (
-    p_H,k^*,
+    X_H,k^*,
     x_1,k^*,
     x_2,k^*,
     x_3,k^*,
@@ -70,215 +94,397 @@ Y_k^GT = (
 
 其中：
 
-- `p_H,k^*`：palm/wrist 的下一目标位置；
-- `x_i,k^*`：第 `i` 根 fingertip 的下一几何目标位置；
-- 不包含 `c_i^*`；
-- 不包含 finger role；
-- 不包含 contact mode；
-- 不包含 MAKE/BREAK sequence。
-
-如果后续发现 palm orientation 必须随完整物体几何改变，可以把 `p_H^*` 扩展为 `X_H^*`，但必须
-单独冻结 orientation contract。第一版优先保持接口简单：比较变量是“是否暴露 fingertip geometric
-target”，而不是额外改变 wrist orientation 信息。
-
-### 2.1 Palm/Wrist target 必须位于物体外侧
-
-I04-A 绝不把 palm contact 当成任务目标。真实系统中主要接触/力信息来自 fingertips，因此 palm
-不需要接触物体，也不需要依赖 palm force feedback。
-
-Oracle 应根据目标 surface region 生成物体外侧的 wrist/palm target，例如概念上：
-
 ```text
-p_H^* = x_surface^* + d_offset * n_surface
+X_H,k^* = (p_H,k^*, R_H,k^*) ∈ SE(3)
+x_i,k^* ∈ R^3
 ```
 
-其中 `d_offset > 0`，并通过完整 robot/object geometry 保证 palm、arm 与非允许 body 不穿入物体。
-具体 offset、frame 和 orientation policy 后续作为 numerical protocol 冻结。
+注意：**wrist orientation 从第一版开始就是必须的，不存在 position-only 的正式 I04。**
 
-### 2.2 A/B 使用同一个 underlying Oracle，只改变暴露信息
+整只手要绕完整物体移动时，不可能依靠一个固定 palm orientation 覆盖侧面、背面、耳朵、底部等区域。
+如果只改变 `p_H` 而固定 `R_H`，会人为限制 finger workspace，也会让不同 surface region 的接触几何不合理。
 
-公平比较建议采用同一个 `Y_k^GT`：
-
-```text
-I04-A adapter:
-    Y_k^GT -> p_H,k^*
-
-I04-B adapter:
-    Y_k^GT -> (p_H,k^*, x_1,k^*, x_2,k^*, x_3,k^*, x_4,k^*)
-```
-
-因此 I04-A 与 I04-B 的核心信息差只有：
+因此新的正式 wrist target 始终是：
 
 ```text
-是否显式提供 per-finger geometric targets
+X_H^* = (position + orientation)
 ```
 
 而不是：
 
 ```text
-是否显式提供 contact-transition answer
+p_H^* only
+```
+
+具体 `R_H^*` 的构造规则需要在 numerical protocol 中冻结，例如可以由：
+
+```text
+local surface normal
+local traversal tangent
+palm approach axis
+hand preferred roll / opposition geometry
+```
+
+共同定义，但“不旋转 wrist”不再是合法正式配置。
+
+---
+
+## 2.1 Wrist/Palm target 必须位于物体外侧
+
+I04 不把 palm contact 当成任务目标。
+
+真实系统中主要触觉/力信息来自 fingertips，palm 本身没有必要贴住物体，也不应依赖 palm-contact force 来完成 exploration。
+
+因此 Oracle 生成的 wrist/palm pose 应位于物体外侧，例如位置部分可以概念性写成：
+
+```text
+p_H^* = x_region^* + d_offset * n_region
+```
+
+其中 `d_offset > 0`。
+
+同时 orientation `R_H^*` 根据该区域局部几何旋转，使 hand 的有效 finger workspace 面向待探索区域。
+
+Oracle 必须保证：
+
+```text
+palm outside object
+arm/palm/non-tip bodies do not penetrate object
+wrist pose is reachable
+orientation is kinematically meaningful for the hand
 ```
 
 ---
 
-## 3. I04-A：Wrist-only Oracle
+## 2.2 A/B 使用同一个 underlying Oracle
 
-### 3.1 实验目的
+A/B 最干净的公平设计是共享同一个 latent target：
 
-I04-A 回答：
+```text
+Y_k^GT = (X_H,k^*, x_1,k^*, x_2,k^*, x_3,k^*, x_4,k^*)
+```
 
-> 当 global hand motion 已经由 GT Oracle 正确指定，但 high-dimensional fingers 没有任何显式目标时，
-> 最基础的被动 MCC 能否随着 wrist motion 自然维持 interaction？DPRef 是否能够通过主动生成 finger
-> reference，在相同 wrist motion 下显著提高 continuous traversal / coverage？
+然后只通过不同 adapter 暴露不同信息：
 
-这是后续主方法 `wrist-only planning + learned finger realization` 的直接 oracle-level sanity check。
+```text
+I04-A adapter:
+    Y_k^GT -> X_H,k^*
 
-### 3.2 输入
+I04-B adapter:
+    Y_k^GT -> (X_H,k^*, x_1,k^*, x_2,k^*, x_3,k^*, x_4,k^*)
+```
 
-I04-A 只向被测方法暴露：
+因此 A/B 的核心信息差只有：
+
+```text
+是否显式暴露 per-finger geometric targets
+```
+
+不是：
+
+```text
+是否告诉 contact-transition answer
+```
+
+---
+
+# 3. 共享 Geometric Trajectory Planning Layer
+
+**Oracle 给目标，不等于机器人直接移动到目标。所有 I04 cells 都必须经过一个明确的 trajectory planning layer。**
+
+统一结构是：
+
+```text
+GT Coverage Oracle
+        ↓
+Geometric Target
+        ↓
+Shared Geometric Trajectory Planner
+        ↓
+Nominal trajectory
+        ↓
+Controller / DPRef realization
+        ↓
+Safety audit + execution
+        ↓
+Physics
+```
+
+这层 trajectory planner 与 Oracle、MCC、DPRef 是三个不同职责：
+
+```text
+Oracle:
+    决定“下一目标在哪里”
+
+Trajectory Planner:
+    决定“从当前状态怎样平滑、安全地运动到该目标”
+
+Controller / DPRef:
+    决定“如何在真实动态和接触误差下执行 nominal trajectory”
+```
+
+---
+
+## 3.1 A-MCC 与 A-DPRef 必须共享完全相同的 wrist trajectory planner
+
+I04-A 中，输入是：
 
 ```text
 current measured robot state
-future prescribed wrist trajectory tau_H
-fingertip force/contact measurements required by the low-level controller
+current wrist pose X_H,current
+next wrist target pose X_H^*
 ```
 
-其中 Oracle 只提供：
+共享 planner 输出：
 
 ```text
-p_H,k^*
+tau_H = {X_H(t)}_{t=0:T}
 ```
 
-然后由简单几何 Wrist Trajectory Generator 生成：
+这里 `X_H(t)` 包含：
 
 ```text
-tau_H : p_H,current -> p_H,k^*
+position trajectory
+orientation trajectory
 ```
 
-禁止给：
+例如 orientation interpolation 可以使用 SO(3)/quaternion interpolation；具体实现必须在正式 protocol 中统一冻结。
+
+**A-MCC 和 A-DPRef 不能各自生成不同 wrist path。**
+
+必须满足：
+
+```text
+same X_H^*
+same trajectory planner
+same tau_H
+same timing / velocity / acceleration limits
+same collision constraints
+same wrist tracking controller
+```
+
+唯一主要区别是 finger realization：
+
+```text
+A-MCC   : passive fingertip MCC
+A-DPRef : DPRef nominal finger motion + fingertip MCC
+```
+
+这样才能真正回答 DPRef 是否帮助 wrist-only whole-hand traversal。
+
+---
+
+## 3.2 I04-B 使用同一 planning framework，但增加 fingertip geometric objectives
+
+I04-B 不是“拿到目标点以后直接 joint interpolation”。
+
+它同样经过 geometric trajectory planning，只是目标约束更多：
+
+```text
+current robot state
++
+X_H^*
++
+x_1^*, x_2^*, x_3^*, x_4^*
+        ↓
+Whole-hand Geometric Trajectory Planner
+        ↓
+nominal q_arm(t), q_finger(t)
+```
+
+A/B 最好共用同一个 planning framework 和基础约束：
+
+```text
+same robot model
+same collision checker
+same joint limits
+same velocity/acceleration limits
+same time parameterization
+same wrist pose objective implementation
+same planning tolerances
+```
+
+区别是：
+
+```text
+A:
+    active task objective = wrist pose X_H^*
+    no fingertip geometric target
+
+B:
+    active task objectives = wrist pose X_H^* + fingertip positions x_1:4^*
+```
+
+因此不是两个完全无关的 planner，而是同一 geometric planning layer 的两个 task-specification modes。
+
+---
+
+# 4. I04-A：Wrist-only Oracle
+
+## 4.1 实验目的
+
+I04-A 回答：
+
+> 当 global wrist motion 已经由 GT Oracle 正确指定、并通过共同 trajectory planner 生成完整 SE(3) wrist trajectory，
+> 但 high-dimensional fingers 没有任何显式目标时，最基础 passive MCC 能否随着 wrist motion 自然维持 fingertip interaction？
+> DPRef 是否能够在相同 wrist trajectory 下主动协调 fingers，从而获得更好的 traversal / coverage？
+
+这是主方法：
+
+```text
+wrist-only planning + learned finger realization
+```
+
+最直接的 oracle-level sanity check。
+
+---
+
+## 4.2 I04-A 输入
+
+Oracle 只向 A 暴露：
+
+```text
+X_H,k^*
+```
+
+随后 shared trajectory planner 产生：
+
+```text
+tau_H = {X_H(t)}
+```
+
+A 的被测 finger method 可以读取正常真实观测，但禁止获得：
 
 ```text
 x_i^*
 target finger ID
+privileged future finger configuration
+explicit contact mode
 SLIDE / REPOSITION / MAKE / BREAK
-KEEP / RELEASE / FREE / MAKE role answer
-contact-mode sequence
-privileged witness finger/configuration
+Oracle-generated role answer
 ```
 
-### 3.3 Wrist 的执行语义
+---
 
-Wrist 只做 prescribed geometric trajectory tracking。
+## 4.3 Wrist 执行语义
 
-I04-A 不要求 palm 接触物体，也不使用 palm-contact force objective。第一版不启用为了“让 palm 贴住
-物体”而设计的 Wrist MCC / resultant-force loop；wrist 的目标是把整只 hand 从一个物体外侧位置带到
-下一个物体外侧位置。
+Wrist 负责按照共享 trajectory planner 的 `tau_H` 运动。
 
-真正被测行为发生在这个过程中：
+它不是为了“让 palm 压住 object”，也不需要 palm-contact force objective。
+
+真实被测行为是：
 
 ```text
-wrist moves
- -> fingers are kinematically carried by the wrist
- -> fingertip controller adapts finger joints
- -> real fingertip contacts slide / persist / disappear / reappear naturally
+wrist translates + rotates around the object
+ -> fingers are kinematically carried by the moving wrist
+ -> finger controller adapts finger joints
+ -> contacts slide / persist / disappear / reappear naturally
 ```
 
-### 3.4 I04-A-MCC：最基础 Passive MCC baseline
+---
 
-MCC branch 必须保持最弱、最基础、最可解释的 passive baseline：
+## 4.4 I04-A-MCC：Basic Passive MCC
+
+MCC branch 使用最基础、最弱、最可解释的 passive fingertip MCC：
 
 ```text
-prescribed wrist trajectory
- -> basic fingertip MCC
- -> actuator command
+shared planned wrist trajectory tau_H
+        ↓
+wrist tracking
+        +
+basic passive fingertip MCC
+        ↓
+physics
 ```
 
-要求：
-
-- 不运行 M07 contact-mode planner；
-- 不运行 Reactive-Heuristic finger reposition；
-- 不给 free finger next-surface target；
-- 不给 finger role intention；
-- 不做显式 handover planning；
-- 不根据 future wrist path 主动预测应该让哪根 finger MAKE/BREAK；
-- active finger 只依据真实 fingertip contact/force 做局部 compliant correction；
-- free finger 默认保持其 nominal/current reference，不主动寻找新接触。
-
-因此 Passive MCC 能做的是：当 wrist 把 hand 带着移动时，根据局部 fingertip force 被动伸缩/柔顺，
-尽可能维持已经存在的接触。若 workspace 不够、接触滑脱或 free finger 没有主动落点，系统不允许用
-额外 planner 替它补答案。
-
-### 3.5 I04-A-DPRef：learned finger realization
-
-DPRef branch 接收与 MCC branch 完全相同的 wrist trajectory，并额外使用其正常可观测 hand/contact
-history：
+它不做：
 
 ```text
-current hand/contact state + future wrist plan
- -> DPRef
- -> nominal finger trajectory + learned role intention
- -> shared/basic Finger MCC compliance
+finger trajectory planning
+finger target prediction
+free-finger reposition planning
+contact-mode search
+handover planning
+future-wrist-conditioned finger action
+```
+
+active finger 只根据真实 fingertip force/contact 做被动 local compliance correction。
+
+free finger 默认保持 nominal/current reference，不主动寻找下一接触点。
+
+因此 A-MCC 测的是最基础问题：
+
+> 当 wrist 把整只 hand 带着平移和旋转时，纯 passive MCC 本身能把已有 contact 保持多久、能覆盖多少？
+
+---
+
+## 4.5 I04-A-DPRef
+
+DPRef branch 使用完全相同的 `tau_H`：
+
+```text
+current hand/contact history
++
+future wrist pose trajectory tau_H
+        ↓
+DPRef
+        ↓
+nominal finger trajectory + learned role intention
+        ↓
+basic/shared Fingertip MCC
+        ↓
+physics
 ```
 
 DPRef 可以主动产生：
 
 ```text
-- active-contact tangential/relative finger motion
-- free-finger reposition
-- approach toward a new contact
-- learned release/handover intention
+active-contact tangential/relative finger motion
+free-finger reposition
+approach to a new surface region
+release / handover intention
+workspace management
 ```
 
-但这些行为来自 DPRef，不来自 GT Oracle 或 Explicit planner。
+但这些行为必须来自 DPRef，而不是 GT Oracle 或 Explicit planner。
 
-I04-A 的核心公平性要求是：
+---
+
+# 5. I04-B：Full-hand Geometric Oracle
+
+## 5.1 实验目的
+
+I04-B 回答：
+
+> 如果传统 robot control 不仅得到下一 wrist pose，而且连四根 fingertip 的精确几何目标都已经由 GT Oracle 给出，
+> 那么传统 whole-hand trajectory planning + passive/basic MCC 是否有能力完成 whole-object coverage？
+
+这是一个 privileged geometric upper bound / traditional-control reference。
+
+它要说明：
 
 ```text
-same GT
-same wrist targets
-same wrist trajectory generator
-same initial state
-same physics
-same force/contact sensing
-same safety limits
-
-only finger realization differs:
-Passive MCC vs DPRef + MCC
+如果 high-dimensional geometric answer 已知，
+robot + trajectory planning + MCC 本身有没有能力完成任务。
 ```
 
 ---
 
-## 4. I04-B：Full-hand Geometric Oracle
-
-### 4.1 实验目的
-
-I04-B 回答：
-
-> 如果传统控制方法不仅知道 wrist 下一步应该去哪里，而且连四根手指的精确几何目标位置都已经由
-> GT Oracle 给出，那么普通 whole-hand trajectory planning + MCC 是否能够完成整物体 coverage，
-> 并在真实执行过程中自然维持接触？
-
-这个实验是 privileged geometric upper bound / traditional-control reference。
-
-它不比较“谁更会规划 finger”，因为 finger target 已经由 Oracle 给出；它测试的是：
-
-```text
-当 high-dimensional geometric answer 已知时，traditional control 是否有能力 physically realize it。
-```
-
-### 4.2 输入
+## 5.2 I04-B 输入
 
 I04-B 暴露：
 
 ```text
 G_k^full = (
-    p_H,k^*,
+    X_H,k^*,
     x_1,k^*,
     x_2,k^*,
     x_3,k^*,
     x_4,k^*
 )
 ```
+
+其中 `X_H^*` 是完整 SE(3) wrist pose。
 
 明确禁止：
 
@@ -288,308 +494,316 @@ KEEP / RELEASE / FREE / MAKE
 SLIDE / MAKE / BREAK primitive
 anchor/explorer role
 contact-mode sequence
-MAKE-before-BREAK plan
+MAKE-before-BREAK sequence
 ```
 
-`x_i^*` 只是一个几何位置，不附带“这里必须处于 CONTACT/ FREE”的离散答案。
+`x_i^*` 是纯几何 fingertip target，不携带离散 desired contact label。
 
-### 4.3 为什么不能给 desired contact state
-
-I04-B 要测的一个核心 outcome 就是：
-
-```text
-trajectory execution 过程中，机器人自己是否能够保持真实接触。
-```
-
-如果 Oracle 直接输出：
-
-```text
-finger 1 KEEP
-finger 2 MAKE
-finger 3 RELEASE
-...
-```
-
-或者把 `c_i^*` 作为 trajectory hard constraint，那么 benchmark 已经提前泄漏了 contact-maintenance
-和 handover 答案，无法再判断传统控制本身是否自然保持 contact。
-
-因此：
-
-```text
-contact state = measurement / feedback / evaluation
-contact state != Oracle command
-contact state != trajectory-planning target
-```
-
-Basic Fingertip MCC 仍然可以读取真实 fingertip force/contact 做局部 compliance，这是低层 feedback，
-不是 desired contact-mode information。
-
-### 4.4 Traditional Whole-hand Trajectory Planning
-
-给定当前真实 configuration 与 `G_k^full`，trajectory planner 只做传统几何/运动学问题：
-
-```text
-current q, p_H
- + terminal wrist/fingertip positions
- -> IK / trajectory generation
- -> smooth whole-hand joint/task-space trajectory
-```
-
-允许使用：
-
-```text
-- current robot configuration
-- full GT geometry for reachability/collision checking
-- joint limits
-- velocity/acceleration limits
-- fingertip-object terminal geometry
-- non-tip collision avoidance
-- smoothness / path length objective
-```
-
-禁止使用：
-
-```text
-- planned contact modes
-- desired contact occupancy
-- MAKE/BREAK timing
-- handover sequence
-- shadow contact successor search
-```
-
-最重要的是：`continuous contact` 不作为 trajectory planner 的 hard constraint。它必须由真实 physics
-执行后测量。否则 I04-B 会把要评价的结果直接写进约束。
-
-### 4.5 I04-B 的执行控制
-
-建议执行栈：
-
-```text
-GT full-hand geometric target
- -> traditional geometric trajectory generator
- -> basic MCC-compliant execution
- -> hard safety guard
- -> physics
-```
-
-这里 MCC 的作用是对 model error / local contact force 做柔顺修正，而不是重新决定 finger target 或
-contact topology。
-
-I04-B 核心 cell 不要求 DPRef；它主要作为 `Full-hand Geometric Oracle + Traditional Control + MCC`
-参考上界。
+这些 fingertip target 可以位于 GT object surface 上，从而定义“下一组应达到的 hand geometry”；
+但**执行过程中是否连续保持 contact、何时出现/失去接触，仍然完全由 physics 决定。**
 
 ---
 
-## 5. 新 I04 中 contact 的权限边界
-
-为避免再次把 task outcome 写回 planner，统一冻结：
-
-### 5.1 可以读取真实 contact 的地方
-
-```text
-1. Fingertip MCC 的力/接触 feedback
-2. DPRef 的正常 observation/history
-3. coverage evaluator
-4. contact continuity evaluator
-5. diagnostic logging
-6. hard hardware safety（仅当确实与硬件安全相关）
-```
-
-### 5.2 不允许使用 desired contact 的地方
-
-```text
-1. GT target interface
-2. I04-A wrist trajectory generator
-3. I04-B whole-hand geometric trajectory objective
-4. M10 task-level execution certificate
-5. privileged route adapter 暴露给 controller 的字段
-```
-
-尤其注意：原 I04 的 `MAKE-before-BREAK`、`last-contact veto` 如果被作为 task-level hard guard 使用，
-会直接帮助系统维持 contact，从而污染 I04 要测的 contact-continuity outcome。
-
-新 I04 中应区分：
-
-```text
-hardware safety guard:
-    joint / collision / actuator / force emergency
-    -> 可以 veto
-
-task contact continuity:
-    whether sum_i c_i_real(t) >= 1
-    -> 只测量，不由 guard 保证
-```
-
-如果真实机器人部署阶段必须保留某个 contact-loss safety rule，必须单独报告该 intervention，并在所有
-cells 完全一致；正式 benchmark 第一版优先不使用 task-level last-contact veto。
-
----
-
-## 6. M06–M12 的新职责
-
-新 I04 不再需要 `M07 -> M08 -> M09 -> M11/M12` 这一条 Explicit contact-mode search chain。
-现有 M06–M12 代码和 benchmark 可以作为历史 baseline evidence 保留，但新 I04 runtime path 应按下表
-迁移。
-
-| Module | 新 I04 状态 | 新职责 |
-| --- | --- | --- |
-| M06 | `KEEP / MODIFY` | 通用 trajectory/prefix executor + fresh-state barrier |
-| M07 | `REMOVE_FROM_I04` | 不再枚举 contact modes；历史 Explicit baseline 保留 |
-| M08 | `MOVE_TO_ORACLE_SIDE / OPTIONAL` | 若复用，只做 privileged geometric target feasibility，不做 primitive CheapCert |
-| M09 | `REDEFINE` | 从 primitive ContinuousOptimize 改为 geometric trajectory generation |
-| M10 | `KEEP / SIMPLIFY` | 只做 swept hardware-safety / integrity audit，不保证 task contact topology |
-| M11 | `REMOVE_FROM_I04` | 不再 beam-search SLIDE/MAKE/BREAK/WRIST sequence |
-| M12 | `MOVE_TO_ORACLE_SIDE` | continuation/coverage viability 属于 privileged GT route，不属于 controller runtime |
-
-下面给出逐模块修改要求。
-
----
-
-## 7. M06：保留为通用 Transactional Trajectory Executor
-
-M06 的 transaction / short-prefix / barrier 思想仍然有价值，但它不再只接受 Explicit contact primitive。
-
-建议新接口：
-
-```text
-TrajectoryPlan
- -> split into short committed prefix
- -> M10 safety audit
- -> M06 execute prefix
- -> fresh measured robot state
- -> continue/replan
-```
-
-M06 保留：
-
-```text
-- short committed prefix
-- participant completion bookkeeping
-- timeout / SAFE_HOLD for hardware/control failure
-- stale-plan rejection
-- fresh real-state barrier
-- command provenance
-```
-
-M06 删除/弱化：
-
-```text
-- 对 ContactModeGraph edge identity 的依赖
-- MAKE/BREAK transaction type 的特殊执行授权
-- prediction suffix 来自 M11 的假设
-- task-level last-contact preservation authority
-```
-
-I04-A 中，M06 执行 wrist prefix，同时 MCC/DPRef 在同一时间连续运行 finger control。
-
-I04-B 中，M06 执行 whole-hand trajectory prefix。
-
----
-
-## 8. M07：从新 I04 执行路径移除
-
-原 M07 的作用：
-
-```text
-枚举 15 个 nonempty contact modes
-枚举 WRIST / SLIDE / REPOSITION / MAKE / BREAK
-检查 mode transition legality
-```
-
-这些都不是新 I04 的问题。
-
-因此：
-
-```text
-I04-A: 禁止调用 M07
-I04-B: 禁止调用 M07
-```
-
-现有 `module_7_contact_mode_graph/` 不删除，可保留用于：
-
-```text
-- 历史 Explicit baseline
-- 旧 I01–I03 / M06–M12 复现
-- 后续若需要 explicit high-dimensional planning ablation
-```
-
-但新 I04 不再依赖它。
-
----
-
-## 9. M08：从 primitive CheapCert 迁移为 Oracle-side feasibility（可选）
-
-原 M08 为大量 `SLIDE/MAKE/BREAK/...` candidates 做 cheap screening。新 I04 没有这种 candidate
-explosion，因此该职责不再必要。
-
-如果希望保留 M08 编号，可以将它迁移为 privileged `OracleTargetFeasibility`：
-
-### I04-A
-
-检查候选 `p_H^*`：
-
-```text
-- FR3 reachability
-- wrist/palm/arm collision
-- target outside object
-- trajectory corridor roughly feasible
-```
-
-### I04-B
-
-检查候选 `(p_H^*, x_1^*, ..., x_4^*)`：
-
-```text
-- terminal whole-hand IK exists
-- joint margin valid
-- non-tip collision valid
-- geometric target is physically meaningful
-```
-
-M08 的结果只用于 GT Oracle 不把明显不可能的 target 交给 benchmark，不向 controller 泄漏 witness
-configuration/finger mode。
-
-如果 Oracle 自己已有这套 certification，则 M08 可以完全不进入新 I04。
-
----
-
-## 10. M09：重定义为 Geometric Trajectory Generator
-
-M09 是新 I04 中唯一需要明显“换任务”的 planning module。
-
-### 10.1 I04-A：WristTrajectoryGenerator
+## 5.3 Traditional Whole-hand Trajectory Planning
 
 输入：
 
 ```text
-current wrist/palm position
-p_H^*
+current measured q / X_H
++
+X_H^*
++
+x_1:4^*
 ```
 
 输出：
 
 ```text
-tau_H = {p_H(t)}
+tau_Q = {
+    q_arm(t),
+    q_finger(t)
+}_{t=0:T}
+```
+
+允许使用：
+
+```text
+IK / differential IK
+trajectory optimization
+task-space interpolation
+joint-space time parameterization
+full GT geometry for collision checking
+joint limits
+velocity / acceleration limits
+smoothness / path-length cost
+```
+
+不允许使用：
+
+```text
+desired contact occupancy
+contact-mode graph
+MAKE/BREAK timing
+handover sequence
+ShadowSucc contact search
+continuous-contact hard constraint
+```
+
+这里非常重要：
+
+```text
+trajectory planner 的任务 = geometric realization
+contact continuity = physical outcome
+```
+
+不能把“必须始终至少一指 contact”写成 trajectory planner 的 hard task constraint，否则就提前把 I04-B 要测的结果保证掉了。
+
+---
+
+## 5.4 I04-B 的执行控制
+
+```text
+GT full-hand geometric target
+        ↓
+Shared Geometric Trajectory Planning framework
+        ↓
+nominal whole-hand trajectory
+        ↓
+basic MCC compliant execution
+        ↓
+hard hardware safety
+        ↓
+physics
+```
+
+MCC 只做 model error / local force 的柔顺修正，不重新决定 fingertip target，也不决定 contact topology。
+
+---
+
+# 6. Contact 的统一权限边界
+
+## 6.1 可以读取真实 contact 的地方
+
+```text
+Fingertip MCC force/contact feedback
+DPRef normal observation/history
+coverage evaluator
+contact-continuity evaluator
+diagnostic logging
+hard hardware emergency logic
+```
+
+## 6.2 不允许 desired contact information 进入的地方
+
+```text
+GT target adapter
+A wrist trajectory objective
+B whole-hand geometric trajectory objective
+M10 task-level certificate
+Oracle exposed fields
+```
+
+尤其注意：
+
+```text
+MAKE-before-BREAK
+last-contact veto
+anchor preservation
+planned contact occupancy
+```
+
+如果被作为 task-level runtime guarantee，就会人为帮助 controller 保持 contact，从而污染 evaluation。
+
+新 I04 必须区分：
+
+```text
+hardware safety:
+    joint / collision / actuator / dangerous force
+    -> 可以 veto
+
+task success:
+    continuous fingertip contact and coverage
+    -> 只测量，不由 guard 保证
+```
+
+---
+
+# 7. M06–M12 在新 I04 中的重新定位
+
+| Module | 新状态 | 新职责 |
+| --- | --- | --- |
+| M06 | `KEEP / MODIFY` | 通用 trajectory/prefix executor + fresh-state barrier |
+| M07 | `REMOVE_FROM_I04` | 不再枚举 contact modes；legacy Explicit only |
+| M08 | `ORACLE_SIDE / OPTIONAL` | privileged geometric feasibility helper |
+| M09 | `REDEFINE` | Shared Geometric Trajectory Planning Layer |
+| M10 | `KEEP / SIMPLIFY` | hardware safety + trajectory integrity audit |
+| M11 | `REMOVE_FROM_I04` | 不再搜索 contact primitive sequence |
+| M12 | `MOVE_TO_ORACLE_SIDE` | privileged continuation / route feasibility |
+
+---
+
+# 8. M06：通用 Trajectory/Prefix Executor
+
+M06 保留 transaction、short prefix、fresh barrier 的执行工程价值。
+
+新接口概念上是：
+
+```text
+Planned trajectory
+ -> split committed prefix
+ -> M10 safety/integrity audit
+ -> M06 execute
+ -> fresh measured state
+ -> continue / replan
+```
+
+M06 保留：
+
+```text
+short committed prefix
+participant completion
+stale-plan rejection
+timeout / SAFE_HOLD for execution failures
+fresh measured q / wrist / force / contact barrier
+command provenance
+```
+
+M06 删除/弱化：
+
+```text
+ContactModeGraph edge identity
+MAKE/BREAK transaction authority
+M11 prediction suffix dependency
+task-level last-contact preservation
+```
+
+在 I04-A 中：
+
+```text
+M06 primarily executes wrist trajectory prefixes;
+MCC or DPRef finger control runs continuously in parallel.
+```
+
+在 I04-B 中：
+
+```text
+M06 executes whole-hand geometric trajectory prefixes.
+```
+
+---
+
+# 9. M07：移除
+
+原 M07 枚举：
+
+```text
+15 nonempty contact modes
+WRIST / SLIDE / REPOSITION / MAKE / BREAK
+mode-transition legality
+```
+
+这些都不属于新 I04。
+
+因此：
+
+```text
+I04-A: forbidden
+I04-B: forbidden
+```
+
+现有 M07 只保留用于 legacy Explicit baseline / historical reproduction。
+
+---
+
+# 10. M08：可选迁移到 Oracle-side feasibility
+
+原 M08 是 primitive candidate cheap screen。
+
+新 I04 不再有大量 SLIDE/MAKE/BREAK candidates，因此 runtime M08 没必要。
+
+如果复用 M08，只允许作为 privileged geometric feasibility helper：
+
+### A
+
+```text
+X_H^* wrist pose reachable?
+arm/palm collision free?
+pose outside object?
+rough SE(3) trajectory corridor feasible?
+```
+
+### B
+
+```text
+(X_H^*, x_1:4^*) admits terminal IK?
+joint margin valid?
+non-tip collision valid?
+```
+
+如果 GT Oracle 已经具备这些能力，M08 可以完全不进入新 I04。
+
+---
+
+# 11. M09：重定义为共享 Geometric Trajectory Planning Layer
+
+这是新 I04 中最重要的重构模块。
+
+M09 不再表示：
+
+```text
+ContinuousOptimize(SLIDE / MAKE / BREAK / WRIST_ADJUST)
+```
+
+而改为统一 planner framework：
+
+```text
+GeometricTrajectoryPlanner
+```
+
+提供两种 task specification。
+
+---
+
+## 11.1 M09-A：WristPoseTrajectory mode
+
+输入：
+
+```text
+current full robot state
+X_H,current
+X_H^* ∈ SE(3)
+```
+
+输出：
+
+```text
+tau_H = {X_H(t)}
 ```
 
 要求：
 
 ```text
-- smooth
-- joint/velocity feasible
-- palm/arm non-tip collision safe
-- 不读取 fingertip target
-- 不读取 desired contact mode
-- 不为了保持 contact 优化 finger joints
+position + orientation interpolation
+joint feasible
+velocity/acceleration feasible
+arm/palm non-tip collision safe
+smooth / time-parameterized
+no fingertip target input
+no contact-mode input
+no finger optimization for contact preservation
 ```
 
-### 10.2 I04-B：WholeHandGeometricTrajectoryGenerator
+A-MCC 和 A-DPRef 必须调用**同一实现、同一参数、同一 trajectory**。
+
+---
+
+## 11.2 M09-B：WholeHandGeometricTrajectory mode
 
 输入：
 
 ```text
-current robot configuration
-p_H^*
+current full robot state
+X_H^*
 x_1^*, x_2^*, x_3^*, x_4^*
 ```
 
@@ -599,59 +813,49 @@ x_1^*, x_2^*, x_3^*, x_4^*
 tau_Q = {q_arm(t), q_finger(t)}
 ```
 
-可以用连续 IK、trajectory optimization、task-space interpolation 或 joint-space planning，只要统一冻结。
-
 要求：
 
 ```text
-- terminal geometric target error within tolerance
-- joint/velocity/acceleration limits
-- non-tip collision avoidance
-- smoothness
-- 不枚举 contact mode
-- 不优化 MAKE/BREAK sequence
-- continuous-contact 不作为 hard constraint
-```
-
-建议代码层面不要继续沿用 `ContinuousOptimize(primitive)` 语义。可以保留 M09 ID，但公开类名改为：
-
-```text
-WristTrajectoryGenerator
-WholeHandGeometricTrajectoryGenerator
+wrist pose objective与 A 使用同一实现
+terminal fingertip geometric target error within tolerance
+joint/velocity/acceleration limits
+non-tip collision avoidance
+smoothness / time parameterization
+no contact-mode search
+no MAKE/BREAK optimization
+continuous-contact not a hard planning constraint
 ```
 
 ---
 
-## 11. M10：保留，但改成纯 Safety / Integrity Audit
+# 12. M10：纯 Safety / Integrity Audit
 
-M10 仍然很有价值，因为 planned trajectory 在真正发给机器人前需要 swept-path audit。
+M10 保留，但只检查“这条 nominal prefix 是否安全、完整、可执行”，不保证 contact task success。
 
-新 M10 可以检查：
-
-```text
-- joint limits
-- velocity/acceleration limits
-- arm/palm/non-tip self/object collision
-- trust region / prefix integrity
-- stale model/state provenance
-- hard force emergency rule（若能在执行前定义）
-- command digest / authority
-```
-
-新 M10 不应检查或保证：
+可以检查：
 
 ```text
-- expected contact mode
-- MAKE confirmation
-- BREAK legality
-- last-contact preservation
-- anchor preservation
-- terminal successor contact availability
+joint limits
+velocity / acceleration limits
+self collision
+arm/palm/non-tip object collision
+trajectory integrity / digest
+stale state/model provenance
+hard actuator / force emergency constraints
 ```
 
-原因：这些 task-level contact rules 会把“能否保持接触”从 evaluation 变成 controller 的硬约束。
+不应检查或保证：
 
-M10 的原则变为：
+```text
+expected contact mode
+MAKE confirmation
+BREAK legality
+last-contact preservation
+anchor preservation
+terminal contact successor
+```
+
+核心原则：
 
 ```text
 safe to execute != guaranteed to preserve contact
@@ -659,599 +863,445 @@ safe to execute != guaranteed to preserve contact
 
 ---
 
-## 12. M11：从新 I04 移除
+# 13. M11：移除
 
-原 M11 搜索：
-
-```text
-SLIDE / MAKE / BREAK / REPOSITION / WRIST_ADJUST sequences
-```
-
-新 I04 不需要这一层。
+原 M11 beam-search：
 
 ```text
-I04-A:
-    finger behavior = Passive MCC or DPRef
-
-I04-B:
-    finger targets = GT Oracle
-    path realization = conventional trajectory generator
+SLIDE / MAKE / BREAK / REPOSITION / WRIST_ADJUST
 ```
 
-因此没有 contact-mode beam search 的对象。
+新 I04 没有这种 discrete contact-mode search。
 
-现有 M11 继续作为历史 Explicit baseline / I03 evidence 保留，但不能作为 I04-A/B 的 hidden runtime
-fallback。
+```text
+A: finger behavior = Passive MCC or DPRef
+B: finger targets = GT Oracle; path = geometric trajectory planner
+```
+
+因此 M11 只作为 legacy Explicit evidence 保留。
 
 ---
 
-## 13. M12：continuation 思想迁移到 GT Coverage Oracle
+# 14. M12：迁移到 GT Oracle
 
-“不要给一个会把未来彻底走死的目标”仍然重要，但这是 privileged Oracle 的职责，而不是被测
-controller 的职责。
+“不要给一个当前可达、未来完全走死的 target”依然重要。
 
-因此 M12 的新位置是：
+但它属于 privileged GT Coverage Oracle：
 
 ```text
 full GT coverage ledger
- -> candidate next geometric targets
- -> privileged continuation / reachability check
- -> choose next Y_k^GT
+ -> candidate Y_k^GT
+ -> reachability / collision / continuation check
+ -> choose next target
 ```
 
-它可以保证：
+M12/continuation helper 可以内部使用 privileged future geometry 或 witness configuration，
+但不能把下面信息暴露给 controller：
 
 ```text
-- 当前 target 可达
-- 后续仍有 reachable uncovered region
-- route 不因一个局部 target 进入明显 dead end
+future finger assignment
+contact mode
+handover sequence
+MAKE/BREAK witness
 ```
-
-但 M12 不向 I04-A/B controller 暴露：
-
-```text
-- future finger assignment
-- contact mode
-- handover sequence
-- witness configuration
-```
-
-如果 GT route 采用全局离线 trajectory/graph certification，则不必保留单独的 M12 runtime module。
 
 ---
 
-## 14. 新 I04 的完整执行流程
+# 15. 新 I04 完整执行流程
 
-### 14.1 I04-A-MCC
+## 15.1 I04-A-MCC
 
 ```text
 Full Object GT + real coverage ledger
- -> Privileged Coverage Oracle
- -> next outside-object wrist target p_H^*
- -> M09-A WristTrajectoryGenerator
- -> M10 hardware-safety audit
- -> M06 execute wrist prefix
-      + basic Passive Fingertip MCC continuously runs
- -> real physics/contact/force
- -> fresh state + actual touched-surface update
- -> next wrist prefix / next Oracle target
- -> repeat until coverage budget/goal reached
+        ↓
+Privileged Coverage Oracle
+        ↓
+next outside-object wrist pose X_H^*
+        ↓
+M09-A Shared Wrist SE(3) Trajectory Planner
+        ↓
+nominal tau_H
+        ↓
+M10 hardware-safety / integrity audit
+        ↓
+M06 execute wrist trajectory prefix
+        +
+basic Passive Fingertip MCC continuously runs
+        ↓
+real physics/contact/force
+        ↓
+fresh measured state + real surface coverage update
+        ↓
+next prefix / next Oracle target
 ```
 
-### 14.2 I04-A-DPRef
+---
+
+## 15.2 I04-A-DPRef
 
 ```text
 Full Object GT + real coverage ledger
- -> SAME Privileged Coverage Oracle
- -> SAME p_H^*
- -> SAME M09-A WristTrajectoryGenerator
- -> M10 hardware-safety audit
- -> M06 execute wrist prefix
-      + DPRef receives future wrist plan
-      + DPRef generates nominal finger references / role intentions
-      + Finger MCC provides local compliance
- -> real physics/contact/force
- -> fresh state + actual touched-surface update
- -> repeat
+        ↓
+SAME Privileged Coverage Oracle
+        ↓
+SAME X_H^*
+        ↓
+SAME M09-A Wrist SE(3) Trajectory Planner
+        ↓
+SAME tau_H
+        ↓
+M10 audit
+        ↓
+M06 execute wrist prefix
+        +
+DPRef receives future tau_H
+        +
+DPRef generates nominal finger references / roles
+        +
+Fingertip MCC provides local compliance
+        ↓
+real physics/contact/force
+        ↓
+fresh measured state + real coverage update
 ```
 
-A-MCC 与 A-DPRef 必须使用 paired target sequence policy；若闭环状态分叉导致 Oracle 必须重新选择 target，
-则两边使用同一个 Oracle 函数作用于各自真实状态，并记录 target difficulty/provenance。
+---
 
-### 14.3 I04-B-MCC
+## 15.3 I04-B-MCC
 
 ```text
 Full Object GT + real coverage ledger
- -> Privileged Coverage Oracle
- -> next full-hand geometric target
-      (p_H^*, x_1^*, x_2^*, x_3^*, x_4^*)
- -> M09-B WholeHandGeometricTrajectoryGenerator
- -> M10 hardware-safety audit
- -> M06 execute whole-hand trajectory prefix
-      + basic MCC local compliance
- -> real physics/contact/force
- -> fresh state + actual touched-surface update
- -> repeat until coverage budget/goal reached
+        ↓
+Privileged Coverage Oracle
+        ↓
+next full-hand geometric target
+    (X_H^*, x_1^*, x_2^*, x_3^*, x_4^*)
+        ↓
+M09-B Shared Geometric Planning framework
+        ↓
+nominal whole-hand trajectory
+        ↓
+M10 audit
+        ↓
+M06 execute whole-hand trajectory prefix
+        +
+basic MCC local compliance
+        ↓
+real physics/contact/force
+        ↓
+fresh measured state + real surface coverage update
 ```
 
 I04-B 不使用 DPRef、M07、M11 或 contact-mode fallback。
 
 ---
 
-## 15. Goal completion 与 Coverage completion 必须重新定义
+# 16. Target completion 与 Coverage completion
 
-旧 I04 使用“某根真实 fingertip 到达 Oracle surface goal”作为每个 goal 的 ARRIVE。新 I04 不再使用
-这个定义。
+## 16.1 I04-A target completion
 
-### I04-A target completion
-
-当前 target 是 wrist target，因此单步完成只检查 wrist geometric tracking：
+A 的目标是 wrist pose，因此单目标完成检查 SE(3) tracking：
 
 ```text
-||p_H,real - p_H^*|| <= epsilon_H
-```
-
-不要求某根指定 finger 到达某个点。
-
-### I04-B target completion
-
-当前 target 是 full-hand geometric target，因此单步完成检查：
-
-```text
-||p_H,real - p_H^*|| <= epsilon_H
+||p_H,real - p_H^*|| <= epsilon_p
 and
-||x_i,real - x_i^*|| <= epsilon_f    for required geometric targets
+angle(R_H,real, R_H^*) <= epsilon_R
 ```
 
-这里仍然不使用 `c_i_real` 作为 target-arrival 条件。
+不要求某根指定 finger 到达某个 target。
 
-### Whole-object coverage completion
+---
 
-真正的 I04 任务完成由真实 fingertip contact 产生的 surface coverage 决定：
+## 16.2 I04-B target completion
+
+```text
+||p_H,real - p_H^*|| <= epsilon_p
+angle(R_H,real, R_H^*) <= epsilon_R
+||x_i,real - x_i^*|| <= epsilon_f
+```
+
+这里仍然不把 `c_i_real` 作为 desired target state。
+
+---
+
+## 16.3 Whole-object coverage
+
+真正任务完成由真实 fingertip contact 对 GT surface 的覆盖决定：
 
 ```text
 Coverage(t) = fraction of required GT surface covered by REAL fingertip contacts
 ```
 
-只有真实 physics contact 可以更新 coverage ledger。planned fingertip path、target position、DPRef prediction
-或 Oracle witness 都不能计入 coverage。
+只有真实 physics contact 可以更新 coverage ledger。
 
-可继续使用 mesh geodesic / surface-radius coverage 定义，但必须在新的 numerical protocol 中重新冻结：
+不能计入：
 
 ```text
-- required surface set / area weighting
-- contact-to-surface association
-- coverage radius
-- completion threshold
-- total time / path budget
+planned fingertip path
+geometric target positions alone
+DPRef prediction
+Oracle witness
+```
+
+需要重新冻结：
+
+```text
+required surface set / area weighting
+contact-to-mesh association
+coverage radius
+completion threshold
+time / wrist-path / compute budget
 ```
 
 ---
 
-## 16. 新 I04 的主要指标
+# 17. 核心指标
 
-### 共同指标
+共同指标：
 
 ```text
-- final real surface coverage
-- coverage AUC / coverage per unit wrist path
-- time/path length to reach target coverage
-- hand-level contact continuity R_contact
-- maximum all-finger contact-loss gap T_gap_max
-- distribution of zero-contact intervals
-- mean / minimum simultaneous contact count
-- fingertip force statistics
-- joint/workspace margin
-- non-tip collision / safety intervention count
-- wrist geometric tracking error
-- compute latency
+final real surface coverage
+coverage AUC
+coverage per unit wrist SE(3) path / time
+time/path to target coverage
+hand-level contact continuity
+maximum all-finger zero-contact gap
+zero-contact interval distribution
+simultaneous contact count
+fingertip force statistics
+joint/workspace margin
+non-tip collision / safety intervention
+wrist position tracking error
+wrist orientation tracking error
+trajectory-planning latency
+controller / DP inference latency
 ```
 
-### I04-A 额外指标
-
-用于直接比较 Passive MCC vs DPRef：
+I04-A 额外：
 
 ```text
-- coverage under identical wrist-path budget
-- continuous supported traversal distance
-- contact regain count/time
-- finger workspace utilization
-- DPRef role/transition diagnostics（仅解释，不作为 Oracle input）
+coverage under identical tau_H budget
+continuous supported traversal
+contact regain count/time
+finger workspace utilization
+DPRef transition diagnostics
 ```
 
-### I04-B 额外指标
+I04-B 额外：
 
 ```text
-- per-finger target tracking error
-- whole-hand geometric trajectory success
-- contact continuity despite no desired contact-state command
-```
-
----
-
-## 17. 预期实验解释
-
-最终至少形成三个核心 cell：
-
-| Cell | Wrist target | Finger target | Finger realization |
-| --- | --- | --- | --- |
-| `I04-A-MCC` | GT | none | basic passive MCC |
-| `I04-A-DPREF` | same GT | none | DPRef + MCC |
-| `I04-B-MCC` | GT | GT per-finger positions | traditional trajectory planning + MCC |
-
-理想情况下，若观察到：
-
-```text
-I04-A-MCC      < I04-A-DPREF ~= I04-B-MCC
-```
-
-则支持以下解释：
-
-1. traditional MCC/robot control 在 high-dimensional geometric targets 已知时具备完成 coverage 的物理能力；
-2. 仅给 wrist/global motion 时，passive compliance 本身不足以持续解决 finger workspace、contact regain 和
-   handover；
-3. DPRef 能够在不显式规划 high-dimensional fingers 的情况下恢复大部分 full-hand geometric Oracle 能力。
-
-这比“Explicit contact-mode planner 能否猜出哪根 finger 去一个 surface point”更直接对应项目核心问题。
-
----
-
-## 18. 与当前仓库实现的迁移关系
-
-当前以下内容均应视为 `LEGACY_EXPLICIT_I04`，在新 I04 完成前不要删除：
-
-```text
-I04_ORACLE_NEXT_POINT_PROTOCOL.md
-I04_RESUME_CHECKPOINT_2026-08-25.md
-i04_oracle_next_point/planner.py 中的 explicit finger/contact-mode search
-M07 ContactModeGraph
-M08 primitive CheapCert
-M09 primitive ContinuousOptimize
-M11 Lazy Beam Search
-M12 Shadow Succ
-现有 {2,4} two-anchor WRIST optimization debug evidence
-```
-
-它们仍可用于历史复现和 explicit-planning ablation，但不再是新 I04 implementation blocker。
-
-### 推荐代码迁移顺序
-
-1. 冻结本文为新的 I04 design source of truth；
-2. 保留旧 I04 文件，但在标题/README 中标记 legacy explicit development；
-3. 新建独立的 I04 runner，不在旧 `planner.py` 上继续叠加条件分支；
-4. 先实现 `I04-A-MCC`：GT wrist route + prescribed wrist motion + basic fingertip MCC；
-5. 接入同一 wrist route 的 `I04-A-DPREF`；
-6. 重构 M09-B，实现 full-hand geometric trajectory planning；
-7. 实现 `I04-B-MCC`；
-8. 统一 coverage/contact/force evaluator；
-9. 再决定是否把 M08/M12 的 privileged feasibility/continuation helper 复用到 Oracle 内部。
-
-在 1–7 完成前，不应继续把当前 `{2,4}` blocker 当作新 I04 的主要工程阻塞。
-
----
-
-## 19. 新 I04 的一句话冻结定义
-
-```text
-I04 uses full object GT to provide ideal geometric traversal targets.
-
-A: expose only an outside-object wrist target and compare
-   basic passive MCC vs DPRef+MCC while the wrist carries the hand.
-
-B: expose wrist + per-finger geometric target positions and test
-   traditional whole-hand trajectory planning + MCC.
-
-Neither branch receives desired contact states or contact-mode instructions;
-continuous fingertip contact and surface coverage are measured outcomes.
+per-finger geometric tracking error
+whole-hand trajectory planning success rate
+contact continuity despite no desired contact-state command
 ```
 
 ---
 
-## 20. 在新架构下重新审视 I01–I03
+# 18. 三个核心实验 Cell
 
-旧 I01–I03 是围绕 `Geometry-Oracle + Explicit contact-mode planner + MCC` 逐层搭出来的验证链：
+| Cell | Wrist target | Finger target | Trajectory planning | Finger realization |
+| --- | --- | --- | --- | --- |
+| `I04-A-MCC` | GT SE(3) pose | none | shared wrist SE(3) planner | basic passive MCC |
+| `I04-A-DPREF` | same GT SE(3) pose | none | **same wrist trajectory** | DPRef + MCC |
+| `I04-B-MCC` | GT SE(3) pose | GT per-finger positions | same planning framework + finger objectives | traditional trajectory + MCC |
 
-```text
-I01: 证明显式 variable contact / handover 比 fixed four-contact 能走得更远
-I02: 证明显式 finger REPOSITION 用 short prefix + fresh barrier 是否优于 long prefix
-I03: 证明 Explicit planner 的 terminal ShadowSucc 是否能避免 dead end
-```
-
-这些实验本身已有历史价值，但它们解决的不是新 I04-A/B 的核心问题。因此必须区分：
+理想关系：
 
 ```text
-历史实验是否有效        -> 是，保留结果与复现入口
-是否仍是新 I04 prerequisite -> 否
-是否仍应形成 G2/G3 Gate     -> 否
-其中的底层机制是否还能复用   -> 少量可以，但应降级为 regression/helper
+I04-A-MCC < I04-A-DPREF ~= I04-B-MCC
 ```
 
-### 20.1 新 I04 不再继承旧 G2/G3 Gate
+如果观察到这个趋势，可以支持：
 
-旧链路中：
+1. 给出 high-dimensional geometric targets 时，传统 robot control + MCC 有能力完成较高 coverage；
+2. 只给 global wrist pose trajectory 时，纯 passive compliance 不足以长期解决 finger workspace / regain / handover；
+3. DPRef 可以在不显式 high-dimensional finger planning 的情况下恢复大部分 full-hand geometric Oracle 能力。
+
+---
+
+# 19. I01–I03 在新架构下是否还必要
+
+旧 I01–I03 都围绕 Explicit contact-mode stack 构造：
 
 ```text
-I01 -> G2
-I02 + I03 -> G3
-G3 -> 后续系统
+I01: fixed contact vs explicit variable contact / handover
+I02: explicit finger REPOSITION long vs short prefix
+I03: M11 Beam vs Beam + M12 ShadowSucc
 ```
 
-这条 Gate 是为了证明 Explicit contact-mode planning stack 足够稳定后才能继续集成。
+它们的历史结果仍然有效，但不再是新 I04 prerequisite。
 
-新 I04 已经不使用该 stack，因此：
+因此：
 
 ```text
-I01 G2=GO       != 新 I04 prerequisite
-I02=NOT_MET     != 新 I04 blocker
-I03=MET         != 新 I04 prerequisite
-G3=NO_GO        != 禁止实现/运行新 I04
+I01 G2=GO       != new I04 prerequisite
+I02=NOT_MET     != new I04 blocker
+I03=MET         != new I04 prerequisite
+G3=NO_GO        != forbid new I04
 ```
 
-特别是当前 `G3=NO_GO` 主要来自旧 I02 short-prefix improvement 未达到冻结阈值；该结果不能继续阻塞
-`Wrist-only Oracle` 或 `Full-hand Geometric Oracle`，因为二者都不再执行 I02 中固定的显式
-`BREAK -> REPOSITION -> MAKE` transaction。
-
-建议后续 `MASTER_PLAN.md` 在真正开始新 I04 实现时，把 G2/G3 标为：
+旧 G2/G3 应在后续 `MASTER_PLAN.md` 中标记为：
 
 ```text
 LEGACY_EXPLICIT_GATES / EVIDENCE_ONLY_FOR_NEW_I04
 ```
 
-而不是把历史结果改写成 PASS。历史数值与当时的结论继续原样保留。
+不能改写历史实验结果，但不能继续阻塞新 I04。
 
 ---
 
-## 21. I01：不再作为独立前置实验；保留一个更小的 Passive-MCC moving-wrist regression
+# 20. I01：退役为历史实验，只抽取 Passive MCC moving-wrist smoke
 
-### 21.1 旧 I01 为什么不再必要
-
-旧 I01 的关键比较是：
+旧 I01 的主要科学问题是：
 
 ```text
-I01-A Fixed Contact:
-    强制 |A| = 4
-
-I01-B Variable Contact:
-    通过显式 topology transaction 实现 4 -> 3 -> 4 handover
+fixed |A|=4
+vs
+explicit variable contact + planned 4->3->4 handover
 ```
 
-其主要结论是 variable contact mode 比 fixed four-contact 可以在 Bunny 上走得更远。
+新 I04 不显式规划 contact mode，因此这个比较不再必要。
 
-但新 I04 明确规定：
-
-```text
-- controller 不接收 desired contact mode
-- 不显式规划 MAKE/BREAK
-- 是否掉指/重新接触是自然 physics outcome
-```
-
-因此再证明一次“显式 variable contact mode 比 fixed mode 好”对新 I04 没有直接意义。
-`I01-B` 中由 M10 certificate 授权的 planned handover 甚至会违反新 I04 的信息边界。
-
-### 21.2 I01 中仍值得保留的能力
-
-旧 I01 最有价值的残留能力不是 handover planning，而是：
-
-> 在一个外部规定的 moving-wrist trajectory 下，基础 fingertip MCC 是否至少能够稳定运行、产生合理
-> compliant correction，并且不会因为 controller bug 立即发生严重过力/数值失稳。
-
-这正好是 I04-A-MCC 的低层 smoke test。
-
-因此建议把 I01 从“科学比较实验”降级为一个小型 regression，例如：
+保留一个很小的 regression：
 
 ```text
 R-I01: PASSIVE_MCC_MOVING_WRIST_SMOKE
 
 input:
-    a short prescribed outside-object wrist trajectory
+    short prescribed outside-object SE(3) wrist trajectory
     initial real fingertip contacts
 
 controller:
-    basic passive Fingertip MCC only
+    basic passive Fingertip MCC
 
-check only:
+check:
     finite/stable commands
-    no controller-induced numerical failure
+    no numerical failure
     no joint/actuator/hard-force safety violation
-    wrist tracking works
-    contact/force trace can be measured and logged
+    wrist position/orientation tracking works
+    contact/force can be measured and logged
 ```
 
-明确不要求：
+不要求：
 
 ```text
-4 -> 3 -> 4 handover
+4->3->4 handover
 variable-contact advantage
 minimum traversal distance
-99% contact continuity as a pass condition
+99% contact continuity as pass condition
 MAKE-before-BREAK
 contact-mode certificate
 ```
 
-其中 contact continuity 应作为观察指标，而不是 regression 的硬通过条件，因为新 I04 正是要比较不同
-finger realization 对 contact continuity 的影响。
+contact continuity 是后续 I04 outcome，而不是该 smoke test 的硬 Gate。
 
-### 21.3 旧 I01 文件与结果怎么处理
-
-```text
-I01_BUNNY_PROTOCOL.md
-Module/i01_bunny_physics/
-Module/generated/i01_bunny_physics/
-```
-
-全部保留，标记为：
+旧文件与结果继续保留为：
 
 ```text
 LEGACY_EXPLICIT_PHYSICS_EVIDENCE
 ```
 
-不删除历史结果，不继续扩展其 fixed-vs-variable Gate，也不让新 I04 runner 依赖旧 I01 planner。
-
 ---
 
-## 22. I02：独立实验可以退休；short-prefix/fresh-state 思想并入 M06 regression
+# 21. I02：独立实验退休，short-prefix/fresh-state 并入 M06 regression
 
-### 22.1 旧 I02 为什么不再必要
-
-旧 I02 特意构造：
+旧 I02 比较：
 
 ```text
-BREAK(3)
- -> REPOSITION(3) 12 mm
- -> MAKE(3)
+BREAK(3) -> REPOSITION(3) 12 mm -> MAKE(3)
+LONG vs 3xSHORT
 ```
 
-然后比较：
+这是 Explicit finger transaction fixture。
 
-```text
-LONG  = 一次 12 mm explicit finger prefix
-SHORT = 3 x 4 mm，每段 fresh barrier 后重新 M09/M10
-```
+新 I04-A 没有 explicit finger REPOSITION；新 I04-B 使用 generic whole-hand trajectory。
 
-它测试的是 Explicit finger trajectory 对 live nonlinear kinematics error 的敏感性。
+因此 I02 不再作为正式实验/Gate。
 
-新 I04-A 根本没有 explicit finger REPOSITION trajectory；finger motion 来自 Passive MCC 或 DPRef。
-新 I04-B 虽然有 whole-hand trajectory，但它是传统 geometric trajectory，不再由
-`BREAK/REPOSITION/MAKE` primitive 表示。
-
-因此旧 I02 的 paired experiment 不再回答新 I04 的核心问题，应从正式路线退休。
-
-### 22.2 仍值得保留的部分
-
-`short committed prefix + fresh real-state barrier` 作为执行工程思想仍然有价值，但不需要再作为一个
-独立 research Gate。
-
-它应被吸收到 M06 的通用 regression：
+保留的只有执行思想：
 
 ```text
 R-M06-PREFIX:
-    take a wrist or whole-hand geometric trajectory
-    -> segment into short prefixes
-    -> execute prefix
-    -> obtain fresh measured q/wrist/contact/force
-    -> continue from the measured state
+    planned wrist/whole-hand trajectory
+    -> short committed prefix
+    -> execute
+    -> fresh measured state
+    -> continue/replan
 ```
 
-这个 regression 只验证：
+只验证：
 
 ```text
-- executor 没有继续使用 stale state
-- prefix completion/barrier 正确
-- command provenance 正确
-- trajectory concatenation 连续
+no stale-state execution
+correct prefix/barrier semantics
+command provenance
+trajectory continuity
 ```
 
-不再要求证明：
+不再要求证明 SHORT statistically beats LONG。
 
-```text
-SHORT statistically beats LONG
-terminal finger REPOSITION error improves by a frozen percentage
-contact-mode handover succeeds
-```
-
-### 22.3 对当前 `I02=NOT_MET` 的处理
-
-保留旧结果原样：
-
-```text
-I02 = EVALUATED / NOT_MET
-```
-
-但在新架构里它只表示：
-
-> 旧 Explicit finger-REPOSITION fixture 上，没有观察到预先冻结幅度的 short-prefix 优势。
-
-它不说明新的 M06 generic prefix executor 不可用，也不能阻塞新 I04。
+旧 `I02=EVALUATED / NOT_MET` 保持原样，但不阻塞新 I04。
 
 ---
 
-## 23. I03：独立 runtime experiment 退休；future viability 迁移到 Privileged GT Oracle
+# 22. I03：runtime experiment 退休，continuation 迁移到 Oracle
 
-### 23.1 旧 I03 为什么不再必要
-
-旧 I03 比较：
+旧 I03 测：
 
 ```text
 M11 Beam
-vs.
-M11 Beam + M12 ShadowSucc terminal filter
+vs
+M11 Beam + M12 ShadowSucc
 ```
 
-其核心问题是：Explicit planner 当前选出的 `SLIDE/MAKE/BREAK/...` edge 虽然立即可执行，是否会把
-未来 contact-mode search 带到 dead end。
+它解决的是 Explicit contact-mode planner 的 terminal dead end。
 
-新 I04-A 没有 explicit contact-mode search；新 I04-B 的 finger target 已由 GT Oracle 给出，因此
-controller runtime 也没有 M11 candidate tree。
+新 I04 不运行这个 discrete search，所以 I03 runtime experiment 不再必要。
 
-所以旧 I03 的 `ShadowSucc` 不应继续作为被测 controller 的 hidden helper。
-
-### 23.2 I03 中真正有价值的思想放在哪里
-
-“不要给一个当前可达、下一步却彻底无解的 target”依然重要，但应成为 GT Oracle 的 privileged
-route-quality requirement：
-
-```text
-full object GT
- -> candidate geometric target Y_k^GT
- -> geometric reachability / collision check
- -> continuation / remaining-coverage feasibility
- -> choose next target
-```
-
-这个检查可以使用未来 GT、offline route graph 或 privileged witness，因为它属于 benchmark target
-construction；但 adapter 不得把 witness contact mode / finger role / handover sequence 暴露给 A/B controller。
-
-因此旧 I03 最适合迁移成：
+保留的思想迁移为：
 
 ```text
 R-ORACLE-CONTINUATION:
-    verify generated GT target sequence has a physically feasible continuation
+    generated GT target sequence has privileged geometric continuation
 ```
 
-而不是 runtime `M12 ShadowSucc`。
+Oracle 可以使用 full GT、offline route、future wrist/finger geometric witness 来判断 continuation，
+但这些 privileged witness 不得暴露给 controller。
 
-### 23.3 旧 I03 结果怎么处理
-
-旧 `I03=EVALUATED / MET` 继续保留为 Historical Explicit Planner evidence，说明 ShadowSucc 在当时固定
-fixture 上确实有效；但它不再构成新 I04 的 prerequisite，也不授权在新 I04 中偷偷调用 M12。
+旧 `I03=MET` 继续作为 Historical Explicit Planner evidence。
 
 ---
 
-## 24. 新 I04 真正需要的前置验证链
-
-删除旧 I01–I03 Gate 之后，新 I04 不应该“什么都不验证就直接跑”。前置验证应改成与新架构直接对应
-的更小集合：
+# 23. 新 I04 真正需要的前置验证链
 
 ```text
 R0  Robot / Sensor / Basic Controller
-    M0/M01/M02/M03 已有低层能力继续使用
+    existing M0/M01/M02/M03 low-level validity
 
-R1  Passive MCC Moving-Wrist Smoke
-    externally prescribed outside-object wrist motion
-    + basic fingertip MCC
-    -> stable executable low-level behavior
+R1  Passive MCC Moving-Wrist SE(3) Smoke
+    prescribed translation + rotation
+    + basic Fingertip MCC
 
-R2  Geometric Target Generator
-    A: outside-object wrist targets are reachable/collision-valid
-    B: wrist + fingertip geometric targets admit terminal IK
+R2  GT Geometric Target Generator
+    A: outside-object wrist SE(3) target reachable/collision-valid
+    B: wrist SE(3) + fingertip geometric targets admit terminal IK
 
-R3  Trajectory Generation
-    A: wrist trajectory tracks p_H^*
-    B: whole-hand geometric trajectory tracks (p_H^*, x_1:4^*)
-    without desired contact-mode constraints
+R3  Shared Geometric Trajectory Planning
+    A: track X_H^*
+    B: track X_H^* + x_1:4^*
+    no desired contact-mode constraints
 
 R4  Generic Execution/Safety
-    M10 simplified hardware-safety audit
-    + M06 prefix execution/fresh barrier
+    simplified M10
+    + generic M06 prefix/barrier
 
 R5  GT Oracle Continuation
-    target sequence is coverage-relevant and has privileged geometric continuation
+    target sequence is coverage-relevant and geometrically continuable
 ```
 
-这些都只是**系统有效性/regression**，不应预先要求高 contact continuity 或 high coverage；否则又会把 I04
-要评价的结果提前变成 Gate。
+这些 regression 只验证系统有效性，不预先要求高 coverage 或高 contact continuity。
 
-通过这些最小有效性检查后，直接运行：
+通过后直接运行：
 
 ```text
 I04-A-MCC
@@ -1259,43 +1309,60 @@ I04-A-DPREF
 I04-B-MCC
 ```
 
-然后由真实 physics outcome 比较 coverage、contact continuity、force、tracking 与安全。
-
 ---
 
-## 25. I01–I03 / M06–M12 最终迁移总表
+# 24. 最终迁移总表
 
 | 旧 ID | 原作用 | 新 I04 是否需要 | 新位置 |
 | --- | --- | --- | --- |
-| I01 | Fixed vs explicit variable contact/handover | `NO` as experiment/Gate | 历史 evidence；抽取 Passive-MCC moving-wrist smoke |
-| I02 | Explicit finger long vs short REPOSITION prefix | `NO` as experiment/Gate | short-prefix/fresh-state 并入 M06 regression |
-| I03 | M12 ShadowSucc 避免 Explicit planner dead end | `NO` as runtime experiment/Gate | continuation 思想迁移到 GT Oracle regression |
-| M06 | Transaction/prefix/barrier executor | `YES` | 通用 trajectory executor，去 contact-mode 依赖 |
+| I01 | Fixed vs explicit variable contact | `NO` as experiment/Gate | historical evidence + passive MCC SE(3) wrist smoke |
+| I02 | Explicit REPOSITION long vs short | `NO` as experiment/Gate | prefix/fresh-state -> M06 regression |
+| I03 | ShadowSucc avoids Explicit dead end | `NO` as runtime experiment/Gate | continuation -> GT Oracle regression |
+| M06 | Transaction/prefix/barrier executor | `YES` | generic trajectory executor |
 | M07 | ContactModeGraph | `NO` | legacy Explicit only |
-| M08 | Primitive CheapCert | `NO/OPTIONAL` | Oracle-side geometric feasibility helper |
-| M09 | Primitive ContinuousOptimize | `YES, REDEFINE` | Wrist / Whole-hand Geometric Trajectory Generator |
-| M10 | Exact contact-aware prefix audit | `YES, SIMPLIFY` | hardware safety + trajectory integrity only |
-| M11 | Contact-mode Lazy Beam | `NO` | legacy Explicit only |
-| M12 | Shadow contact viability | `NO` runtime | Oracle-side continuation helper / legacy evidence |
+| M08 | Primitive CheapCert | `OPTIONAL` | Oracle-side geometric feasibility |
+| M09 | Primitive ContinuousOptimize | `YES, REDEFINE` | **shared SE(3)/whole-hand geometric trajectory planner** |
+| M10 | Contact-aware exact audit | `YES, SIMPLIFY` | hardware safety + trajectory integrity |
+| M11 | Contact-mode beam search | `NO` | legacy Explicit only |
+| M12 | Shadow contact viability | `NO` runtime | Oracle-side continuation helper |
 
-新的依赖关系应是：
+新的依赖关系：
 
 ```text
 M0/M01/M02/M03
- + GT Coverage Oracle helpers
- + redefined M09
- + simplified M10
- + generic M06
- + DPRef (only for I04-A-DPREF)
-        |
-        v
-      I04
+        +
+GT Coverage Oracle
+        +
+redefined M09 shared trajectory planner
+        +
+simplified M10
+        +
+generic M06
+        +
+DPRef only for I04-A-DPREF
+        ↓
+       I04
 ```
 
-而不再是：
+不再是：
 
 ```text
 I01 -> I02 -> I03 -> G3 -> I04
 ```
 
-这项迁移完成后，旧 I01–I03 和 M07–M12 仍可完整复现，但它们不会继续决定新 I04 能否推进。
+---
+
+# 25. 一句话冻结定义
+
+```text
+I04 uses full object GT to generate ideal geometric traversal targets.
+
+The wrist target is always a full outside-object SE(3) pose, including rotation.
+Every target must first be converted into a smooth feasible trajectory by a shared geometric trajectory planner.
+
+A exposes only the wrist pose and compares basic passive MCC vs DPRef+MCC under the same planned wrist trajectory.
+B exposes the same wrist pose plus per-finger geometric target positions and uses traditional whole-hand trajectory planning + MCC.
+
+Neither branch receives desired contact states or contact-mode instructions.
+Continuous fingertip contact and real surface coverage remain measured physical outcomes.
+```
