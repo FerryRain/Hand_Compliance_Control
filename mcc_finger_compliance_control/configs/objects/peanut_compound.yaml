@@ -15,10 +15,12 @@ geoms:
 
 motion:
   translation:
+    contact_gated: true
     allowed_axes: [principal_x, principal_y, principal_z]
     distance_mode: object_extent_ratio
     distance_ratio_range: [0.10, 0.35]
     absolute_max_m: 0.045
   rotation:
+    contact_gated: true
     allowed_axes: [principal_x, principal_y, principal_z, uniform_sphere]
     angle_range_deg: [30.0, 180.0]

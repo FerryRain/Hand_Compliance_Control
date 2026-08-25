@@ -231,6 +231,23 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument(
+        "--pre-scale",
+        type=float,
+        default=1.0,
+        help=(
+            "Bake this uniform scale into the source before decomposition. "
+            "The transformed mesh is exported as visual_scaled.obj."
+        ),
+    )
+    parser.add_argument(
+        "--pre-center",
+        nargs=3,
+        type=float,
+        default=None,
+        metavar=("X", "Y", "Z"),
+        help="Subtract this source-frame point before applying --pre-scale.",
+    )
+    parser.add_argument(
         "--accept-p95-mm",
         type=float,
         default=None,
@@ -276,6 +293,32 @@ def main() -> None:
     output_dir.mkdir(parents=True)
 
     source = _load_mesh(source_path)
+    if args.pre_scale <= 0.0:
+        raise ValueError("--pre-scale must be positive")
+    pre_center = (
+        np.zeros(3, dtype=np.float64)
+        if args.pre_center is None
+        else np.asarray(args.pre_center, dtype=np.float64)
+    )
+    transformed = args.pre_center is not None or args.pre_scale != 1.0
+    if transformed:
+        # Bake the final physical dimensions into the mesh *before* V-HACD.
+        # This makes voxelization/error metrics correspond to the dimensions
+        # MuJoCo will actually simulate and prevents accidental double scale.
+        source.vertices = (
+            np.asarray(source.vertices, dtype=np.float64) - pre_center
+        ) * float(args.pre_scale)
+        source.remove_unreferenced_vertices()
+        source.fix_normals()
+        visual_path = output_dir / "visual_scaled.obj"
+        source.export(visual_path)
+        # Reload the serialized OBJ before decomposition.  Besides making the
+        # documented PLY -> scaled OBJ -> V-HACD order literal, this ensures
+        # V-HACD sees exactly the same vertex/face asset that MuJoCo renders,
+        # including any indexing changes introduced by OBJ serialization.
+        source = _load_mesh(visual_path)
+    else:
+        visual_path = source_path
     print(
         f"[INPUT] {source_path} vertices={len(source.vertices)} "
         f"faces={len(source.faces)} watertight={source.is_watertight} "
@@ -293,7 +336,7 @@ def main() -> None:
         part_paths.append(path)
 
     fit = _measure_surface_fit(source, parts, args.samples, args.seed)
-    preview = _write_preview(output_dir, source_path, part_paths, args.max_vertices)
+    preview = _write_preview(output_dir, visual_path, part_paths, args.max_vertices)
     parameters = {
         key: value
         for key, value in vars(args).items()
@@ -307,6 +350,9 @@ def main() -> None:
         "source_faces": int(len(source.faces)),
         "source_watertight": bool(source.is_watertight),
         "source_extent_m": np.asarray(source.extents, dtype=float).tolist(),
+        "processed_visual_mesh": visual_path.name if transformed else str(source_path),
+        "pre_center": pre_center.tolist(),
+        "pre_scale": float(args.pre_scale),
         "backend": args.backend,
         "parameters": parameters,
         "elapsed_s": elapsed,
