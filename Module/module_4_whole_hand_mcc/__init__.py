@@ -17,6 +17,12 @@ from Module.module_4_whole_hand_mcc.robot_control import (
   PalmPoseIKConfig,
   WrenchEstimate,
 )
+from Module.module_4_whole_hand_mcc.reference_interpreter import (
+  ContactRole,
+  ContactRoleInterpreter,
+  RoleInterpreterConfig,
+  RoleInterpreterOutput,
+)
 
 __all__ = [
   "ContactForceCoordinator",
@@ -30,4 +36,8 @@ __all__ = [
   "WristMCCCommand",
   "WristMCCConfig",
   "WristMCCState",
+  "ContactRole",
+  "ContactRoleInterpreter",
+  "RoleInterpreterConfig",
+  "RoleInterpreterOutput",
 ]

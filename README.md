@@ -1,113 +1,67 @@
-# Hand-Only Compliance Control
+# FR3 + LEAP Hand 模块化柔顺控制
 
-当前仓库的 **当前任务入口** 是 hand-only MuJoCo 数据采集与演示，不是 arm / full-hand MCC 恢复路径。
+当前项目唯一入口是 [`Module/`](Module/README.md)。所有当前实现、协议、测试和新增产物均位于
+`Module/`；仓库其他目录属于历史或并行工作，不作为本项目的默认入口。
 
-## 当前任务范围
-
-本轮 OpenClaw 任务固定为：
-
-- 只做 **hand-only** 仿真；
-- **不 clone、不重装**，直接复用现有仓库与已有 MuJoCoLab 安装；
-- 保持 **手掌朝上**；
-- 保持 **重力关闭**；
-- 在掌内放置一个 **相对较大的物体**；
-- 让物体在掌内 **随机转动**；
-- 手指 **compliance controller 始终激活**；
-- 记录轨迹，且至少包含 **`T_HO`**；
-- 生成 **trajectory inversion**；
-- 保存 **截图** 与 **demo 视频**；
-- 将最新运行状态写入 `logs/latest_status.json`。
-
-当前正式入口：
+## 当前架构
 
 ```text
-src/mjlab/scripts/hand_only_compliance_demo.py
+Wrist trajectory / planner -> Wrist MCC -> FR3
+
+hand/contact history + future wrist plan
+ -> Finger DP Reference Generator
+ -> nominal finger trajectory + role intention
+ -> coordinated Finger MCC
+ -> LEAP Hand
 ```
 
-## 环境
+Finger DP 当前定位为多指 nominal trajectory/role generator，而不是高频低层力控制器。Wrist MCC
+负责 collective/resultant compliance，Finger MCC 负责 local/internal compliance。
 
-已验证环境：
+## 当前实验状态
 
-```bash
-conda activate handcomp
-```
+- M0–M3：FR3+LEAP robot、Oracle SurfaceModel、Fingertip MCC 和 Runtime Guards 已实现；
+- Exp.1：`Whole-hand MCC vs. DP-direct` 已完成，作为低层 controller replacement 消融；
+- Exp.2：`Plain MCC / Passive / Reactive / DPRef+MCC` 已完成接触优先重评；
+- E05 只报告性能与诊断指标，不给策略设置 `PASS/FAIL`；
+- MuJoCo fingertip force 只作持续高力、多指同时高力和 penetration 诊断，单个瞬时峰值不决定
+  策略优劣；
+- Exp.3 不属于固定 wrist 的 E05，位于 I05 后作为最终 active-planner ablation。
 
-或直接使用绝对 Python：
+Exp.2 三条件 aggregate 中，普通 Plain MCC 是绝对接触保持参考；在严格共享执行栈的
+Passive/Reactive/DPRef 三者中，DPRef 的 contact continuity、平均接触数与
+`N_c>=2` supported traversal 最好，但第四指参与和四指同时接触仍需改善。
 
-```bash
-/home/ferry/data/Anaconda/envs/handcomp/bin/python
-```
+## 首要审阅入口
 
-> 当前 OpenClaw 自动任务与 README 中的所有示例都默认使用这个 `handcomp` conda 环境。
+- [Exp.1 + Exp.2 统一网页](Module/generated/e05_exp1_exp2_review/index.html)
+- [当前接触优先重评证据](Module/evidence/2026-08-25_EXP2_CONTACT_PRIORITY_RERUN.md)
+- [完整模块结构与复现说明](Module/README.md)
+- [主任务与实验顺序](Module/MASTER_PLAN.md)
 
-## 如何运行
+## 环境与复现
+
+固定使用 `handcomp`：
 
 ```bash
 cd /home/ferry/data/Code2/Research/hand_comliance_control
-MUJOCO_GL=egl /home/ferry/data/Anaconda/envs/handcomp/bin/python \
-  src/mjlab/scripts/hand_only_compliance_demo.py \
-  --duration-s 4.0 \
-  --video-fps 20 \
-  --output-tag random_inhand
+PY=/home/ferry/data/Anaconda/envs/handcomp/bin/python
+
+# 当前相关回归
+$PY -m unittest Module.tests.test_e05_strategy_review \
+  Module.tests.test_e05_mcc_full_robot \
+  Module.tests.test_finger_dp_core -v
+
+# Exp.2：DPRef inference 必须使用 CUDA
+$PY -m Module.module_4_finger_dp.exp2_benchmark --device cuda:0
+
+# GPU/EGL 可视化重建
+MUJOCO_GL=egl MUJOCO_EGL_DEVICE_ID=0 \
+  $PY -m Module.module_4_finger_dp.exp2_visual
+
+# 重建统一网页
+$PY -m Module.e05_strategy_review
 ```
 
-默认行为：
-
-- 运行 4 秒 hand-only 仿真；
-- 输出 forward trajectory（`npz` / `h5` / `json`）；
-- 输出 inversion result（`npz` / `h5` / `json`）；
-- 输出 1 个 demo 视频；
-- 输出 `start / mid / end` 三张截图；
-- 刷新 `logs/latest_status.json`。
-
-## 最新正式 run
-
-```text
-20260825T141401_random_inhand_grasp_maintain
-```
-
-关键产物：
-
-- `artifacts/datasets/20260825T141401_random_inhand_grasp_maintain_trajectory_forward.h5`
-- `artifacts/datasets/20260825T141401_random_inhand_grasp_maintain_trajectory_inversion.h5`
-- `artifacts/videos/20260825T141401_random_inhand_grasp_maintain_demo.mp4`
-- `screenshots/20260825T141401_random_inhand_grasp_maintain_start.png`
-- `screenshots/20260825T141401_random_inhand_grasp_maintain_mid.png`
-- `screenshots/20260825T141401_random_inhand_grasp_maintain_end.png`
-- `logs/20260825T141401_random_inhand_grasp_maintain_summary.json`
-- `logs/latest_status.json`
-
-## 本次运行满足的约束
-
-从 `logs/latest_status.json` 可验证：
-
-- `gravity = [0.0, 0.0, 0.0]`
-- object half-size = `[0.038, 0.05, 0.028]` m
-- object mass = `0.140 kg`
-- trajectory 显式记录 `T_HO`
-- inversion 输出 `T_OH`
-- 反演误差保持在数值精度量级
-
-本次 14:14 run 的摘要指标：
-
-- `num_steps = 2000`
-- `num_video_frames = 81`
-- `mean_object_angvel_norm = 11.5106`
-- `max_object_angvel_norm = 27.6247`
-- `mean_translation_error_m = 7.67e-17`
-- `max_rotation_error_fro = 8.08e-15`
-
-## 输出位置约定
-
-- 前向轨迹：`artifacts/datasets/*_trajectory_forward.{npz,h5,json}`
-- 反演结果：`artifacts/datasets/*_trajectory_inversion.{npz,h5,json}`
-- 视频：`artifacts/videos/*_demo.mp4`
-- 截图：`screenshots/*_{start,mid,end}.png`
-- 运行摘要：`logs/*_summary.json`
-- 最新状态：`logs/latest_status.json`
-
-## 备注
-
-- 当前 scope 明确为 **hand-only**；
-- **不要** 把 arm / full-hand MCC 历史路径恢复成当前默认目标；
-- `Module/` 下其它 FR3 + Leap 工作可以保留，但不是这项自动任务的当前交付入口。
+DPRef 训练与推理禁止 CPU fallback；MuJoCo physics 本身仍使用其 physics backend。完整文件结构、
+各模块独立复现方式和适用范围以 [`Module/README.md`](Module/README.md) 为准。

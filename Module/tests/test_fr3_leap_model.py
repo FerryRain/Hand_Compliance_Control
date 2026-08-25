@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import mujoco
 import numpy as np
+import trimesh
 
 from Module.fr3_leap import (
   ARM_HOME_Q,
@@ -91,6 +94,34 @@ class FR3LeapModelTest(unittest.TestCase):
       mujoco.mj_step(self.handles.model, data)
     self.assertTrue(np.all(np.isfinite(data.qpos)))
     self.assertLess(np.max(np.abs(data.qpos[self.handles.arm_qpos_adrs] - ARM_HOME_Q)), 1e-9)
+
+  def test_i04_bunny_sdf_is_nonconvex_physical_geometry(self) -> None:
+    with TemporaryDirectory() as directory:
+      mesh_path = Path(directory) / "probe.obj"
+      trimesh.creation.icosphere(subdivisions=2, radius=0.1).export(mesh_path)
+      handles = build_full_robot(
+        FullRobotModelConfig(
+          surface="bunny",
+          gravity_m_s2=0.0,
+          bunny_visual_mesh_path=str(mesh_path),
+          bunny_collision_mode="sdf",
+        )
+      )
+    model = handles.model
+    self.assertEqual(model.nhfield, 0)
+    self.assertGreater(model.noct, 0)
+    self.assertEqual(
+      int(model.geom_type[handles.object_geom_id]),
+      int(mujoco.mjtGeom.mjGEOM_SDF),
+    )
+    self.assertEqual(
+      mujoco.mj_name2id(
+        model,
+        mujoco.mjtObj.mjOBJ_GEOM,
+        "fr3_i01_bunny_visual_geom",
+      ),
+      -1,
+    )
 
 
 if __name__ == "__main__":

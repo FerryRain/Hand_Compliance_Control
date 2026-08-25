@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import unittest
 
+import numpy as np
+
 from Module.module_4_whole_hand_mcc.benchmark import evaluate_episode_thresholds
 from Module.module_4_whole_hand_mcc.runner import E05MCCConfig, run_e05_mcc
 
@@ -45,6 +47,27 @@ class E05MCCFullRobotSmokeTest(unittest.TestCase):
     thresholds = evaluate_episode_thresholds(metrics)
     self.assertFalse(thresholds["performance_met"])
     self.assertFalse(thresholds["checks"]["max_tip_force_n"]["met"])
+
+  def test_shared_safety_has_bounded_command_transitions(self) -> None:
+    trace, _ = run_e05_mcc(
+      E05MCCConfig(
+        mode="E05-H-MCC",
+        duration_s=1.5,
+        settling_time_s=0.3,
+        pose_step_time_s=1.0,
+        traversal_y_m=0.012,
+        lateral_primary_amplitude_m=0.002,
+        lateral_secondary_amplitude_m=0.001,
+        enforce_shared_force_safety=True,
+      )
+    )
+    wrist_delta = np.linalg.norm(
+      np.diff(trace.commanded_palm_pose_world[:, :3], axis=0),
+      axis=1,
+    )
+    finger_delta = np.max(np.abs(np.diff(trace.finger_command_rad, axis=0)), axis=1)
+    self.assertLessEqual(float(np.max(wrist_delta)), 0.000081)
+    self.assertLessEqual(float(np.max(finger_delta)), 0.001000001)
 
 
 if __name__ == "__main__":

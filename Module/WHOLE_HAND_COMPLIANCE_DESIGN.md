@@ -1,9 +1,12 @@
 # Whole-hand Coordinated Compliance Controller
 
-> 状态：`IMPLEMENTED / MODULE_TESTED / E05_MCC_EVALUATED`
-> 更新日期：`2026-08-23`
+> 状态：`SHARED_MCC_CONTACT_PRIORITY / DP_DIRECT_EVALUATED / DPREF_EXP2_EVALUATED`
+> 更新日期：`2026-08-24`
 > 固定环境：`handcomp`
-> 当前正式实现范围只包含 MCC；历史 DP release 仅完成 compatibility audit，不构成 DP 单元。
+> 本文定义 Explicit 与 Main 共享的 whole-hand compliance。新的 learned 分支不再替换 Finger
+> MCC，而是由 DPRef 生成 nominal finger references，再由同一个 Finger MCC 柔顺执行。旧
+> DP-direct 只作为 Exp. 1 消融，协议见 `DP_CONTROLLER_V1_PROTOCOL.md`；新设计见
+> `DP_REFERENCE_GENERATOR_DESIGN.md`。
 
 ## 1. 冻结的核心定义
 
@@ -163,17 +166,38 @@ delta_lambda_i_cmd = [N_H e_lambda]_i
 - contact loss 后的局部 recovery execution。
 
 Finger MCC 不得再次积分已分配给 wrist 的 collective component。handover/MAKE/BREAK 的
-**决策与执行权限**仍属于 prescribed test transaction 或 contact-mode planner；MCC 只让
-已授权 transition 柔顺执行，不能自行改变 contact topology。
+**意图**可来自 prescribed transaction、explicit contact-mode planner 或 Main 的 DPRef role；
+MCC 只让经过 reference interpreter 与 safety veto 授权的 transition 柔顺执行，不能自行改变
+contact topology。
 
-### E05-F 与 E05-H 的区别
+### Main 中的 Finger DP Reference Generator
+
+DPRef 不直接调节高频 force。共享 encoder 后，diffusion head 产生 nominal joint trajectory，
+categorical head 只提出 role intention。对 active contact，它产生 nominal tangential/relative motion；
+Finger MCC 接管 coordinated normal/internal-force compliance。对 free finger，DPRef 可以产生完整
+reposition/MAKE nominal trajectory。确定性 interpreter 只允许
+`KEEP -> RELEASE -> FREE -> MAKE -> KEEP`；`RELEASE` 将目标力平滑 ramp 到零再确认脱离，
+`MAKE -> KEEP` 需要稳定 contact/force 确认，最后接触 veto 始终生效。
+
+因此 Main 与 Explicit 共享本文件的 Wrist/Finger MCC，区别只在 nominal finger trajectory：
+
+```text
+Explicit: explicit finger/contact-mode planner -> shared Finger MCC
+Main    : Finger DP Reference Generator       -> shared Finger MCC
+```
+
+### E05 分层实验
 
 - `E05-F-MCC`：Wrist MCC 关闭且 wrist 规定式跟踪；没有 wrist force branch 接收
   resultant error，因此 finger controller 使用完整、可实现的 local force error；
 - `E05-H-MCC`：必须启用上述 coordinator；Wrist MCC 接收 resultant error，Finger MCC
   只接收 internal/differential correction；
-- 当前没有正式 `E05-F-DP/E05-H-DP` 单元；3 s raw compatibility trial 不能填写 DP
-  placeholder 或形成 MCC-vs-DP 结论。
+- Exp. 1 `E05-H-MCC vs. E05-H-DP-direct` 已完成，只回答 DP 能否替代低层 MCC；
+- Exp. 2 的 Passive-Hold、Reactive-Heuristic 与 DPRef+MCC 共享本文件的 Wrist/Finger MCC 和
+  Role Interpreter，只替换 nominal finger reference source；已完成描述性评测；
+- Exp. 1/2 不给策略设置 Pass/Fail，只报告性能与参考限制越界；
+- Exp. 3 位于 I05 后的 I06，在完整 active system 中比较 explicit finger planning 与
+  wrist-only+DPRef，两边仍共享本文件的 low-level compliance。
 
 ## 5. Planner / compliance direction decomposition
 
@@ -263,6 +287,13 @@ Module 4C/W/H 已执行以下测试；当前物理结果见 `E05_MCC_CURRENT_PRO
 
 当前 unit/integration tests 验证了 sign/frame、projector reconstruction、actual-contact
 authority、joint-torque wrench recovery、wrist motion sign、23-DoF pose IK 和 grouped guards。
-正式 E05 还测量了 leakage、rank/condition、contact recovery 与 force performance；两个
-单元均为 `EVALUATED / NOT_MET`，主要剩余问题是 peak force 与 H 分支 settling，而不是
-接口或执行链未实现。
+旧 MCC-only E05 还测量了 leakage、rank/condition、contact recovery 与 force performance；两个
+单元均已 `EVALUATED`，其越界量按数值保留。随后 command continuity、guard reentry、actuator/contact
+参数和 Role Interpreter 已进一步按接触优先目标重构：MAKE/recontact 保留接近、load ramp 从
+measured force 开始，并把 acquisition MCC state 转交 KEEP MCC。旧 `G1a=PASS` 只对应
+2026-08-24 的 8 N-priority profile，当前不再把单个 MuJoCo 峰值作为控制器判据。当前 Exp.2
+四策略结果重点报告 contact continuity、contact richness 和 supported traversal；力只报告持续
+高力、多指同时高力和超额冲量。完整证据见
+[`evidence/2026-08-25_EXP2_CONTACT_PRIORITY_RERUN.md`](evidence/2026-08-25_EXP2_CONTACT_PRIORITY_RERUN.md)。
+统一策略页面见
+[`generated/e05_exp1_exp2_review/index.html`](generated/e05_exp1_exp2_review/index.html)。

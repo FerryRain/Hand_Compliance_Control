@@ -1,134 +1,151 @@
-# E05 当前评测定义：Finger 层与 Whole-hand 层
+# E05：固定 Wrist 轨迹下的策略性能评测
 
-> 日期：`2026-08-23`
->
-> 环境：`handcomp`
->
-> 当前状态：MCC 已评测；DP v1 架构/core 已冻结并实现。Dataset-D 的真实 spatial-inverse
-> pipeline raw gate 已通过，但正式非 MCC Dataset-I 尚未生成，因而未训练、未评测。
+> 当前状态：`EXP1_EVALUATED / EXP2_EVALUATED`
+> 评测语义：只报告性能、相对优劣和参考限制越界；不给策略设置 `PASS/FAIL`、`MET/NOT_MET`，
+> 也不以 E05 结果解锁或阻塞后续模块。
 
-## 为什么分层
+统一审阅入口：[`generated/e05_exp1_exp2_review/index.html`](generated/e05_exp1_exp2_review/index.html)。
 
-E05 必须区分两个问题：
+## 1. E05 的边界
 
-1. **Finger 层 diagnostic**：规定式 FR3 wrist motion 下，standalone controller 的局部能力；
-2. **Whole-hand primary**：共享同一 Wrist MCC 后，只替换 Finger MCC 与 Finger DP，公平
-   比较 local/differential contact realization。
+E05 固定：
 
-## 当前单元
+- wrist trajectory、初始状态、物体、摩擦/噪声条件和评测时长；
+- 同一实验内部的 Wrist MCC、guard、执行频率和 actuator limits；
+- 只替换 finger controller 或 nominal finger reference source。
 
-| 单元 | Wrist branch | Finger branch | 当前状态 |
-| --- | --- | --- | --- |
-| `E05-F-MCC` | prescribed FR3 palm tracking | 4×完整 local force-error MCC | `EVALUATED / NOT_MET` |
-| `E05-H-MCC` | resultant Wrist MCC | coordinated internal/differential MCC | `EVALUATED / NOT_MET` |
-| `E05-F-DP` | 与 F-MCC 相同的 wrist trajectory | standalone Finger DP diagnostic | `NOT_STARTED` |
-| `E05-H-DP` | 与 H-MCC 完全相同的 Wrist MCC | Finger DP + Action Authority Filter | `NOT_STARTED`（primary） |
+因此 E05 回答 controller/reference-source 层的问题，不包含在线 active planning，也不评测
+GPIS reconstruction。MuJoCo 接触力只作为诊断指标，`8 N` 是统一参考线而非硬判据。力侧重点为
+`>8 N` 占用时间、最长连续段、多指同时高力和超额冲量；单个数值尖峰不会否决策略。
 
-当前没有合格的 DP checkpoint 或 DP 指标。废弃 synthetic replay 的实现与生成数据已清理；
-`generated/visual_demo/spatial_inverse_v1/` 是唯一保留的 Dataset-D pipeline audit，不是 E05-DP。
+Exp.1 与 Exp.2 使用了不同版本的 shared MCC/guard。只能在各自实验内部比较，不能把两组之间的
+峰值变化直接归因于某个 finger 策略。
 
-## MCC 共同物理条件
+## 2. Exp.1：Finger MCC vs. DP-direct
 
-- 同一 23-DoF FR3+LEAP MuJoCo plant；
-- flange adapter 对准 central palm mesh；
-- 四个 distal fingertip belly-pad collision geoms；
-- 初始 hand q 取自已发布视频 `t=2.000 s` 的真实物理状态；
-- 同一 `0.60 × 0.84 m` finger-heterogeneous height field；
-- physics `dt=2 ms`、gravity off、四指目标力 `2 N`、tip-force 上限 `8 N`；
-- 同一状态、接触测量、M03 guards、日志与 evaluator。
-
-完整场景、seed 和阈值只以
-[`E05_MCC_CURRENT_PROTOCOL.md`](E05_MCC_CURRENT_PROTOCOL.md) 为准。
-
-## E05-F-MCC
-
-FR3 高刚度跟踪规定式 palm trajectory，Wrist MCC 关闭。四根手指使用完整 local normal
-force error：
+比较：
 
 ```text
-e_i = lambda_i_des - lambda_i_meas
-M_i dd(delta_i) + D_i d(delta_i) + K_i delta_i = e_i
+E05-H-MCC       = shared Wrist MCC + coordinated Finger MCC
+E05-H-DP-direct = same Wrist MCC + direct Finger DP + authority filter
 ```
 
-## E05-H-MCC
+问题：DP 能否直接替代高频 Finger MCC，承担 low-level contact/compliance control？
 
-对 hysteresis-confirmed `A_actual` 构造：
+| 三条件 aggregate | H-MCC | H-DP-direct | 解读 |
+|---|---:|---:|---|
+| contact continuity | 87.30% | 66.69% | MCC 高 20.62 个百分点 |
+| 平均 contact 数 | 3.026 | 1.590 | MCC 多 1.436 个 contact |
+| force RMSE | 1.381 N | 2.232 N | MCC 更低 |
+| worst peak force | 81.35 N | 103.02 N | 相对 8 N 分别超 73.35 / 95.02 N |
+| mean Y traversal | 174.23 mm | 158.23 mm | MCC 多 16.00 mm |
+| controller P95 | 1.35 ms | 12.00 ms | MCC 约快 8.9 倍；DP 仍低于 20 ms policy 周期 |
+| wrist force-z RMSE | 2.660 N | 1.568 N | DP-direct 在该单项更低 |
+
+性能判断：
+
+- MCC 的优势是多接触保持、局部力跟踪、移动距离和执行延迟；
+- DP-direct 的明确优势是较低的 wrist resultant force-z RMSE，且 CUDA 推理仍满足 20 ms 周期；
+- DP-direct 的 contact loss、authority intervention 和 force spike 更严重；
+- 两种策略都明显超过 8 N，说明 Exp.1 的旧 shared stack 还有共同的冲击/连续性问题；这不是
+  DP 独有问题，也不能据此把实验标成失败。
+
+结论仅限于：当前 DP-direct 不如 analytical MCC 适合直接承担高频低层柔顺控制。该结果支持把
+DP 上移为 nominal finger trajectory/role generator，但不是对 DP 路线作总体否定。
+
+## 3. Exp.2：Plain 绝对参考 + Passive / Reactive / DPRef
+
+`Plain whole-hand MCC` 是最初的普通解析全手 MCC：不经过新 Role Interpreter/ForceSafety wrapper，
+用于显示基础接触保持能力，不参加 reference-source 因果归因。
+
+另外三种策略共享完全相同的：
 
 ```text
-H_A = G_A B_A
-e_lambda = lambda_des - lambda_meas
-e_resultant = H_W_dagger H_A e_lambda
-e_internal = (I - H_W_dagger H_A) e_lambda
+Reference/Role Interpreter
+ -> resultant/internal-force coordinator
+ -> Wrist MCC + Finger MCC
+ -> runtime guard
 ```
 
-- resultant error 进入 Wrist MCC；
-- active fingers 只接 internal/differential error；
-- 未确认接触的 finger 仅执行局部 MAKE/recovery；
-- tangential exploration trajectory 仍由 nominal planner branch 主导。
+这三个 shared-stack 分支唯一变量是 nominal reference source：
 
-## 当前 MCC 结果
+- `Passive-Hold + MCC`：保持当前 nominal reference，只依靠 MCC 反应；
+- `Reactive-Heuristic + MCC`：使用因果局部启发式，不读取未来 wrist trajectory；
+- `DPRef/Role + MCC`：读取状态和 future wrist plan，生成 nominal joint chunk 与 role intention。
 
-| aggregate | E05-F-MCC | E05-H-MCC |
-| --- | ---: | ---: |
-| episodes | 3/3 | 3/3 |
-| execution | `EVALUATED` | `EVALUATED` |
-| performance | `NOT_MET` | `NOT_MET` |
-| mean contact continuity | 100.000% | 99.748% |
-| mean contacts | 3.752 | 3.474 |
-| mean force RMSE | 1.751 N | 1.857 N |
-| worst peak force | 18.165 N | 14.886 N |
-| mean Y traversal | 170.84 mm | 172.86 mm |
+| 三条件 aggregate | Plain | Passive | Reactive | DPRef |
+|---|---:|---:|---:|---:|
+| contact continuity | **99.21%** | 97.23% | 97.26% | **98.77%†** |
+| 平均 contact 数 | **3.156** | 2.285 | 2.310 | **2.450†** |
+| `P(N_c>=2)` | **87.69%** | 61.02% | 61.23% | **84.70%†** |
+| `P(N_c>=3)` | **75.37%** | 43.90% | 45.08% | **46.64%†** |
+| 四指同时接触 | **53.30%** | 26.31% | **27.45%†** | 14.86% |
+| force RMSE（诊断） | 1.910 N | 1.855 N | 1.752 N | 1.570 N |
+| worst peak force（诊断） | 11.65 N | 56.77 N | 52.24 N | 4.83 N |
+| 平均 `>8 N` 时间（诊断） | 0.783 s | 0.092 s | 0.029 s | 0 s |
+| 平均多指同时 `>8 N` | 0 s | 0 s | 0 s | 0 s |
+| total Y traversal | **174.36 mm** | 166.81 mm | 170.53 mm | **173.84 mm*** |
+| supported Y, `N_c>=2` | **138.87 mm** | 89.35 mm | 86.90 mm | **126.09 mm*** |
+| DPRef/reference P95 | — | — | — | 13.54 ms |
 
-以上数值会由提交前的最终 MCC-only 重跑刷新；正式来源为
-`generated/e05_mcc_current/summary.json`，不能从文档手工回填。
+`†` 表示仅在严格可比的 Passive/Reactive/DPRef 子集中最好；Plain 是不同执行栈的绝对参考。
 
-## 正式 Primary：E05-H-MCC vs. E05-H-DP
+策略优劣：
 
-两者必须逐 episode 共享：initial state、wrist planner/reference、Wrist MCC 参数与内部状态
-初始化、SurfaceModel、desired force、hard guard、actuator limits、物理参数、seed、时长和
-evaluator。唯一允许替换：
+- **Plain MCC**：多指丰富度最高，但平均约 0.783 s 处于单指 `>8 N`；它显示解析基础上限，
+  不能与后三者作“只替换 reference source”的因果比较。
+- **Passive-Hold**：是不使用预测的 shared-stack 下限；相对 Plain 平均少 0.871 个接触、
+  supported distance 少 49.52 mm。
+- **Reactive-Heuristic**：相对 Passive 平均多 0.026 个接触、`P(N_c>=3)` 高 1.18 pp、总 traversal
+  多 3.73 mm，但 supported `N_c>=2` 少 2.45 mm；提升很小。
+- **DPRef**：在严格共享栈的三者中，continuity、平均接触数、`P(N_c>=2/3)` 和 supported distance
+  全部最好；相对最佳解析源分别提高 1.51 pp、0.139 个接触和 36.75 mm。代价是四指同时接触率
+  低 12.60 pp，载荷明显偏向前三指，尚不能声称可靠 handover。
+
+数据覆盖限制：DPRef validation 没有 `RELEASE` label，`MAKE` 只有 20 个且准确率为 60%。因此
+本实验能评价当前轨迹参考的执行性能，但不能声称已经验证 handover / BREAK 泛化。
+
+## 4. Exp.3 不属于 E05
+
+这里的 active planning 指：SurfaceModel/GPIS 已运行，由在线 planner 选择下一段 wrist trajectory，
+而不是 E05 中预先固定 wrist trajectory。Exp.3 比较：
 
 ```text
-coordinated Finger MCC
-<->
-force-history Finger DP + DP Action Authority Filter
+Explicit wrist + finger/contact-mode planner + shared MCC
+vs.
+Wrist-only active planner + DPRef/Role generator + shared MCC
 ```
 
-Wrist MCC 负责 collective compliance；DP 只负责 differential/local contact realization 与
-handover。Action Authority Filter 是确定性权限投影，不得生成 force target 或充当隐藏 MCC。
+它回答“active tactile exploration 是否需要显式规划高维 fingers/contact modes”，属于完整系统的
+planner-level ablation。正式位置为 [`MASTER_PLAN.md`](MASTER_PLAN.md) 中 **I05 之后的 I06 / Exp.3**；
+I04 已独立冻结为 given-good-next-point 的 Oracle whole-hand contact traversal，不选择探索点；
+I05 是完整 GPIS main-vs-baseline 主实验。
 
-## DP 进入 E05 前的要求
+## 5. 复现与审阅
 
-未来 DP 只有满足以下条件才能进入 E05：
+统一生成：
 
-实施顺序与数据 Gate 以 [`M4_DP_GUIDE.md`](M4_DP_GUIDE.md) 为准。
+```bash
+/home/ferry/data/Anaconda/envs/handcomp/bin/python -m Module.e05_strategy_review
+```
 
-- 完整满足 `DP_CONTROLLER_V1_PROTOCOL.md` 的因果 observation、filtered force history、
-  measured-q anchored command chunk、authority QP 与 guard state machine；
-- 输入仅包含部署时可获得的因果观测，不使用未来接触点或 Oracle 泄漏；
-- 明确加入 fingertip force magnitude/history、finger `q/dq`、contact validity 和 action
-  history，并冻结 observation/action schema；
-- 完整运行冻结时长，M03 guard authority 与 MCC 对齐；
-- DP 不得隐藏使用 Fingertip MCC、FullHandMCC 或 analytical force-error fallback；
-- teacher physical replay 必须通过 duration/contact/force/collision/non-tip/guard/authority audit，
-  且必须来自真实 forward physical interaction；空间反演保持相同时间顺序，forward q command
-  原序用作 proposal，replay force/contact 重新测量；verified inverse 必须占主要比例，不能由
-  privileged repair 主导；
-- Dataset-D/Direct-MCC 只用于 pipeline/training diagnostic；正式训练主数据必须是 Dataset-I，
-  不得把 MCC forward provenance 隐藏成 independent inverse teacher；
-- dataset audit 通过后才能训练，held-out train/eval split 冻结后才能运行 E05；
-- `E05-F-DP` 只作为 standalone capability diagnostic，不承担论文主结论；
-- 失败诊断不能冒充正式结果。
+统一目录：
 
-正式 DP 还需报告 contact/force/traversal/latency 之外的：authority intervention probability 与
-norm、QP failure/P95 latency、guard takeover rate/duration、contact-normal opposition rate
-`rho_opp` 与 opposition energy `E_opp`。若 filter 长期大幅修改 DP nominal action，不得把
-最终性能全部归因于 DP。
+```text
+Module/generated/e05_exp1_exp2_review/
+├── index.html                 # 单页指标、分析、图片和视频
+├── summary.json               # 无策略 verdict 的机器可读汇总
+├── metrics.csv                # 六种策略的扁平指标
+├── exp1_dashboard.png
+├── exp1_mcc.mp4
+├── exp1_dp_direct.mp4
+├── exp1_side_by_side.mp4
+├── exp2_dashboard.png
+├── exp2_plain.mp4
+├── exp2_passive.mp4
+├── exp2_reactive.mp4
+└── exp2_dpref.mp4
+```
 
-## 状态语义
-
-- `EVALUATED`：协议、episode、trace 与 evaluator 完整有效；
-- `NOT_MET`：方法性能未满足预冻结阈值，不等于 evaluator 失败；
-- `DATASET_I_BLOCKED / NOT_EVALUATED`：core 与 Dataset-D diagnostic 可以运行，但正式
-  teacher 数据仍禁止训练；
-- `FAILED` 只用于模型、协议、日志或 evaluator 自身无效。
+原始 source summaries 可能仍含历史 verdict 字段，仅用于 provenance；本文件和统一网页是当前 E05
+解释协议。

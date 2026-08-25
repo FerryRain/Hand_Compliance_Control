@@ -84,7 +84,8 @@ q noise=0.006rad)`。
 H 另要求 wrist Fz RMSE `<=2.5N`、wrist compliance translation `<=12.1mm`、
 internal leakage p95 `<=0.05N`。
 
-完整运行但超过阈值写 `EVALUATED / NOT_MET`，不能写成执行失败。
+这些数值现在作为 reference limits：完整运行后报告各项差值和越界量，不给 E05 策略设置
+Pass/Fail 或 MET/NOT_MET。历史 summary 中的 verdict 字段仅保留 provenance。
 
 ## 7. 冻结产物
 

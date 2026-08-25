@@ -72,6 +72,7 @@ def _overlay(
   trace: E05MCCTrace,
   index: int,
   mode: str,
+  display_label: str | None = None,
 ) -> np.ndarray:
   image = Image.fromarray(frame).convert("RGBA")
   inset_image = Image.fromarray(inset).convert("RGB")
@@ -81,7 +82,15 @@ def _overlay(
   image.alpha_composite(inset_image.convert("RGBA"), (image.width - inset_width - 24, 126))
   draw = ImageDraw.Draw(image)
   draw.rounded_rectangle((18, 14, image.width - 18, 112), 13, fill=(8, 22, 38, 218))
-  title = "E05-F-MCC  |  prescribed FR3 wrist + full local Finger MCC" if mode == "E05-F-MCC" else "E05-H-MCC  |  FR3 Wrist MCC + resultant/internal coordinator"
+  title = (
+    display_label
+    if display_label is not None
+    else (
+      "E05-F-MCC  |  prescribed FR3 wrist + full local Finger MCC"
+      if mode == "E05-F-MCC"
+      else "E05-H-MCC  |  FR3 Wrist MCC + resultant/internal coordinator"
+    )
+  )
   draw.text((34, 28), title, font=_font(22, bold=True), fill="white")
   draw.text(
     (34, 65),
@@ -160,6 +169,7 @@ def render_video(
   screenshot_path: Path,
   *,
   fps: int = 12,
+  display_label: str | None = None,
 ) -> Path:
   handles = build_full_robot(
     FullRobotModelConfig(
@@ -208,6 +218,7 @@ def render_video(
         trace,
         int(index),
         mode,
+        display_label,
       )
       writer.append_data(frame)
       if screenshot_frame is None and int(index) >= screenshot_index:

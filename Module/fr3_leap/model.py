@@ -129,6 +129,10 @@ SOURCE_OBJECT_POSITIONS_M = {
   # Raised 11 mm relative to the retired stretched-finger seed so the exact
   # t=2.0 s DP-video posture starts within a small physical MAKE distance.
   "extreme": np.array([-0.015, 0.245, 0.005], dtype=np.float64),
+  # I01 lays the scaled Bunny on its side.  The upper envelope underneath the
+  # natural fingertip footprint is about 0.12 m high, so this body origin
+  # preserves the same ~18 mm physical MAKE gap as the plane baseline.
+  "bunny": np.array([-0.0115, -0.052, -0.120], dtype=np.float64),
 }
 
 
@@ -143,10 +147,22 @@ class FullRobotModelConfig:
   arm_damping_ratio: float = 1.0
   hand_kp: float = 22.0
   hand_damping_ratio: float = 1.5
+  hand_actuator_force_limit_nm: float | None = None
+  # Dataset-I uses translated crops of the same frozen large hfield as distinct
+  # object-region variants.  Defaults remain exactly the MCC/E05 geometry.
+  object_offset_x_m: float = 0.0
+  object_offset_y_m: float = 0.0
+  object_offset_z_m: float = 0.0
+  # Optional canonical, already transformed Bunny mesh used only for visual
+  # rendering in the legacy hfield scene.  I04 can opt into MuJoCo's native
+  # non-convex mesh SDF, in which case the same canonical file is the physical
+  # collision geometry as well as the rendered geometry.
+  bunny_visual_mesh_path: str | None = None
+  bunny_collision_mode: str = "hfield"
 
   def __post_init__(self) -> None:
-    if self.surface not in {"plane", "sphere", "extreme"}:
-      raise ValueError("surface must be 'plane', 'sphere', or 'extreme'")
+    if self.surface not in {"plane", "sphere", "extreme", "bunny"}:
+      raise ValueError("surface must be 'plane', 'sphere', 'extreme', or 'bunny'")
     positive = {
       "timestep_s": self.timestep_s,
       "arm_kp": self.arm_kp,
@@ -157,8 +173,31 @@ class FullRobotModelConfig:
     for name, value in positive.items():
       if not np.isfinite(value) or value <= 0.0:
         raise ValueError(f"{name} must be finite and positive")
+    if self.hand_actuator_force_limit_nm is not None:
+      limit = float(self.hand_actuator_force_limit_nm)
+      if not np.isfinite(limit) or limit <= 0.0:
+        raise ValueError("hand_actuator_force_limit_nm must be finite and positive")
     if not np.isfinite(self.gravity_m_s2):
       raise ValueError("gravity_m_s2 must be finite")
+    if (
+      not np.isfinite(self.object_offset_x_m)
+      or not np.isfinite(self.object_offset_y_m)
+      or not np.isfinite(self.object_offset_z_m)
+    ):
+      raise ValueError("object offsets must be finite")
+    if self.bunny_visual_mesh_path is not None:
+      mesh_path = Path(self.bunny_visual_mesh_path).expanduser().resolve()
+      if not mesh_path.is_file():
+        raise ValueError(f"bunny_visual_mesh_path does not exist: {mesh_path}")
+      object.__setattr__(self, "bunny_visual_mesh_path", str(mesh_path))
+    if self.bunny_collision_mode not in {"hfield", "sdf"}:
+      raise ValueError("bunny_collision_mode must be 'hfield' or 'sdf'")
+    if self.surface != "bunny" and self.bunny_collision_mode != "hfield":
+      raise ValueError("bunny_collision_mode='sdf' requires surface='bunny'")
+    if self.bunny_collision_mode == "sdf" and self.bunny_visual_mesh_path is None:
+      raise ValueError(
+        "bunny_collision_mode='sdf' requires bunny_visual_mesh_path"
+      )
 
 
 @dataclass(frozen=True, slots=True)
@@ -386,6 +425,11 @@ def _add_fixed_surface(
     raise RuntimeError("FR3 model is missing worldbody or asset")
   translation = palm_home_position - SOURCE_PALM_WORLD_POSITION_M
   object_position = SOURCE_OBJECT_POSITIONS_M[config.surface] + translation
+  object_position[:2] += np.array(
+    [config.object_offset_x_m, config.object_offset_y_m],
+    dtype=np.float64,
+  )
+  object_position[2] += config.object_offset_z_m
   body = ET.SubElement(
     worldbody,
     "body",
@@ -406,7 +450,7 @@ def _add_fixed_surface(
     attributes.update({"type": "box", "size": "0.30 0.42 0.01"})
   elif config.surface == "sphere":
     attributes.update({"type": "sphere", "size": "0.45"})
-  else:
+  elif config.surface == "extreme":
     elevation, minimum, span = hfield_elevation()
     ET.SubElement(
       asset,
@@ -426,6 +470,86 @@ def _add_fixed_surface(
         "pos": f"0 0 {minimum}",
       }
     )
+  else:
+    # Import lazily so the standard M0--M4 plant does not pay the mesh/raycast
+    # construction cost.  I01--I03 retain their deterministic upper-envelope
+    # hfield.  I04 instead uses MuJoCo's mesh-SDF collision path so contact is
+    # possible on the Bunny's sides, underside and concavities without silently
+    # replacing it by a convex hull.
+    from Module.i01_bunny_physics.surface import (
+      BUNNY_BASE_DEPTH_M,
+      BUNNY_HFIELD_NCOL,
+      BUNNY_HFIELD_NROW,
+      canonical_bunny_heightfield,
+    )
+
+    if config.bunny_collision_mode == "sdf":
+      ET.SubElement(
+        asset,
+        "mesh",
+        {
+          "name": "fr3_i04_bunny_sdf_mesh",
+          "file": config.bunny_visual_mesh_path,
+        },
+      )
+      attributes.update(
+        {
+          "type": "sdf",
+          "mesh": "fr3_i04_bunny_sdf_mesh",
+          "pos": "0 0 0",
+          "rgba": "0.18 0.38 0.78 0.96",
+        }
+      )
+    else:
+      bunny = canonical_bunny_heightfield()
+      ET.SubElement(
+        asset,
+        "hfield",
+        {
+          "name": "fr3_i01_bunny_hfield",
+          "nrow": str(BUNNY_HFIELD_NROW),
+          "ncol": str(BUNNY_HFIELD_NCOL),
+          "size": (
+            f"{bunny.x_half_m} {bunny.y_half_m} "
+            f"{bunny.height_span_m} {BUNNY_BASE_DEPTH_M}"
+          ),
+          "elevation": " ".join(
+            str(value) for value in bunny.mujoco_elevation().ravel()
+          ),
+        },
+      )
+      attributes.update(
+        {
+          "type": "hfield",
+          "hfield": "fr3_i01_bunny_hfield",
+          "pos": "0 0 0",
+          "rgba": "0.20 0.54 0.82 0.14",
+          "group": "4",
+        }
+      )
+      if config.bunny_visual_mesh_path is not None:
+        ET.SubElement(
+          asset,
+          "mesh",
+          {
+            "name": "fr3_i01_bunny_visual_mesh",
+            "file": config.bunny_visual_mesh_path,
+          },
+        )
+        ET.SubElement(
+          body,
+          "geom",
+          {
+            "name": "fr3_i01_bunny_visual_geom",
+            "type": "mesh",
+            "mesh": "fr3_i01_bunny_visual_mesh",
+            "density": "0",
+            "contype": "0",
+            "conaffinity": "0",
+            "rgba": "0.18 0.38 0.78 0.96",
+            "group": "2",
+          },
+        )
   ET.SubElement(body, "geom", attributes)
   return object_position
 
@@ -461,6 +585,10 @@ def _add_actuators_and_sensors(
   for element in source_actuator:
     copied = deepcopy(element)
     copied.set("class", "fr3_leap_hand")
+    if config.hand_actuator_force_limit_nm is not None:
+      limit = float(config.hand_actuator_force_limit_nm)
+      copied.set("forcerange", f"{-limit:.12g} {limit:.12g}")
+      copied.set("forcelimited", "true")
     actuator.append(copied)
 
   sensor = ET.SubElement(root, "sensor")

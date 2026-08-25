@@ -256,6 +256,7 @@ class DiffusionPolicyConfig:
   diffusion_steps: int = 50
   beta_start: float = 1e-4
   beta_end: float = 0.02
+  action_scale_rad: float = 0.10
   max_abs_action_offset_rad: float = 0.30
 
   def __post_init__(self) -> None:
@@ -263,8 +264,8 @@ class DiffusionPolicyConfig:
       raise ValueError("action horizon and diffusion steps are too small")
     if not 0.0 < self.beta_start < self.beta_end < 1.0:
       raise ValueError("diffusion betas must satisfy 0 < start < end < 1")
-    if self.max_abs_action_offset_rad <= 0.0:
-      raise ValueError("max_abs_action_offset_rad must be positive")
+    if self.action_scale_rad <= 0.0 or self.max_abs_action_offset_rad <= 0.0:
+      raise ValueError("action scale and maximum offset must be positive")
 
 
 class FingerDiffusionPolicy(nn.Module):
@@ -298,6 +299,7 @@ class FingerDiffusionPolicy(nn.Module):
     ):
       raise ValueError("target_action_offsets has the wrong shape")
     condition = self.condition_encoder(inputs)
+    normalized_target = target_action_offsets / self.config.action_scale_rad
     batch = target_action_offsets.shape[0]
     timestep = torch.randint(
       0,
@@ -305,32 +307,63 @@ class FingerDiffusionPolicy(nn.Module):
       (batch,),
       device=target_action_offsets.device,
     )
-    noise = torch.randn_like(target_action_offsets)
+    noise = torch.randn_like(normalized_target)
     alpha_bar = self.alpha_bar[timestep][:, None, None]
-    noisy = alpha_bar.sqrt() * target_action_offsets + (1.0 - alpha_bar).sqrt() * noise
+    noisy = alpha_bar.sqrt() * normalized_target + (1.0 - alpha_bar).sqrt() * noise
     prediction = self.denoiser(noisy, timestep, condition)
     return functional.mse_loss(prediction, noise)
 
   @torch.no_grad()
-  def sample(self, inputs: Mapping[str, Tensor]) -> Tensor:
+  def sample(
+    self,
+    inputs: Mapping[str, Tensor],
+    *,
+    initial_noise: Tensor | None = None,
+    deterministic: bool = False,
+  ) -> Tensor:
+    """Sample a command-offset chunk in radians.
+
+    ``deterministic=True`` uses the DDIM mean path.  Track-D closed-loop
+    diagnostics also provide fixed initial noise so repeated evaluation is
+    exactly reproducible rather than being confounded by sampling variance.
+    """
+
     condition = self.condition_encoder(inputs)
     batch = condition.shape[0]
-    value = torch.randn(
-      batch,
-      self.config.action_horizon_steps,
-      NUM_FINGER_JOINTS,
-      device=condition.device,
-    )
+    shape = (batch, self.config.action_horizon_steps, NUM_FINGER_JOINTS)
+    if initial_noise is None:
+      value = torch.randn(*shape, device=condition.device)
+    else:
+      if tuple(initial_noise.shape) != shape:
+        raise ValueError(f"initial_noise must have shape {shape}")
+      value = initial_noise.to(device=condition.device, dtype=condition.dtype).clone()
     for step in reversed(range(self.config.diffusion_steps)):
       timestep = torch.full((batch,), step, device=condition.device, dtype=torch.long)
       predicted_noise = self.denoiser(value, timestep, condition)
       alpha = self.alphas[step]
       alpha_bar = self.alpha_bar[step]
-      mean = (value - self.betas[step] * predicted_noise / (1.0 - alpha_bar).sqrt()) / alpha.sqrt()
-      if step > 0:
-        value = mean + self.betas[step].sqrt() * torch.randn_like(value)
+      if deterministic:
+        predicted_clean = (
+          value - (1.0 - alpha_bar).sqrt() * predicted_noise
+        ) / alpha_bar.sqrt()
+        if step > 0:
+          previous_alpha_bar = self.alpha_bar[step - 1]
+          value = (
+            previous_alpha_bar.sqrt() * predicted_clean
+            + (1.0 - previous_alpha_bar).sqrt() * predicted_noise
+          )
+        else:
+          value = predicted_clean
       else:
-        value = mean
+        mean = (
+          value
+          - self.betas[step] * predicted_noise / (1.0 - alpha_bar).sqrt()
+        ) / alpha.sqrt()
+        if step > 0:
+          value = mean + self.betas[step].sqrt() * torch.randn_like(value)
+        else:
+          value = mean
+    value = value * self.config.action_scale_rad
     return torch.clamp(
       value,
       -self.config.max_abs_action_offset_rad,

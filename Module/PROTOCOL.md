@@ -113,6 +113,9 @@ go/no-go gate。
 - single-finger block 返回 `FINGER_LOCAL`，arm/wrench/sensor/collision 返回
   `GLOBAL_SAFE_HOLD`；
 - 原 M03 的 unknown blockage 边界保持不变，不生成不可测碰撞点/法向。
+- `ForceSafetyExecutor` 是 Finger MCC 与 Finger DP 共用的 500 Hz over-force 执行层；默认
+  soft/hard/recover 为 `6/8/2.5 N`；hard release 使用 signed compression Jacobian，并拥有高于
+  controller/authority-QP 的执行权限；release 后必须 safe hold、buffer reset 和 bounded re-entry。
 
 ### FR3 plant structural gate
 
@@ -125,6 +128,29 @@ go/no-go gate。
 FR3 physics E05 的任务、阈值和 hash 不写在本历史协议中，单独冻结于
 `E05_MCC_CURRENT_PROTOCOL.md`。
 
+### 2026-08-24：M03 shared-execution safety extension（历史 profile）
+
+为支持 Exp. 2 的公平 reference-source 对照，M03 增加统一 command-continuity 和 force-safety
+验收；它不改写上面的 hand-only guard 阈值：
+
+- maximum per-finger command step `<=0.001 rad`；
+- maximum wrist translation step `<=0.0002 m`，normal compliance step 另限 `<=10 µm`；
+- raw fingertip peak `<=8 N` 且 `T(F>8N)=0`；
+- hard guard frames、safety abort、non-tip contact 均为 0；
+- palm tracking RMSE `<=8 mm`；
+- nominal、low-friction、noisy-pose 三个 15 s 条件必须全部满足。
+
+该独立审计当时得到 `G1a=PASS`。它只对应 2026-08-24 的 8 N-priority profile，不评价 DPRef
+contact value，也不代表 2026-08-25 接触优先 Exp.2 配置。当前配置不以单个 MuJoCo force peak
+签发策略 verdict；见 `evidence/2026-08-25_EXP2_CONTACT_PRIORITY_RERUN.md`。历史复现：
+
+```bash
+/home/ferry/data/Anaconda/envs/handcomp/bin/python \
+  -m Module.module_4_whole_hand_mcc.g1a_benchmark
+```
+
+证据见 `generated/g1a_shared_stack/summary.json`。
+
 ## 2026-08-23：当前 central-mount 补充
 
 本补充替代旧的 body-origin mount 判据，但不改变 M0–M3 数值阈值：
@@ -136,4 +162,7 @@ FR3 physics E05 的任务、阈值和 hash 不写在本历史协议中，单独�
 - 当前 E05 对象必须固定在 world，满足 `nmocap=0`；
 - adapter 必须可见、无质量且不参与碰撞，不能通过隐藏 arm geometry 或移动相机伪造闭合。
 
-DP 的 observation、数据与 safety 协议尚未重新冻结，不属于本补充。
+旧 DP-direct observation/action 与 Exp. 1 归档协议分别见 `DP_CONTROLLER_V1_PROTOCOL.md` 和
+`E05_DP_CURRENT_PROTOCOL.md`；新 DPRef+MCC 设计与三层实验见
+`DP_REFERENCE_GENERATOR_DESIGN.md` 和 `E05_EVALUATION_PLAN.md`。它们都不改写 M0–M3 的
+历史解析阈值。

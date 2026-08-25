@@ -1,17 +1,22 @@
-# Finger DP Controller v1 冻结设计协议
+# Finger DP-direct Controller v1 归档设计协议
 
-> 状态：`ARCHITECTURE_FROZEN_CORE_TESTED_DATASET_D_PIPELINE_PASSED_DATASET_I_BLOCKED`
+> 状态：`IMPLEMENTED / EVALUATED_NOT_MET / ARCHITECTURE_ABLATION`
 > 日期：`2026-08-23`
 > 环境：`handcomp`
 > 实现边界：所有新增代码、数据与结果只能位于 `Module/`
 > 禁止项：fast learned force residual、隐藏 Finger MCC fallback、旧 DP 结果复用
 
-本文件冻结 controller/data contract；Dataset-D smoke、Dataset-I pilot、raw/repaired 分池、
+> 当前定位：本文完整保留已经实现和评测的 **DP-direct** observation/action/authority contract，
+> 用于复现 Exp. 1；它不再是 main method。新的主方法是 DP nominal reference generator + shared
+> Finger MCC，设计稿见 [`DP_REFERENCE_GENERATOR_DESIGN.md`](DP_REFERENCE_GENERATOR_DESIGN.md)，
+> 三层实验见 [`E05_EVALUATION_PLAN.md`](E05_EVALUATION_PLAN.md)。
+
+本文件冻结 DP-direct controller/data contract；Diag-MCC smoke、Dataset-I pilot、raw/repaired 分池、
 contact-richness 指标和扩量顺序见 [`M4_DP_GUIDE.md`](M4_DP_GUIDE.md)。
 
 ## 1. 正式控制栈与权限
 
-第一版主方法冻结为：
+当时评测的 DP-direct 架构冻结为：
 
 ```text
 Wrist Planner                 : global / tangential exploration
@@ -262,9 +267,9 @@ v1 的 `A_actual` 使用 force 上/下阈值加时间确认：连续 5 个 500 H
 占比过高。inverse proposal 的 SE(3) algebraic closure 只证明 proposal 变换正确，不能代替
 physical replay acceptance。
 
-### 6.5 Dataset-D 与 Dataset-I
+### 6.5 Diag-MCC 与 Dataset-I
 
-- `Dataset-D / Direct-MCC diagnostic`：验证 observation、encoder、relative action、trainer、
+- `Diag-MCC / Direct-MCC diagnostic`：验证 observation、encoder、relative action、trainer、
   evaluator 与 inverse pipeline；不能承担正式方法贡献；
 - `Dataset-I / Verified inverse`：真实 forward physical interaction → spatial proposal → fresh
   physical replay → verification → limited non-MCC repair；这是正式 teacher。
@@ -315,22 +320,23 @@ INITIALIZE -> BUFFER_FILL -> DP_ACTIVE -> SOFT_RECOVERY
 
 Guard event 必须计入指标，但不能因为一次 event 立即结束仿真或视频。
 
-## 8. Formal evaluation
+## 8. Exp. 1 DP-direct formal evaluation
 
-Primary：
+已完成的架构消融：
 
 ```text
-E05-H-MCC vs E05-H-DP
+E05-H-MCC vs E05-H-DP-direct
 ```
 
 两边共享 initial state、wrist planner/reference、Wrist MCC、SurfaceModel、force target、hard
 guard、actuator limits、episode、seed 与 evaluator。唯一替换：
 
 ```text
-Finger MCC <-> Finger DP + DP Action Authority Filter
+Finger MCC <-> Finger DP-direct + DP Action Authority Filter
 ```
 
-`E05-F-DP` 只作为 standalone capability diagnostic，不承担主结论。
+`E05-F-DP` 只作为 standalone capability diagnostic，不承担主结论。本文不定义新的
+`DPRef -> Finger MCC` 主方法；后者见 `DP_REFERENCE_GENERATOR_DESIGN.md`。
 
 Wrist/Finger opposition 在 contact-normal space 中计算：
 
@@ -353,5 +359,5 @@ rate/duration。若 filter 长期大幅修改 DP action，不得把性能全部�
 1. observation/action/guard/filter unit tests；
 2. full-length physical replay 与 dataset audit；
 3. held-out prediction/control smoke test；
-4. E05-H-DP 完整 paired episodes；
+4. E05-H-DP-direct 完整 paired episodes；
 5. 仅在证明 DP feedback bandwidth 不足后，才允许讨论 bounded fast residual。

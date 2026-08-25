@@ -244,16 +244,21 @@ class DPActionAuthorityFilter:
     )
     collective_operator = projector @ jacobian
     lower, upper = self._bounds(current_q, previous_command, previous_velocity, dt_s)
+    previous_delta = previous_command - current_q
     bounds_feasible = bool(np.all(lower <= upper + self.config.feasibility_tolerance))
     nominal_bounded = np.clip(nominal, np.minimum(lower, upper), np.maximum(lower, upper))
 
     def collective_violation(value: NDArray[np.float64]) -> float:
       if collective_operator.size == 0:
         return 0.0
+      # Authority applies to newly issued motion, not to the servo's existing
+      # position-target preload.  Removing the latter would actively unload a
+      # stable contact whenever measured q lags the position command.
+      command_increment = value - previous_delta
       return float(
         np.max(
           np.maximum(
-            np.abs(collective_operator @ value) - collective_limit,
+            np.abs(collective_operator @ command_increment) - collective_limit,
             0.0,
           )
         )
@@ -289,12 +294,15 @@ class DPActionAuthorityFilter:
       inequality_matrix = None
       inequality_upper = None
       if collective_operator.size:
+        previous_collective = collective_operator @ previous_delta
         inequality_matrix = np.vstack(
           (collective_operator, -collective_operator)
         )
-        inequality_upper = np.full(
-          2 * collective_operator.shape[0],
-          collective_limit,
+        inequality_upper = np.concatenate(
+          (
+            previous_collective + collective_limit,
+            -previous_collective + collective_limit,
+          )
         )
       # DAQP is a deterministic active-set solver for this small convex QP.
       # Unlike generic nonlinear optimizers it handles the redundant rows of
@@ -356,11 +364,13 @@ class DPActionAuthorityFilter:
         status = f"QP_FAILED:DAQP_EXIT_{exit_flag}"
 
     if not success:
-      # Fail closed.  A measured-state hold has zero normal motion and is
-      # preferable to releasing an uncertified nominal action.  Joint bounds
-      # still take precedence if the current state is already outside margin.
-      safe = np.zeros(NUM_FINGER_JOINTS, dtype=np.float64)
-      safe = np.minimum(np.maximum(safe, np.minimum(lower, upper)), np.maximum(lower, upper))
+      # Fail closed by retaining the previous position target.  This has zero
+      # newly commanded motion and, unlike measured-q hold, does not silently
+      # release an existing contact preload.
+      safe = np.minimum(
+        np.maximum(previous_delta, np.minimum(lower, upper)),
+        np.maximum(lower, upper),
+      )
       if collective_violation(safe) > self.config.feasibility_tolerance:
         safe[:] = 0.0
       status = "INFEASIBLE_SAFE_HOLD" if not bounds_feasible else status
@@ -368,8 +378,8 @@ class DPActionAuthorityFilter:
     lower_violation = float(np.max(np.maximum(lower - safe, 0.0)))
     upper_violation = float(np.max(np.maximum(safe - upper, 0.0)))
     maximum_violation = max(lower_violation, upper_violation, collective_violation(safe))
-    nominal_collective = collective_operator @ nominal
-    safe_collective = collective_operator @ safe
+    nominal_collective = collective_operator @ (nominal - previous_delta)
+    safe_collective = collective_operator @ (safe - previous_delta)
     intervention = float(np.linalg.norm(safe - nominal))
     safe_command = np.asarray(current_q + safe)
     frozen = [
