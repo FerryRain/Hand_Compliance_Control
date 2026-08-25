@@ -1,12 +1,111 @@
-# I04 重定义、I01–I03 退役与 M06–M12 迁移方案
+# I04 重定义、I01–I03 退役与旧 Mx 能力迁移方案
 
 > 日期：`2026-08-25`
 >
 > 状态：`REDESIGN_SPEC / IMPLEMENTATION_NOT_STARTED`
 >
-> 本文是新 I04 的设计迁移说明。它重新定义 I04 的实验问题，并说明历史 I01–I03 与 M06–M12 在新架构中的去留。
+> 本文是新 I04 的设计迁移说明。它重新定义 I04 的实验问题，并说明历史 I01–I03 与旧 M06–M12 能力在新架构中的去留。
 > 现有 `I04_ORACLE_NEXT_POINT_PROTOCOL.md`、I01–I03、M06–M12 Explicit implementation 和物理回归结果继续保留为历史证据，
 > 但不再作为新 I04 的目标架构或前置 Gate。
+
+---
+
+# 0. 第一原则：新体系不再以 M06–M12 作为正式架构
+
+**在新的 I04 体系下，不需要继续维护 `M06 -> M07 -> ... -> M12` 这种模块链。**
+
+这些 Mx 编号是围绕旧 `Explicit contact-mode planner` 逐步搭出来的工程分解；它们服务的问题是：
+
+```text
+枚举 contact mode
+选择 SLIDE / MAKE / BREAK / REPOSITION
+优化某一个 primitive
+搜索未来 primitive sequence
+检查 contact successor
+再做 certificate-gated execution
+```
+
+新的 I04 已经不再解决这个问题，因此不应该为了复用旧编号而把新系统继续切成 M06–M12。
+
+新 I04 的正式主路径应该直接按**功能层**组织：
+
+```text
+1. Privileged GT Coverage Oracle
+2. Shared Geometric Trajectory Planner
+3. Finger Realization
+      A-MCC   : Basic Passive MCC
+      A-DPRef : DPRef + Basic MCC
+      B-MCC   : planned whole-hand trajectory + Basic MCC
+4. Hardware Safety / Trajectory Integrity
+5. Trajectory Executor + Fresh-State Feedback
+6. Real Contact / Coverage Evaluator
+```
+
+也就是说，后文仍出现 `M06/M08/M09/M10/M12` 时，只表示：
+
+> **旧模块中哪些能力值得迁移到新的功能层。**
+
+它不表示新 I04 仍然要保留这些 module ID、目录边界或调用链。
+
+`M07`、`M11` 以及旧 contact-mode 语义应直接退出 active path；其他仍有价值的能力应被**重命名、重组并并入新架构**，而不是继续以旧 Mx 形式存在。
+
+M0–M3 已经完成的 robot/sensor/basic controller 能力可以继续复用，但新的 I04 也不要求继续以 `Mx` 编号作为设计中心。后续若整理仓库，可以把“编号”降级为 historical implementation label，把正式架构改为功能命名。
+
+## 0.1 新 I04 的第一步不是继续调 planner，而是先做架构清理
+
+在实现新的 I04-A/B 之前，第一步必须先完成以下 cleanup：
+
+```text
+Step 1: 从 new-I04 active runtime path 移除不需要的旧模块
+    - M07 ContactModeGraph
+    - M11 Lazy Beam Search
+    - runtime M12 ShadowSucc
+    - primitive-style M08 CheapCert
+    - primitive-style M09 ContinuousOptimize
+    - contact-mode-specific M10 rules
+    - contact-mode-specific M06 transaction semantics
+
+Step 2: 把仍然需要的能力重新命名并迁移
+    old M09 capability
+        -> Shared Geometric Trajectory Planner
+
+    old M10 useful capability
+        -> Hardware Safety / Trajectory Integrity Checker
+
+    old M06 useful capability
+        -> Generic Trajectory Executor + Fresh-State Feedback
+
+    old M08/M12 useful privileged capability
+        -> GT Oracle Reachability / Continuation helpers
+
+Step 3: 更新代码依赖
+    - new I04 runner 不 import M07/M11 contact-mode planner
+    - new planner 不产生 SLIDE/MAKE/BREAK/REPOSITION primitive
+    - A-MCC/A-DPRef 共享同一个 wrist SE(3) trajectory planner
+    - B 使用同一个 planning framework，并额外加入 fingertip geometric objectives
+    - controller path 不读取 desired contact modes
+
+Step 4: 更新仓库文档与状态
+    - README / MASTER_PLAN 标记旧 I01–I03、M06–M12 为 LEGACY / EVIDENCE
+    - G2/G3 不再作为 new-I04 Gate
+    - 旧 Explicit I04 regression 保留但不再继续调参
+
+Step 5: 完成以上迁移后，才开始新的 I04-A/B 正式实现与评测
+```
+
+因此当前 `{2,4}` two-anchor blocker、M09 WRIST optimization、BREAK gating、M11 search 等问题，**从现在开始都不应再作为新 I04 的工程优先级**。
+
+新的实现优先级是：
+
+```text
+clean old active path
+    -> define new functional interfaces
+    -> build shared SE(3) trajectory planning
+    -> validate basic execution/safety
+    -> implement I04-A-MCC
+    -> implement I04-A-DPRef
+    -> implement I04-B-MCC
+```
 
 ---
 
@@ -599,7 +698,7 @@ hard hardware emergency logic
 GT target adapter
 A wrist trajectory objective
 B whole-hand geometric trajectory objective
-M10 task-level certificate
+safety/integrity checker 的 task-level rule
 Oracle exposed fields
 ```
 
@@ -628,47 +727,66 @@ task success:
 
 ---
 
-# 7. M06–M12 在新 I04 中的重新定位
+# 7. 旧 M06–M12 能力在新 I04 中的迁移映射
 
-| Module | 新状态 | 新职责 |
+> 本节不是新的模块列表，只是 migration map。
+
+| 旧 Module | 新 I04 是否继续作为独立模块 | 能力迁移到哪里 |
 | --- | --- | --- |
-| M06 | `KEEP / MODIFY` | 通用 trajectory/prefix executor + fresh-state barrier |
-| M07 | `REMOVE_FROM_I04` | 不再枚举 contact modes；legacy Explicit only |
-| M08 | `ORACLE_SIDE / OPTIONAL` | privileged geometric feasibility helper |
-| M09 | `REDEFINE` | Shared Geometric Trajectory Planning Layer |
-| M10 | `KEEP / SIMPLIFY` | hardware safety + trajectory integrity audit |
-| M11 | `REMOVE_FROM_I04` | 不再搜索 contact primitive sequence |
-| M12 | `MOVE_TO_ORACLE_SIDE` | privileged continuation / route feasibility |
+| M06 | `NO` | Generic Trajectory Executor + Fresh-State Feedback |
+| M07 | `NO` | 不迁移；legacy Explicit only |
+| M08 | `NO` | 可选能力并入 GT Oracle geometric feasibility |
+| M09 | `NO` | 重构为 Shared Geometric Trajectory Planner |
+| M10 | `NO` | 重构为 Hardware Safety / Trajectory Integrity Checker |
+| M11 | `NO` | 不迁移；legacy Explicit only |
+| M12 | `NO` | continuation 能力并入 GT Oracle |
+
+因此新代码不应该再出现：
+
+```text
+new-I04 -> M07 -> M08 -> M09 -> M11/M12 -> M10 -> M06
+```
+
+而应该是：
+
+```text
+GT Oracle
+ -> Shared Geometric Trajectory Planner
+ -> Finger Realization
+ -> Safety / Integrity
+ -> Generic Executor
+ -> Real Observation / Coverage
+```
 
 ---
 
-# 8. M06：通用 Trajectory/Prefix Executor
+# 8. 旧 M06：能力迁移到 Generic Trajectory Executor
 
-M06 保留 transaction、short prefix、fresh barrier 的执行工程价值。
+旧 M06 保留 transaction、short prefix、fresh barrier 的执行工程价值，但不再作为 M06 模块进入新架构。
 
 新接口概念上是：
 
 ```text
 Planned trajectory
  -> split committed prefix
- -> M10 safety/integrity audit
- -> M06 execute
+ -> Safety / Integrity check
+ -> Generic Executor execute
  -> fresh measured state
  -> continue / replan
 ```
 
-M06 保留：
+保留能力：
 
 ```text
 short committed prefix
 participant completion
 stale-plan rejection
 timeout / SAFE_HOLD for execution failures
-fresh measured q / wrist / force / contact barrier
+fresh measured q / wrist / force / contact feedback
 command provenance
 ```
 
-M06 删除/弱化：
+删除/弱化：
 
 ```text
 ContactModeGraph edge identity
@@ -680,19 +798,19 @@ task-level last-contact preservation
 在 I04-A 中：
 
 ```text
-M06 primarily executes wrist trajectory prefixes;
+Executor primarily executes wrist trajectory prefixes;
 MCC or DPRef finger control runs continuously in parallel.
 ```
 
 在 I04-B 中：
 
 ```text
-M06 executes whole-hand geometric trajectory prefixes.
+Executor executes whole-hand geometric trajectory prefixes.
 ```
 
 ---
 
-# 9. M07：移除
+# 9. 旧 M07：直接退出 active path
 
 原 M07 枚举：
 
@@ -704,24 +822,17 @@ mode-transition legality
 
 这些都不属于新 I04。
 
-因此：
-
-```text
-I04-A: forbidden
-I04-B: forbidden
-```
-
 现有 M07 只保留用于 legacy Explicit baseline / historical reproduction。
 
 ---
 
-# 10. M08：可选迁移到 Oracle-side feasibility
+# 10. 旧 M08：可选能力并入 Oracle geometric feasibility
 
 原 M08 是 primitive candidate cheap screen。
 
 新 I04 不再有大量 SLIDE/MAKE/BREAK candidates，因此 runtime M08 没必要。
 
-如果复用 M08，只允许作为 privileged geometric feasibility helper：
+如果复用其思想，只允许作为 Oracle 内部 geometric feasibility：
 
 ### A
 
@@ -740,31 +851,27 @@ joint margin valid?
 non-tip collision valid?
 ```
 
-如果 GT Oracle 已经具备这些能力，M08 可以完全不进入新 I04。
-
 ---
 
-# 11. M09：重定义为共享 Geometric Trajectory Planning Layer
+# 11. 旧 M09：重构为 Shared Geometric Trajectory Planner
 
-这是新 I04 中最重要的重构模块。
+这是新 I04 中最重要的能力迁移。
 
-M09 不再表示：
+不再表示：
 
 ```text
 ContinuousOptimize(SLIDE / MAKE / BREAK / WRIST_ADJUST)
 ```
 
-而改为统一 planner framework：
+正式新组件名建议直接使用：
 
 ```text
-GeometricTrajectoryPlanner
+SharedGeometricTrajectoryPlanner
 ```
 
 提供两种 task specification。
 
----
-
-## 11.1 M09-A：WristPoseTrajectory mode
+## 11.1 WristPoseTrajectory mode
 
 输入：
 
@@ -795,9 +902,7 @@ no finger optimization for contact preservation
 
 A-MCC 和 A-DPRef 必须调用**同一实现、同一参数、同一 trajectory**。
 
----
-
-## 11.2 M09-B：WholeHandGeometricTrajectory mode
+## 11.2 WholeHandGeometricTrajectory mode
 
 输入：
 
@@ -816,7 +921,7 @@ tau_Q = {q_arm(t), q_finger(t)}
 要求：
 
 ```text
-wrist pose objective与 A 使用同一实现
+wrist pose objective 与 A 使用同一实现
 terminal fingertip geometric target error within tolerance
 joint/velocity/acceleration limits
 non-tip collision avoidance
@@ -828,9 +933,9 @@ continuous-contact not a hard planning constraint
 
 ---
 
-# 12. M10：纯 Safety / Integrity Audit
+# 12. 旧 M10：重构为 Hardware Safety / Trajectory Integrity Checker
 
-M10 保留，但只检查“这条 nominal prefix 是否安全、完整、可执行”，不保证 contact task success。
+只检查“这条 nominal prefix 是否安全、完整、可执行”，不保证 contact task success。
 
 可以检查：
 
@@ -863,7 +968,7 @@ safe to execute != guaranteed to preserve contact
 
 ---
 
-# 13. M11：移除
+# 13. 旧 M11：直接退出 active path
 
 原 M11 beam-search：
 
@@ -873,16 +978,11 @@ SLIDE / MAKE / BREAK / REPOSITION / WRIST_ADJUST
 
 新 I04 没有这种 discrete contact-mode search。
 
-```text
-A: finger behavior = Passive MCC or DPRef
-B: finger targets = GT Oracle; path = geometric trajectory planner
-```
-
-因此 M11 只作为 legacy Explicit evidence 保留。
+现有实现仅作为 legacy Explicit evidence 保留。
 
 ---
 
-# 14. M12：迁移到 GT Oracle
+# 14. 旧 M12：continuation 能力并入 GT Oracle
 
 “不要给一个当前可达、未来完全走死的 target”依然重要。
 
@@ -895,7 +995,7 @@ full GT coverage ledger
  -> choose next target
 ```
 
-M12/continuation helper 可以内部使用 privileged future geometry 或 witness configuration，
+Oracle 可以内部使用 privileged future geometry 或 witness configuration，
 但不能把下面信息暴露给 controller：
 
 ```text
@@ -918,13 +1018,14 @@ Privileged Coverage Oracle
         ↓
 next outside-object wrist pose X_H^*
         ↓
-M09-A Shared Wrist SE(3) Trajectory Planner
+Shared Geometric Trajectory Planner
+    [WristPoseTrajectory mode]
         ↓
 nominal tau_H
         ↓
-M10 hardware-safety / integrity audit
+Hardware Safety / Trajectory Integrity
         ↓
-M06 execute wrist trajectory prefix
+Generic Executor executes wrist trajectory prefix
         +
 basic Passive Fingertip MCC continuously runs
         ↓
@@ -935,8 +1036,6 @@ fresh measured state + real surface coverage update
 next prefix / next Oracle target
 ```
 
----
-
 ## 15.2 I04-A-DPRef
 
 ```text
@@ -946,13 +1045,13 @@ SAME Privileged Coverage Oracle
         ↓
 SAME X_H^*
         ↓
-SAME M09-A Wrist SE(3) Trajectory Planner
+SAME Shared Geometric Trajectory Planner
         ↓
 SAME tau_H
         ↓
-M10 audit
+Hardware Safety / Trajectory Integrity
         ↓
-M06 execute wrist prefix
+Generic Executor executes wrist prefix
         +
 DPRef receives future tau_H
         +
@@ -965,8 +1064,6 @@ real physics/contact/force
 fresh measured state + real coverage update
 ```
 
----
-
 ## 15.3 I04-B-MCC
 
 ```text
@@ -977,13 +1074,14 @@ Privileged Coverage Oracle
 next full-hand geometric target
     (X_H^*, x_1^*, x_2^*, x_3^*, x_4^*)
         ↓
-M09-B Shared Geometric Planning framework
+Shared Geometric Trajectory Planner
+    [WholeHandGeometricTrajectory mode]
         ↓
 nominal whole-hand trajectory
         ↓
-M10 audit
+Hardware Safety / Trajectory Integrity
         ↓
-M06 execute whole-hand trajectory prefix
+Generic Executor executes whole-hand trajectory prefix
         +
 basic MCC local compliance
         ↓
@@ -992,7 +1090,7 @@ real physics/contact/force
 fresh measured state + real surface coverage update
 ```
 
-I04-B 不使用 DPRef、M07、M11 或 contact-mode fallback。
+I04-B 不使用 DPRef，也不使用任何 contact-mode fallback。
 
 ---
 
@@ -1010,8 +1108,6 @@ angle(R_H,real, R_H^*) <= epsilon_R
 
 不要求某根指定 finger 到达某个 target。
 
----
-
 ## 16.2 I04-B target completion
 
 ```text
@@ -1021,8 +1117,6 @@ angle(R_H,real, R_H^*) <= epsilon_R
 ```
 
 这里仍然不把 `c_i_real` 作为 desired target state。
-
----
 
 ## 16.3 Whole-object coverage
 
@@ -1203,7 +1297,7 @@ LEGACY_EXPLICIT_PHYSICS_EVIDENCE
 
 ---
 
-# 21. I02：独立实验退休，short-prefix/fresh-state 并入 M06 regression
+# 21. I02：独立实验退休，short-prefix/fresh-state 并入 Generic Executor regression
 
 旧 I02 比较：
 
@@ -1221,7 +1315,7 @@ LONG vs 3xSHORT
 保留的只有执行思想：
 
 ```text
-R-M06-PREFIX:
+R-EXECUTOR-PREFIX:
     planned wrist/whole-hand trajectory
     -> short committed prefix
     -> execute
@@ -1233,7 +1327,7 @@ R-M06-PREFIX:
 
 ```text
 no stale-state execution
-correct prefix/barrier semantics
+correct prefix/fresh-state semantics
 command provenance
 trajectory continuity
 ```
@@ -1276,7 +1370,7 @@ Oracle 可以使用 full GT、offline route、future wrist/finger geometric witn
 
 ```text
 R0  Robot / Sensor / Basic Controller
-    existing M0/M01/M02/M03 low-level validity
+    existing low-level validity
 
 R1  Passive MCC Moving-Wrist SE(3) Smoke
     prescribed translation + rotation
@@ -1292,8 +1386,8 @@ R3  Shared Geometric Trajectory Planning
     no desired contact-mode constraints
 
 R4  Generic Execution/Safety
-    simplified M10
-    + generic M06 prefix/barrier
+    Hardware Safety / Trajectory Integrity
+    + Generic Executor prefix/fresh-state feedback
 
 R5  GT Oracle Continuation
     target sequence is coverage-relevant and geometrically continuable
@@ -1313,31 +1407,31 @@ I04-B-MCC
 
 # 24. 最终迁移总表
 
-| 旧 ID | 原作用 | 新 I04 是否需要 | 新位置 |
+| 旧 ID | 原作用 | 新 I04 是否需要旧模块本身 | 新位置 |
 | --- | --- | --- | --- |
-| I01 | Fixed vs explicit variable contact | `NO` as experiment/Gate | historical evidence + passive MCC SE(3) wrist smoke |
-| I02 | Explicit REPOSITION long vs short | `NO` as experiment/Gate | prefix/fresh-state -> M06 regression |
-| I03 | ShadowSucc avoids Explicit dead end | `NO` as runtime experiment/Gate | continuation -> GT Oracle regression |
-| M06 | Transaction/prefix/barrier executor | `YES` | generic trajectory executor |
+| I01 | Fixed vs explicit variable contact | `NO` | historical evidence + passive MCC SE(3) wrist smoke |
+| I02 | Explicit REPOSITION long vs short | `NO` | prefix/fresh-state -> Generic Executor regression |
+| I03 | ShadowSucc avoids Explicit dead end | `NO` | continuation -> GT Oracle regression |
+| M06 | Transaction/prefix/barrier executor | `NO` | capability -> Generic Trajectory Executor |
 | M07 | ContactModeGraph | `NO` | legacy Explicit only |
-| M08 | Primitive CheapCert | `OPTIONAL` | Oracle-side geometric feasibility |
-| M09 | Primitive ContinuousOptimize | `YES, REDEFINE` | **shared SE(3)/whole-hand geometric trajectory planner** |
-| M10 | Contact-aware exact audit | `YES, SIMPLIFY` | hardware safety + trajectory integrity |
+| M08 | Primitive CheapCert | `NO` | optional capability -> Oracle geometric feasibility |
+| M09 | Primitive ContinuousOptimize | `NO` | capability -> Shared Geometric Trajectory Planner |
+| M10 | Contact-aware exact audit | `NO` | capability -> Hardware Safety / Trajectory Integrity |
 | M11 | Contact-mode beam search | `NO` | legacy Explicit only |
-| M12 | Shadow contact viability | `NO` runtime | Oracle-side continuation helper |
+| M12 | Shadow contact viability | `NO` | capability -> Oracle continuation helper |
 
 新的依赖关系：
 
 ```text
-M0/M01/M02/M03
+Robot / Sensor / Basic Controller
         +
 GT Coverage Oracle
         +
-redefined M09 shared trajectory planner
+Shared Geometric Trajectory Planner
         +
-simplified M10
+Hardware Safety / Trajectory Integrity
         +
-generic M06
+Generic Trajectory Executor
         +
 DPRef only for I04-A-DPREF
         ↓
@@ -1355,8 +1449,11 @@ I01 -> I02 -> I03 -> G3 -> I04
 # 25. 一句话冻结定义
 
 ```text
-I04 uses full object GT to generate ideal geometric traversal targets.
+The new I04 no longer uses M06–M12 as its formal architecture.
+Legacy Mx modules are either retired or their useful capabilities are migrated into functional layers.
+The first engineering step is therefore architecture cleanup, not further tuning of the old Explicit planner.
 
+I04 uses full object GT to generate ideal geometric traversal targets.
 The wrist target is always a full outside-object SE(3) pose, including rotation.
 Every target must first be converted into a smooth feasible trajectory by a shared geometric trajectory planner.
 
