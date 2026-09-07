@@ -179,7 +179,12 @@ def _load_segments(
         breaks = np.flatnonzero(np.diff(st) != 1) + 1
         for run in np.split(order, breaks):
             if len(run) >= 2:
-                segments.append((int(episode_id), run, st[: len(run)]))
+                # ``run`` contains original file rows. Using st[:len(run)]
+                # silently assigns the first run's timestamps to every later
+                # run from the same source episode.
+                segments.append(
+                    (int(episode_id), run, src_step[run].astype(np.int32))
+                )
     return segments, fields, attrs
 
 
