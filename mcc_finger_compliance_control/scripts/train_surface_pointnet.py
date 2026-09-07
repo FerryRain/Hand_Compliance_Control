@@ -146,6 +146,10 @@ def main() -> None:
     args.output.mkdir(parents=True, exist_ok=True)
 
     with h5py.File(args.file, "r") as file:
+        if str(file.attrs.get("dp_input_frame", "")) != "palm":
+            raise ValueError("Surface PointNet training requires palm-frame data")
+        if str(file.attrs.get("palm_frame_body", "")) != "palm_lower":
+            raise ValueError("Surface data must declare palm_frame_body='palm_lower'")
         arrays = {name: np.asarray(file[name], dtype=np.float32) for name in (
             "gp_points", "q_hand", "planner_command", "future_contact_delta",
             "future_contact_normal", "future_contact_mask"

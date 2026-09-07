@@ -122,6 +122,11 @@ def main() -> None:
         object_scale = _fixed_object_scale(object_config, file)
         q = _episode(file, args.episode_id, "q")
         qvel = _episode(file, args.episode_id, "qvel")
+        palm_pose = (
+            _episode(file, args.episode_id, "palm_pose_world")
+            if "palm_pose_world" in file
+            else None
+        )
         object_pose = _episode(file, args.episode_id, "object_pose_world")
         tip_pose = _episode(file, args.episode_id, "fingertip_pose_world")
         contact_pos = _episode(file, args.episode_id, "fingertip_contact_pos_world")
@@ -167,6 +172,8 @@ def main() -> None:
     selection = slice(args.start_frame, stop)
     q = q[selection]
     qvel = qvel[selection]
+    if palm_pose is not None:
+        palm_pose = palm_pose[selection]
     object_pose = object_pose[selection]
     tip_pose = tip_pose[selection]
     contact_pos = contact_pos[selection]
@@ -198,13 +205,46 @@ def main() -> None:
     env.reset()
     robot = env.scene["robot"]
     target_mocap_idx = int(env.scene["target"].data.indexing.mocap_id)
+    palm_body_names = [
+        body.name or "" for body in robot.data.indexing.bodies
+    ]
+    palm_idx = next(
+        (
+            index
+            for index, name in enumerate(palm_body_names)
+            if name == "palm_lower" or name.endswith("/palm_lower")
+        ),
+        None,
+    )
 
-    # Keep the recorded relative palm/object placement.  In planner_inverse
-    # trajectories the first object pose is deliberately reanchored after
-    # contact preparation and is therefore *not* object_config.initial_pos.
-    # Inferring a source origin from the YAML pose moves the object away from
-    # the recorded arm q and produces a visibly dislocated replay.
-    replay_origin = env.scene.env_origins[0].detach().cpu().numpy()
+    # Collection may have used a grid of parallel-environment origins.  The
+    # replay scene has exactly one environment at the zero origin, so the
+    # recorded world coordinates need a common translation before writing the
+    # mocap pose.  Infer it from the recorded palm pose and the same qpos FK in
+    # this one-environment replay; this also works if the grid spacing changes.
+    if palm_pose is not None and palm_idx is not None:
+        robot.write_joint_state_to_sim(
+            torch.as_tensor(q[0], device=env.device).unsqueeze(0),
+            torch.as_tensor(qvel[0], device=env.device).unsqueeze(0),
+        )
+        env.sim.forward()
+        replay_palm_position = (
+            robot.data.body_link_pose_w[0, palm_idx, :3]
+            .detach()
+            .cpu()
+            .numpy()
+        )
+        replay_origin = replay_palm_position - palm_pose[0, :3]
+        print(
+            "[RAW-REPLAY] rebasing recorded world poses by "
+            f"{np.round(replay_origin, 4).tolist()} from palm FK"
+        )
+    else:
+        replay_origin = env.scene.env_origins[0].detach().cpu().numpy()
+        print(
+            "[RAW-REPLAY] palm_pose_world unavailable; using scene origin "
+            f"{np.round(replay_origin, 4).tolist()}"
+        )
     object_pose[:, :3] += replay_origin
     tip_pose[:, :, :3] += replay_origin
     contact_pos += replay_origin

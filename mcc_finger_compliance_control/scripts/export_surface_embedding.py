@@ -35,6 +35,13 @@ def main() -> None:
     with h5py.File(args.dp_file, "r") as source, h5py.File(
         args.manifold_file, "r"
     ) as manifold, h5py.File(args.output, "w") as target:
+        if str(source.attrs.get("dp_input_frame", "")) != "palm":
+            raise ValueError(
+                "Surface embeddings may only be attached to a palm-frame DP H5. "
+                "Re-export the source with export_palm_dp.py first."
+            )
+        if str(source.attrs.get("palm_frame_body", "")) != "palm_lower":
+            raise ValueError("DP source must declare palm_frame_body='palm_lower'")
         for name, dataset in source.items():
             source.copy(dataset, target, name=name)
         for key, value in source.attrs.items():

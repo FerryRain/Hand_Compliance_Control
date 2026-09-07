@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import sys
+import time
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,16 +27,32 @@ from active_capsule_palm_planner import (
     ActiveCapsulePalmPlanner,
     ActiveCapsulePalmPlannerConfig,
 )
-from dp_dataset import ENV_STATE_DIM, ROBOT_STATE_DIM
+from dp_dataset import ACTION_DIM, ENV_STATE_DIM, ROBOT_STATE_DIM
+from dp_motion_features import (
+    DUAL_TRACK_SCHEMA,
+    DUAL_TRACK_V3_SCHEMA,
+    MOTION_SCHEMA,
+    MOTION_SCHEMAS,
+    TASK_EST_V4_SCHEMA,
+    causal_motion_features,
+    kinematic_q_baseline,
+)
 from dp_chunk_scheduler import DPChunkScheduler, DPChunkSchedulerConfig
 from fingertip_impedance import (
     FingertipImpedanceConfig,
     FingertipImpedanceController,
 )
 from palm_planner_features import future_palm_delta_pose_palm
+from object_catalog import MeshNormalOracle, ObjectConfig, load_object_config
 from surface_manifold_gp import GPManifoldConfig, local_gp_point_features
 from train_surface_pointnet import SurfacePointNet
-from replay_inverted import MCC_TIP_NAMES, replay_env_cfg
+from replay_inverted import (
+    CONTACT_SOLIMP,
+    CONTACT_SOLREF,
+    MCC_TIP_NAMES,
+    REPLAY_PHYSICS_SUBSTEPS,
+    replay_env_cfg,
+)
 from surface_mcc_finger import (
     FullHandMCCFingerConfig,
     FullHandMCCFingerController,
@@ -49,6 +67,18 @@ GEOMETRY_STATE_SCHEMAS = (
     "contact_geometry",
     "contact_geometry_planner",
     "contact_geometry_planner_manifold",
+    MOTION_SCHEMA,
+    DUAL_TRACK_SCHEMA,
+    DUAL_TRACK_V3_SCHEMA,
+    TASK_EST_V4_SCHEMA,
+)
+PLANNER_STATE_SCHEMAS = (
+    "contact_geometry_planner",
+    "contact_geometry_planner_manifold",
+    MOTION_SCHEMA,
+    DUAL_TRACK_SCHEMA,
+    DUAL_TRACK_V3_SCHEMA,
+    TASK_EST_V4_SCHEMA,
 )
 
 
@@ -62,10 +92,92 @@ class ContactAwareReplanConfig:
 
 
 @dataclass(frozen=True)
+class ReplayObjectMetadata:
+    """Physical replay object inferred from the trajectory H5 contract."""
+
+    object_id: str | None
+    object_scale: float
+
+
+def load_replay_object_metadata(path: Path) -> ReplayObjectMetadata:
+    """Read only environment-construction metadata, never controller inputs."""
+
+    with h5py.File(path, "r") as file:
+        object_id = str(
+            file.attrs.get(
+                "object_id",
+                file.attrs.get("planner_object_id", ""),
+            )
+        ).strip()
+        object_scale = float(
+            file.attrs.get(
+                "object_scale",
+                file.attrs.get("planner_object_scale", 1.0),
+            )
+        )
+    if object_scale <= 0.0:
+        raise ValueError(f"Invalid object_scale={object_scale} in {path}")
+    return ReplayObjectMetadata(object_id or None, object_scale)
+
+
+def audit_collection_execution_contract(
+    path: Path, args: argparse.Namespace
+) -> None:
+    """Fail fast when a collection-matched run is not physically matched."""
+
+    if args.mcc_preset != "collection_matched_sensor":
+        print(
+            "[ALIGNMENT] mcc_preset=current: controller/physics transfer "
+            "is intentional and is not a collection-matched result"
+        )
+        return
+    with h5py.File(path, "r") as file:
+        attrs = file.attrs
+        checks = (
+            ("contact_stiffness", -CONTACT_SOLREF[0]),
+            ("contact_damping", -CONTACT_SOLREF[1]),
+            ("contact_transition_width_m", CONTACT_SOLIMP[2]),
+            ("physics_substeps", REPLAY_PHYSICS_SUBSTEPS),
+            ("fullhand_finger_stiffness", args.hand_servo_stiffness),
+            ("fullhand_finger_damping", args.hand_servo_damping),
+            ("fullhand_finger_effort_limit", args.hand_servo_effort_limit),
+            ("fullhand_force_servo_gain", args.mcc_force_servo_integral_gain),
+        )
+        mismatches: list[str] = []
+        for name, deployment_value in checks:
+            if name not in attrs:
+                continue
+            collection_value = float(attrs[name])
+            if not np.isclose(
+                collection_value,
+                float(deployment_value),
+                rtol=1.0e-6,
+                atol=1.0e-9,
+            ):
+                mismatches.append(
+                    f"{name}: collection={collection_value:g}, "
+                    f"deployment={float(deployment_value):g}"
+                )
+    if mismatches:
+        raise RuntimeError(
+            "collection_matched_sensor contract mismatch:\n  "
+            + "\n  ".join(mismatches)
+        )
+    print(
+        "[ALIGNMENT] collection physics matched: "
+        f"solref={CONTACT_SOLREF} solimp_width={CONTACT_SOLIMP[2]:g}m "
+        f"substeps={REPLAY_PHYSICS_SUBSTEPS} finger_servo="
+        f"{args.hand_servo_stiffness:g}/{args.hand_servo_damping:g}/"
+        f"{args.hand_servo_effort_limit:g}"
+    )
+
+
+@dataclass(frozen=True)
 class MCCPrecontactConfig:
     """Per-finger Cartesian contact search copied from FullHandMCC."""
 
     force_threshold: float = 0.10
+    desired_force_per_finger: tuple[float, float, float, float] | None = None
     settle_frames: int = 3
     cartesian_step_m: float = 0.00015
     joint_step_rad: float = 0.02
@@ -73,6 +185,7 @@ class MCCPrecontactConfig:
     servo_load_scale: float = 0.0
     trajectory_tracking_gain: float = 0.0
     runtime_loss_frames: int = 5
+    sensor_normal_memory_frames: int = 20
     recovery_confirm_frames: int = 3
     runtime_recovery_limit_rad: float = 0.08
     command_rate_limit_rad: float = 0.02
@@ -87,7 +200,17 @@ class MCCPrecontactConfig:
     # retains the controller's mode-specific fallback; the CLI validated
     # default supplies 20 mm explicitly.
     max_normal_offset_m: float | None = None
+    thumb_max_inward_offset_m: float | None = None
     thumb_max_outward_offset_m: float | None = None
+    posture_cost: float = 0.08
+    nominal_surface_preload_m: float = 0.0
+    flexion_synergy_gain: float = 0.0
+    flexion_synergy_hard_gain: float = 0.0
+    flexion_synergy_max_step_rad: float = 0.03
+    normal_synergy_control: bool = False
+    normal_synergy_max_step_rad: float = 0.035
+    force_magnitude_only: bool = False
+    use_contact_point_jacobian: bool = True
     project_nominal_normal_motion: bool = False
     overforce_trigger_ratio: float = 1.20
     overforce_release_ratio: float = 0.90
@@ -109,6 +232,16 @@ class MCCPrecontactConfig:
     thumb_force_servo_search_step_m: float | None = 0.00025
     force_servo_weak_contact_step_m: float = 0.00020
     force_filter_alpha: float = 0.25
+    enable_loss_state_machine: bool = False
+    transient_loss_frames: int = 6
+    transient_search_step_m: float = 0.00020
+    transient_release_step_m: float = 0.00010
+    # The collection-side controller was built with a distal-flexion floor
+    # (-0.30 rad under manifold/inverse planning, -0.10 otherwise) so the
+    # differential surface planner could unfold fingers without taking a
+    # folded IK branch.  Deployment must clamp on the same floor or the
+    # DP-intended unfolding can travel further than the training domain.
+    natural_flexion_floor: float | None = None
 
 
 def _episode(file: h5py.File, episode_id: int, name: str) -> np.ndarray:
@@ -170,6 +303,7 @@ class DPRuntime:
         device: torch.device,
         inference_steps: int | None,
         seed: int,
+        samples: int = 1,
     ):
         checkpoint = torch.load(
             checkpoint_path, map_location=device, weights_only=False
@@ -195,10 +329,53 @@ class DPRuntime:
                 config.get("action_representation", "delta_q"),
             )
         )
-        if self.action_representation not in ("delta_q", "absolute_q"):
+        if self.action_representation not in (
+            "delta_q",
+            "absolute_q",
+            "kinematic_residual_q",
+        ):
             raise ValueError(
                 "Unsupported checkpoint action_representation="
                 f"{self.action_representation!r}"
+            )
+        self.action_dim = int(
+            checkpoint.get(
+                "action_dim",
+                config.get("action_dim", ACTION_DIM),
+            )
+        )
+        self.action_field = str(
+            checkpoint.get(
+                "action_field",
+                config.get("action_field", "q_hand"),
+            )
+        )
+        if self.action_field not in (
+            "q_hand",
+            "q_ref",
+            "tip_delta_tangent_palm",
+            "tip_motion_tangent_palm",
+            "tip_motion_palm",
+            "tip_target_palm",
+        ):
+            raise ValueError(
+                "Unsupported checkpoint action_field="
+                f"{self.action_field!r}"
+            )
+        if self.action_dim == 12:
+            if self.action_field not in (
+                "tip_delta_tangent_palm",
+                "tip_motion_tangent_palm",
+                "tip_motion_palm",
+                "tip_target_palm",
+            ):
+                raise ValueError(
+                    "12D action_dim requires a supported fingertip action; "
+                    f"checkpoint has {self.action_field!r}"
+                )
+        elif self.action_dim != ACTION_DIM:
+            raise ValueError(
+                f"Unsupported checkpoint action_dim={self.action_dim}"
             )
         self.state_schema = str(
             checkpoint.get(
@@ -221,6 +398,32 @@ class DPRuntime:
             )
         )
         self.state_dim = self.robot_state_dim + self.environment_state_dim
+        self.contact_normal_polarity = str(
+            checkpoint.get("contact_normal_polarity", "")
+        )
+        if not self.contact_normal_polarity:
+            dataset_path = Path(str(config.get("file", "")))
+            if dataset_path.is_file():
+                with h5py.File(dataset_path, "r") as dataset_file:
+                    self.contact_normal_polarity = str(
+                        dataset_file.attrs.get(
+                            "contact_normal_polarity",
+                            "primary_fingertip_to_object",
+                        )
+                    )
+            else:
+                # Legacy capsule checkpoints were trained directly from the
+                # ContactSensor primary->secondary normal.
+                self.contact_normal_polarity = "primary_fingertip_to_object"
+        if self.contact_normal_polarity not in (
+            "primary_fingertip_to_object",
+            "source_mesh_outward",
+            "analytic_outward",
+        ):
+            raise ValueError(
+                "Unsupported checkpoint contact_normal_polarity="
+                f"{self.contact_normal_polarity!r}"
+            )
         normalization = checkpoint["normalization"]
         self.state_mean = np.asarray(normalization["state_mean"], dtype=np.float32)
         self.state_std = np.asarray(normalization["state_std"], dtype=np.float32)
@@ -230,13 +433,26 @@ class DPRuntime:
         self.action_std = np.asarray(
             normalization["action_std"], dtype=np.float32
         )
+        self.state_input_mask = np.asarray(
+            checkpoint.get("state_input_mask", np.ones(self.state_dim)),
+            dtype=np.float32,
+        ).reshape(-1)
         if self.state_mean.shape != (self.state_dim,):
             raise ValueError(
                 f"Checkpoint state dim {self.state_mean.shape} "
                 f"!= {(self.state_dim,)}"
             )
+        if self.state_input_mask.shape != (self.state_dim,):
+            raise ValueError(
+                f"Checkpoint input mask {self.state_input_mask.shape} "
+                f"!= {(self.state_dim,)}"
+            )
         self.device = device
+        self.samples = int(samples)
+        if self.samples < 1:
+            raise ValueError(f"samples must be >= 1, got {self.samples}")
         self.generator = torch.Generator(device=device).manual_seed(seed)
+        self.inference_seconds: list[float] = []
         self.surface_pointnet = None
         self.surface_point_mean = None
         self.surface_point_std = None
@@ -285,6 +501,40 @@ class DPRuntime:
     def planner_step_frames(self) -> int:
         return int(getattr(self.config, "planner_step_frames", 0))
 
+    @property
+    def motion_feature_step_frames(self) -> int:
+        return int(getattr(self.config, "motion_feature_step_frames", self.stride))
+
+    @property
+    def action_waypoint_dt(self) -> float:
+        return float(getattr(self.config, "action_waypoint_dt", self.stride * 0.01))
+
+    @property
+    def kinematic_velocity_clip(self) -> float:
+        return float(getattr(self.config, "kinematic_velocity_clip_rad_s", 1.0))
+
+    def absolute_action(
+        self,
+        prediction: np.ndarray,
+        current_q: np.ndarray,
+        current_q_velocity: np.ndarray | None = None,
+    ) -> np.ndarray:
+        """Reconstruct the absolute-q chunk for every action representation."""
+        if self.action_representation == "absolute_q":
+            return np.asarray(prediction, dtype=np.float32)
+        if self.action_representation == "delta_q":
+            return np.asarray(current_q, dtype=np.float32)[None, :] + prediction
+        if current_q_velocity is None:
+            raise ValueError("kinematic residual reconstruction requires q velocity")
+        baseline = kinematic_q_baseline(
+            current_q,
+            current_q_velocity,
+            self.pred_horizon,
+            self.action_waypoint_dt,
+            self.kinematic_velocity_clip,
+        )
+        return baseline + prediction
+
     @torch.no_grad()
     def encode_surface_manifold(self, points: np.ndarray) -> np.ndarray:
         if self.surface_pointnet is None:
@@ -304,17 +554,22 @@ class DPRuntime:
                 f"history shape {history.shape} != "
                 f"{(self.obs_horizon, self.state_dim)}"
             )
-        normalized = (history - self.state_mean) / self.state_std
+        normalized = (
+            (history - self.state_mean) / self.state_std
+        ) * self.state_input_mask
         state = torch.as_tensor(
             normalized[:, : self.robot_state_dim],
             device=self.device,
             dtype=torch.float32,
-        ).unsqueeze(0)
+        ).unsqueeze(0).expand(self.samples, -1, -1)
         environment = torch.as_tensor(
             normalized[:, self.robot_state_dim :],
             device=self.device,
             dtype=torch.float32,
-        ).unsqueeze(0)
+        ).unsqueeze(0).expand(self.samples, -1, -1)
+        if self.device.type == "cuda":
+            torch.cuda.synchronize(self.device)
+        start = time.perf_counter()
         global_condition = self.policy.diffusion._prepare_global_conditioning(
             {
                 "observation.state": state,
@@ -322,10 +577,13 @@ class DPRuntime:
             }
         )
         prediction = self.policy.diffusion.conditional_sample(
-            1,
+            self.samples,
             global_cond=global_condition,
             generator=self.generator,
-        )[0]
+        ).mean(dim=0)
+        if self.device.type == "cuda":
+            torch.cuda.synchronize(self.device)
+        self.inference_seconds.append(time.perf_counter() - start)
         normalized_action = prediction.detach().cpu().numpy()
         return (
             normalized_action * self.action_std[None, :]
@@ -446,6 +704,8 @@ def teacher_state(
     planner_waypoints: int = 0,
     planner_step_frames: int = 0,
     surface_embeddings: np.ndarray | None = None,
+    motion_feature_step_frames: int = 5,
+    control_dt: float = 0.01,
 ) -> np.ndarray:
     normals = data["fingertip_contact_normal_object"]
     twist = data["palm_twist_object"]
@@ -490,6 +750,22 @@ def teacher_state(
                 else:
                     tactile[index, finger] = tactile[last, finger]
                     normals[index, finger] = normals[last, finger]
+    motion_parts: list[np.ndarray] = []
+    if state_schema in (MOTION_SCHEMA, TASK_EST_V4_SCHEMA):
+        q_velocity, point_velocity, normal_rate = causal_motion_features(
+            data["q_hand"],
+            tactile,
+            normals,
+            contact_mask,
+            np.zeros(len(data["q_hand"]), dtype=np.int32),
+            control_dt=control_dt,
+            step_frames=motion_feature_step_frames,
+        )
+        motion_parts = [
+            q_velocity.reshape(-1, 16),
+            point_velocity.reshape(-1, 12),
+            normal_rate.reshape(-1, 12),
+        ]
     parts = [
         data["q_hand"],
         tactile.reshape(-1, 12),
@@ -497,11 +773,9 @@ def teacher_state(
     ]
     if contact_mask is not None:
         parts.append(contact_mask.reshape(-1, 4))
+    parts.extend(motion_parts)
     parts.append(twist.reshape(-1, 6))
-    if state_schema in (
-        "contact_geometry_planner",
-        "contact_geometry_planner_manifold",
-    ):
+    if state_schema in PLANNER_STATE_SCHEMAS:
         if planner_waypoints <= 0 or planner_step_frames <= 0:
             raise ValueError("Planner-conditioned state requires planner metadata")
         planner = future_palm_delta_pose_palm(
@@ -522,6 +796,71 @@ def history_indices(t: int, stride: int, horizon: int) -> np.ndarray:
     return t - stride * np.arange(horizon - 1, -1, -1)
 
 
+def tip_delta_to_absolute_q(
+    controller: FullHandMCCFingerController,
+    prediction: np.ndarray,
+    q_base: np.ndarray,
+    pred_horizon: int,
+    *,
+    per_waypoint_increment: bool = False,
+) -> np.ndarray:
+    """Rebuild a 16D absolute-q chunk from the 12D tangent-intent output
+    (Variant B, action_field='tip_delta_tangent_palm').
+
+    Each waypoint carries the per-finger fingertip displacement the policy
+    wants at that future step relative to the current executed tip, with the
+    normal component removed (the deployment MCC force loop owns normal
+    approach).  The absolute command is
+
+        tip_des[h] = FK(q_base) + delta[h]
+        q_des[h]   = solve_fingertip_targets(tip_des[h], seed=q_des[h-1])
+
+    Seeding each solve from the previous waypoint makes the resolved-rate IK
+    act as a temporal branch selector, the same convention used offline
+    (seed_q = preceding trajectory frame).
+    """
+    deltas = np.asarray(prediction, dtype=np.float64).reshape(
+        pred_horizon, 4, 3
+    )
+    # The task-motion fields store displacement between consecutive DP
+    # waypoints. Reconstruct the H-step path by integration; the legacy v2
+    # tip-delta label is already interpreted as an offset from one base.
+    offsets = np.cumsum(deltas, axis=0) if per_waypoint_increment else deltas
+    tip_base = controller.tip_positions_palm(q_base)
+    seed = np.asarray(q_base, dtype=np.float64).reshape(16)
+    chunk = np.empty((pred_horizon, 16), dtype=np.float32)
+    for waypoint in range(pred_horizon):
+        seed, _, _ = controller.solve_fingertip_targets(
+            tip_base + offsets[waypoint],
+            seed_q=seed,
+        )
+        chunk[waypoint] = seed.astype(np.float32)
+    return chunk
+
+
+def tip_target_to_absolute_q(
+    controller: FullHandMCCFingerController,
+    prediction: np.ndarray,
+    q_base: np.ndarray,
+    pred_horizon: int,
+) -> np.ndarray:
+    """Resolve absolute palm-frame fingertip targets without accumulation."""
+    targets = np.asarray(prediction, dtype=np.float64).reshape(
+        pred_horizon, 4, 3
+    )
+    nominal = np.asarray(q_base, dtype=np.float64).reshape(16)
+    seed = nominal.copy()
+    chunk = np.empty((pred_horizon, 16), dtype=np.float32)
+    for waypoint in range(pred_horizon):
+        seed, _, _ = controller.solve_fingertip_targets(
+            targets[waypoint],
+            seed_q=seed,
+            nominal_q=nominal,
+        )
+        chunk[waypoint] = seed.astype(np.float32)
+    return chunk
+
+
 def write_report(path: Path, rows: list[dict[str, float | int | str]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if rows:
@@ -529,6 +868,100 @@ def write_report(path: Path, rows: list[dict[str, float | int | str]]) -> None:
             writer = csv.DictWriter(file, fieldnames=list(rows[0]))
             writer.writeheader()
             writer.writerows(rows)
+
+
+def write_closed_loop_rollout(
+    path: Path,
+    arrays: dict[str, list[np.ndarray]],
+    *,
+    source_file: Path,
+    source_episode_id: int,
+    mode: str,
+    teacher_action_source: str,
+    control_dt: float,
+    bootstrap_frames: int,
+    input_frame: str,
+    state_schema: str,
+    stride: int,
+    obs_horizon: int,
+    pred_horizon: int,
+    dp_history_q_source: str,
+    teacher_observation_source: str,
+    dp_tactile_normal_source: str,
+    live_teacher_takeover_frame: int,
+) -> None:
+    """Write causally aligned deployment observations for later relabelling."""
+
+    if not arrays:
+        return
+    lengths = {key: len(values) for key, values in arrays.items()}
+    if len(set(lengths.values())) != 1:
+        raise RuntimeError(f"Rollout fields have inconsistent lengths: {lengths}")
+    with h5py.File(source_file, "r") as source:
+        source_metadata = {
+            key: source.attrs[key]
+            for key in (
+                "object_id",
+                "object_scale",
+                "contact_normal_polarity",
+            )
+            if key in source.attrs
+        }
+        if "object_scale" not in source_metadata:
+            source_metadata["object_scale"] = float(
+                source.attrs.get("planner_object_scale", 1.0)
+            )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with h5py.File(path, "w") as file:
+        for key, values in arrays.items():
+            data = np.stack(values)
+            data = data.astype(
+                np.int32 if key == "episode_step" else np.float32
+            )
+            file.create_dataset(
+                key,
+                data=data,
+                compression="gzip",
+                compression_opts=4,
+                shuffle=True,
+            )
+        length = next(iter(lengths.values()))
+        file.create_dataset(
+            "episode_id",
+            data=np.full((length,), source_episode_id, dtype=np.int32),
+            compression="gzip",
+            compression_opts=4,
+            shuffle=True,
+        )
+        file.attrs["format"] = "mcc_closed_loop_observation_v1"
+        file.attrs["source_file"] = str(source_file)
+        file.attrs["source_episode_id"] = int(source_episode_id)
+        file.attrs["mode"] = mode
+        file.attrs["teacher_action_source"] = teacher_action_source
+        file.attrs["control_dt"] = float(control_dt)
+        file.attrs["bootstrap_frames"] = int(bootstrap_frames)
+        file.attrs["input_frame"] = input_frame
+        file.attrs["state_schema"] = state_schema
+        file.attrs["stride"] = int(stride)
+        file.attrs["obs_horizon"] = int(obs_horizon)
+        file.attrs["pred_horizon"] = int(pred_horizon)
+        file.attrs["dp_history_q_source"] = str(dp_history_q_source)
+        file.attrs["teacher_observation_source"] = str(
+            teacher_observation_source
+        )
+        file.attrs["dp_tactile_normal_source"] = str(
+            dp_tactile_normal_source
+        )
+        file.attrs["live_teacher_takeover_frame"] = int(
+            live_teacher_takeover_frame
+        )
+        for key, value in source_metadata.items():
+            file.attrs[key] = value
+        file.attrs["alignment"] = (
+            "q_live/contact at t follow q_cmd_applied/q_prior_applied from t-1; "
+            "q_prior_next/q_cmd_next are commands computed at t"
+        )
+        file.attrs["action_label"] = "teacher_q_hand; future labels use source time"
 
 
 def offline_teacher(
@@ -549,11 +982,24 @@ def offline_teacher(
         runtime.planner_waypoints,
         runtime.planner_step_frames,
         surface_embeddings,
+        runtime.motion_feature_step_frames,
+        float(getattr(runtime.config, "control_dt", 0.01)),
     )
     q = data["q_hand"]
     first = (runtime.obs_horizon - 1) * runtime.stride
     last = len(q) - runtime.pred_horizon * runtime.stride - 1
     rows: list[dict[str, float | int | str]] = []
+    variant_b = runtime.action_field in (
+        "tip_delta_tangent_palm",
+        "tip_motion_tangent_palm",
+        "tip_motion_palm",
+        "tip_target_palm",
+    )
+    # Offline FK+IK rebuild uses the same fixed-hand offline model as the
+    # dual-track exporter, not the physics-hand controller.
+    variant_b_controller = (
+        FullHandMCCFingerController() if variant_b else None
+    )
     for call, t in enumerate(range(first, last + 1, runtime.stride), start=1):
         if max_dp_calls > 0 and call > max_dp_calls:
             break
@@ -564,11 +1010,37 @@ def offline_teacher(
             1, runtime.pred_horizon + 1
         )
         teacher_future = q[target_indices]
-        predicted_future = (
-            q[t][None, :] + prediction
-            if runtime.action_representation == "delta_q"
-            else prediction
-        )
+        if variant_b:
+            if runtime.action_field == "tip_target_palm":
+                predicted_future = tip_target_to_absolute_q(
+                    variant_b_controller,
+                    prediction,
+                    q[t],
+                    runtime.pred_horizon,
+                )
+            else:
+                predicted_future = tip_delta_to_absolute_q(
+                    variant_b_controller,
+                    prediction,
+                    q[t],
+                    runtime.pred_horizon,
+                    per_waypoint_increment=(
+                        runtime.action_field in (
+                            "tip_motion_tangent_palm",
+                            "tip_motion_palm",
+                        )
+                    ),
+                )
+        else:
+            predicted_future = runtime.absolute_action(
+                prediction,
+                q[t],
+                (
+                    state[t, 44:60]
+                    if runtime.action_representation == "kinematic_residual_q"
+                    else None
+                ),
+            )
         error = predicted_future - teacher_future
         hold_error = q[t][None, :] - teacher_future
         rows.append(
@@ -611,30 +1083,26 @@ def live_tip_observation(
     loaded = np.zeros(4, dtype=bool)
     distances = np.zeros(4, dtype=np.float32)
     for tip_index, site_name in enumerate(MCC_TIP_NAMES):
-        force_sensor = env.scene[f"{site_name}_contact"]
-        geometry_sensor = env.scene[f"{site_name}_geometry_contact"]
-        if not isinstance(force_sensor, ContactSensor) or not isinstance(
-            geometry_sensor, ContactSensor
-        ):
-            raise TypeError((type(force_sensor), type(geometry_sensor)))
-        force_sensor.update(0.0)
-        geometry_sensor.update(0.0)
-        force_data = force_sensor.data
-        geometry_data = geometry_sensor.data
-        force_found = (
-            force_data.found is not None
-            and bool((force_data.found[0] > 0).any())
+        sensor = env.scene[f"{site_name}_contact"]
+        if not isinstance(sensor, ContactSensor):
+            raise TypeError(type(sensor))
+        sensor.update(0.0)
+        sensor_data = sensor.data
+        contact_found = (
+            sensor_data.found is not None
+            and bool((sensor_data.found[0] > 0).any())
         )
-        geometry_found = (
-            geometry_data.found is not None
-            and bool((geometry_data.found[0] > 0).any())
-        )
-        if force_found and force_data.force is not None:
-            found_force = force_data.found[0] > 0
-            slot_force = force_data.force[0]
+        if contact_found:
+            found_slot = sensor_data.found[0] > 0
+            slot = int(torch.nonzero(found_slot, as_tuple=False)[0, 0])
+            loaded[tip_index] = True
+        else:
+            continue
+        if sensor_data.force is not None:
+            slot_force = sensor_data.force[0]
             forces[tip_index] = (
                 torch.where(
-                    found_force[:, None],
+                    found_slot[:, None],
                     slot_force,
                     torch.zeros_like(slot_force),
                 )
@@ -643,25 +1111,16 @@ def live_tip_observation(
                 .cpu()
                 .numpy()
             )
-            loaded[tip_index] = True
-        if geometry_found:
-            found_geometry = geometry_data.found[0] > 0
-            slot = int(torch.nonzero(found_geometry, as_tuple=False)[0, 0])
-            if geometry_data.normal is not None:
-                normals[tip_index] = (
-                    geometry_data.normal[0, slot].detach().cpu().numpy()
-                )
-            if geometry_data.pos is not None:
-                positions[tip_index] = (
-                    geometry_data.pos[0, slot].detach().cpu().numpy()
-                )
-            if geometry_data.dist is not None:
-                distances[tip_index] = float(geometry_data.dist[0, slot])
-        # `loaded` historically represented geometry-found contact in the
-        # replay path. Keep that contract: force_found remains a separate
-        # diagnostic and may legitimately be false for a geometry contact.
-        if geometry_found:
-            loaded[tip_index] = True
+        if sensor_data.normal is not None:
+            normals[tip_index] = (
+                sensor_data.normal[0, slot].detach().cpu().numpy()
+            )
+        if sensor_data.pos is not None:
+            positions[tip_index] = (
+                sensor_data.pos[0, slot].detach().cpu().numpy()
+            )
+        if sensor_data.dist is not None:
+            distances[tip_index] = float(sensor_data.dist[0, slot])
     return forces, normals, positions, loaded, distances
 
 
@@ -683,6 +1142,16 @@ def run_inverse(
     ],
     mcc_desired_force: float,
     mcc_precontact_config: MCCPrecontactConfig,
+    dp_history_q_source: Literal["nominal", "live"],
+    teacher_observation_source: Literal[
+        "teacher", "live_tactile", "teacher_tactile"
+    ],
+    dp_tactile_normal_source: Literal["contact_sensor", "source_mesh_oracle"],
+    teacher_action_source: Literal["dp", "recorded"],
+    live_teacher_takeover_frame: int,
+    rollout_h5: Path | None,
+    rollout_source_file: Path,
+    rollout_source_episode_id: int,
     active_palm_planner_config: ActiveCapsulePalmPlannerConfig | None,
     hand_servo_stiffness: float,
     hand_servo_damping: float,
@@ -699,6 +1168,8 @@ def run_inverse(
     video_camera_distance: float,
     video_camera_azimuth: float,
     video_camera_elevation: float,
+    replay_object_config: ObjectConfig | None,
+    replay_object_scale: float,
 ) -> None:
     frames = len(data["q_hand"])
     if max_steps > 0:
@@ -708,9 +1179,13 @@ def run_inverse(
         raise ValueError(
             f"Need more than {bootstrap_end + runtime.stride} frames, got {frames}"
         )
+    needs_teacher_state = (
+        mode == "teacher_dp"
+        or teacher_observation_source == "teacher_tactile"
+    )
     teacher_surface_embeddings = (
         causal_surface_embeddings(data, runtime)
-        if mode == "teacher_dp"
+        if needs_teacher_state
         and runtime.state_schema == "contact_geometry_planner_manifold"
         else None
     )
@@ -722,8 +1197,10 @@ def run_inverse(
             runtime.planner_waypoints,
             runtime.planner_step_frames,
             teacher_surface_embeddings,
+            runtime.motion_feature_step_frames,
+            float(getattr(runtime.config, "control_dt", 0.01)),
         )
-        if mode == "teacher_dp"
+        if needs_teacher_state
         else None
     )
     planner_features = (
@@ -734,8 +1211,7 @@ def run_inverse(
             step_frames=runtime.planner_step_frames,
         ).reshape(len(data["palm_pose_object"]), -1)
         if active_palm_planner_config is None
-        and runtime.state_schema
-        in ("contact_geometry_planner", "contact_geometry_planner_manifold")
+        and runtime.state_schema in PLANNER_STATE_SCHEMAS
         else None
     )
     if execution_layer == "fullhand_mcc" and impedance_config is not None:
@@ -750,6 +1226,8 @@ def run_inverse(
         thumb_stiffness=thumb_servo_stiffness,
         thumb_damping=thumb_servo_damping,
         thumb_effort_limit=thumb_servo_effort_limit,
+        object_config=replay_object_config,
+        object_scale=replay_object_scale,
     )
     if viewer == "video":
         env_cfg.viewer.width = video_width
@@ -767,6 +1245,25 @@ def run_inverse(
     )
     wrapped = RslRlVecEnvWrapper(env)
     robot = env.scene["robot"]
+    dp_mesh_normal_oracle = (
+        MeshNormalOracle.from_config(
+            replay_object_config,
+            scale=replay_object_scale,
+        )
+        if (
+            dp_tactile_normal_source == "source_mesh_oracle"
+            and replay_object_config is not None
+        )
+        else None
+    )
+    if (
+        dp_tactile_normal_source == "source_mesh_oracle"
+        and dp_mesh_normal_oracle is None
+    ):
+        raise ValueError(
+            "--dp-tactile-normal-source source_mesh_oracle requires a mesh "
+            "object with a source visual mesh"
+        )
 
     class DPReplayPolicy:
         def __init__(self):
@@ -783,6 +1280,8 @@ def run_inverse(
             self.segment_start = data["q_hand"][0].copy()
             self.segment_target = data["q_hand"][0].copy()
             self.segment_plan_frame = bootstrap_end
+            self.dp_first_step_mae = float("nan")
+            self.dp_horizon_mae = float("nan")
             self.rows: list[dict[str, float | int | str]] = []
             self.contact3_frames = 0
             self.contact4_frames = 0
@@ -802,6 +1301,9 @@ def run_inverse(
                 FullHandMCCFingerController(
                     FullHandMCCFingerConfig(
                         desired_force=mcc_desired_force,
+                        desired_force_per_finger=(
+                            mcc_precontact_config.desired_force_per_finger
+                        ),
                         force_filter_alpha=(
                             mcc_precontact_config.force_filter_alpha
                         ),
@@ -851,8 +1353,30 @@ def run_inverse(
                                 else 0.006
                             )
                         ),
+                        thumb_max_inward_offset=(
+                            mcc_precontact_config.thumb_max_inward_offset_m
+                        ),
                         thumb_max_outward_offset=(
                             mcc_precontact_config.thumb_max_outward_offset_m
+                        ),
+                        posture_cost=mcc_precontact_config.posture_cost,
+                        nominal_surface_preload=(
+                            mcc_precontact_config.nominal_surface_preload_m
+                        ),
+                        flexion_synergy_gain=(
+                            mcc_precontact_config.flexion_synergy_gain
+                        ),
+                        flexion_synergy_hard_gain=(
+                            mcc_precontact_config.flexion_synergy_hard_gain
+                        ),
+                        flexion_synergy_max_step=(
+                            mcc_precontact_config.flexion_synergy_max_step_rad
+                        ),
+                        normal_synergy_control=(
+                            mcc_precontact_config.normal_synergy_control
+                        ),
+                        normal_synergy_max_step=(
+                            mcc_precontact_config.normal_synergy_max_step_rad
                         ),
                         action_rate_limit=(
                             mcc_precontact_config.command_rate_limit_rad
@@ -884,6 +1408,27 @@ def run_inverse(
                         overforce_max_offset=(
                             mcc_precontact_config.overforce_max_offset_m
                         ),
+                        enable_loss_state_machine=(
+                            mcc_precontact_config.enable_loss_state_machine
+                        ),
+                        transient_loss_frames=(
+                            mcc_precontact_config.transient_loss_frames
+                        ),
+                        recovery_contact_confirm_frames=(
+                            mcc_precontact_config.recovery_confirm_frames
+                        ),
+                        transient_search_step=(
+                            mcc_precontact_config.transient_search_step_m
+                        ),
+                        transient_release_step=(
+                            mcc_precontact_config.transient_release_step_m
+                        ),
+                        # Match the collection-side distal-flexion floor so
+                        # the DP-intended unfolding is clamped to the same
+                        # domain the teacher was trained in.
+                        natural_flexion_floor=(
+                            mcc_precontact_config.natural_flexion_floor
+                        ),
                     )
                 )
                 if execution_layer == "fullhand_mcc"
@@ -891,7 +1436,10 @@ def run_inverse(
             )
             self.surface_oracle = (
                 PrivilegedCapsuleSurfaceOracle(radius=0.15, half_height=0.08)
-                if self.fullhand_mcc is not None
+                if (
+                    self.fullhand_mcc is not None
+                    and mcc_direction_source == "oracle"
+                )
                 else None
             )
             self.fullhand_mcc_calibrated = False
@@ -934,8 +1482,19 @@ def run_inverse(
             self.visual_tip_points = np.full((4, 3), np.nan)
             self.visual_found = np.zeros(4, dtype=bool)
             self.visual_loaded = np.zeros(4, dtype=bool)
+            # The scheduler always executes a reconstructed 16-DoF joint
+            # chunk.  For Cartesian 12D policies, action_std is expressed in
+            # metres and cannot define joint-space DTW distances (nor does it
+            # have the right shape).  Use the executed-q observation scale,
+            # which is exactly the state track on which the dual-track model
+            # was trained.
+            scheduler_scale = (
+                runtime.action_std
+                if runtime.action_dim == ACTION_DIM
+                else runtime.state_std[:ACTION_DIM]
+            )
             self.chunk_scheduler = (
-                DPChunkScheduler(runtime.action_std, chunk_config)
+                DPChunkScheduler(scheduler_scale, chunk_config)
                 if chunk_config is not None
                 else None
             )
@@ -965,10 +1524,27 @@ def run_inverse(
             self.surface_pose_buffer: deque[np.ndarray] = deque(
                 maxlen=(runtime.obs_horizon - 1) * runtime.stride + 1
             )
-            # FullHandMCC receives only normals/points returned by the live
-            # contact sensors.  Keep the last valid sample during a short
-            # geometry dropout; no object shape, mesh, or analytic oracle is
-            # available in this deployment path.
+            motion_buffer_length = runtime.motion_feature_step_frames + 1
+            self.motion_q_buffer: deque[np.ndarray] = deque(
+                maxlen=motion_buffer_length
+            )
+            self.motion_prior_buffer: deque[np.ndarray] = deque(
+                maxlen=motion_buffer_length
+            )
+            self.motion_position_buffer: deque[np.ndarray] = deque(
+                maxlen=motion_buffer_length
+            )
+            self.motion_normal_buffer: deque[np.ndarray] = deque(
+                maxlen=motion_buffer_length
+            )
+            self.motion_mask_buffer: deque[np.ndarray] = deque(
+                maxlen=motion_buffer_length
+            )
+            # FullHandMCC receives the same contact-anchored tactile geometry
+            # as DP.  The normal may be locally lifted to the original source
+            # surface, but only after the MuJoCo sensor reports a real
+            # fingertip contact; the surface oracle cannot create/search a
+            # contact or expose distance/future geometry to the controller.
             self.sensor_normal_history = np.zeros((4, 3), dtype=np.float32)
             self.sensor_point_history = np.zeros((4, 3), dtype=np.float32)
             self.sensor_normal_valid = np.zeros(4, dtype=bool)
@@ -976,6 +1552,22 @@ def run_inverse(
             self.sensor_normal_age = np.full(4, 10_000, dtype=np.int32)
             self.fullhand_control_outward = np.zeros((4, 3), dtype=np.float32)
             self.fullhand_control_direction_valid = False
+            self.last_dp_nominal_q: np.ndarray | None = None
+            self.applied_prior_q = data["q_hand"][0].copy()
+            self.applied_command_q = data["q_hand"][0].copy()
+            self.latest_dp_observation_state: np.ndarray | None = None
+            self.rollout_arrays: dict[str, list[np.ndarray]] = {}
+
+        def _append_rollout(
+            self,
+            key: str,
+            value: np.ndarray | list[float] | tuple[float, ...],
+        ) -> None:
+            if rollout_h5 is None:
+                return
+            self.rollout_arrays.setdefault(key, []).append(
+                np.asarray(value, dtype=np.float32).copy()
+            )
 
         def _set_palm(self, t: int) -> None:
             if self.active_palm_planner is not None:
@@ -1022,17 +1614,55 @@ def run_inverse(
             float,
             float,
         ]:
-            forces, normals, positions, found, distances = live_tip_observation(env)
+            forces, sensor_normals, positions, found, distances = (
+                live_tip_observation(env)
+            )
+            observation_normals = sensor_normals.copy()
+            if dp_mesh_normal_oracle is not None and found.any():
+                found_indices = np.flatnonzero(found)
+                point_world = positions[found_indices]
+                if env.sim.model.nmocap:
+                    object_position = (
+                        env.sim.data.mocap_pos[0, 0]
+                        .detach()
+                        .cpu()
+                        .numpy()
+                    )
+                    object_quaternion = (
+                        env.sim.data.mocap_quat[0, 0]
+                        .detach()
+                        .cpu()
+                        .numpy()
+                    )
+                else:
+                    object_position = np.zeros(3, dtype=np.float32)
+                    object_quaternion = np.asarray(
+                        (1.0, 0.0, 0.0, 0.0), dtype=np.float32
+                    )
+                outward = dp_mesh_normal_oracle.query_world(
+                    point_world,
+                    np.repeat(object_position[None, :], len(found_indices), axis=0),
+                    np.repeat(
+                        object_quaternion[None, :], len(found_indices), axis=0
+                    ),
+                )
+                # The checkpoint convention is ContactSensor primary
+                # fingertip -> secondary object, i.e. source-mesh inward.
+                observation_normals[found_indices] = -outward.astype(np.float32)
             # Geometry is measured by the contact sensors.  Hold the last
             # valid point/normal across a short sensor dropout so the policy
             # does not receive an artificial all-zero surface observation.
-            normal_valid = found & (np.linalg.norm(normals, axis=-1) > 1.0e-6)
+            normal_valid = found & (
+                np.linalg.norm(observation_normals, axis=-1) > 1.0e-6
+            )
             point_valid = found & (np.linalg.norm(positions, axis=-1) > 1.0e-9)
-            self.state_normal_history[normal_valid] = normals[normal_valid]
+            self.state_normal_history[normal_valid] = observation_normals[
+                normal_valid
+            ]
             self.state_point_history[point_valid] = positions[point_valid]
             self.state_normal_valid[normal_valid] = True
             self.state_point_valid[point_valid] = True
-            state_normals_live = normals.copy()
+            state_normals_live = observation_normals.copy()
             state_positions_live = positions.copy()
             held_normals = (~normal_valid) & self.state_normal_valid
             held_points = (~point_valid) & self.state_point_valid
@@ -1041,6 +1671,12 @@ def run_inverse(
             q_live = robot.data.joint_pos[0].detach().cpu().numpy().astype(np.float32)
             state_forces = forces
             state_normals = state_normals_live
+            if runtime.contact_normal_polarity in (
+                "source_mesh_outward",
+                "analytic_outward",
+            ):
+                # Live ContactSensor normals are primary fingertip -> object.
+                state_normals = -state_normals
             state_positions = state_positions_live
             state_twist = self.current_palm_twist
             if runtime.input_frame == "palm":
@@ -1066,18 +1702,114 @@ def run_inverse(
                         ),
                     )
                 )
+            motion_parts: list[np.ndarray] = []
+            q_prior_velocity = np.zeros(16, dtype=np.float32)
+            q_live_velocity_fd = np.zeros(16, dtype=np.float32)
+            point_velocity = np.zeros((4, 3), dtype=np.float32)
+            normal_rate = np.zeros((4, 3), dtype=np.float32)
+            applied_delta_q_comp = (
+                self.applied_command_q - self.applied_prior_q
+            ).astype(np.float32)
+            q_task_est = (q_live - applied_delta_q_comp).astype(np.float32)
+            if runtime.state_schema in MOTION_SCHEMAS:
+                motion_q = (
+                    q_task_est
+                    if runtime.state_schema == TASK_EST_V4_SCHEMA
+                    else q_live
+                )
+                self.motion_q_buffer.append(motion_q.copy())
+                self.motion_prior_buffer.append(self.applied_prior_q.copy())
+                self.motion_position_buffer.append(state_positions.copy())
+                self.motion_normal_buffer.append(state_normals.copy())
+                self.motion_mask_buffer.append(found.copy())
+                if len(self.motion_q_buffer) == self.motion_q_buffer.maxlen:
+                    duration = runtime.motion_feature_step_frames * float(
+                        getattr(runtime.config, "control_dt", 0.01)
+                    )
+                    previous_q = self.motion_q_buffer[0]
+                    previous_position = self.motion_position_buffer[0]
+                    previous_normal = self.motion_normal_buffer[0]
+                    previous_mask = self.motion_mask_buffer[0]
+                    valid_motion = found & previous_mask
+                    q_live_velocity_fd = (
+                        (motion_q - previous_q) / duration
+                    ).astype(np.float32)
+                    q_prior_velocity = (
+                        (self.applied_prior_q - self.motion_prior_buffer[0])
+                        / duration
+                    ).astype(np.float32)
+                    point_velocity = np.where(
+                        valid_motion[:, None],
+                        (state_positions - previous_position) / duration,
+                        0.0,
+                    ).astype(np.float32)
+                    normal_rate = np.where(
+                        valid_motion[:, None],
+                        np.cross(previous_normal, state_normals) / duration,
+                        0.0,
+                    ).astype(np.float32)
+                motion_parts = [point_velocity.reshape(-1), normal_rate.reshape(-1)]
             tactile_state = (
                 state_forces if runtime.state_schema == "force_normal"
                 else state_positions
             )
-            state_parts = [
-                q_live,
-                tactile_state.reshape(-1),
-                state_normals.reshape(-1),
-            ]
-            if runtime.state_schema in GEOMETRY_STATE_SCHEMAS:
-                state_parts.append(found.astype(np.float32))
-            state_parts.append(state_twist)
+            if runtime.state_schema == TASK_EST_V4_SCHEMA:
+                state_parts = [
+                    q_task_est,
+                    tactile_state.reshape(-1),
+                    state_normals.reshape(-1),
+                    found.astype(np.float32),
+                    q_live_velocity_fd,
+                    *motion_parts,
+                    state_twist,
+                ]
+            elif runtime.state_schema == DUAL_TRACK_V3_SCHEMA:
+                joint_velocity = (
+                    robot.data.joint_vel[0]
+                    .detach()
+                    .cpu()
+                    .numpy()
+                    .astype(np.float32)
+                    .reshape(-1)[-16:]
+                )
+                state_parts = [
+                    self.applied_prior_q,
+                    tactile_state.reshape(-1),
+                    state_normals.reshape(-1),
+                    found.astype(np.float32),
+                    q_prior_velocity,
+                    *motion_parts,
+                    q_live,
+                    joint_velocity,
+                    joint_velocity - q_prior_velocity,
+                    self.applied_command_q - self.applied_prior_q,
+                    q_live - self.applied_command_q,
+                    state_twist,
+                ]
+            elif runtime.state_schema == DUAL_TRACK_SCHEMA:
+                state_parts = [
+                    self.applied_prior_q,
+                    tactile_state.reshape(-1),
+                    state_normals.reshape(-1),
+                    found.astype(np.float32),
+                    q_prior_velocity,
+                    *motion_parts,
+                    q_live,
+                    self.applied_command_q - self.applied_prior_q,
+                    q_live - self.applied_command_q,
+                    state_twist,
+                ]
+            else:
+                state_parts = [
+                    q_live,
+                    tactile_state.reshape(-1),
+                    state_normals.reshape(-1),
+                ]
+                if runtime.state_schema in GEOMETRY_STATE_SCHEMAS:
+                    state_parts.append(found.astype(np.float32))
+                if runtime.state_schema == MOTION_SCHEMA:
+                    state_parts.extend([q_live_velocity_fd, *motion_parts])
+                state_parts.append(state_twist)
             if self.current_planner_feature is not None:
                 state_parts.append(self.current_planner_feature)
             elif planner_features is not None:
@@ -1104,7 +1836,7 @@ def run_inverse(
             return (
                 state,
                 forces,
-                state_normals_live,
+                observation_normals,
                 state_positions_live,
                 found,
                 found_count,
@@ -1116,7 +1848,7 @@ def run_inverse(
         def _plan(self, t: int, live_state: np.ndarray) -> None:
             if self.dp_calls >= max_dp_calls > 0:
                 return
-            if mode == "teacher_dp":
+            if mode == "teacher_dp" and teacher_observation_source == "teacher":
                 indices = history_indices(
                     t, runtime.stride, runtime.obs_horizon
                 )
@@ -1130,13 +1862,52 @@ def run_inverse(
                         f"live history has {len(self.live_history)} frames"
                     )
                 history = np.stack(self.live_history)
-                q_base = self.nominal_q.copy()
+                q_base = (
+                    data["q_hand"][t]
+                    if mode == "teacher_dp"
+                    else history[-1, :16].copy()
+                )
             prediction = runtime.predict(history)
-            predicted_absolute = (
-                q_base[None, :] + prediction
-                if runtime.action_representation == "delta_q"
-                else prediction
-            )
+            if runtime.action_field in (
+                "tip_delta_tangent_palm",
+                "tip_motion_tangent_palm",
+                "tip_motion_palm",
+                "tip_target_palm",
+            ):
+                # Cartesian policy: rebuild the 16D absolute joint command
+                # with FK + per-finger IK. Legacy tip-delta is a one-base
+                # offset; task-motion actions are per-waypoint increments.
+                if runtime.action_field == "tip_target_palm":
+                    predicted_absolute = tip_target_to_absolute_q(
+                        self.fullhand_mcc,
+                        prediction,
+                        q_base,
+                        runtime.pred_horizon,
+                    )
+                else:
+                    predicted_absolute = tip_delta_to_absolute_q(
+                        self.fullhand_mcc,
+                        prediction,
+                        q_base,
+                        runtime.pred_horizon,
+                        per_waypoint_increment=(
+                            runtime.action_field in (
+                                "tip_motion_tangent_palm",
+                                "tip_motion_palm",
+                            )
+                        ),
+                    )
+            else:
+                predicted_absolute = runtime.absolute_action(
+                    prediction,
+                    q_base,
+                    (
+                        history[-1, 44:60]
+                        if runtime.action_representation
+                        == "kinematic_residual_q"
+                        else None
+                    ),
+                )
             self.segment_start = self.nominal_q.copy()
             self.segment_target = predicted_absolute[0]
             self.segment_plan_frame = t
@@ -1155,6 +1926,21 @@ def run_inverse(
             prediction_error = float(
                 np.abs(self.segment_target - teacher_target).mean()
             )
+            if self.active_palm_planner is None:
+                teacher_horizon = np.stack(
+                    [
+                        data["q_hand"][
+                            min(
+                                t + (waypoint + 1) * runtime.stride,
+                                len(data["q_hand"]) - 1,
+                            )
+                        ]
+                        for waypoint in range(runtime.pred_horizon)
+                    ]
+                )
+                horizon_error = np.abs(predicted_absolute - teacher_horizon)
+                self.dp_first_step_mae = float(horizon_error[0].mean())
+                self.dp_horizon_mae = float(horizon_error.mean())
             if self.dp_calls == 1 or self.dp_calls % 25 == 0:
                 print(
                     f"[DP] mode={mode} call={self.dp_calls:4d} frame={t:4d} "
@@ -1167,9 +1953,32 @@ def run_inverse(
             live_forces: np.ndarray,
             live_found: np.ndarray,
         ) -> np.ndarray:
-            """Keep nominal q moving and hold only unreliable tactile channels."""
+            """Build causal live feedback and hold only unreliable tactile channels."""
             state = live_state.copy()
-            state[:16] = self.nominal_q
+            if (
+                runtime.state_schema == TASK_EST_V4_SCHEMA
+                and dp_history_q_source != "live"
+            ):
+                raise ValueError(
+                    "task-est v4 must use live q_task_est feedback; nominal "
+                    "history would recreate the removed autoregressive loop"
+                )
+            if dp_history_q_source == "nominal":
+                state[:16] = self.nominal_q
+            if (
+                runtime.state_schema == MOTION_SCHEMA
+                and dp_history_q_source == "nominal"
+            ):
+                if self.last_dp_nominal_q is None:
+                    state[44:60] = 0.0
+                else:
+                    sample_dt = runtime.stride * float(
+                        getattr(runtime.config, "control_dt", 0.01)
+                    )
+                    state[44:60] = (
+                        self.nominal_q - self.last_dp_nominal_q
+                    ) / sample_dt
+                self.last_dp_nominal_q = self.nominal_q.copy()
             force_state = state[16:28].reshape(4, 3)
             normal_state = state[28:40].reshape(4, 3)
             magnitude = np.linalg.norm(live_forces, axis=-1)
@@ -1197,17 +2006,44 @@ def run_inverse(
             t = min(self.frame, frames - 1)
             self._set_palm(t)
             if t <= bootstrap_end:
-                bootstrap_q = (
+                bootstrap_target = (
                     data["q_hand"][0]
                     if self.active_palm_planner is not None
                     else data["q_hand"][t]
                 )
-                q_teacher = torch.as_tensor(
-                    bootstrap_q, device=env.device
-                ).unsqueeze(0)
-                robot.write_joint_state_to_sim(
-                    position=q_teacher, velocity=torch.zeros_like(q_teacher)
-                )
+                # Replaying a loaded teacher posture by writing qpos on every
+                # bootstrap frame bypasses contact dynamics and can teleport
+                # the pads through the collision proxy.  Start open once, then
+                # approach the recorded grasp with a smooth actuator command.
+                # Teacher-forced observations remain read from H5 separately;
+                # this only makes the physical initialization safe.
+                if self.fullhand_mcc is not None:
+                    progress = float(t) / max(float(bootstrap_end), 1.0)
+                    smooth = progress * progress * (3.0 - 2.0 * progress)
+                    bootstrap_q = (
+                        (1.0 - smooth) * self.fullhand_mcc.open_grasp_q
+                        + smooth * bootstrap_target
+                    )
+                    if t == 0:
+                        q_open = torch.as_tensor(
+                            self.fullhand_mcc.open_grasp_q,
+                            device=env.device,
+                        ).unsqueeze(0)
+                        robot.write_joint_state_to_sim(
+                            position=q_open,
+                            velocity=torch.zeros_like(q_open),
+                        )
+                else:
+                    # Preserve the legacy exact-state bootstrap for execution
+                    # layers that do not own contact-force initialization.
+                    bootstrap_q = bootstrap_target
+                    q_teacher = torch.as_tensor(
+                        bootstrap_q, device=env.device
+                    ).unsqueeze(0)
+                    robot.write_joint_state_to_sim(
+                        position=q_teacher,
+                        velocity=torch.zeros_like(q_teacher),
+                    )
                 self.nominal_q = bootstrap_q.copy()
             env.sim.forward()
             (
@@ -1258,13 +2094,44 @@ def run_inverse(
                 self.chunk_scheduler.observe(self.nominal_q)
 
             if t % runtime.stride == 0:
-                self.live_history.append(
-                    self._state_for_dp(
-                        live_state,
-                        live_forces,
-                        live_found,
-                    )
+                self.latest_dp_observation_state = self._state_for_dp(
+                    live_state,
+                    live_forces,
+                    live_found,
                 )
+                if (
+                    mode == "live_dp"
+                    and teacher_observation_source == "teacher_tactile"
+                ):
+                    # Pure q-feedback diagnostic: retain the live executed
+                    # q/qdot stream, but replace contact geometry and its
+                    # rates with the time-aligned recorded teacher values.
+                    # This is intentionally privileged and must never be used
+                    # as a deployable result.
+                    if teacher is None:
+                        raise RuntimeError("teacher tactile state is unavailable")
+                    self.latest_dp_observation_state[16:44] = teacher[t, 16:44]
+                    if runtime.state_schema in (MOTION_SCHEMA, TASK_EST_V4_SCHEMA):
+                        self.latest_dp_observation_state[60:84] = teacher[t, 60:84]
+                if (
+                    mode == "teacher_dp"
+                    and teacher_observation_source == "live_tactile"
+                ):
+                    # Isolate tactile domain shift: q/qdot remain on the
+                    # recorded teacher trajectory while contact point/normal,
+                    # mask and their causal rates come from current physics.
+                    self.latest_dp_observation_state[:16] = data["q_hand"][t]
+                    if runtime.state_schema in (MOTION_SCHEMA, TASK_EST_V4_SCHEMA):
+                        previous_t = max(
+                            0, t - runtime.motion_feature_step_frames
+                        )
+                        duration = max(
+                            1, t - previous_t
+                        ) * float(getattr(runtime.config, "control_dt", 0.01))
+                        self.latest_dp_observation_state[44:60] = (
+                            data["q_hand"][t] - data["q_hand"][previous_t]
+                        ) / duration
+                self.live_history.append(self.latest_dp_observation_state)
             if (
                 self.contact_guard_blocked
                 and guard_contact_ok
@@ -1282,17 +2149,14 @@ def run_inverse(
             if (
                 t >= bootstrap_end
                 and (t - bootstrap_end) % replan_interval == 0
+                and mode != "collect_executed"
             ):
                 history_ready = len(self.live_history) == runtime.obs_horizon
                 if history_ready:
                     self._plan(t, live_state)
 
             if t <= bootstrap_end:
-                desired = (
-                    data["q_hand"][0]
-                    if self.active_palm_planner is not None
-                    else data["q_hand"][t]
-                )
+                desired = bootstrap_q
             elif self.chunk_scheduler is not None:
                 desired = self.chunk_scheduler.next_command()
             else:
@@ -1304,9 +2168,41 @@ def run_inverse(
                     (1.0 - alpha) * self.segment_start
                     + alpha * self.segment_target
                 )
+            if mode == "teacher_dp" and teacher_action_source == "recorded":
+                # Diagnostic path: retain teacher-conditioned DP inference and
+                # its reported prediction error, but send the exact recorded
+                # teacher q through the same position actuator/physics stack.
+                # This separates model error from closed-loop servo error.
+                desired = data["q_hand"][t]
+            if mode == "collect_executed":
+                # Data-collection mode: execute the recorded teacher q through
+                # the same actuator/MCC stack used at deployment (frozen §32
+                # MCC settings passed on the CLI).  DP inference is skipped;
+                # q_live is the new training label, so the recorded closed-loop
+                # state carries the deployment compensation distribution.
+                desired = data["q_hand"][t]
+            if (
+                mode == "live_dp"
+                and live_teacher_takeover_frame >= 0
+                and t >= live_teacher_takeover_frame
+            ):
+                # Recovery-dataset diagnostic: preserve the exact physical
+                # state reached by live DP up to this frame, then switch only
+                # the task prior to the successful time-aligned teacher.  DP
+                # inference continues for diagnostics, but its failed action
+                # is never used as the recovery label or physical command.
+                desired = data["q_hand"][t]
+                if t == live_teacher_takeover_frame:
+                    print(
+                        "[TEACHER-TAKEOVER] "
+                        f"frame={t}: live physical state retained; "
+                        "executing time-aligned recorded teacher q"
+                    )
             dp_desired = np.asarray(desired, dtype=np.float32).copy()
             self.nominal_q = dp_desired.copy()
-            q_live = robot.data.joint_pos[0].detach().cpu().numpy()
+            q_live = robot.data.joint_pos[0].detach().cpu().numpy().copy()
+            applied_prior_q = self.applied_prior_q.copy()
+            applied_command_q = self.applied_command_q.copy()
             mcc_normal_force = np.zeros(4, dtype=np.float32)
             mcc_force_error = np.zeros(4, dtype=np.float32)
             mcc_contact_active = np.zeros(4, dtype=bool)
@@ -1314,6 +2210,8 @@ def run_inverse(
             mcc_normal_offset = np.zeros(4, dtype=np.float32)
             mcc_normal_velocity = np.zeros(4, dtype=np.float32)
             mcc_overforce_active = np.zeros(4, dtype=bool)
+            mcc_pad_contact_valid = np.zeros(4, dtype=bool)
+            mcc_collision_safety_active = np.zeros(4, dtype=bool)
             mcc_safety_offset = np.zeros(4, dtype=np.float32)
             if self.fullhand_mcc is not None:
                 self.fullhand_search_delta[:] = 0.0
@@ -1354,7 +2252,7 @@ def run_inverse(
                 # direction rather than extrapolating unknown geometry.
                 short_normal_memory = self.sensor_normal_valid & (
                     self.sensor_normal_age
-                    <= mcc_precontact_config.runtime_loss_frames
+                    <= mcc_precontact_config.sensor_normal_memory_frames
                 )
                 sensor_outward_world = closure_outward_world.copy()
                 sensor_outward_world[short_normal_memory] = (
@@ -1372,10 +2270,11 @@ def run_inverse(
                 elif mcc_direction_source == "grasp_closure":
                     control_outward_world = closure_outward_world.copy()
                 else:
-                    # Use the local ground-truth contact normal whenever a
+                    # Use the measured ContactSensor normal whenever a
                     # geometry contact exists.  Missing fingers fall back to
-                    # their kinematic grasp-closing direction.  A short EMA
-                    # suppresses switching jitter at contact boundaries.
+                    # their robot-kinematic grasp-closing direction.  No
+                    # object pose, mesh query, or analytic surface normal is
+                    # used in this hybrid deployment path.
                     raw_outward = closure_outward_world.copy()
                     raw_outward[short_normal_memory] = sensor_outward_world[
                         short_normal_memory
@@ -1396,10 +2295,9 @@ def run_inverse(
                     self.fullhand_control_outward[:] = control_outward_world
                     self.fullhand_control_direction_valid = True
                 control_inward_world = -control_outward_world
-                force_target = np.full(
-                    4,
-                    float(mcc_desired_force),
-                    dtype=np.float32,
+                force_target = self.fullhand_mcc.nominal_force_setpoint.astype(
+                    np.float32,
+                    copy=True,
                 )
                 if mcc_direction_source == "oracle":
                     real_contact = live_found & (
@@ -1506,16 +2404,36 @@ def run_inverse(
                         force_magnitude >= 1.5 * force_target
                     )
                     if np.any(precontact_overforce):
+                        retreat_delta = (
+                            self.fullhand_mcc.directional_search_delta(
+                                q_action_order=q_live,
+                                palm_pose_world=palm_pose,
+                                inward_directions_world=control_outward_world,
+                                missing=precontact_overforce,
+                                inward_step=max(
+                                    mcc_precontact_config.cartesian_step_m,
+                                    mcc_precontact_config.force_servo_hard_step_m,
+                                ),
+                                max_joint_step=(
+                                    mcc_precontact_config.joint_step_rad
+                                ),
+                                contact_points_world=live_contact_positions,
+                                contact_point_found=point_valid,
+                            )
+                        )
                         for finger in np.flatnonzero(precontact_overforce):
                             block = slice(4 * finger, 4 * finger + 4)
-                            # Remove position-servo deflection without relying
-                            # on a possibly ill-conditioned contact Jacobian.
-                            desired[block] = q_live[block]
+                            # Safety owns this block: cancel the inward target
+                            # and execute only a bounded outward Cartesian
+                            # escape step from the measured posture.
+                            desired[block] = (
+                                q_live[block] + retreat_delta[block]
+                            )
                         desired = self.fullhand_mcc.clamp_joint_positions(
                             desired
                         )
                     self.fullhand_mcc.previous_command = desired.copy()
-                    if bool(np.all(live_found)):
+                    if bool(np.all(live_found) and not np.any(precontact_overforce)):
                         self.fullhand_contact_settle_streak += 1
                     else:
                         self.fullhand_contact_settle_streak = 0
@@ -1536,11 +2454,11 @@ def run_inverse(
                                 control_outward_world,
                             )
                             self.fullhand_mcc.force_setpoint[:] = (
-                                mcc_desired_force
+                                self.fullhand_mcc.nominal_force_setpoint
                             )
                         else:
                             self.fullhand_mcc.force_setpoint[:] = (
-                                mcc_desired_force
+                                self.fullhand_mcc.nominal_force_setpoint
                             )
                         # FullHandMCC changes coordinates at contact: the
                         # loaded physical posture becomes the new planning
@@ -1550,6 +2468,12 @@ def run_inverse(
                         # offset.
                         self.fullhand_contact_anchor_q = q_live.copy()
                         self.fullhand_dp_anchor_q = dp_desired.copy()
+                        # Build the posture/synergy reference from the first
+                        # stable *executed* grasp.  This is causal and uses
+                        # only joint/contact sensors.  Do not read the
+                        # object-specific pregrasp from ObjectConfig here:
+                        # that is teacher-side privileged information.
+                        self.fullhand_mcc.grasp_closure_q = q_live.copy()
                         self.fullhand_servo_offset = (
                             mcc_precontact_config.servo_load_scale
                             * (self.fullhand_last_command_q - q_live)
@@ -1716,6 +2640,16 @@ def run_inverse(
                     desired = plan_q
                     self.fullhand_mcc.previous_command = desired.copy()
                 elif self.fullhand_mcc_calibrated:
+                    # Match the collection-side recovery-state input
+                    # (collect_trajectories.py ``contact_observed=loaded``):
+                    # the contact state machine counts only loaded contacts
+                    # (found AND force >= threshold) as re-established, not
+                    # mere geometric grazing.  Without this the deployment
+                    # loop confirms a transient touch earlier than the
+                    # teacher did.
+                    mcc_loaded = live_found & (
+                        np.linalg.norm(live_forces, axis=-1) >= contact_threshold
+                    )
                     joint_reference_q = self.fullhand_mcc.clamp_joint_positions(
                         plan_q
                         + self.fullhand_servo_offset
@@ -1741,12 +2675,13 @@ def run_inverse(
                         surface_normals_world=control_outward_world,
                         nominal_posture_q=joint_reference_q,
                         force_magnitude_only=(
-                            mcc_direction_source == "grasp_closure"
+                            mcc_precontact_config.force_magnitude_only
                         ),
                         contact_points_world=live_contact_positions,
                         use_contact_point_jacobian=(
-                            mcc_direction_source != "oracle"
+                            mcc_precontact_config.use_contact_point_jacobian
                         ),
+                        contact_observed=mcc_loaded,
                     )
                     mcc_normal_force = mcc_debug["normal_force"]
                     mcc_force_error = mcc_debug["force_error"]
@@ -1755,6 +2690,10 @@ def run_inverse(
                     mcc_normal_offset = mcc_debug["normal_offset"]
                     mcc_normal_velocity = mcc_debug["normal_velocity"]
                     mcc_overforce_active = mcc_debug["overforce_active"]
+                    mcc_pad_contact_valid = mcc_debug["pad_contact_valid"]
+                    mcc_collision_safety_active = mcc_debug[
+                        "collision_safety_active"
+                    ]
                     mcc_safety_offset = mcc_debug[
                         "overforce_outward_offset"
                     ]
@@ -1852,8 +2791,12 @@ def run_inverse(
                     "mode": mode,
                     "execution_layer": execution_layer,
                     "mcc_direction_source": mcc_direction_source,
+                    "teacher_observation_source": teacher_observation_source,
+                    "dp_tactile_normal_source": dp_tactile_normal_source,
                     "frame": t,
                     "dp_calls": self.dp_calls,
+                    "dp_first_step_mae_rad": self.dp_first_step_mae,
+                    "dp_horizon_mae_rad": self.dp_horizon_mae,
                     "q_teacher_mae_rad": q_error,
                     "palm_source": (
                         "active_capsule"
@@ -1994,6 +2937,12 @@ def run_inverse(
                         f"{label}_mcc_overforce_active": int(
                             mcc_overforce_active[finger]
                         ),
+                        f"{label}_mcc_pad_contact_valid": int(
+                            mcc_pad_contact_valid[finger]
+                        ),
+                        f"{label}_mcc_collision_safety_active": int(
+                            mcc_collision_safety_active[finger]
+                        ),
                         f"{label}_mcc_safety_offset_mm": float(
                             mcc_safety_offset[finger] * 1000.0
                         ),
@@ -2042,6 +2991,71 @@ def run_inverse(
                 row[f"q_cmd_{joint}"] = float(desired[joint])
                 row[f"q_teacher_{joint}"] = float(q_reference[joint])
             self.rows.append(row)
+            if rollout_h5 is not None:
+                if runtime.input_frame != "palm":
+                    raise ValueError(
+                        "Closed-loop rollout export currently requires palm-frame DP"
+                    )
+                self._append_rollout("episode_step", [t])
+                self._append_rollout("q_prior_applied", applied_prior_q)
+                self._append_rollout("q_cmd_applied", applied_command_q)
+                self._append_rollout("q_live", q_live)
+                self._append_rollout(
+                    "delta_q_comp_applied",
+                    applied_command_q - applied_prior_q,
+                )
+                self._append_rollout(
+                    "e_servo",
+                    q_live - applied_command_q,
+                )
+                self._append_rollout("q_prior_next", dp_desired)
+                self._append_rollout("q_cmd_next", np.asarray(desired))
+                self._append_rollout("teacher_q_hand", data["q_hand"][t])
+                # This is the exact state inserted into the causal DP history
+                # at the most recent stride-aligned observation.  It differs
+                # from live_dp_state when nominal q history is selected.
+                if self.latest_dp_observation_state is None:
+                    raise RuntimeError("DP observation state was not initialized")
+                self._append_rollout(
+                    "dp_observation_state",
+                    self.latest_dp_observation_state,
+                )
+                self._append_rollout("live_dp_state", live_state)
+                if runtime.state_schema in GEOMETRY_STATE_SCHEMAS:
+                    self._append_rollout(
+                        "fingertip_contact_pos_palm",
+                        live_state[16:28].reshape(4, 3),
+                    )
+                    self._append_rollout(
+                        "fingertip_contact_normal_palm",
+                        live_state[28:40].reshape(4, 3),
+                    )
+                self._append_rollout(
+                    "fingertip_contact_mask",
+                    live_found.astype(np.float32),
+                )
+                self._append_rollout(
+                    "fingertip_force_palm",
+                    _vectors_object_to_palm(
+                        live_forces,
+                        self.current_palm_pose[3:7],
+                    ),
+                )
+                self._append_rollout(
+                    "palm_pose_object",
+                    self.current_palm_pose,
+                )
+                self._append_rollout(
+                    "palm_twist_object",
+                    self.current_palm_twist,
+                )
+                if runtime.state_schema in PLANNER_STATE_SCHEMAS:
+                    self._append_rollout(
+                        "planner_palm_delta_pose_palm",
+                        live_state[-runtime.planner_waypoints * 6 :],
+                    )
+            self.applied_prior_q = dp_desired.copy()
+            self.applied_command_q = np.asarray(desired, dtype=np.float32).copy()
             if t % 100 == 0:
                 if self.fullhand_mcc is not None:
                     thumb_summary = (
@@ -2175,6 +3189,27 @@ def run_inverse(
             )
     finally:
         write_report(report, policy.rows)
+        if rollout_h5 is not None:
+            write_closed_loop_rollout(
+                rollout_h5,
+                policy.rollout_arrays,
+                source_file=rollout_source_file,
+                source_episode_id=rollout_source_episode_id,
+                mode=mode,
+                teacher_action_source=teacher_action_source,
+                control_dt=float(getattr(runtime.config, "control_dt", 0.01)),
+                bootstrap_frames=bootstrap_end,
+                input_frame=runtime.input_frame,
+                state_schema=runtime.state_schema,
+                stride=runtime.stride,
+                obs_horizon=runtime.obs_horizon,
+                pred_horizon=runtime.pred_horizon,
+                dp_history_q_source=dp_history_q_source,
+                teacher_observation_source=teacher_observation_source,
+                dp_tactile_normal_source=dp_tactile_normal_source,
+                live_teacher_takeover_frame=live_teacher_takeover_frame,
+            )
+            print(f"[ROLLOUT] wrote {rollout_h5}", flush=True)
         active = max(1, frames - bootstrap_end)
         q_errors = np.asarray(
             [
@@ -2183,6 +3218,12 @@ def run_inverse(
                 if int(row["frame"]) >= bootstrap_end
             ],
             dtype=float,
+        )
+        q_mean = float(q_errors.mean()) if q_errors.size else float("nan")
+        q_p95 = (
+            float(np.percentile(q_errors, 95))
+            if q_errors.size
+            else float("nan")
         )
         active_planner_summary = ""
         if policy.active_palm_planner is not None:
@@ -2194,13 +3235,27 @@ def run_inverse(
                 " palm_contact_pause_frames="
                 f"{policy.active_palm_planner.pause_steps}"
             )
+        inference_ms = 1000.0 * np.asarray(
+            runtime.inference_seconds, dtype=np.float64
+        )
+        inference_mean_ms = (
+            float(inference_ms.mean()) if inference_ms.size else float("nan")
+        )
+        inference_p95_ms = (
+            float(np.percentile(inference_ms, 95))
+            if inference_ms.size
+            else float("nan")
+        )
         print(
             f"[RESULT] mode={mode} frames={frames} calls={policy.dp_calls} "
-            f"q_mae={q_errors.mean():.6f}rad "
-            f"q_p95={np.percentile(q_errors,95):.6f}rad "
+            f"q_mae={q_mean:.6f}rad "
+            f"q_p95={q_p95:.6f}rad "
             f"contact3={100*policy.contact3_frames/active:.1f}% "
             f"contact4={100*policy.contact4_frames/active:.1f}% "
             f"force_max={policy.force_max:.2f}N "
+            f"dp_samples={runtime.samples} "
+            f"inference_mean={inference_mean_ms:.1f}ms "
+            f"inference_p95={inference_p95_ms:.1f}ms "
             f"tip_found={np.round(100*policy.per_tip_found_frames/active,1).tolist()}% "
             f"tip_loaded={np.round(100*policy.per_tip_loaded_frames/active,1).tolist()}% "
             f"report={report}"
@@ -2216,7 +3271,7 @@ def main() -> None:
     parser.add_argument("--episode-id", type=int, required=True)
     parser.add_argument(
         "--mode",
-        choices=("offline_teacher", "teacher_dp", "live_dp"),
+        choices=("offline_teacher", "teacher_dp", "live_dp", "collect_executed"),
         default="offline_teacher",
     )
     parser.add_argument(
@@ -2241,6 +3296,15 @@ def main() -> None:
     parser.add_argument("--video-camera-elevation", type=float, default=-10.0)
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--inference-steps", type=int, default=None)
+    parser.add_argument(
+        "--dp-samples",
+        type=int,
+        default=1,
+        help=(
+            "Independent diffusion samples per replan. Their normalized action "
+            "chunks are averaged before denormalization and execution."
+        ),
+    )
     parser.add_argument("--max-steps", type=int, default=0)
     parser.add_argument("--max-dp-calls", type=int, default=0)
     parser.add_argument("--contact-threshold", type=float, default=0.05)
@@ -2274,21 +3338,52 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--mcc-preset",
+        choices=("current", "collection_matched_sensor"),
+        default="collection_matched_sensor",
+        help=(
+            "Named deployment-controller profile. collection_matched_sensor "
+            "matches the non-privileged low-level dynamics and force-loop "
+            "settings used by the trajectory collector, while retaining "
+            "causal tactile normals instead of its mesh oracle. Explicit "
+            "CLI options override preset defaults."
+        ),
+    )
+    parser.add_argument(
         "--mcc-desired-force",
         type=float,
         default=1.0,
         help="Fallback desired normal force before per-finger bootstrap calibration.",
     )
     parser.add_argument(
+        "--mcc-desired-force-per-finger",
+        type=float,
+        nargs=4,
+        default=None,
+        metavar=("INDEX", "MIDDLE", "RING", "THUMB"),
+        help=(
+            "Optional per-finger force setpoints in newtons. When omitted, "
+            "--mcc-desired-force is used for all four fingertips."
+        ),
+    )
+    parser.add_argument(
         "--mcc-direction-source",
         choices=("oracle", "sensor_normal", "grasp_closure", "hybrid"),
-        default="oracle",
+        default="hybrid",
         help=(
-            "MCC contact axis: oracle restores the analytic capsule normal; "
+            "MCC contact axis: oracle restores the privileged analytic capsule normal; "
             "sensor_normal always uses measured contact "
             "normals; grasp_closure uses only the Jacobian direction toward "
-            "the default grasp; hybrid uses contact-normal GT when available "
-            "and grasp closure while contact is missing."
+            "the default grasp; hybrid uses live tactile contact normals when "
+            "available and grasp closure while contact is missing."
+        ),
+    )
+    parser.add_argument(
+        "--allow-privileged-surface-oracle",
+        action="store_true",
+        help=(
+            "Explicitly allow analytic object-surface geometry in MCC or the "
+            "legacy active_capsule planner. Disabled by default."
         ),
     )
     parser.add_argument(
@@ -2308,6 +3403,15 @@ def main() -> None:
     parser.add_argument("--mcc-finger-servo-load-scale", type=float, default=0.0)
     parser.add_argument("--mcc-finger-tracking-gain", type=float, default=0.0)
     parser.add_argument("--mcc-runtime-loss-frames", type=int, default=5)
+    parser.add_argument(
+        "--mcc-sensor-normal-memory-frames",
+        type=int,
+        default=20,
+        help=(
+            "Frames to retain the last measured tactile normal during contact "
+            "loss. This is causal sensor memory, not a surface oracle."
+        ),
+    )
     parser.add_argument("--mcc-recovery-confirm-frames", type=int, default=3)
     parser.add_argument(
         "--mcc-runtime-recovery-limit-rad", type=float, default=0.08
@@ -2324,6 +3428,38 @@ def main() -> None:
     )
     parser.add_argument(
         "--mcc-thumb-max-outward-offset-mm", type=float, default=None
+    )
+    parser.add_argument(
+        "--mcc-thumb-max-inward-offset-mm", type=float, default=None
+    )
+    parser.add_argument("--mcc-posture-cost", type=float, default=0.08)
+    parser.add_argument(
+        "--mcc-nominal-surface-preload-mm", type=float, default=0.0
+    )
+    parser.add_argument("--mcc-flexion-synergy-gain", type=float, default=0.0)
+    parser.add_argument(
+        "--mcc-flexion-synergy-hard-gain", type=float, default=0.0
+    )
+    parser.add_argument(
+        "--mcc-flexion-synergy-max-step-rad", type=float, default=0.03
+    )
+    parser.add_argument(
+        "--mcc-normal-synergy-control",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
+    parser.add_argument(
+        "--mcc-normal-synergy-max-step-rad", type=float, default=0.035
+    )
+    parser.add_argument(
+        "--mcc-force-magnitude-only",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
+    parser.add_argument(
+        "--mcc-use-contact-point-jacobian",
+        action=argparse.BooleanOptionalAction,
+        default=True,
     )
     parser.add_argument(
         "--mcc-command-rate-limit-rad",
@@ -2395,6 +3531,29 @@ def main() -> None:
         "--mcc-force-servo-weak-contact-step-mm", type=float, default=0.20
     )
     parser.add_argument("--mcc-force-filter-alpha", type=float, default=0.25)
+    parser.add_argument(
+        "--mcc-loss-state-machine",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Use the collection controller's transient-loss state machine, "
+            "so the force integrator does not independently search while "
+            "contact is absent."
+        ),
+    )
+    parser.add_argument("--mcc-transient-loss-frames", type=int, default=6)
+    parser.add_argument("--mcc-transient-search-step-mm", type=float, default=0.20)
+    parser.add_argument("--mcc-transient-release-step-mm", type=float, default=0.10)
+    parser.add_argument(
+        "--mcc-natural-flexion-floor",
+        type=float,
+        default=None,
+        help=(
+            "Distal-flexion floor passed to the MCC clamp, matching the "
+            "collection-side value (-0.30 rad under manifold/inverse "
+            "planning).  None disables the floor."
+        ),
+    )
     parser.add_argument(
         "--highlight-contacts",
         action=argparse.BooleanOptionalAction,
@@ -2519,6 +3678,76 @@ def main() -> None:
     )
     parser.add_argument("--contact-guard-min-fingers", type=int, default=3)
     parser.add_argument(
+        "--dp-history-q-source",
+        choices=("live", "nominal"),
+        default="nominal",
+        help=(
+            "Joint state fed back to live DP. 'nominal' prevents MCC contact "
+            "corrections from being recursively integrated; 'live' is an "
+            "explicit closed-loop A/B diagnostic."
+        ),
+    )
+    parser.add_argument(
+        "--allow-dual-track-nominal-history",
+        action="store_true",
+        help=(
+            "Permit the historical mismatched A/B where a dual-track q_ref "
+            "or fingertip-delta checkpoint is fed nominal rather than live "
+            "joint history. This is diagnostic only and is rejected by "
+            "default in live_dp."
+        ),
+    )
+    parser.add_argument(
+        "--teacher-observation-source",
+        choices=("teacher", "live_tactile", "teacher_tactile"),
+        default="teacher",
+        help=(
+            "teacher_dp diagnostic: use the complete recorded teacher state, "
+            "or keep teacher q/qdot while replacing contact geometry with "
+            "current ContactSensor observations. teacher_tactile is the "
+            "privileged inverse diagnostic: live q/qdot with recorded tactile."
+        ),
+    )
+    parser.add_argument(
+        "--dp-tactile-normal-source",
+        choices=("contact_sensor", "source_mesh_oracle"),
+        default="source_mesh_oracle",
+        help=(
+            "Contact-anchored tactile normal. source_mesh_oracle queries the "
+            "undecomposed high-resolution surface only at an actual MuJoCo "
+            "contact point and feeds the same corrected normal to DP and MCC; "
+            "it cannot create/search contact or expose surface distance."
+        ),
+    )
+    parser.add_argument(
+        "--teacher-action-source",
+        choices=("dp", "recorded"),
+        default="dp",
+        help=(
+            "teacher_dp diagnostic: execute the DP prediction or the exact "
+            "recorded teacher q through the same actuator/physics stack."
+        ),
+    )
+    parser.add_argument(
+        "--live-teacher-takeover-frame",
+        type=int,
+        default=-1,
+        help=(
+            "Recovery-data diagnostic for live_dp: retain the physical state "
+            "reached by DP before this frame, then execute the time-aligned "
+            "recorded teacher q. Negative disables takeover."
+        ),
+    )
+    parser.add_argument(
+        "--rollout-h5",
+        type=Path,
+        default=None,
+        help=(
+            "Optional causally aligned closed-loop observation H5. Records "
+            "applied prior/command, current live state/tactile, and teacher q."
+        ),
+    )
+    parser.add_argument(
         "--contact-guard-force-threshold",
         type=float,
         default=0.05,
@@ -2532,7 +3761,60 @@ def main() -> None:
     )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--report", type=Path, default=None)
+
+    # Apply named profiles as parser defaults rather than mutating ``args``
+    # after parsing.  This keeps every explicitly supplied CLI option an
+    # override of the profile and makes controller A/B tests reproducible.
+    requested_preset = "collection_matched_sensor"
+    for index, token in enumerate(sys.argv[1:]):
+        if token == "--mcc-preset" and index + 2 <= len(sys.argv[1:]):
+            requested_preset = sys.argv[1:][index + 1]
+        elif token.startswith("--mcc-preset="):
+            requested_preset = token.split("=", 1)[1]
+    if requested_preset == "collection_matched_sensor":
+        parser.set_defaults(
+            mcc_desired_force=3.0,
+            mcc_desired_force_per_finger=(3.0, 3.0, 3.0, 4.0),
+            mcc_contact_search_step_mm=0.15,
+            mcc_runtime_loss_frames=6,
+            mcc_recovery_confirm_frames=4,
+            mcc_max_normal_offset_mm=3.0,
+            mcc_thumb_max_inward_offset_mm=6.0,
+            mcc_posture_cost=0.15,
+            mcc_nominal_surface_preload_mm=3.0,
+            mcc_flexion_synergy_gain=0.18,
+            mcc_flexion_synergy_hard_gain=0.75,
+            mcc_flexion_synergy_max_step_rad=0.025,
+            mcc_normal_synergy_control=True,
+            mcc_normal_synergy_max_step_rad=0.025,
+            mcc_force_magnitude_only=True,
+            mcc_use_contact_point_jacobian=True,
+            mcc_command_rate_limit_rad=0.18,
+            mcc_command_ema_alpha=0.65,
+            hand_servo_stiffness=35.0,
+            hand_servo_damping=2.5,
+            hand_servo_effort_limit=35.0,
+            # Collection disabled hard overforce rejection (ratio=1000) to
+            # maximize teacher contact coverage.  Replaying that setting in a
+            # learned-policy loop is unsafe: an infeasible DP/IK target can
+            # load the hard contact into the kN range before MCC retreats.
+            # Keep the matched nominal force law, but restore an independent
+            # deployment safety threshold.
+            mcc_overforce_hard_ratio=1.4,
+            mcc_thumb_overforce_hard_ratio=1.8,
+            mcc_force_servo_integral_gain=0.003,
+            mcc_thumb_force_servo_hard_step_mm=0.20,
+            mcc_thumb_force_servo_search_step_mm=0.50,
+            mcc_loss_state_machine=True,
+            mcc_transient_loss_frames=6,
+            mcc_transient_search_step_mm=0.20,
+            mcc_transient_release_step_mm=0.25,
+            # Collection ran the differential surface planner in
+            # manifold/inverse mode, which set natural_flexion_floor=-0.30.
+            mcc_natural_flexion_floor=-0.30,
+        )
     args = parser.parse_args()
+    audit_collection_execution_contract(args.file, args)
 
     device = torch.device(
         args.device if torch.cuda.is_available() else "cpu"
@@ -2540,18 +3822,100 @@ def main() -> None:
     data = load_episode(
         args.file,
         args.episode_id,
-        include_teacher_tactile=args.mode != "live_dp",
+        include_teacher_tactile=(
+            args.mode != "live_dp"
+            or args.teacher_observation_source == "teacher_tactile"
+        ),
+    )
+    replay_object = load_replay_object_metadata(args.file)
+    replay_object_config = (
+        load_object_config(replay_object.object_id)
+        if replay_object.object_id is not None
+        else None
     )
     runtime = DPRuntime(
-        args.model, device, args.inference_steps, args.seed
+        args.model,
+        device,
+        args.inference_steps,
+        args.seed,
+        samples=args.dp_samples,
     )
+    if (
+        args.mode == "live_dp"
+        and runtime.action_field in (
+            "q_ref",
+            "tip_delta_tangent_palm",
+            "tip_motion_tangent_palm",
+            "tip_motion_palm",
+            "tip_target_palm",
+        )
+        and args.dp_history_q_source != "live"
+        and not args.allow_dual_track_nominal_history
+    ):
+        raise ValueError(
+            "Dual-track deployment requires --dp-history-q-source live: "
+            "these checkpoints require physical execution/task-est feedback. "
+            "Pass --allow-dual-track-nominal-history only to reproduce the "
+            "known-invalid historical nominal-history A/B."
+        )
+    if args.live_teacher_takeover_frame >= 0 and args.mode != "live_dp":
+        raise ValueError(
+            "--live-teacher-takeover-frame is only valid with --mode live_dp"
+        )
+    if (
+        args.teacher_observation_source == "live_tactile"
+        and args.mode != "teacher_dp"
+    ):
+        raise ValueError(
+            "--teacher-observation-source live_tactile is only valid with "
+            "--mode teacher_dp"
+        )
+    if (
+        args.teacher_observation_source == "teacher_tactile"
+        and args.mode != "live_dp"
+    ):
+        raise ValueError(
+            "--teacher-observation-source teacher_tactile is only valid with "
+            "--mode live_dp"
+        )
+    if args.mode == "collect_executed":
+        if args.rollout_h5 is None:
+            raise ValueError("--mode collect_executed requires --rollout-h5")
+        if args.viewer not in ("headless",):
+            raise ValueError("--mode collect_executed requires --viewer headless")
+        if args.live_teacher_takeover_frame >= 0:
+            raise ValueError(
+                "--live-teacher-takeover-frame is not valid with "
+                "--mode collect_executed"
+            )
+    if (
+        args.mcc_direction_source == "oracle"
+        and not args.allow_privileged_surface_oracle
+    ):
+        raise ValueError(
+            "--mcc-direction-source oracle uses privileged analytic surface "
+            "geometry; pass --allow-privileged-surface-oracle only for an "
+            "explicit oracle A/B test."
+        )
+    if (
+        args.teacher_observation_source == "teacher_tactile"
+        and not args.allow_privileged_surface_oracle
+    ):
+        raise ValueError(
+            "--teacher-observation-source teacher_tactile replays privileged "
+            "recorded tactile geometry; pass --allow-privileged-surface-oracle "
+            "only for an explicit diagnostic A/B test."
+        )
     if args.palm_source == "active_capsule":
+        if not args.allow_privileged_surface_oracle:
+            raise ValueError(
+                "The legacy active_capsule planner uses known capsule radius, "
+                "half-height and analytic projection. It is disabled in the "
+                "sensor-only deployment path."
+            )
         if args.mode != "live_dp":
             raise ValueError("--palm-source active_capsule requires --mode live_dp")
-        if runtime.state_schema not in (
-            "contact_geometry_planner",
-            "contact_geometry_planner_manifold",
-        ):
+        if runtime.state_schema not in PLANNER_STATE_SCHEMAS:
             raise ValueError(
                 "Active palm deployment requires a planner-conditioned DP checkpoint"
             )
@@ -2575,13 +3939,42 @@ def main() -> None:
         f"device={device} input_frame={runtime.input_frame} "
         f"state_schema={runtime.state_schema} state_dim={runtime.state_dim} "
         f"action={runtime.action_representation} "
+        f"action_field={runtime.action_field} action_dim={runtime.action_dim} "
         f"stride={runtime.stride} obs={runtime.obs_horizon} "
         f"pred={runtime.pred_horizon} inference={runtime.policy.diffusion.num_inference_steps} "
+        f"dp_samples={runtime.samples} "
         f"execution_layer={args.execution_layer} "
         f"palm_source={args.palm_source} "
+        f"object={replay_object.object_id or 'capsule_medium_legacy'} "
+        f"object_scale={replay_object.object_scale:g} "
+        f"mcc_preset={args.mcc_preset} "
         f"mcc_direction={args.mcc_direction_source} "
-        f"surface_source={'analytic_capsule_oracle' if args.mcc_direction_source == 'oracle' else 'live_contact_sensor'}"
+        f"dp_history_q={args.dp_history_q_source} "
+        f"teacher_observation={args.teacher_observation_source} "
+        f"dp_tactile_normal={args.dp_tactile_normal_source} "
+        f"teacher_action={args.teacher_action_source} "
+        f"teacher_takeover={args.live_teacher_takeover_frame} "
+        "surface_source="
+        + (
+            "analytic_capsule_oracle_PRIVILEGED"
+            if args.mcc_direction_source == "oracle"
+            else (
+                "actual_contact_anchored_source_surface_normal"
+                if args.dp_tactile_normal_source == "source_mesh_oracle"
+                else "live_contact_sensor"
+            )
+        )
     )
+    if args.mode == "live_dp" and not args.allow_privileged_surface_oracle:
+        print(
+            "[INFORMATION-CONTRACT] CAUSAL_TACTILE: DP/MCC tactile="
+            f"{args.dp_tactile_normal_source}; MCC direction="
+            f"{args.mcc_direction_source}; joints=live encoders; "
+            "the source-surface normal is allowed only after actual contact; "
+            "no object pose/surface distance/future geometry/object YAML grasp "
+            "is available to DP or FullHandMCC. The H5 palm path is treated "
+            "only as an external upper-planner command."
+        )
     if args.impedance_stiffness != 0.0:
         print(
             "[WARN] --impedance-stiffness is deprecated and ignored; "
@@ -2662,16 +4055,45 @@ def main() -> None:
             args.mcc_desired_force,
             MCCPrecontactConfig(
                 force_threshold=args.mcc_contact_force_threshold,
+                desired_force_per_finger=(
+                    None
+                    if args.mcc_desired_force_per_finger is None
+                    else tuple(args.mcc_desired_force_per_finger)
+                ),
                 settle_frames=args.mcc_contact_settle_frames,
                 max_normal_offset_m=(
                     None
                     if args.mcc_max_normal_offset_mm is None
                     else args.mcc_max_normal_offset_mm / 1000.0
                 ),
+                thumb_max_inward_offset_m=(
+                    None
+                    if args.mcc_thumb_max_inward_offset_mm is None
+                    else args.mcc_thumb_max_inward_offset_mm / 1000.0
+                ),
                 thumb_max_outward_offset_m=(
                     None
                     if args.mcc_thumb_max_outward_offset_mm is None
                     else args.mcc_thumb_max_outward_offset_mm / 1000.0
+                ),
+                posture_cost=args.mcc_posture_cost,
+                nominal_surface_preload_m=(
+                    args.mcc_nominal_surface_preload_mm / 1000.0
+                ),
+                flexion_synergy_gain=args.mcc_flexion_synergy_gain,
+                flexion_synergy_hard_gain=(
+                    args.mcc_flexion_synergy_hard_gain
+                ),
+                flexion_synergy_max_step_rad=(
+                    args.mcc_flexion_synergy_max_step_rad
+                ),
+                normal_synergy_control=args.mcc_normal_synergy_control,
+                normal_synergy_max_step_rad=(
+                    args.mcc_normal_synergy_max_step_rad
+                ),
+                force_magnitude_only=args.mcc_force_magnitude_only,
+                use_contact_point_jacobian=(
+                    args.mcc_use_contact_point_jacobian
                 ),
                 cartesian_step_m=args.mcc_contact_search_step_mm / 1000.0,
                 joint_step_rad=args.mcc_contact_search_step_rad,
@@ -2679,6 +4101,9 @@ def main() -> None:
                 servo_load_scale=args.mcc_finger_servo_load_scale,
                 trajectory_tracking_gain=args.mcc_finger_tracking_gain,
                 runtime_loss_frames=args.mcc_runtime_loss_frames,
+                sensor_normal_memory_frames=(
+                    args.mcc_sensor_normal_memory_frames
+                ),
                 recovery_confirm_frames=args.mcc_recovery_confirm_frames,
                 runtime_recovery_limit_rad=(
                     args.mcc_runtime_recovery_limit_rad
@@ -2738,7 +4163,24 @@ def main() -> None:
                     args.mcc_force_servo_weak_contact_step_mm / 1000.0
                 ),
                 force_filter_alpha=args.mcc_force_filter_alpha,
+                enable_loss_state_machine=args.mcc_loss_state_machine,
+                transient_loss_frames=args.mcc_transient_loss_frames,
+                transient_search_step_m=(
+                    args.mcc_transient_search_step_mm / 1000.0
+                ),
+                transient_release_step_m=(
+                    args.mcc_transient_release_step_mm / 1000.0
+                ),
+                natural_flexion_floor=args.mcc_natural_flexion_floor,
             ),
+            args.dp_history_q_source,
+            args.teacher_observation_source,
+            args.dp_tactile_normal_source,
+            args.teacher_action_source,
+            args.live_teacher_takeover_frame,
+            args.rollout_h5,
+            args.file,
+            args.episode_id,
             (
                 ActiveCapsulePalmPlannerConfig(
                     surface_speed_m_s=(
@@ -2771,6 +4213,8 @@ def main() -> None:
             args.video_camera_distance,
             args.video_camera_azimuth,
             args.video_camera_elevation,
+            replay_object_config,
+            replay_object.object_scale,
         )
 
 

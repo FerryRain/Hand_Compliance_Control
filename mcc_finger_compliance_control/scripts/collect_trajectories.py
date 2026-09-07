@@ -36,6 +36,7 @@ from surface_mcc_finger import (
     FullHandMCCFingerConfig,
     FullHandMCCFingerController,
     GeometrySurfaceOracle,
+    TIP_BACK_CONTACT_X_LIMIT_M,
 )
 
 
@@ -1239,10 +1240,29 @@ class InversePlannedPalmObjectController:
         motion_length: int,
         total_steps: int,
         dt: float,
+        speed_factor: float = 1.0,
     ) -> None:
         plan = np.asarray(palm_pose_object, dtype=np.float64)
-        if plan.ndim != 2 or plan.shape[1] != 7 or len(plan) < 2:
-            raise ValueError("planner H5 must contain a (T,7) palm_pose_object path")
+        if plan.ndim == 2 and plan.shape[1] == 7:
+            plan = plan[:, None, :]
+        if (
+            plan.ndim != 3
+            or plan.shape[2] != 7
+            or len(plan) < 2
+        ):
+            raise ValueError(
+                "planner H5 must contain a (T,7) or (T,E,7) "
+                "palm_pose_object path"
+            )
+        if plan.shape[1] == 1 and env.num_envs > 1:
+            plan = np.broadcast_to(
+                plan, (plan.shape[0], env.num_envs, 7)
+            ).copy()
+        elif plan.shape[1] != env.num_envs:
+            raise ValueError(
+                "planner environment dimension does not match --num-envs: "
+                f"plan E={plan.shape[1]}, envs={env.num_envs}"
+            )
         self.env = env
         self.target_mocap_idx = int(target_mocap_idx)
         self.palm_body_idx = int(palm_body_idx)
@@ -1250,12 +1270,25 @@ class InversePlannedPalmObjectController:
         self.motion_length = int(motion_length)
         self.total_steps = int(total_steps)
         self.dt = float(dt)
-        self.plan_pos = plan[:, :3]
-        self.plan_rot = np.stack(
-            [PlannedFixedPalmObjectController._wxyz_to_matrix(q) for q in plan[:, 3:]],
-            axis=0,
+        # Time parameterization: speed_factor < 1 spreads the same planned
+        # path over more simulator steps (slower executed rotation).  The
+        # trajectory geometry is bit-identical; only the rate changes.
+        self.speed_factor = float(speed_factor)
+        if not 0.05 <= self.speed_factor <= 4.0:
+            raise ValueError(
+                f"planner speed factor {self.speed_factor} out of range [0.05, 4.0]"
+            )
+        self.plan_pos = plan[:, :, :3]
+        self.plan_rot = np.empty(
+            (plan.shape[0], plan.shape[1], 3, 3), dtype=np.float64
         )
-        self.plan_rot0_inv = self.plan_rot[0].T
+        for frame in range(plan.shape[0]):
+            for env_id in range(plan.shape[1]):
+                self.plan_rot[frame, env_id] = (
+                    PlannedFixedPalmObjectController._wxyz_to_matrix(
+                        plan[frame, env_id, 3:]
+                    )
+                )
         self.rotation_enabled = True
         self.translation_enabled = False
         self.lock_horizontal_lowest_point = False
@@ -1288,8 +1321,16 @@ class InversePlannedPalmObjectController:
         self.initial_pos = self.env.sim.data.mocap_pos[:, self.target_mocap_idx, :].clone()
         self.initial_quat = self.env.sim.data.mocap_quat[:, self.target_mocap_idx, :].clone()
 
-    def _plan_index(self, episode_step: int) -> int:
-        u = np.clip((episode_step - self.motion_start) / max(self.motion_length, 1), 0.0, 1.0)
+    def _plan_index(self, motion_step: int) -> int:
+        """Map a motion-local step to the source planner frame.
+
+        Preparation and planner settling are state-machine concerns.  They
+        must not be embedded into the inverted path itself, otherwise
+        ``step()`` subtracts ``motion_start`` a second time and only replays a
+        prefix of every trajectory.
+        """
+
+        u = np.clip(motion_step / max(self.motion_length, 1), 0.0, 1.0)
         return int(round(u * (len(self.plan_pos) - 1)))
 
     def reanchor_from_current_state(self) -> None:
@@ -1304,12 +1345,16 @@ class InversePlannedPalmObjectController:
         robot = self.env.scene["robot"]
         palm = robot.data.body_link_pose_w[:, self.palm_body_idx, :].detach().cpu().numpy()
         palm_rot = np.stack([PlannedFixedPalmObjectController._wxyz_to_matrix(q) for q in palm[:, 3:]], axis=0)
-        path = np.zeros((self.env.num_envs, self.total_steps + 1, 7), dtype=np.float32)
-        for step in range(self.total_steps + 1):
+        # Store only the physical motion window.  The first pose is held by
+        # ``step()`` until ``motion_start`` after the separate settle phase.
+        path = np.zeros(
+            (self.env.num_envs, self.motion_length + 1, 7), dtype=np.float32
+        )
+        for step in range(self.motion_length + 1):
             index = self._plan_index(step)
             for env_id in range(self.env.num_envs):
-                relative_rot = self.plan_rot[index]
-                relative_pos = self.plan_pos[index]
+                relative_rot = self.plan_rot[index, env_id]
+                relative_pos = self.plan_pos[index, env_id]
                 object_rotation = palm_rot[env_id] @ relative_rot.T
                 object_position = palm[env_id, :3] - object_rotation @ relative_pos
                 path[env_id, step, :3] = object_position
@@ -1318,7 +1363,8 @@ class InversePlannedPalmObjectController:
         self.initial_pos = self._path[:, 0, :3].clone()
         self.initial_quat = self._path[:, 0, 3:].clone()
         print(
-            f"[PLANNER-INVERSE] inverted planned path ({len(self.plan_pos)} frames) "
+            f"[PLANNER-INVERSE] inverted planned path "
+            f"({len(self.plan_pos)} frames x {self.plan_pos.shape[1]} envs) "
             "from stable palm pose only"
         )
 
@@ -1334,7 +1380,12 @@ class InversePlannedPalmObjectController:
             index = 0
         else:
             index = min(
-                max(int(episode_step - self.motion_start), 0),
+                max(
+                    int(
+                        (episode_step - self.motion_start) * self.speed_factor
+                    ),
+                    0,
+                ),
                 self._path.shape[1] - 1,
             )
         pose = self._path[:, index]
@@ -1350,9 +1401,22 @@ class InversePlannedPalmObjectController:
             return self.initial_pos, self.initial_quat
         index = min(
             self._path.shape[1] - 1,
-            self.motion_start + int(self.motion_schedule_step[0].item()) + int(round(horizon_s / self.dt)),
+            int(
+                int(self.motion_schedule_step[0].item()) * self.speed_factor
+            )
+            + int(round(horizon_s / self.dt)),
         )
         return self._path[:, index, :3], self._path[:, index, 3:]
+
+    def source_plan_index(self, env_id: int = 0, horizon_steps: int = 0) -> int:
+        """Return the source-plan frame currently executed by one environment."""
+
+        schedule_step = int(self.motion_schedule_step[int(env_id)].item())
+        executed_step = min(
+            max(int((schedule_step + int(horizon_steps)) * self.speed_factor), 0),
+            self.motion_length,
+        )
+        return self._plan_index(executed_step)
 
 
 class PalmOrbitController:
@@ -1812,6 +1876,9 @@ class FullHandMCCCollectionPolicy:
         persistent_recovery_max_joint_step_rad: float,
         nominal_grasp_q: np.ndarray | tuple[float, ...],
         differential_contact_qp: bool,
+        manifold_qp_velocity: bool = False,
+        manifold_qp_blend: float = 1.0,
+        manifold_qp_max_reference_error_rad: float = 0.04,
         fixed_grasp_fingers: bool = False,
         object_scale: float = 1.0,
         mesh_normal_oracle=None,
@@ -1831,9 +1898,11 @@ class FullHandMCCCollectionPolicy:
         shape_regularization: bool = False,
         force_servo_integral_gain: float = 0.0,
         fixed_grasp_nominal_weight: float = 0.80,
-        initial_pad_max_angle_rad: float = np.deg2rad(55.0),
+        initial_pad_max_angle_rad: float = np.deg2rad(105.0),
         closure_path_fallback_fraction: float = 0.70,
         closure_path_samples: int = 25,
+        grasp_keyframe_interval_frames: int = 0,
+        grasp_keyframe_projection_iterations: int = 30,
     ) -> None:
         self.env = env
         # Articulated FK inside the palm MCC is evaluated in one canonical
@@ -1947,6 +2016,14 @@ class FullHandMCCCollectionPolicy:
         self.contact_search_step_rad = float(contact_search_step_rad)
         self.contact_search_limit_rad = float(contact_search_limit_rad)
         self.differential_contact_qp = bool(differential_contact_qp)
+        # In planner_inverse mode healthy fingers follow the measured contact
+        # point transported by the known rigid-object twist.  This avoids
+        # treating a source-mesh nearest point as the physical pad target.
+        self.manifold_qp_velocity = bool(manifold_qp_velocity)
+        self.manifold_qp_blend = float(np.clip(manifold_qp_blend, 0.0, 1.0))
+        self.manifold_qp_max_reference_error_rad = float(
+            max(0.0, manifold_qp_max_reference_error_rad)
+        )
         self.fixed_grasp_fingers = bool(fixed_grasp_fingers)
         self.fixed_grasp_nominal_weight = float(
             np.clip(fixed_grasp_nominal_weight, 0.0, 1.0)
@@ -1958,6 +2035,16 @@ class FullHandMCCCollectionPolicy:
             np.clip(closure_path_fallback_fraction, 0.0, 1.0)
         )
         self.closure_path_samples = max(3, int(closure_path_samples))
+        # Optional privileged teacher layer.  A zero interval preserves the
+        # validated purely differential controller.  When enabled, sparse
+        # future object poses are solved into stable four-finger grasp
+        # boundary conditions; the contact-manifold QP connects them.
+        self.grasp_keyframe_interval_frames = max(
+            0, int(grasp_keyframe_interval_frames)
+        )
+        self.grasp_keyframe_projection_iterations = max(
+            1, int(grasp_keyframe_projection_iterations)
+        )
         self.shape_regularization = bool(shape_regularization)
         nominal_grasp = np.asarray(nominal_grasp_q, dtype=np.float64)
         if nominal_grasp.shape != (16,) or not np.all(np.isfinite(nominal_grasp)):
@@ -1967,7 +2054,14 @@ class FullHandMCCCollectionPolicy:
                 FullHandMCCFingerConfig(
                     control_dt=0.01,
                     posture_cost=0.15,
-                    natural_flexion_floor=-0.10,
+                    # The old closure-path teacher could use a tight extension
+                    # floor because it jumped to a newly intersecting posture.
+                    # A differential surface planner must be allowed to unfold
+                    # while the contact moves across the bottle.  Soft posture
+                    # and synergy terms still prevent a folded/ugly IK branch.
+                    natural_flexion_floor=(
+                        -0.30 if self.manifold_qp_velocity else -0.10
+                    ),
                     desired_force_per_finger=(3.0, 3.0, 3.0, 4.0),
                     max_normal_offset=0.003,
                     thumb_max_inward_offset=0.006,
@@ -1977,7 +2071,11 @@ class FullHandMCCCollectionPolicy:
                         contact_recovery_confirm_frames
                     ),
                     transient_search_step=contact_transient_search_step_m,
-                    transient_release_step=contact_transient_release_step_m,
+                    transient_release_step=(
+                        max(0.00025, contact_transient_release_step_m)
+                        if self.manifold_qp_velocity
+                        else contact_transient_release_step_m
+                    ),
                     persistent_recovery_max_joint_step=(
                         persistent_recovery_max_joint_step_rad
                     ),
@@ -1987,6 +2085,17 @@ class FullHandMCCCollectionPolicy:
                     # outward dropout.  Missing contact still advances by the
                     # configured search step until geometry is recovered.
                     force_servo_integral_gain=float(force_servo_integral_gain),
+                    # The contact-manifold teacher must prefer a smooth
+                    # reachable grasp over a large instantaneous IK jump.
+                    qp_max_joint_velocity=(
+                        0.80 if self.manifold_qp_velocity else 2.0
+                    ),
+                    qp_smooth_weight=(
+                        0.002 if self.manifold_qp_velocity else 0.002
+                    ),
+                    qp_normal_velocity_weight=(
+                        30.0 if self.manifold_qp_velocity else 10.0
+                    ),
                     overforce_hard_ratio=1000.0,
                     thumb_overforce_hard_ratio=1000.0,
                     use_lateral_reference_regularizer=self.shape_regularization,
@@ -1998,12 +2107,36 @@ class FullHandMCCCollectionPolicy:
                     # Contact points remain the primary task, but the
                     # planner mode should stay close to the loaded grasp
                     # instead of taking a new IK branch every frame.
-                    qp_posture_weight=(0.030 if self.shape_regularization else 0.002),
+                    qp_posture_weight=(
+                        0.004
+                        if self.manifold_qp_velocity
+                        else (0.030 if self.shape_regularization else 0.002)
+                    ),
                     qp_tangential_velocity_weight=(
-                        1.0 if self.shape_regularization else 2.0
+                        0.25
+                        if self.manifold_qp_velocity
+                        else (1.0 if self.shape_regularization else 2.0)
+                    ),
+                    qp_thumb_tangential_velocity_weight=(
+                        8.0 if self.manifold_qp_velocity else None
                     ),
                     qp_target_velocity_ema_alpha=(
-                        0.15 if self.shape_regularization else 0.35
+                        0.35
+                        if self.manifold_qp_velocity
+                        else (0.15 if self.shape_regularization else 0.35)
+                    ),
+                    # The manifold layer uses force as a low-frequency normal
+                    # velocity, not merely as a contact label.  At 100 Hz the
+                    # 6 mm/s cap is still only 0.06 mm per step; MCC below
+                    # supplies the remaining high-frequency residual.
+                    qp_force_velocity_gain=(
+                        0.0010 if self.manifold_qp_velocity else 0.0004
+                    ),
+                    qp_force_deadband=(
+                        0.15 if self.manifold_qp_velocity else 0.20
+                    ),
+                    qp_max_force_velocity=(
+                        0.006 if self.manifold_qp_velocity else 0.003
                     ),
                     # Pad attitude is corrected only by each finger's own
                     # side/opposition joint.  The main site task controls
@@ -2076,15 +2209,173 @@ class FullHandMCCCollectionPolicy:
         self.hybrid_grasp_valid = np.zeros(
             (env.num_envs, 4), dtype=bool
         )
+        self.grasp_keyframe_start_q = np.zeros(
+            (env.num_envs, 16), dtype=np.float64
+        )
+        self.grasp_keyframe_goal_q = np.zeros_like(
+            self.grasp_keyframe_start_q
+        )
+        self.grasp_keyframe_reference_q = np.zeros_like(
+            self.grasp_keyframe_start_q
+        )
+        # A grasp keyframe is not only a posture target.  It also owns four
+        # material contact anchors on the object.  The online QP follows the
+        # short surface path between these anchors; q is only its comfortable
+        # null-space boundary condition.
+        self.grasp_keyframe_start_surface_object = np.zeros(
+            (env.num_envs, 4, 3), dtype=np.float64
+        )
+        self.grasp_keyframe_goal_surface_object = np.zeros_like(
+            self.grasp_keyframe_start_surface_object
+        )
+        self.grasp_keyframe_reference_surface_object = np.zeros_like(
+            self.grasp_keyframe_start_surface_object
+        )
+        self.grasp_keyframe_progress = np.zeros(
+            env.num_envs, dtype=np.int32
+        )
+        self.grasp_keyframe_valid = np.zeros(env.num_envs, dtype=bool)
+        self.grasp_keyframe_max_residual_m = np.full(
+            env.num_envs, np.nan, dtype=np.float64
+        )
+        self.grasp_keyframe_max_pad_angle_rad = np.full(
+            env.num_envs, np.nan, dtype=np.float64
+        )
+        self.precomputed_keyframe_frames: list[np.ndarray] | None = None
+        self.precomputed_keyframe_q: list[np.ndarray] | None = None
+        self.precomputed_keyframe_surface_object: list[np.ndarray] | None = None
+        self.precomputed_keyframe_normal_object: list[np.ndarray] | None = None
+        # Initial contact is a direct constrained geometry solution, never an
+        # open->grasp path intersection.  Cache it in object coordinates so a
+        # stationary settle phase does not rerun the expensive optimizer at
+        # 100 Hz.
+        self.geometry_contact_q = np.zeros(
+            (env.num_envs, 16), dtype=np.float64
+        )
+        self.geometry_contact_surface_object = np.zeros(
+            (env.num_envs, 4, 3), dtype=np.float64
+        )
+        self.geometry_contact_normal_object = np.zeros_like(
+            self.geometry_contact_surface_object
+        )
+        self.geometry_contact_valid = np.zeros(env.num_envs, dtype=bool)
         self.previous_target_palm = np.zeros(
             (env.num_envs, 4, 3), dtype=np.float64
         )
         self.previous_target_valid = np.zeros(env.num_envs, dtype=bool)
+        self.previous_motion_active = np.zeros(env.num_envs, dtype=bool)
         self.planner_query_world = np.zeros((env.num_envs, 4, 3), dtype=np.float64)
         self.planner_query_valid = np.zeros(env.num_envs, dtype=bool)
+        # Cached signed distances for diagnostics and the decimated palm
+        # workspace optimization.  Stable manifold tracking gets its target
+        # velocity from measured contacts and known object motion, so running
+        # an undecomposed-mesh nearest-point query on all four nominal tips at
+        # every physics tick is redundant.
+        self.cached_tip_signed_distance = np.zeros(
+            (env.num_envs, 4), dtype=np.float64
+        )
+        self.cached_tip_surface_valid = np.zeros(env.num_envs, dtype=bool)
         self.last_debug: dict[str, torch.Tensor] = {}
         self._call_count = 0
         self.reset()
+
+    def set_precomputed_grasp_keyframes(
+        self,
+        frame_index: np.ndarray,
+        q: np.ndarray,
+        contact_point_object: np.ndarray,
+        normal_object: np.ndarray,
+        valid: np.ndarray,
+    ) -> None:
+        """Install offline-validated sparse grasp boundary conditions.
+
+        Invalid knots are removed rather than interpolated through.  At least
+        two accepted knots are required, since one posture cannot define a
+        contact-manifold motion segment.
+        """
+
+        frames_array = np.asarray(frame_index, dtype=np.int32)
+        q_array = np.asarray(q, dtype=np.float64)
+        points_array = np.asarray(contact_point_object, dtype=np.float64)
+        normals_array = np.asarray(normal_object, dtype=np.float64)
+        valid_array = np.asarray(valid, dtype=bool)
+        # A single-plan H5 uses (K,...); a bundle uses (K,E,...), matching
+        # palm_pose_object's (T,E,7) convention.
+        if q_array.ndim == 2:
+            q_array = np.repeat(q_array[:, None, :], self.env.num_envs, axis=1)
+            points_array = np.repeat(
+                points_array[:, None, :, :], self.env.num_envs, axis=1
+            )
+            normals_array = np.repeat(
+                normals_array[:, None, :, :], self.env.num_envs, axis=1
+            )
+            valid_array = np.repeat(
+                valid_array.reshape(-1, 1), self.env.num_envs, axis=1
+            )
+        if frames_array.ndim == 1:
+            frames_array = np.repeat(
+                frames_array[:, None], self.env.num_envs, axis=1
+            )
+        expected_envs = q_array.shape[1] if q_array.ndim == 3 else -1
+        if expected_envs != self.env.num_envs:
+            raise ValueError(
+                "grasp keyframe environment dimension does not match --num-envs: "
+                f"plan E={expected_envs}, envs={self.env.num_envs}"
+            )
+        frame_plans: list[np.ndarray] = []
+        q_plans: list[np.ndarray] = []
+        point_plans: list[np.ndarray] = []
+        normal_plans: list[np.ndarray] = []
+        kept_total = 0
+        for env_id in range(self.env.num_envs):
+            frames = frames_array[:, env_id].reshape(-1)
+            q_plan = q_array[:, env_id].reshape(-1, 16)
+            points = points_array[:, env_id].reshape(-1, 4, 3)
+            normals = normals_array[:, env_id].reshape(-1, 4, 3)
+            mask = valid_array[:, env_id].reshape(-1)
+            if not (
+                len(frames)
+                == len(q_plan)
+                == len(points)
+                == len(normals)
+                == len(mask)
+            ):
+                raise ValueError(
+                    "precomputed grasp keyframe arrays have different lengths"
+                )
+            finite = (
+                np.isfinite(q_plan).all(axis=1)
+                & np.isfinite(points).all(axis=(1, 2))
+                & np.isfinite(normals).all(axis=(1, 2))
+            )
+            keep = mask & finite
+            if int(np.count_nonzero(keep)) < 2:
+                raise ValueError(
+                    f"planner env {env_id} contains fewer than two valid "
+                    "stable grasp keyframes"
+                )
+            selected_frames = frames[keep]
+            order = np.argsort(selected_frames, kind="stable")
+            selected_frames = selected_frames[order]
+            unique = np.concatenate(([True], np.diff(selected_frames) > 0))
+            frame_plans.append(selected_frames[unique])
+            q_plans.append(q_plan[keep][order][unique])
+            point_plans.append(points[keep][order][unique])
+            selected_normals = normals[keep][order][unique]
+            selected_normals /= np.maximum(
+                np.linalg.norm(selected_normals, axis=-1, keepdims=True),
+                1.0e-12,
+            )
+            normal_plans.append(selected_normals)
+            kept_total += len(selected_frames[unique])
+        self.precomputed_keyframe_frames = frame_plans
+        self.precomputed_keyframe_q = q_plans
+        self.precomputed_keyframe_surface_object = point_plans
+        self.precomputed_keyframe_normal_object = normal_plans
+        print(
+            "[GRASP-KEYFRAMES] loaded offline stable plan: "
+            f"{kept_total} knots across {self.env.num_envs} envs"
+        )
 
     @staticmethod
     def _world_to_object(
@@ -2131,15 +2422,49 @@ class FullHandMCCCollectionPolicy:
         target_q = q_open.copy()
         hit = np.zeros(4, dtype=bool)
         chosen_fraction = np.full(4, float(np.clip(fallback_fraction, 0.0, 1.0)))
-        previous_sd: np.ndarray | None = None
-        previous_obs = None
+
+        # Build every FK probe first, then issue one exact surface query for
+        # the whole closure path.  The previous implementation called the
+        # high-resolution mesh oracle once per fraction (25 R-tree traversals
+        # per environment and control frame by default).  Batching preserves
+        # the identical samples, closest points and normals while reducing it
+        # to one traversal-friendly query.
+        sampled_tip_world: list[np.ndarray] = []
         for fraction in fractions:
             q = q_open + float(fraction) * (q_close - q_open)
             tip_palm = controller.tip_positions_palm(q)
-            tip_world = controller.points_palm_to_world(tip_palm, palm_pose_world)
-            observation = oracle.observe(tip_world)
-            sd = np.asarray(observation.signed_distance, dtype=np.float64)
-            if previous_sd is None:
+            sampled_tip_world.append(
+                controller.points_palm_to_world(tip_palm, palm_pose_world)
+            )
+
+        fallback_q = q_open + float(np.clip(fallback_fraction, 0.0, 1.0)) * (
+            q_close - q_open
+        )
+        fallback_tip = controller.points_palm_to_world(
+            controller.tip_positions_palm(fallback_q), palm_pose_world
+        )
+        query_world = np.concatenate(
+            (np.stack(sampled_tip_world, axis=0), fallback_tip[None, ...]),
+            axis=0,
+        )
+        observation = oracle.observe(query_world.reshape(-1, 3))
+        sample_count = len(fractions)
+        surface_points = np.asarray(
+            observation.points_world, dtype=np.float64
+        ).reshape(sample_count + 1, 4, 3)
+        surface_normals = np.asarray(
+            observation.normals_world, dtype=np.float64
+        ).reshape(sample_count + 1, 4, 3)
+        signed_distance = np.asarray(
+            observation.signed_distance, dtype=np.float64
+        ).reshape(sample_count + 1, 4)
+
+        previous_sd: np.ndarray | None = None
+        crossing_lower = np.zeros(4, dtype=np.float64)
+        crossing_upper = np.zeros(4, dtype=np.float64)
+        for sample_index, fraction in enumerate(fractions):
+            sd = signed_distance[sample_index]
+            if sample_index == 0:
                 # If the fully open endpoint is already inside the object,
                 # closing farther is exactly the wrong recovery direction:
                 # the object is pressing this finger from above.  Treat the
@@ -2150,31 +2475,88 @@ class FullHandMCCCollectionPolicy:
                 crossed = (previous_sd > 0.0) & (sd <= 0.0)
             for finger in np.flatnonzero(crossed & ~hit):
                 hit[finger] = True
-                chosen_fraction[finger] = float(fraction)
-                points[finger] = observation.points_world[finger]
-                normals[finger] = observation.normals_world[finger]
+                if sample_index == 0:
+                    crossing_lower[finger] = 0.0
+                    crossing_upper[finger] = 0.0
+                else:
+                    crossing_lower[finger] = float(fractions[sample_index - 1])
+                    crossing_upper[finger] = float(fraction)
             previous_sd = sd
-            previous_obs = observation
+
+        # A closure sample only brackets the surface crossing.  Using the
+        # first inside sample as the commanded posture can penetrate by one
+        # complete sampling interval (12.5% of the closure path for the
+        # common 9-sample setup).  On the ring finger this produced kN-scale
+        # collision forces and trapped the distal link behind the object.
+        # Refine all brackets together against the undecomposed source mesh;
+        # six bisection iterations reduce a 1/8 interval below 0.2% of the
+        # full closure path without returning to one mesh query per finger.
+        refinable = hit & (crossing_upper > crossing_lower)
+        lower = crossing_lower.copy()
+        upper = crossing_upper.copy()
+        for _ in range(6):
+            fingers = np.flatnonzero(refinable)
+            if len(fingers) == 0:
+                break
+            midpoint = 0.5 * (lower + upper)
+            probes = np.zeros((len(fingers), 3), dtype=np.float64)
+            for probe_index, finger in enumerate(fingers):
+                q_probe = q_open.copy()
+                block = slice(4 * finger, 4 * finger + 4)
+                q_probe[block] = q_open[block] + midpoint[finger] * (
+                    q_close[block] - q_open[block]
+                )
+                tip_palm = controller.tip_positions_palm(q_probe)[finger]
+                probes[probe_index] = controller.points_palm_to_world(
+                    tip_palm[None, :], palm_pose_world
+                )[0]
+            midpoint_sd = np.asarray(
+                oracle.observe(probes).signed_distance, dtype=np.float64
+            ).reshape(-1)
+            for probe_index, finger in enumerate(fingers):
+                if midpoint_sd[probe_index] > 0.0:
+                    lower[finger] = midpoint[finger]
+                else:
+                    upper[finger] = midpoint[finger]
+
+        # Use the outside edge of the refined bracket.  Contact pressure is
+        # intentionally introduced later by ``surface_preload_m``; geometry
+        # planning itself must never start from an interpenetrating q.
+        chosen_fraction[refinable] = lower[refinable]
+        chosen_fraction[hit & ~refinable] = 0.0
+        hit_fingers = np.flatnonzero(hit)
+        if len(hit_fingers):
+            refined_probes = np.zeros((len(hit_fingers), 3), dtype=np.float64)
+            for probe_index, finger in enumerate(hit_fingers):
+                q_probe = q_open.copy()
+                block = slice(4 * finger, 4 * finger + 4)
+                q_probe[block] = q_open[block] + chosen_fraction[finger] * (
+                    q_close[block] - q_open[block]
+                )
+                tip_palm = controller.tip_positions_palm(q_probe)[finger]
+                refined_probes[probe_index] = controller.points_palm_to_world(
+                    tip_palm[None, :], palm_pose_world
+                )[0]
+            refined_surface = oracle.observe(refined_probes)
+            points[hit_fingers] = np.asarray(
+                refined_surface.points_world, dtype=np.float64
+            )
+            normals[hit_fingers] = np.asarray(
+                refined_surface.normals_world, dtype=np.float64
+            )
         # Fingers without a geometric crossing use the partial-closure pose.
         for finger in range(4):
             block = slice(4 * finger, 4 * finger + 4)
             target_q[block] = q_open[block] + chosen_fraction[finger] * (
                 q_close[block] - q_open[block]
             )
-        if previous_obs is None:
-            raise RuntimeError("Closure path produced no surface observations")
-        fallback_tip = controller.points_palm_to_world(
-            controller.tip_positions_palm(q_open + float(np.clip(fallback_fraction, 0.0, 1.0)) * (q_close - q_open)),
-            palm_pose_world,
-        )
-        fallback_obs = oracle.observe(fallback_tip)
         for finger in np.flatnonzero(~hit):
             # No surface intersection means there is no valid Cartesian
             # contact target on this closure ray.  Hold the conservative
             # partial-grasp endpoint itself; chasing its nearest mesh point
             # can fold the finger underneath the object.
             points[finger] = fallback_tip[finger]
-            normals[finger] = fallback_obs.normals_world[finger]
+            normals[finger] = surface_normals[-1, finger]
         for finger in np.flatnonzero(hit):
             block = slice(4 * finger, 4 * finger + 4)
             target_q[block] = q_open[block] + chosen_fraction[finger] * (
@@ -2183,6 +2565,169 @@ class FullHandMCCCollectionPolicy:
         norms = np.linalg.norm(normals, axis=-1, keepdims=True)
         normals = normals / np.maximum(norms, 1.0e-12)
         return points, normals, target_q.reshape(16), hit
+
+    def _solve_future_grasp_keyframe(
+        self,
+        controller: FullHandMCCFingerController,
+        oracle: GeometrySurfaceOracle,
+        palm_pose_world: np.ndarray,
+        future_object_position: np.ndarray,
+        future_object_quaternion: np.ndarray,
+        seed_q: np.ndarray,
+        comfort_q: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, bool, float, float]:
+        """Alternating surface projection/IK for one future path keyframe.
+
+        The preceding accepted grasp is the branch seed.  This is important:
+        four independent nearest-point IK solves can each be geometrically
+        valid while collectively jumping to a folded or laterally crossed
+        hand.  Small-horizon continuation plus the fixed comfort posture
+        selects one continuous grasp branch.  The returned posture is only a
+        sparse boundary condition; live contacts and the differential QP own
+        every intermediate control tick.
+        """
+
+        oracle.set_pose(future_object_position, future_object_quaternion)
+        q = controller.clamp_joint_positions(seed_q).astype(np.float64)
+        comfort = controller.clamp_joint_positions(comfort_q).astype(
+            np.float64
+        )
+        maximum_residual = np.inf
+        maximum_pad_angle = np.inf
+        # Keyframes select a reachable *posture branch*, not contact force.
+        # The high-frequency MCC already supplies normal preload/admittance;
+        # duplicating its 3--4 mm penetration here produced 8--15 N median
+        # forces and destabilized otherwise good contacts.  Keep only a small
+        # numerical inward bias so the nominal lies on the contact side.
+        preload = 0.0005
+        for _ in range(self.grasp_keyframe_projection_iterations):
+            # Use the measured pad control point whenever available.  The
+            # fixed MCC site can differ from the physical contact centre by
+            # more than a centimetre, especially on the thumb.
+            tips_palm = controller.finger_control_points_palm(q)
+            tips_world = controller.points_palm_to_world(
+                tips_palm, palm_pose_world
+            )
+            surface = oracle.observe(tips_world)
+            surface_normals = oracle.normals_at_world(
+                np.asarray(surface.points_world, dtype=np.float64)
+            )
+            normals_palm = controller.vectors_world_to_palm(
+                surface_normals, palm_pose_world
+            )
+            # Only the signed normal distance is constrained.  The two
+            # tangent-plane coordinates stay free and are selected by the
+            # preceding grasp plus a null-space pull toward the comfortable
+            # loaded posture.  A full 3-D nearest-point target unnecessarily
+            # removes those freedoms and creates the folded IK branches this
+            # keyframe layer is intended to prevent.
+            distance_error = -preload - np.asarray(
+                surface.signed_distance, dtype=np.float64
+            )
+            controller._set_q(controller.data, q)
+            next_q = q.copy()
+            for finger in range(4):
+                block = slice(4 * finger, 4 * finger + 4)
+                jacobian = controller._finger_control_point_jacobian(finger)
+                normal_row = normals_palm[finger] @ jacobian
+                inverse = normal_row / (
+                    float(normal_row @ normal_row) + 1.0e-4
+                )
+                nullspace = np.eye(4) - np.outer(inverse, normal_row)
+                correction = inverse * distance_error[finger]
+                correction += nullspace @ (
+                    0.05 * (comfort[block] - q[block])
+                )
+                next_q[block] += np.clip(correction, -0.020, 0.020)
+            q = controller.clamp_joint_positions(next_q).astype(np.float64)
+            # Pad attitude is a soft side/opposition correction, followed on
+            # the next iteration by another exact normal-distance projection.
+            q = controller.orient_toward_surface_normals(
+                q,
+                palm_pose_world,
+                surface_normals,
+                max_joint_step=0.008,
+            ).astype(np.float64)
+            maximum_residual = float(np.max(np.abs(distance_error)))
+            maximum_pad_angle = float(
+                np.max(
+                    controller.pad_normal_errors(
+                        q, palm_pose_world, surface_normals
+                    )
+                )
+            )
+            if maximum_residual <= 0.0005 and maximum_pad_angle <= np.deg2rad(45.0):
+                break
+
+        final_tips_world = controller.points_palm_to_world(
+            controller.finger_control_points_palm(q), palm_pose_world
+        )
+        final_surface = oracle.observe(final_tips_world)
+        final_normals = oracle.normals_at_world(final_surface.points_world)
+        maximum_residual = float(
+            np.max(
+                np.abs(
+                    -preload
+                    - np.asarray(
+                        final_surface.signed_distance, dtype=np.float64
+                    )
+                )
+            )
+        )
+        maximum_pad_angle = float(
+            np.max(
+                controller.pad_normal_errors(
+                    q, palm_pose_world, final_normals
+                )
+            )
+        )
+        synergy_spread, synergy_residual = (
+            controller.flexion_synergy_metrics(q)
+        )
+        comfort_deviation = float(np.max(np.abs(q - comfort)))
+        valid = bool(
+            np.isfinite(q).all()
+            and maximum_residual <= 0.0015
+            and maximum_pad_angle <= np.deg2rad(70.0)
+            # ``spread`` divides each joint by its open->grasp travel.  A
+            # nearly stationary distal coordinate therefore makes that ratio
+            # ill-conditioned and rejected otherwise natural s208 grasps.
+            # Use the direct joint-space distance to the stable loaded grasp
+            # plus the dimensioned synergy residual instead.
+            and comfort_deviation <= 0.90
+            and float(np.max(synergy_residual)) <= 0.35
+        )
+        if os.environ.get("MCC_DEBUG_KEYFRAME") and not valid:
+            print(
+                "[GRASP-KEYFRAME-REJECT] "
+                f"surface={maximum_residual * 1000.0:.2f}mm "
+                f"pad={np.rad2deg(maximum_pad_angle):.1f}deg "
+                f"comfort={comfort_deviation:.3f}rad "
+                f"synergy_spread={np.round(synergy_spread, 2).tolist()} "
+                f"synergy_residual={np.round(synergy_residual, 3).tolist()}",
+                flush=True,
+            )
+        future_rotation = R.from_quat(
+            np.asarray(future_object_quaternion, dtype=np.float64)[[1, 2, 3, 0]]
+        ).as_matrix()
+        final_points_object = (
+            future_rotation.T
+            @ (
+                np.asarray(final_surface.points_world, dtype=np.float64)
+                - np.asarray(future_object_position, dtype=np.float64)
+            ).T
+        ).T
+        final_normals_object = (
+            future_rotation.T @ np.asarray(final_normals, dtype=np.float64).T
+        ).T
+        return (
+            q,
+            final_points_object,
+            final_normals_object,
+            valid,
+            maximum_residual,
+            maximum_pad_angle,
+        )
 
     def reset(self) -> None:
         self.palm_controller.reset()
@@ -2209,10 +2754,27 @@ class FullHandMCCCollectionPolicy:
         self.static_contact_q_valid.fill(False)
         self.hybrid_grasp_q_ref.fill(0.0)
         self.hybrid_grasp_valid.fill(False)
+        self.grasp_keyframe_start_q.fill(0.0)
+        self.grasp_keyframe_goal_q.fill(0.0)
+        self.grasp_keyframe_reference_q.fill(0.0)
+        self.grasp_keyframe_start_surface_object.fill(0.0)
+        self.grasp_keyframe_goal_surface_object.fill(0.0)
+        self.grasp_keyframe_reference_surface_object.fill(0.0)
+        self.grasp_keyframe_progress.fill(0)
+        self.grasp_keyframe_valid.fill(False)
+        self.grasp_keyframe_max_residual_m.fill(np.nan)
+        self.grasp_keyframe_max_pad_angle_rad.fill(np.nan)
         self.previous_target_palm.fill(0.0)
         self.previous_target_valid.fill(False)
+        self.previous_motion_active.fill(False)
         self.planner_query_world.fill(0.0)
         self.planner_query_valid.fill(False)
+        self.cached_tip_signed_distance.fill(0.0)
+        self.cached_tip_surface_valid.fill(False)
+        self.geometry_contact_q.fill(0.0)
+        self.geometry_contact_surface_object.fill(0.0)
+        self.geometry_contact_normal_object.fill(0.0)
+        self.geometry_contact_valid.fill(False)
         self.palm_correction_world.fill(0.0)
         self.palm_surface_normal_world.fill(0.0)
         self.palm_surface_normal_valid.fill(False)
@@ -2233,11 +2795,100 @@ class FullHandMCCCollectionPolicy:
         self.palm_preview_object_pose_world.fill(0.0)
         self.unloaded_streak.fill(0)
 
+    def restart_contact_manifold(self) -> None:
+        """Discard contacts that belong to the pre-inversion object pose.
+
+        ``planner_inverse`` first settles the arm with the object at its reset
+        pose and then places the object at the first planned relative pose.
+        Contact anchors, normals and a calibrated grasp from the reset pose are
+        invalid after that placement.  Palm MCC state is intentionally kept;
+        only the four-finger planner/MCC state is rebuilt during the dedicated
+        planner-settle interval.
+        """
+
+        for controller in self.controllers:
+            controller.reset()
+        self.anchor_points_object.fill(0.0)
+        self.anchor_valid.fill(False)
+        self.last_contact_points_object.fill(0.0)
+        self.last_contact_valid.fill(False)
+        self.last_surface_points_object.fill(0.0)
+        self.last_surface_normals_object.fill(0.0)
+        self.last_surface_valid.fill(False)
+        self.site_standoff_m.fill(0.0)
+        self.loaded_streak.fill(0)
+        self.contact_settle_streak.fill(0)
+        self.contact_calibrated.fill(False)
+        self.precontact_base_valid.fill(False)
+        self.precontact_closure.fill(0.0)
+        self.loaded_nominal_q.fill(0.0)
+        self.loaded_nominal_valid.fill(False)
+        self.static_contact_q_valid.fill(False)
+        self.hybrid_grasp_q_ref.fill(0.0)
+        self.hybrid_grasp_valid.fill(False)
+        self.previous_target_palm.fill(0.0)
+        self.previous_target_valid.fill(False)
+        self.previous_motion_active.fill(False)
+        self.planner_query_world.fill(0.0)
+        self.planner_query_valid.fill(False)
+        self.cached_tip_signed_distance.fill(0.0)
+        self.cached_tip_surface_valid.fill(False)
+        self.geometry_contact_q.fill(0.0)
+        self.geometry_contact_surface_object.fill(0.0)
+        self.geometry_contact_normal_object.fill(0.0)
+        self.geometry_contact_valid.fill(False)
+
     def set_motion_preview_controller(
         self, controller: ObjectMotionController
     ) -> None:
         """Attach the privileged object trajectory generator used by collection."""
         self.motion_preview_controller = controller
+
+    def _update_precomputed_grasp_reference(self, env_id: int) -> bool:
+        """Interpolate the offline keyframes bracketing the live plan frame."""
+
+        frame_plans = self.precomputed_keyframe_frames
+        if (
+            frame_plans is None
+            or self.precomputed_keyframe_q is None
+            or self.precomputed_keyframe_surface_object is None
+            or not isinstance(
+                self.motion_preview_controller,
+                InversePlannedPalmObjectController,
+            )
+        ):
+            return False
+        frames = frame_plans[env_id]
+        q_plan = self.precomputed_keyframe_q[env_id]
+        surface_plan = self.precomputed_keyframe_surface_object[env_id]
+        frame = self.motion_preview_controller.source_plan_index(env_id)
+        right = int(np.searchsorted(frames, frame, side="right"))
+        right = min(max(right, 1), len(frames) - 1)
+        left = right - 1
+        denominator = max(int(frames[right] - frames[left]), 1)
+        phase = float(np.clip((frame - frames[left]) / denominator, 0.0, 1.0))
+        smooth = phase * phase * (3.0 - 2.0 * phase)
+        self.grasp_keyframe_start_q[env_id] = q_plan[left]
+        self.grasp_keyframe_goal_q[env_id] = q_plan[right]
+        self.grasp_keyframe_reference_q[env_id] = (
+            (1.0 - smooth) * q_plan[left]
+            + smooth * q_plan[right]
+        )
+        self.grasp_keyframe_start_surface_object[env_id] = (
+            surface_plan[left]
+        )
+        self.grasp_keyframe_goal_surface_object[env_id] = (
+            surface_plan[right]
+        )
+        self.grasp_keyframe_reference_surface_object[env_id] = (
+            (1.0 - smooth) * surface_plan[left]
+            + smooth * surface_plan[right]
+        )
+        self.grasp_keyframe_valid[env_id] = True
+        self.grasp_keyframe_progress[env_id] = frame
+        self.grasp_keyframe_max_residual_m[env_id] = 0.0
+        self.grasp_keyframe_max_pad_angle_rad[env_id] = 0.0
+        return True
 
     @staticmethod
     def _align_world_vectors(source: np.ndarray, target: np.ndarray) -> R:
@@ -2391,6 +3042,10 @@ class FullHandMCCCollectionPolicy:
             motion_active_batch = np.zeros(self.env.num_envs, dtype=bool)
 
         q_command_batch = q_hand_batch.copy().astype(np.float32)
+        # Task/planner intent before FullHandMCC force/contact correction.
+        # Keep this distinct from q_command_batch: the former is the DP
+        # supervision target, while the latter is the low-level command.
+        q_prior_batch = q_hand_batch.copy().astype(np.float32)
         tip_surface_world = np.zeros((self.env.num_envs, 4, 3), dtype=np.float32)
         tip_reference_world = np.zeros_like(tip_surface_world)
         tip_ik_world = np.zeros_like(tip_surface_world)
@@ -2401,6 +3056,12 @@ class FullHandMCCCollectionPolicy:
         closure_hit_batch = np.zeros((self.env.num_envs, 4), dtype=bool)
         normal_force_batch = np.zeros((self.env.num_envs, 4), dtype=np.float32)
         normal_offset_batch = np.zeros_like(normal_force_batch)
+        pad_contact_valid_batch = np.zeros(
+            (self.env.num_envs, 4), dtype=bool
+        )
+        contact_point_tip_local_batch = np.full(
+            (self.env.num_envs, 4, 3), np.nan, dtype=np.float32
+        )
         contact_phase_batch = np.zeros(
             (self.env.num_envs, 4), dtype=np.float32
         )
@@ -2419,6 +3080,10 @@ class FullHandMCCCollectionPolicy:
             (self.env.num_envs, 16), dtype=np.float32
         )
         qp_target_tip_velocity = np.zeros_like(tip_surface_world)
+        qp_tangent_delta_velocity = np.zeros_like(tip_surface_world)
+        qp_force_normal_velocity = np.zeros(
+            (self.env.num_envs, 4), dtype=np.float32
+        )
         qp_normal_velocity_error = np.zeros(
             (self.env.num_envs, 4), dtype=np.float32
         )
@@ -2437,7 +3102,18 @@ class FullHandMCCCollectionPolicy:
             oracle.set_pose(object_pos_batch[env_id], object_quat_batch[env_id])
             current_rotation = oracle.rotation_world_from_object
             current_center = oracle.center_world
-            measured_contact = found_batch[env_id]
+            pad_contact_valid, contact_point_tip_local = (
+                controller.pad_contact_validity(
+                    q_hand_batch[env_id],
+                    palm_pose_batch[env_id],
+                    contact_pos_batch[env_id],
+                    found_batch[env_id],
+                )
+            )
+            pad_contact_valid_batch[env_id] = pad_contact_valid
+            contact_point_tip_local_batch[env_id] = contact_point_tip_local
+            effective_found = found_batch[env_id] & pad_contact_valid
+            measured_contact = effective_found
             if np.any(measured_contact):
                 self.last_contact_points_object[
                     env_id, measured_contact
@@ -2448,12 +3124,188 @@ class FullHandMCCCollectionPolicy:
                 )
                 self.last_contact_valid[env_id, measured_contact] = True
             magnitude = force_magnitude_batch[env_id]
-            loaded = found_batch[env_id] & (
+            loaded = effective_found & (
                 magnitude >= self.anchor_force_threshold
             )
             object_is_moving = False
             if self.motion_preview_controller is not None:
                 object_is_moving = bool(motion_active_batch[env_id])
+            motion_just_started = bool(
+                object_is_moving
+                and not self.previous_motion_active[env_id]
+            )
+            if motion_just_started and self.manifold_qp_velocity:
+                # The inverse planner first teleports the object to path[0]
+                # and holds it while the physical fingers settle.  Seed the
+                # differential reference from that *post-settle* grasp, not
+                # from the pre-teleport closure plan retained during prep.
+                self.hybrid_grasp_q_ref[env_id] = q_hand_batch[env_id]
+                self.hybrid_grasp_valid[env_id].fill(True)
+                controller.previous_qp_velocity.fill(0.0)
+                controller.filtered_qp_target_velocity.fill(0.0)
+                self.previous_target_valid[env_id] = False
+                self.grasp_keyframe_progress[env_id] = (
+                    self.grasp_keyframe_interval_frames
+                )
+            self.previous_motion_active[env_id] = object_is_moving
+
+            # Sparse privileged grasp boundary conditions.  The future pose
+            # is queried only once per interval; all intermediate motion is
+            # still produced by measured-contact transport and the local QP.
+            if (
+                self.precomputed_keyframe_frames is not None
+                and self.manifold_qp_velocity
+                and self.contact_calibrated[env_id]
+            ):
+                self._update_precomputed_grasp_reference(env_id)
+            keyframe_settle_active = bool(
+                self.precomputed_keyframe_frames is not None
+                and self.grasp_keyframe_valid[env_id]
+                and self.contact_calibrated[env_id]
+                and not object_is_moving
+            )
+            if (
+                self.precomputed_keyframe_frames is None
+                and self.grasp_keyframe_interval_frames > 0
+                and self.manifold_qp_velocity
+                and self.contact_calibrated[env_id]
+                and object_is_moving
+                and self.motion_preview_controller is not None
+            ):
+                interval = self.grasp_keyframe_interval_frames
+                if self.grasp_keyframe_progress[env_id] >= interval:
+                    horizon = interval * float(controller.config.control_dt)
+                    future_pos_t, future_quat_t = (
+                        self.motion_preview_controller.preview_pose(horizon)
+                    )
+                    future_pos = future_pos_t.detach().cpu().numpy()[env_id]
+                    future_quat = future_quat_t.detach().cpu().numpy()[env_id]
+                    previous_keyframe_valid = bool(
+                        self.grasp_keyframe_valid[env_id]
+                    )
+                    # Continue exactly from the accepted keyframe chain.
+                    # Resetting every segment to hybrid_grasp_q_ref introduced
+                    # a 5--15 mm outward fingertip jump at segment boundaries
+                    # even when both adjacent keyframes were individually
+                    # feasible.
+                    start_q = (
+                        self.grasp_keyframe_reference_q[env_id].copy()
+                        if previous_keyframe_valid
+                        else (
+                            self.hybrid_grasp_q_ref[env_id].copy()
+                            if np.all(self.hybrid_grasp_valid[env_id])
+                            else q_hand_batch[env_id].copy()
+                        )
+                    )
+                    comfort_q = (
+                        self.loaded_nominal_q[env_id]
+                        if self.loaded_nominal_valid[env_id]
+                        else start_q
+                    )
+                    (
+                        goal_q,
+                        goal_surface_object,
+                        _goal_normal_object,
+                        valid_keyframe,
+                        residual,
+                        pad_angle,
+                    ) = (
+                        self._solve_future_grasp_keyframe(
+                            controller,
+                            oracle,
+                            palm_pose_batch[env_id],
+                            future_pos,
+                            future_quat,
+                            start_q,
+                            comfort_q,
+                        )
+                    )
+                    # The keyframe solver temporarily installs the future
+                    # object pose in the oracle.  Restore the physical pose
+                    # before any live contact or recovery computation.
+                    oracle.set_pose(
+                        object_pos_batch[env_id],
+                        object_quat_batch[env_id],
+                    )
+                    if previous_keyframe_valid:
+                        start_surface_object = (
+                            self.grasp_keyframe_reference_surface_object[
+                                env_id
+                            ].copy()
+                        )
+                    else:
+                        # Start the first local segment exactly at the
+                        # physically loaded pad contacts.  Project once onto
+                        # the source mesh to remove collision-margin bias,
+                        # then keep the material coordinates fixed for this
+                        # keyframe interval.
+                        start_probe_world = np.where(
+                            measured_contact[:, None],
+                            contact_pos_batch[env_id],
+                            tip_world_batch[env_id],
+                        )
+                        start_surface = oracle.observe(start_probe_world)
+                        start_surface_object = self._world_to_object(
+                            np.asarray(
+                                start_surface.points_world,
+                                dtype=np.float64,
+                            ),
+                            current_center,
+                            current_rotation,
+                        )
+                    self.grasp_keyframe_start_q[env_id] = start_q
+                    self.grasp_keyframe_goal_q[env_id] = (
+                        goal_q if valid_keyframe else start_q
+                    )
+                    self.grasp_keyframe_start_surface_object[env_id] = (
+                        start_surface_object
+                    )
+                    self.grasp_keyframe_goal_surface_object[env_id] = (
+                        goal_surface_object
+                        if valid_keyframe
+                        else start_surface_object
+                    )
+                    # An invalid future grasp is held locally for one
+                    # interval.  Keeping an older goal active after its time
+                    # horizon has elapsed would command a stale tangential
+                    # relocation and can drag a healthy contact away.
+                    self.grasp_keyframe_valid[env_id] = bool(valid_keyframe)
+                    self.grasp_keyframe_max_residual_m[env_id] = residual
+                    self.grasp_keyframe_max_pad_angle_rad[env_id] = pad_angle
+                    self.grasp_keyframe_progress[env_id] = 0
+                    if os.environ.get("MCC_DEBUG_KEYFRAME"):
+                        print(
+                            f"[GRASP-KEYFRAME] env={env_id} "
+                            f"call={self._call_count} valid={valid_keyframe} "
+                            f"residual={residual * 1000.0:.2f}mm "
+                            f"pad={np.rad2deg(pad_angle):.1f}deg",
+                            flush=True,
+                        )
+                phase = np.clip(
+                    self.grasp_keyframe_progress[env_id]
+                    / max(float(interval), 1.0),
+                    0.0,
+                    1.0,
+                )
+                smooth_phase = phase * phase * (3.0 - 2.0 * phase)
+                self.grasp_keyframe_reference_q[env_id] = (
+                    (1.0 - smooth_phase)
+                    * self.grasp_keyframe_start_q[env_id]
+                    + smooth_phase * self.grasp_keyframe_goal_q[env_id]
+                )
+                self.grasp_keyframe_reference_surface_object[env_id] = (
+                    (1.0 - smooth_phase)
+                    * self.grasp_keyframe_start_surface_object[env_id]
+                    + smooth_phase
+                    * self.grasp_keyframe_goal_surface_object[env_id]
+                )
+                self.grasp_keyframe_progress[env_id] += 1
+            elif (
+                self.precomputed_keyframe_frames is None
+                and not object_is_moving
+            ):
+                self.grasp_keyframe_progress[env_id] = 0
+                self.grasp_keyframe_valid[env_id] = False
             synergy_spread, synergy_residual = (
                 controller.flexion_synergy_metrics(q_hand_batch[env_id])
             )
@@ -2461,9 +3313,9 @@ class FullHandMCCCollectionPolicy:
             # perfect kinematic synergy.  It catches the visually degenerate
             # branch where one phalanx is folded while the others are open.
             shape_degenerate = (
-                (synergy_spread > 2.0) | (synergy_residual > 0.35)
+                (synergy_spread > 1.25) | (synergy_residual > 0.25)
             )
-            precontact_loaded = found_batch[env_id] & (
+            precontact_loaded = effective_found & (
                 magnitude >= self.precontact_force_threshold
             )
             if not self.contact_calibrated[env_id]:
@@ -2514,30 +3366,140 @@ class FullHandMCCCollectionPolicy:
                     > controller.config.transient_loss_frames
                 )
             )
-            nearest = oracle.observe(query_world)
-            sd_debug[env_id] = nearest.signed_distance
+            palm_surface_update_due = bool(
+                self.enable_privileged_palm_follow
+                and not bool(palm_in_prep[env_id])
+                and self.contact_calibrated[env_id]
+                and (
+                    not self.palm_surface_standoff_valid[env_id]
+                    or self._call_count
+                    % self.palm_protection_update_decimation
+                    == 0
+                )
+            )
+            # Before contact calibration the surface query remains part of
+            # grasp construction.  During stable differential tracking it is
+            # consumed only by the decimated palm-workspace optimization;
+            # the fingertip QP itself uses measured contacts and the known
+            # rigid-object twist.  Avoid the former unconditional per-frame
+            # closest-point query on the high-resolution visual mesh.
+            tip_surface_query_due = bool(
+                not (
+                    self.manifold_qp_velocity
+                    and self.contact_calibrated[env_id]
+                )
+                or palm_surface_update_due
+                or not self.cached_tip_surface_valid[env_id]
+            )
+            if tip_surface_query_due:
+                tip_surface = oracle.observe(query_world)
+                self.cached_tip_signed_distance[env_id] = (
+                    tip_surface.signed_distance
+                )
+                self.cached_tip_surface_valid[env_id] = True
+            sd_debug[env_id] = self.cached_tip_signed_distance[env_id]
             rotation = oracle.rotation_world_from_object
             center = oracle.center_world
 
-            # Finger targets come from the open->fixed-grasp closure path,
-            # not from an arbitrary nearest point at the current live q.
-            closure_surface, closure_normals, closure_q, closure_hit = (
-                self._closure_surface_targets(
-                    controller,
-                    oracle,
-                    palm_pose_batch[env_id],
-                    samples=self.closure_path_samples,
-                    fallback_fraction=self.closure_path_fallback_fraction,
+            if self.manifold_qp_velocity and self.contact_calibrated[env_id]:
+                # After all four pads have established contact, stop replanning
+                # from the synthetic open->closure samples.  Those samples are
+                # fixed MCC sites and need not coincide with the physical pad
+                # contact returned by MuJoCo.  The differential planner instead
+                # starts from the latest measured material contacts, transported
+                # by the known object pose; closure-path remains only an initial
+                # contact/fallback mechanism.
+                closure_q = (
+                    self.grasp_keyframe_reference_q[env_id].copy()
+                    if self.grasp_keyframe_valid[env_id]
+                    else (
+                        self.hybrid_grasp_q_ref[env_id].copy()
+                        if np.all(self.hybrid_grasp_valid[env_id])
+                        else self.loaded_nominal_q[env_id].copy()
+                    )
                 )
-            )
-            # Apply the normal-facing correction to the selected closure
-            # posture itself, so direct force-servo mode does not discard the
-            # orientation objective when it builds q_cmd from nominal_q.
-            closure_q = controller.orient_toward_surface_normals(
-                closure_q,
-                palm_pose_batch[env_id],
-                closure_normals,
-            ).astype(np.float64)
+                closure_hit = self.last_contact_valid[env_id].copy()
+                closure_surface = tip_world_batch[env_id].astype(
+                    np.float64, copy=True
+                )
+                if np.any(closure_hit):
+                    closure_surface[closure_hit] = self._object_to_world(
+                        self.last_contact_points_object[env_id, closure_hit],
+                        center,
+                        rotation,
+                    )
+                closure_normals = oracle.normals_at_world(closure_surface)
+            elif self.precomputed_keyframe_q is not None:
+                # The offline constrained geometry optimizer already solved
+                # reachability, manipulability, pad attitude, lateral spacing
+                # and temporal continuity.  Use its first accepted contact
+                # directly for initialization; never reconstruct it through a
+                # synthetic open->grasp intersection.
+                closure_q = self.precomputed_keyframe_q[env_id][0].copy()
+                surface_object = self.precomputed_keyframe_surface_object[
+                    env_id
+                ][0]
+                closure_surface = self._object_to_world(
+                    surface_object, center, rotation
+                )
+                closure_normals = oracle.normals_at_world(closure_surface)
+                closure_hit = np.ones(4, dtype=bool)
+                self.geometry_contact_q[env_id] = closure_q
+                self.geometry_contact_surface_object[env_id] = surface_object
+                self.geometry_contact_normal_object[env_id] = (
+                    rotation.T @ closure_normals.T
+                ).T
+                self.geometry_contact_valid[env_id] = True
+            else:
+                # Planner-less collection uses the same direct constrained
+                # geometry solve once and caches the resulting material
+                # contacts.  This fallback is slower than loading offline
+                # keyframes but has identical semantics and no closure path.
+                if not self.geometry_contact_valid[env_id]:
+                    closure_q, geometry_debug = (
+                        controller.solve_geometry_contact_posture(
+                            oracle,
+                            palm_pose_batch[env_id],
+                            q_hand_batch[env_id],
+                            controller.grasp_closure_q,
+                            preload_m=self.surface_preload_m,
+                            projection_iterations=12,
+                            posture_gain=0.03,
+                            multistart=True,
+                        )
+                    )
+                    closure_surface = np.asarray(
+                        geometry_debug["surface_point_world"],
+                        dtype=np.float64,
+                    )
+                    closure_normals = np.asarray(
+                        geometry_debug["surface_normal_world"],
+                        dtype=np.float64,
+                    )
+                    self.geometry_contact_q[env_id] = closure_q
+                    self.geometry_contact_surface_object[env_id] = (
+                        self._world_to_object(
+                            closure_surface, center, rotation
+                        )
+                    )
+                    self.geometry_contact_normal_object[env_id] = (
+                        rotation.T @ closure_normals.T
+                    ).T
+                    self.geometry_contact_valid[env_id] = bool(
+                        geometry_debug["valid"]
+                    )
+                else:
+                    closure_q = self.geometry_contact_q[env_id].copy()
+                    closure_surface = self._object_to_world(
+                        self.geometry_contact_surface_object[env_id],
+                        center,
+                        rotation,
+                    )
+                    closure_normals = (
+                        rotation
+                        @ self.geometry_contact_normal_object[env_id].T
+                    ).T
+                closure_hit = np.ones(4, dtype=bool)
             closure_target_q_batch[env_id] = closure_q
             closure_hit_batch[env_id] = closure_hit
 
@@ -2555,7 +3517,7 @@ class FullHandMCCCollectionPolicy:
             # loaded q branch.  Motion, persistent loss, or a folded hand
             # shape releases it immediately and returns ownership to the
             # closure-path planner.
-            if object_is_moving:
+            if object_is_moving or keyframe_settle_active:
                 self.static_contact_q_valid[env_id].fill(False)
             else:
                 release_static = predicted_persistent | shape_degenerate
@@ -2600,12 +3562,42 @@ class FullHandMCCCollectionPolicy:
             # the closure arrays is numerically identical.
             surface_points = transported
             normals = closure_normals.astype(np.float64, copy=False)
+            keyframe_surface_world: np.ndarray | None = None
             # Force direction comes from the undecomposed source mesh at the
             # measured 3-D contact, never from a V-HACD part or its seam.
-            if np.any(loaded):
-                normals[loaded] = oracle.normals_at_world(
-                    contact_pos_batch[env_id, loaded]
+            if np.any(measured_contact):
+                normals[measured_contact] = oracle.normals_at_world(
+                    contact_pos_batch[env_id, measured_contact]
                 )
+            if (
+                self.grasp_keyframe_valid[env_id]
+                and (object_is_moving or keyframe_settle_active)
+            ):
+                # Project the smoothly interpolated object-material anchors
+                # back to the exact source mesh.  This yields a short local
+                # surface path between stable grasp keyframes; the online QP
+                # will follow only its tangent component.
+                keyframe_probe_world = self._object_to_world(
+                    self.grasp_keyframe_reference_surface_object[env_id],
+                    center,
+                    rotation,
+                )
+                keyframe_surface = oracle.observe(keyframe_probe_world)
+                keyframe_surface_world = np.asarray(
+                    keyframe_surface.points_world, dtype=np.float64
+                )
+                keyframe_normals_world = oracle.normals_at_world(
+                    keyframe_surface_world
+                )
+                surface_points = surface_points.copy()
+                surface_points[:] = keyframe_surface_world
+                # Real contact normals remain authoritative for loaded pads;
+                # keyframe normals are used only where no sensor contact is
+                # available yet.
+                normals = normals.copy()
+                normals[~measured_contact] = keyframe_normals_world[
+                    ~measured_contact
+                ]
             static_valid = self.static_contact_q_valid[env_id]
             if np.any(static_valid):
                 # No tangential target motion while the object is stopped.
@@ -2642,9 +3634,104 @@ class FullHandMCCCollectionPolicy:
             # endpoint and must remain a posture hold, not a nearest-surface
             # recovery command.
             preload = self.surface_preload_m * closure_hit.astype(np.float64)
+            manifold_preload_m = max(self.surface_preload_m, 0.004)
             kinematic_targets = surface_points + (
                 self.site_standoff_m[env_id, :, None] - preload[:, None]
             ) * normals
+            # A calibrated finger that just lost contact must search from its
+            # last measured physical pad point, transported with the current
+            # object pose.  Falling back to the open->grasp oracle here is
+            # wrong when that path has no geometric intersection (the common
+            # mustard ring-finger case).
+            manifold_recovery_seed = np.zeros(4, dtype=bool)
+            if (
+                self.manifold_qp_velocity
+                and self.contact_calibrated[env_id]
+                and object_is_moving
+            ):
+                manifold_recovery_seed = (
+                    ~loaded
+                    & ~predicted_persistent
+                    & self.last_contact_valid[env_id]
+                )
+                if np.any(manifold_recovery_seed):
+                    recovered_points = self._object_to_world(
+                        self.last_contact_points_object[
+                            env_id, manifold_recovery_seed
+                        ],
+                        center,
+                        rotation,
+                    )
+                    recovered_normals = oracle.normals_at_world(
+                        recovered_points
+                    )
+                    normals[manifold_recovery_seed] = recovered_normals
+                    kinematic_targets[manifold_recovery_seed] = (
+                        recovered_points
+                        - manifold_preload_m
+                        * recovered_normals
+                    )
+                    preload[manifold_recovery_seed] = (
+                        manifold_preload_m
+                    )
+                # A persistent loss is not a sensor dropout.  The last
+                # material point may have rotated outside the finger's
+                # comfortable workspace, so chasing it indefinitely cannot
+                # restore contact on a bottle shoulder/cap.  Replan only the
+                # lost fingers from the once-loaded natural grasp, project
+                # those probes onto the *current* surface, and let FullHandMCC
+                # recover to the new absolute target.  Healthy fingers keep
+                # their measured contact-manifold references unchanged.
+                persistent_replan = predicted_persistent
+                if np.any(persistent_replan):
+                    comfort_q = (
+                        self.loaded_nominal_q[env_id]
+                        if self.loaded_nominal_valid[env_id]
+                        else q_hand_batch[env_id]
+                    )
+                    comfort_points_palm = (
+                        controller.finger_control_points_palm(comfort_q)
+                    )
+                    comfort_points_world = controller.points_palm_to_world(
+                        comfort_points_palm,
+                        palm_pose_batch[env_id],
+                    )
+                    replanned_surface = oracle.observe(comfort_points_world)
+                    replanned_points = np.asarray(
+                        replanned_surface.points_world, dtype=np.float64
+                    )
+                    replanned_normals = oracle.normals_at_world(
+                        replanned_points
+                    )
+                    normals[persistent_replan] = replanned_normals[
+                        persistent_replan
+                    ]
+                    kinematic_targets[persistent_replan] = (
+                        replanned_points[persistent_replan]
+                        - manifold_preload_m
+                        * replanned_normals[persistent_replan]
+                    )
+                    for finger in np.flatnonzero(persistent_replan):
+                        block = slice(4 * finger, 4 * finger + 4)
+                        closure_q[block] = comfort_q[block]
+                    closure_target_q_batch[env_id] = closure_q
+                    closure_hit_batch[env_id, persistent_replan] = True
+                    preload[persistent_replan] = manifold_preload_m
+            # Once a pad is physically loaded, its measured collision point is
+            # the authoritative contact target.  The source-mesh projection
+            # above is still used for normals and for fingers that are being
+            # recovered, but it must not replace a real pad point with a
+            # nearby visual-mesh point (especially on the mustard bottle
+            # shoulder/label transition).
+            if (
+                self.manifold_qp_velocity
+                and self.contact_calibrated[env_id]
+                and np.any(measured_contact)
+            ):
+                kinematic_targets[loaded] = (
+                    contact_pos_batch[env_id, loaded]
+                    - manifold_preload_m * normals[loaded]
+                )
             current_target_palm = controller.points_world_to_palm(
                 kinematic_targets, palm_pose_batch[env_id]
             ).astype(np.float64)
@@ -2656,21 +3743,89 @@ class FullHandMCCCollectionPolicy:
                 target_velocity_palm = np.zeros((4, 3), dtype=np.float64)
             target_velocity_palm[static_valid] = 0.0
 
+            # Predict the rigid-object twist over a short horizon and
+            # transport each *measured* contact point with it.  This is the
+            # local contact-manifold tangent/normal velocity used by the QP;
+            # it does not depend on the oracle's nearest point being the same
+            # as the physical pad centre.
+            if (
+                self.manifold_qp_velocity
+                and object_is_moving
+                and np.any(loaded)
+                and self.motion_preview_controller is not None
+            ):
+                horizon = max(
+                    float(controller.config.control_dt),
+                    min(0.05, float(self.palm_motion_preview_s)),
+                )
+                future_pos_t, future_quat_t = (
+                    self.motion_preview_controller.preview_pose(horizon)
+                )
+                future_pos = future_pos_t.detach().cpu().numpy()
+                future_quat = future_quat_t.detach().cpu().numpy()
+                rotation_now = R.from_quat(
+                    object_quat_batch[env_id][[1, 2, 3, 0]]
+                ).as_matrix()
+                rotation_future = R.from_quat(
+                    future_quat[env_id][[1, 2, 3, 0]]
+                ).as_matrix()
+                relative_rotation = rotation_future @ rotation_now.T
+                angular_velocity_world = (
+                    R.from_matrix(relative_rotation).as_rotvec() / horizon
+                )
+                linear_velocity_world = (
+                    future_pos[env_id] - object_pos_batch[env_id]
+                ) / horizon
+                contact_velocity_world = linear_velocity_world + np.cross(
+                    np.broadcast_to(angular_velocity_world, (4, 3)),
+                    contact_pos_batch[env_id] - object_pos_batch[env_id],
+                )
+                contact_velocity_palm = controller.vectors_world_to_palm(
+                    contact_velocity_world,
+                    palm_pose_batch[env_id],
+                )
+                target_velocity_palm[measured_contact] = (
+                    contact_velocity_palm[measured_contact]
+                )
+
+            if keyframe_surface_world is not None:
+                # Differential relocation toward the next stable grasp.  The
+                # error is stripped of its normal component, because pressure
+                # is owned by the force term in solve_contact_velocity_qp().
+                # A hard Cartesian speed cap makes every 10 ms update a small
+                # tangent-plane delta instead of a direct point-to-point IK
+                # jump.
+                control_points_world = np.where(
+                    measured_contact[:, None],
+                    contact_pos_batch[env_id],
+                    tip_world_batch[env_id],
+                )
+                relocation_error_palm = controller.vectors_world_to_palm(
+                    keyframe_surface_world - control_points_world,
+                    palm_pose_batch[env_id],
+                )
+                normals_palm = controller.vectors_world_to_palm(
+                    normals, palm_pose_batch[env_id]
+                )
+                tangent_error = relocation_error_palm - np.einsum(
+                    "ij,ij->i", relocation_error_palm, normals_palm
+                )[:, None] * normals_palm
+                tangent_velocity = 2.0 * tangent_error
+                tangent_speed = np.linalg.norm(
+                    tangent_velocity, axis=-1, keepdims=True
+                )
+                tangent_velocity *= np.minimum(
+                    1.0, 0.008 / np.maximum(tangent_speed, 1.0e-9)
+                )
+                target_velocity_palm[measured_contact] += tangent_velocity[
+                    measured_contact
+                ]
+
             # Privileged predictive palm standoff.  Query the densely sampled
             # outline of the object-facing palm plane against current and
             # preview object poses.  The outline point with the largest
             # safety-distance violation drives the normal correction.
-            if (
-                self.enable_privileged_palm_follow
-                and not bool(palm_in_prep[env_id])
-                and self.contact_calibrated[env_id]
-                and (
-                    not self.palm_surface_standoff_valid[env_id]
-                    or self._call_count
-                    % self.palm_protection_update_decimation
-                    == 0
-                )
-            ):
+            if palm_surface_update_due:
                 protection_world = controller.points_palm_to_world(
                     PALM_PROTECTION_POINTS_LOCAL,
                     palm_pose_batch[env_id],
@@ -2836,7 +3991,7 @@ class FullHandMCCCollectionPolicy:
                 )
                 if np.any(tip_valid):
                     tip_residual = (
-                        nearest.signed_distance.astype(np.float64)
+                        self.cached_tip_signed_distance[env_id]
                         - (
                             self.site_standoff_m[env_id]
                             - self.surface_preload_m
@@ -2983,6 +4138,7 @@ class FullHandMCCCollectionPolicy:
                 self.previous_target_valid[env_id] = False
                 self.planner_query_valid[env_id] = False
                 q_command = q_hand_batch[env_id]
+                q_prior = q_hand_batch[env_id]
                 tip_reference = kinematic_targets
                 tip_ik = tip_world_batch[env_id]
             elif not self.contact_calibrated[env_id]:
@@ -2991,7 +4147,7 @@ class FullHandMCCCollectionPolicy:
                 # this reachable planner posture, never a blind closure from
                 # the arbitrary live/reset joint configuration.
                 controller.calibrate_force_sign(
-                    force_batch[env_id], found_batch[env_id], normals
+                    force_batch[env_id], effective_found, normals
                 )
                 # First orient each fingertip toward its own oracle normal.
                 # This prevents a side/edge contact from being accepted merely
@@ -3001,11 +4157,12 @@ class FullHandMCCCollectionPolicy:
                     palm_pose_batch[env_id],
                     normals,
                 )
+                q_prior = q_orientation.copy()
                 q_surface, debug = controller.update(
                     q_live=q_orientation,
                     palm_pose_world=palm_pose_batch[env_id],
                     force_world=force_batch[env_id],
-                    found=found_batch[env_id],
+                    found=effective_found,
                     surface_points_world=kinematic_targets,
                     surface_normals_world=normals,
                     nominal_posture_q=closure_target_q_batch[env_id],
@@ -3023,24 +4180,25 @@ class FullHandMCCCollectionPolicy:
                 settled = precontact_loaded & orientation_ok
                 if bool(np.all(settled)):
                     self.contact_settle_streak[env_id] += 1
+                    q_command = q_surface
                 else:
                     self.contact_settle_streak[env_id] = 0
-                    delta = controller.normal_search_delta(
-                        q_hand_batch[env_id],
-                        palm_pose_batch[env_id],
-                        normals,
-                        ~settled,
-                        inward_step=self.contact_search_step_m,
-                        max_joint_step=self.contact_search_step_rad,
-                    )
-                    self.precontact_closure[env_id] = np.clip(
-                        self.precontact_closure[env_id] + delta,
-                        -self.contact_search_limit_rad,
-                        self.contact_search_limit_rad,
-                    )
-                q_command = controller.clamp_joint_positions(
-                    q_surface + self.precontact_closure[env_id]
-                )
+                    missing_pad = ~precontact_loaded
+                    q_command = q_surface.copy()
+                    # Missing/back-shell contacts first return to the natural
+                    # open->grasp closure-path target.  Do not integrate a
+                    # free Cartesian pseudoinverse offset: that was able to
+                    # close only the middle/distal joints while leaving the
+                    # proximal joint open, producing the s701 ring-finger
+                    # back contact.  The outer action interface supplies the
+                    # rate limit while tracking this absolute natural target.
+                    for finger in np.flatnonzero(missing_pad):
+                        block = slice(4 * finger, 4 * finger + 4)
+                        q_command[block] = closure_target_q_batch[
+                            env_id, block
+                        ]
+                    self.precontact_closure[env_id, missing_pad.repeat(4)] = 0.0
+                q_command = controller.clamp_joint_positions(q_command)
                 if (
                     os.environ.get("MCC_DEBUG_SETTLE")
                     and self._call_count % 100 == 0
@@ -3051,7 +4209,7 @@ class FullHandMCCCollectionPolicy:
                     print(
                         f"[SETTLE] env={env_id} step={self._call_count} "
                         f"gap={np.round(gaps, 3).tolist()} "
-                        f"found={found_batch[env_id].tolist()} "
+                        f"found={effective_found.tolist()} "
                         f"|f|={np.round(np.linalg.norm(force_batch[env_id], axis=-1), 2).tolist()} "
                         f"closure={np.round(self.precontact_closure[env_id], 3).tolist()}",
                         flush=True,
@@ -3103,7 +4261,7 @@ class FullHandMCCCollectionPolicy:
                     self.planner_query_valid[env_id] = True
             else:
                 controller.calibrate_force_sign(
-                    force_batch[env_id], found_batch[env_id], normals
+                    force_batch[env_id], effective_found, normals
                 )
                 # The per-finger closure-path solution is the nominal MCC
                 # posture.  It is intentionally not replaced by the fully
@@ -3124,11 +4282,19 @@ class FullHandMCCCollectionPolicy:
                             planned_nominal_q[block]
                         )
                         self.hybrid_grasp_valid[env_id, finger] = True
-                    if healthy and object_is_moving:
+                    if healthy and (object_is_moving or keyframe_settle_active):
                         # A 2% update at 100 Hz has a ~0.5 s time constant:
                         # fast enough for surface curvature, slow enough to
                         # preserve fixed-grasp stability and avoid branch hops.
-                        alpha_grasp = 0.035
+                        alpha_grasp = (
+                            (
+                                0.005
+                                if self.grasp_keyframe_valid[env_id]
+                                else 0.005
+                            )
+                            if self.manifold_qp_velocity
+                            else 0.035
+                        )
                         self.hybrid_grasp_q_ref[env_id, block] += (
                             alpha_grasp
                             * (
@@ -3145,7 +4311,11 @@ class FullHandMCCCollectionPolicy:
                 if (
                     self.differential_contact_qp
                     and self.previous_target_valid[env_id]
-                    and not self.shape_regularization
+                    and (object_is_moving or keyframe_settle_active)
+                    and (
+                        not self.shape_regularization
+                        or self.manifold_qp_velocity
+                    )
                 ):
                     qp_nominal, qp_debug = controller.solve_contact_velocity_qp(
                         q_live=q_hand_batch[env_id],
@@ -3153,17 +4323,85 @@ class FullHandMCCCollectionPolicy:
                         surface_normals_palm=controller.vectors_world_to_palm(
                             normals, palm_pose_batch[env_id]
                         ),
-                        nominal_posture_q=nominal_q,
+                        # Keep one stable comfort anchor.  Passing the
+                        # integrated hybrid reference back as its own posture
+                        # target makes the null-space objective drift with the
+                        # material contact and cannot trigger tangential
+                        # relocation before a joint reaches its limit.
+                        nominal_posture_q=(
+                            self.grasp_keyframe_reference_q[env_id]
+                            if self.grasp_keyframe_valid[env_id]
+                            else (
+                                self.loaded_nominal_q[env_id]
+                                if self.loaded_nominal_valid[env_id]
+                                else nominal_q
+                            )
+                        ),
+                        normal_force=magnitude,
+                        contact_observed=effective_found,
                     )
-                    nominal_q = qp_nominal
+                    if self.manifold_qp_velocity:
+                        # Integrate the local contact-manifold velocity into
+                        # the persistent grasp reference.  Rebuilding the
+                        # command as ``planned_nominal + delta`` every frame
+                        # discards the preceding tangent motion, while mixing
+                        # ``q_live + delta`` into nominal writes collision
+                        # deflection back into the reference.  This stateful
+                        # update is the differential planner counterpart of
+                        # q_ref(t+1) = q_ref(t) + dt*qdot, with the slow
+                        # closure-posture pull above acting as regularization.
+                        qp_delta = (
+                            float(controller.config.control_dt)
+                            * self.manifold_qp_blend
+                            * np.asarray(
+                                qp_debug["joint_velocity"], dtype=np.float64
+                            )
+                        )
+                        integrated_q = self.hybrid_grasp_q_ref[env_id].copy()
+                        # A weak but geometrically valid contact must receive
+                        # the force-informed normal correction too.  Waiting
+                        # until it exceeds the loaded threshold creates the
+                        # exact dead zone in which a pad drifts away.
+                        for finger in np.flatnonzero(effective_found):
+                            block = slice(4 * finger, 4 * finger + 4)
+                            integrated_q[block] += qp_delta[block]
+                        # The differential state is a reference, not an
+                        # unbounded integral.  Contact can prevent the live
+                        # joint from executing a feasible-looking free-space
+                        # QP velocity; without this tracking band q_ref keeps
+                        # integrating and eventually folds the hand or builds
+                        # excessive position-servo load.  A small symmetric
+                        # band preserves anticipatory motion while handing the
+                        # contact residual back to the high-frequency MCC.
+                        reference_band = (
+                            self.manifold_qp_max_reference_error_rad
+                        )
+                        integrated_q = np.clip(
+                            integrated_q,
+                            q_hand_batch[env_id] - reference_band,
+                            q_hand_batch[env_id] + reference_band,
+                        )
+                        integrated_q = controller.clamp_joint_positions(
+                            integrated_q
+                        ).astype(np.float64)
+                        self.hybrid_grasp_q_ref[env_id] = integrated_q
+                        nominal_q = integrated_q
+                    else:
+                        nominal_q = qp_nominal
                     # The geometric target is advanced by the same short
                     # horizon as the QP.  MCC then handles only force/contact
                     # residuals instead of reacting one frame after the
                     # moving surface has already escaped.
+                    # Execute the velocity selected by the constrained QP,
+                    # not the unmodified material-point velocity.  Their
+                    # tangential difference is precisely the planned contact
+                    # relocation delta that keeps the finger reachable and the
+                    # hand comfortable while normal motion remains strongly
+                    # constrained.
                     predicted_target_palm = current_target_palm + (
                         controller.config.control_dt
                         * controller.config.qp_lookahead_steps
-                        * qp_debug["target_tip_velocity_palm"]
+                        * qp_debug["predicted_tip_velocity_palm"]
                     )
                     predicted_targets = controller.points_palm_to_world(
                         predicted_target_palm, palm_pose_batch[env_id]
@@ -3171,6 +4409,12 @@ class FullHandMCCCollectionPolicy:
                     qp_joint_velocity[env_id] = qp_debug["joint_velocity"]
                     qp_target_tip_velocity[env_id] = qp_debug[
                         "target_tip_velocity_palm"
+                    ]
+                    qp_tangent_delta_velocity[env_id] = qp_debug[
+                        "tangent_delta_velocity_palm"
+                    ]
+                    qp_force_normal_velocity[env_id] = qp_debug[
+                        "force_normal_velocity"
                     ]
                     qp_normal_velocity_error[env_id] = qp_debug[
                         "normal_velocity_error"
@@ -3199,11 +4443,17 @@ class FullHandMCCCollectionPolicy:
                     # the controller additionally checks spatial plausibility.
                     loaded,
                 )
+                # ``nominal_q`` contains the privileged teacher planner/QP
+                # intent but no MCC force offset or persistent recovery.
+                # This is the clean task-layer label required by dual-track
+                # training; q_command below is the independently recorded
+                # low-level command.
+                q_prior = nominal_q.copy()
                 q_command, debug = controller.update(
                     q_live=q_hand_batch[env_id],
                     palm_pose_world=palm_pose_batch[env_id],
                     force_world=force_batch[env_id],
-                    found=found_batch[env_id],
+                    found=effective_found,
                     surface_points_world=predicted_targets,
                     surface_normals_world=normals,
                     nominal_posture_q=nominal_q,
@@ -3218,7 +4468,7 @@ class FullHandMCCCollectionPolicy:
                 )
                 persistent_loss = np.asarray(
                     debug["persistent_loss"], dtype=bool
-                ) & closure_hit
+                ) & (closure_hit | manifold_recovery_seed)
                 if np.any(persistent_loss):
                     q_command, recovery_debug = (
                         controller.recover_surface_contacts(
@@ -3281,6 +4531,7 @@ class FullHandMCCCollectionPolicy:
                 palm_in_prep[env_id]
             )
             q_command_batch[env_id] = q_command
+            q_prior_batch[env_id] = q_prior
             tip_reference_world[env_id] = tip_reference
             tip_ik_world[env_id] = tip_ik
             tip_reference_palm[env_id] = controller.points_world_to_palm(
@@ -3289,6 +4540,9 @@ class FullHandMCCCollectionPolicy:
 
         q_command_t = torch.as_tensor(
             q_command_batch, device=self.env.device, dtype=torch.float32
+        )
+        q_prior_t = torch.as_tensor(
+            q_prior_batch, device=self.env.device, dtype=torch.float32
         )
         # TEMP DEBUG: watch the pre-contact search on the collection console.
         self._call_count += 1
@@ -3368,8 +4622,12 @@ class FullHandMCCCollectionPolicy:
             # surface targets every frame.
             q_grasp = fixed_finger_debug["q_ref"]
             q_contact = q_command_t
+            q_prior_contact = q_prior_t
             w_grasp = self.fixed_grasp_nominal_weight
             q_blended = w_grasp * q_grasp + (1.0 - w_grasp) * q_contact
+            q_prior_t = (
+                w_grasp * q_grasp + (1.0 - w_grasp) * q_prior_contact
+            )
             q_hand_now = robot.data.joint_pos[:, 6:22]
             action_cmd = torch.clamp((q_blended - q_hand_now) / 0.08, -1.0, 1.0)
             previous = self.base_policy.finger_controller.prev_action
@@ -3386,6 +4644,9 @@ class FullHandMCCCollectionPolicy:
             finger_action = torch.clamp(
                 (q_command_t - q_hand_t) / 0.08, -1.0, 1.0
             )
+        # Exact joint-position target represented by the relative action
+        # before optional execution-domain randomization in the outer loop.
+        q_cmd_base_t = q_hand_t + 0.08 * finger_action
         action = torch.cat((palm_output[:, :6], finger_action), dim=-1)
 
         q_pre_debug = torch.as_tensor(
@@ -3421,6 +4682,8 @@ class FullHandMCCCollectionPolicy:
         self.last_debug = {
             "q_pre": q_pre_debug,
             "q_ref": q_command_t,
+            "q_prior": q_prior_t,
+            "q_cmd_base": q_cmd_base_t,
             "tip_x_des": tip_x_des_debug,
             "tip_x_ref": tip_x_ref_debug,
             "tip_x_ik": tip_x_ik_debug,
@@ -3429,6 +4692,14 @@ class FullHandMCCCollectionPolicy:
             "tip_surface_normal_world": torch.as_tensor(normal_world_batch, device=self.env.device),
             "tip_normal_force": torch.as_tensor(normal_force_batch, device=self.env.device),
             "tip_normal_offset": torch.as_tensor(normal_offset_batch, device=self.env.device),
+            "tip_pad_contact_valid": torch.as_tensor(
+                pad_contact_valid_batch, device=self.env.device
+            ),
+            "tip_contact_point_local": torch.as_tensor(
+                contact_point_tip_local_batch,
+                device=self.env.device,
+                dtype=torch.float32,
+            ),
             "tip_contact_phase": torch.as_tensor(
                 contact_phase_batch, device=self.env.device
             ),
@@ -3461,6 +4732,12 @@ class FullHandMCCCollectionPolicy:
             "contact_qp_target_tip_velocity_palm": torch.as_tensor(
                 qp_target_tip_velocity, device=self.env.device
             ),
+            "contact_qp_tangent_delta_velocity_palm": torch.as_tensor(
+                qp_tangent_delta_velocity, device=self.env.device
+            ),
+            "contact_qp_force_normal_velocity": torch.as_tensor(
+                qp_force_normal_velocity, device=self.env.device
+            ),
             "contact_qp_normal_velocity_error": torch.as_tensor(
                 qp_normal_velocity_error, device=self.env.device
             ),
@@ -3475,6 +4752,26 @@ class FullHandMCCCollectionPolicy:
             ),
             "contact_qp_solve_time_us": torch.as_tensor(
                 qp_solve_time_us, device=self.env.device
+            ),
+            "grasp_keyframe_reference_q": torch.as_tensor(
+                self.grasp_keyframe_reference_q,
+                device=self.env.device,
+                dtype=torch.float32,
+            ),
+            "grasp_keyframe_valid": torch.as_tensor(
+                self.grasp_keyframe_valid,
+                device=self.env.device,
+                dtype=torch.float32,
+            ),
+            "grasp_keyframe_max_residual_m": torch.as_tensor(
+                self.grasp_keyframe_max_residual_m,
+                device=self.env.device,
+                dtype=torch.float32,
+            ),
+            "grasp_keyframe_max_pad_angle_rad": torch.as_tensor(
+                self.grasp_keyframe_max_pad_angle_rad,
+                device=self.env.device,
+                dtype=torch.float32,
             ),
             "palm_surface_normal_world": torch.as_tensor(
                 self.palm_surface_normal_world,
@@ -3543,6 +4840,107 @@ class FullHandMCCCollectionPolicy:
         return action
 
 
+class SmoothExecutionPerturbation:
+    """Correlated joint-target nuisance used to thicken the teacher manifold.
+
+    The perturbation is applied to the final 16-D actuator position target,
+    so MuJoCo produces a physically consistent q_live/contact response.  It
+    never adds noise directly to the task-layer q_prior label.  On subsequent
+    frames the privileged teacher is allowed to react to the perturbed live
+    state, producing a valid recovery label rather than copying a failed
+    action.  The configured amplitude is the L2 norm of the 16-D disturbance,
+    matching the local-sensitivity audit.
+    """
+
+    def __init__(
+        self,
+        num_envs: int,
+        device: torch.device,
+        dt: float,
+        minimum_norm_rad: float,
+        maximum_norm_rad: float,
+        clean_fraction: float,
+        time_constant_s: float,
+        ramp_steps: int,
+        seed: int,
+    ) -> None:
+        self.num_envs = int(num_envs)
+        self.device = device
+        self.dt = float(dt)
+        self.minimum_norm_rad = float(minimum_norm_rad)
+        self.maximum_norm_rad = float(maximum_norm_rad)
+        self.clean_fraction = float(clean_fraction)
+        self.time_constant_s = float(time_constant_s)
+        self.ramp_steps = max(1, int(ramp_steps))
+        self.generator = torch.Generator(device=device)
+        self.base_seed = int(seed)
+        self.state = torch.zeros((self.num_envs, 16), device=device)
+        self.amplitude = torch.zeros(self.num_envs, device=device)
+        self.active_steps = 0
+        self.reset(0)
+
+    def reset(self, batch_index: int) -> None:
+        self.generator.manual_seed(self.base_seed + 104729 * int(batch_index))
+        self.state.zero_()
+        self.active_steps = 0
+        amplitudes = torch.zeros(self.num_envs, device=self.device)
+        active_count = self.num_envs - int(
+            round(self.clean_fraction * self.num_envs)
+        )
+        if active_count > 0:
+            if self.minimum_norm_rad == self.maximum_norm_rad:
+                sampled = torch.full(
+                    (active_count,),
+                    self.minimum_norm_rad,
+                    device=self.device,
+                )
+            else:
+                # Log-uniform allocation covers the sensitive 3--10 mrad
+                # region densely without omitting the 20 mrad boundary.
+                u = (
+                    torch.arange(active_count, device=self.device)
+                    + torch.rand(
+                        active_count,
+                        device=self.device,
+                        generator=self.generator,
+                    )
+                ) / active_count
+                sampled = torch.exp(
+                    np.log(self.minimum_norm_rad)
+                    + u
+                    * np.log(
+                        self.maximum_norm_rad / self.minimum_norm_rad
+                    )
+                )
+            amplitudes[:active_count] = sampled
+        permutation = torch.randperm(
+            self.num_envs, device=self.device, generator=self.generator
+        )
+        self.amplitude = amplitudes[permutation]
+
+    def step(self, enabled: bool) -> torch.Tensor:
+        if not enabled:
+            return torch.zeros_like(self.state)
+        self.active_steps += 1
+        rho = (
+            0.0
+            if self.time_constant_s <= 0.0
+            else float(np.exp(-self.dt / self.time_constant_s))
+        )
+        noise = torch.randn(
+            self.state.shape,
+            device=self.device,
+            generator=self.generator,
+        )
+        self.state.mul_(rho).add_(noise, alpha=np.sqrt(max(0.0, 1.0 - rho**2)))
+        direction = self.state / torch.clamp(
+            torch.linalg.vector_norm(self.state, dim=-1, keepdim=True),
+            min=1.0e-8,
+        )
+        ramp = min(1.0, self.active_steps / self.ramp_steps)
+        return ramp * self.amplitude[:, None] * direction
+
+
 class StreamingH5:
     SHAPES = {
         "time": (),
@@ -3556,6 +4954,12 @@ class StreamingH5:
         "q_hand": (16,),
         "q_pre": (16,),
         "q_ref": (16,),
+        "q_prior": (16,),
+        "q_cmd": (16,),
+        "delta_q_comp": (16,),
+        "e_servo": (16,),
+        "execution_perturbation_q": (16,),
+        "execution_perturbation_target_norm_rad": (),
         "arm_q_ref": (6,),
         "fixed_palm_target": (6,),
         "palm_control_pos_world": (3,),
@@ -3568,6 +4972,10 @@ class StreamingH5:
         "fingertip_contact_pos_world": (4, 3),
         "fingertip_contact_normal_world": (4, 3),
         "fingertip_contact_dist": (4,),
+        "fingertip_pad_contact_valid": (4,),
+        "fingertip_contact_pos_tip": (4, 3),
+        "contact_curvature_k1": (4,),
+        "contact_curvature_k2": (4,),
         "fingertip_collision_found": (4,),
         "fingertip_contact": (4,),
         "tip_x_des_world": (4, 3),
@@ -3589,11 +4997,17 @@ class StreamingH5:
         "fullhand_contact_calibrated": (),
         "contact_qp_joint_velocity": (16,),
         "contact_qp_target_tip_velocity_palm": (4, 3),
+        "contact_qp_tangent_delta_velocity_palm": (4, 3),
+        "contact_qp_force_normal_velocity": (4,),
         "contact_qp_normal_velocity_error": (4,),
         "contact_qp_adjacent_lateral_distance": (2,),
         "contact_qp_separation_active": (2,),
         "contact_qp_exit_flag": (),
         "contact_qp_solve_time_us": (),
+        "grasp_keyframe_reference_q": (16,),
+        "grasp_keyframe_valid": (),
+        "grasp_keyframe_max_residual_m": (),
+        "grasp_keyframe_max_pad_angle_rad": (),
         "palm_surface_normal_world": (3,),
         "palm_surface_standoff_m": (),
         "palm_protection_standoff_m": (len(PALM_PROTECTION_POINTS_LOCAL),),
@@ -3674,6 +5088,19 @@ class StreamingH5:
                 array = np.broadcast_to(array, (self.num_envs, *array.shape))
             self.datasets[name][self.step] = array
         self.step = next_size
+
+    def write_static(self, name: str, array: np.ndarray) -> None:
+        """Write a non-streaming dataset (per-episode constants: the full
+        commanded palm trajectory, nominal grasp q, etc.).  Not resized by
+        append(); written once before close()."""
+        array = np.asarray(array)
+        self.file.create_dataset(
+            name,
+            data=array,
+            chunks=(min(2500, array.shape[0]), *array.shape[1:])
+            if array.ndim
+            else None,
+        )
 
     def truncate(self, size: int) -> None:
         """Roll back a rejected candidate trajectory."""
@@ -3827,6 +5254,27 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--manifold-qp-blend",
+        type=float,
+        default=1.0,
+        help=(
+            "planner_inverse only: fraction of the local contact-manifold "
+            "QP update blended into the slowly evolving grasp reference. "
+            "0 keeps the nominal grasp; 1 applies the full rate-limited QP "
+            "step (default: 0.35)."
+        ),
+    )
+    parser.add_argument(
+        "--manifold-qp-max-reference-error-rad",
+        type=float,
+        default=0.04,
+        help=(
+            "planner_inverse only: maximum per-joint separation between the "
+            "integrated manifold reference and live hand posture. This keeps "
+            "a blocked contact from accumulating an unreachable q_ref."
+        ),
+    )
+    parser.add_argument(
         "--surface-preload-m",
         type=float,
         default=None,
@@ -3874,11 +5322,12 @@ def main() -> None:
     parser.add_argument(
         "--initial-pad-max-angle-deg",
         type=float,
-        default=55.0,
+        default=105.0,
         help=(
-            "Maximum fingertip-pad rotation error allowed during initial "
-            "teacher grasp calibration. Side/edge contacts above this angle "
-            "are rejected until the per-finger normal IK recovers them."
+            "Coarse pre-contact pad-axis error allowed during initial teacher "
+            "calibration. The curved physical pad can be 50--90 deg from its "
+            "site -X axis; actual back-shell contacts are rejected separately "
+            "from their measured site-local contact positions."
         ),
     )
     parser.add_argument(
@@ -3895,6 +5344,25 @@ def main() -> None:
         type=int,
         default=25,
         help="Samples per fingertip open-to-grasp path for surface intersection.",
+    )
+    parser.add_argument(
+        "--grasp-keyframe-interval-frames",
+        type=int,
+        default=0,
+        help=(
+            "Plan a privileged stable four-finger grasp this many frames "
+            "ahead and connect consecutive grasps with the contact-manifold "
+            "QP; 0 disables the keyframe layer (default)."
+        ),
+    )
+    parser.add_argument(
+        "--grasp-keyframe-projection-iterations",
+        type=int,
+        default=30,
+        help=(
+            "Alternating closest-surface/complete-finger IK iterations per "
+            "grasp keyframe (default: 30)."
+        ),
     )
     parser.add_argument(
         "--surface-target-mode",
@@ -4016,6 +5484,17 @@ def main() -> None:
             "For planner_inverse, hold the inverted initial object pose for "
             "this many control steps so FullHandMCC can establish contact "
             "before motion and recording begin (default: 200)."
+        ),
+    )
+    parser.add_argument(
+        "--planner-speed-factor",
+        type=float,
+        default=1.0,
+        help=(
+            "Time parameterization for planner_inverse: <1 spreads the same "
+            "planned palm path over more simulator steps (slower executed "
+            "rotation, geometry unchanged); e.g. 0.5 halves the rate. "
+            "Default 1.0."
         ),
     )
     parser.add_argument(
@@ -4247,6 +5726,40 @@ def main() -> None:
             "dropouts in difficult mesh-contact teachers."
         ),
     )
+    parser.add_argument(
+        "--execution-randomization",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Apply a smooth 16-D joint-target disturbance after FullHandMCC "
+            "while retaining the clean q_prior label. This creates a "
+            "physics-consistent local execution tube for dual-track DP."
+        ),
+    )
+    parser.add_argument(
+        "--execution-perturbation-min-rad", type=float, default=0.003
+    )
+    parser.add_argument(
+        "--execution-perturbation-max-rad", type=float, default=0.020
+    )
+    parser.add_argument(
+        "--execution-clean-env-fraction",
+        type=float,
+        default=0.25,
+        help="Fraction of parallel environments kept as unperturbed controls.",
+    )
+    parser.add_argument(
+        "--execution-perturbation-time-constant-s",
+        type=float,
+        default=0.35,
+        help="Correlation time of the smooth command disturbance.",
+    )
+    parser.add_argument(
+        "--execution-perturbation-ramp-steps",
+        type=int,
+        default=50,
+        help="Frames used to ramp the disturbance in after recording starts.",
+    )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--filename", default=None)
     args = parser.parse_args()
@@ -4265,8 +5778,31 @@ def main() -> None:
         raise ValueError("--fullhand-finger-effort-limit must be positive")
     if args.fullhand_force_servo_gain < 0.0:
         raise ValueError("--fullhand-force-servo-gain must be non-negative")
+    if not 0.0 <= args.manifold_qp_blend <= 1.0:
+        raise ValueError("--manifold-qp-blend must be in [0, 1]")
+    if args.manifold_qp_max_reference_error_rad <= 0.0:
+        raise ValueError(
+            "--manifold-qp-max-reference-error-rad must be positive"
+        )
     if args.physics_substeps <= 0:
         raise ValueError("--physics-substeps must be positive")
+    if args.execution_perturbation_min_rad <= 0.0:
+        raise ValueError("--execution-perturbation-min-rad must be positive")
+    if (
+        args.execution_perturbation_max_rad
+        < args.execution_perturbation_min_rad
+    ):
+        raise ValueError(
+            "--execution-perturbation-max-rad must be >= the minimum"
+        )
+    if not 0.0 <= args.execution_clean_env_fraction < 1.0:
+        raise ValueError("--execution-clean-env-fraction must be in [0, 1)")
+    if args.execution_perturbation_time_constant_s < 0.0:
+        raise ValueError(
+            "--execution-perturbation-time-constant-s cannot be negative"
+        )
+    if args.execution_perturbation_ramp_steps <= 0:
+        raise ValueError("--execution-perturbation-ramp-steps must be positive")
     if args.planner_settle_steps < 0:
         raise ValueError("--planner-settle-steps cannot be negative")
     if not np.isfinite(args.object_initial_z_offset_m):
@@ -4313,6 +5849,12 @@ def main() -> None:
 
     manifold_mode = args.motion_mode == "manifold_fixed_palm"
     planner_inverse_mode = args.motion_mode == "planner_inverse"
+    # Planner metadata captured at load time (planner_inverse only) and
+    # written into the raw H5 attrs/static datasets at close().
+    planner_attrs: dict[str, object] = {}
+    planner_q_nominal: np.ndarray | None = None
+    planner_palm_trajectory: np.ndarray | None = None
+    planner_fingertip_pose_object: np.ndarray | None = None
     orbit_mode = args.motion_mode in ("orbit_palm", "palm_orbit")
     palm_orbit_mode = args.motion_mode == "palm_orbit"
     # Mode-dependent defaults: orbit modes record a long stroking window
@@ -4527,6 +6069,26 @@ def main() -> None:
             else ""
         )
     )
+    mesh_backends = sorted(
+        {
+            geom.collision_backend
+            for geom in object_config.geoms
+            if geom.geom_type == "mesh"
+        }
+    )
+    if mesh_backends:
+        sdf_depths = sorted(
+            {
+                geom.sdf_octree_maxdepth
+                for geom in object_config.geoms
+                if geom.geom_type == "mesh"
+                and geom.collision_backend == "sdf"
+            }
+        )
+        print(
+            f"[OBJECT] collision_backend={'+'.join(mesh_backends)}"
+            + (f" sdf_octree_depth={sdf_depths}" if sdf_depths else "")
+        )
     print(
         f"[MOTION] rotation angular_speed=[{angular_speed_min:.3f}, "
         f"{angular_speed_max:.3f}] rad/s axes={list(rot_allowed_axes)} "
@@ -4551,6 +6113,12 @@ def main() -> None:
         raise ValueError("closure-path-fallback-fraction must be in [0, 1]")
     if args.closure_path_samples < 3:
         raise ValueError("closure-path-samples must be at least 3")
+    if args.grasp_keyframe_interval_frames < 0:
+        raise ValueError("grasp-keyframe-interval-frames cannot be negative")
+    if args.grasp_keyframe_projection_iterations <= 0:
+        raise ValueError(
+            "grasp-keyframe-projection-iterations must be positive"
+        )
     record_start = (
         args.motion_start if args.record_start_step is None else args.record_start_step
     )
@@ -4767,6 +6335,11 @@ def main() -> None:
                 ),
                 nominal_grasp_q=base_policy.finger_controller.pregrasp_q,
                 differential_contact_qp=args.differential_contact_qp,
+                manifold_qp_velocity=planner_inverse_mode,
+                manifold_qp_blend=args.manifold_qp_blend,
+                manifold_qp_max_reference_error_rad=(
+                    args.manifold_qp_max_reference_error_rad
+                ),
                 fixed_grasp_fingers=(
                     args.teacher_controller == "preview_fixed_grasp"
                     and not planner_inverse_mode
@@ -4794,6 +6367,12 @@ def main() -> None:
                 ),
                 closure_path_fallback_fraction=args.closure_path_fallback_fraction,
                 closure_path_samples=args.closure_path_samples,
+                grasp_keyframe_interval_frames=(
+                    args.grasp_keyframe_interval_frames
+                ),
+                grasp_keyframe_projection_iterations=(
+                    args.grasp_keyframe_projection_iterations
+                ),
             )
             if args.teacher_controller in (
                 "fullhand_mcc",
@@ -4867,6 +6446,7 @@ def main() -> None:
             f"smooth_tau={args.lowest_point_follow_time_constant_s:.2f}s"
         )
 
+    planner_grasp_keyframes: dict[str, np.ndarray] | None = None
     motion_controller = ObjectMotionController(
         env,
         target_mocap_idx,
@@ -4948,9 +6528,52 @@ def main() -> None:
             planned_palm_pose = np.asarray(
                 planner_h5["palm_pose_object"], dtype=np.float64
             )
-        # Plan files are inverse-compatible and conventionally store T x 1 x 7.
-        if planned_palm_pose.ndim == 3:
-            planned_palm_pose = planned_palm_pose[:, 0, :]
+            # Privileged plan metadata carried into the raw H5 so a later
+            # windowing step can pair future commanded palm motion with
+            # contact history (DP_DATA_COLLECTION_GUIDE sample contract).
+            planner_attrs = {
+                f"planner_{key.removeprefix('planner_')}": value
+                for key, value in planner_h5.attrs.items()
+                if not key.startswith("_")
+            }
+            planner_q_nominal = (
+                np.asarray(planner_h5["q_hand"][0], dtype=np.float64)
+                if "q_hand" in planner_h5
+                else None
+            )
+            # Preserve the environment axis for a planner bundle.  It is
+            # removed only for legacy single-environment plans.
+            planner_palm_trajectory = np.asarray(
+                planner_h5["palm_pose_object"], dtype=np.float64
+            )
+            if planner_palm_trajectory.shape[1] == 1:
+                planner_palm_trajectory = planner_palm_trajectory[:, 0]
+            planner_fingertip_pose_object = (
+                np.asarray(
+                    planner_h5["fingertip_pose_object"], dtype=np.float64
+                )
+                if "fingertip_pose_object" in planner_h5
+                else None
+            )
+            if (
+                planner_fingertip_pose_object is not None
+                and planner_fingertip_pose_object.shape[1] == 1
+            ):
+                planner_fingertip_pose_object = (
+                    planner_fingertip_pose_object[:, 0]
+                )
+            required_keyframe_datasets = (
+                "grasp_keyframe_frame_index",
+                "grasp_keyframe_q",
+                "grasp_keyframe_contact_point_object",
+                "grasp_keyframe_normal_object",
+                "grasp_keyframe_valid",
+            )
+            if all(name in planner_h5 for name in required_keyframe_datasets):
+                planner_grasp_keyframes = {
+                    name: np.asarray(planner_h5[name])
+                    for name in required_keyframe_datasets
+                }
         motion_controller = InversePlannedPalmObjectController(
             env,
             target_mocap_idx,
@@ -4960,13 +6583,25 @@ def main() -> None:
             motion_length=args.motion_length,
             total_steps=(args.trajectory_length + args.max_prep_wait_steps + 2),
             dt=dt,
+            speed_factor=args.planner_speed_factor,
         )
         print(
             "[PLANNER-INVERSE] fixed world palm + smoothed object-frame palm plan | "
-            f"file={args.planner_file} frames={len(planned_palm_pose)}"
+            f"file={args.planner_file} frames={len(planned_palm_pose)} "
+            f"plan_envs={1 if planned_palm_pose.ndim == 2 else planned_palm_pose.shape[1]}"
         )
     if isinstance(policy, FullHandMCCCollectionPolicy):
         policy.set_motion_preview_controller(motion_controller)
+        if planner_grasp_keyframes is not None:
+            policy.set_precomputed_grasp_keyframes(
+                planner_grasp_keyframes["grasp_keyframe_frame_index"],
+                planner_grasp_keyframes["grasp_keyframe_q"],
+                planner_grasp_keyframes[
+                    "grasp_keyframe_contact_point_object"
+                ],
+                planner_grasp_keyframes["grasp_keyframe_normal_object"],
+                planner_grasp_keyframes["grasp_keyframe_valid"],
+            )
         if policy.enable_privileged_palm_follow:
             print(
                 "[CONTROLLER] privileged palm surface preview "
@@ -5049,6 +6684,8 @@ def main() -> None:
                         and (args.fixed_motion_start or ready)
                     ):
                         motion_controller.reanchor_from_current_state()
+                        if args.teacher_controller == "fullhand_mcc":
+                            policy.restart_contact_manifold()
                         self.planner_pose_initialized = True
                         self.planner_settle_until = (
                             self.step_count + args.planner_settle_steps
@@ -5351,9 +6988,28 @@ def main() -> None:
     logger = StreamingH5(
         output, args.num_envs, q_dof=23 if palm_orbit_mode else 22
     )
+    execution_perturbation = SmoothExecutionPerturbation(
+        num_envs=args.num_envs,
+        device=device,
+        dt=dt,
+        minimum_norm_rad=args.execution_perturbation_min_rad,
+        maximum_norm_rad=args.execution_perturbation_max_rad,
+        clean_fraction=args.execution_clean_env_fraction,
+        time_constant_s=args.execution_perturbation_time_constant_s,
+        ramp_steps=args.execution_perturbation_ramp_steps,
+        seed=args.seed,
+    )
 
     total_frames = saved_frames_per_trajectory * collected_target
     print(f"[INFO] task={TASK_ID} device={device} accepted_frames={total_frames} output={output}")
+    print(
+        "[INFO] execution randomization="
+        f"{args.execution_randomization} norm="
+        f"{args.execution_perturbation_min_rad:.3f}--"
+        f"{args.execution_perturbation_max_rad:.3f}rad "
+        f"clean_fraction={args.execution_clean_env_fraction:.2f} "
+        f"tau={args.execution_perturbation_time_constant_s:.2f}s"
+    )
     if args.teacher_controller == "fullhand_mcc":
         print(
             "[INFO] FullHandMCC uses privileged oracle surface normals and "
@@ -5413,6 +7069,7 @@ def main() -> None:
             obs, _ = env.reset()
             policy.reset()
             motion_controller.reset()
+            execution_perturbation.reset(candidate_id)
             motion_controller.motion_start = args.motion_start
             if translation_enabled:
                 print(
@@ -5461,6 +7118,8 @@ def main() -> None:
                         # and makes a requested 180-degree plan stop early.
                         motion_controller.motion_start = planner_settle_until
                         motion_controller.reanchor_from_current_state()
+                        if args.teacher_controller == "fullhand_mcc":
+                            policy.restart_contact_manifold()
                         planner_pose_initialized = True
                         print(
                             "[PLANNER-INVERSE] object initialized at step "
@@ -5545,9 +7204,31 @@ def main() -> None:
                     moving = False
 
                 action = policy(obs)
+                robot = env.scene["robot"]
+                q_hand_pre_step = robot.data.joint_pos[
+                    :, hand_q_start : hand_q_start + 16
+                ].clone()
+                execution_perturbation_q = execution_perturbation.step(
+                    enabled=(
+                        args.execution_randomization
+                        and actual_record_start is not None
+                        and episode_step >= actual_record_start
+                    )
+                )
+                # The hand action is a relative position target with scale
+                # 0.08 rad.  Perturb that target, then pass the resulting
+                # command through the ordinary actuator and MuJoCo dynamics.
+                # This keeps q_live/contact physically self-consistent.
+                q_cmd_base = q_hand_pre_step + 0.08 * action[:, -16:]
+                q_cmd_requested = q_cmd_base + execution_perturbation_q
+                action[:, -16:] = torch.clamp(
+                    (q_cmd_requested - q_hand_pre_step) / 0.08,
+                    -1.0,
+                    1.0,
+                )
+                q_cmd_applied = q_hand_pre_step + 0.08 * action[:, -16:]
                 obs, *_ = env.step(action)
                 progress.update(1)
-                robot = env.scene["robot"]
                 body_pose = robot.data.body_link_pose_w
                 palm_pose = body_pose[:, palm_idx, :]
                 site_pose = robot.data.site_pose_w
@@ -5584,9 +7265,39 @@ def main() -> None:
                         contact_dist[:, tip_id] = torch.where(
                             found, selected_dist, torch.zeros_like(selected_dist)
                         )
+                # ``policy.last_debug`` belongs to the pre-step policy call,
+                # while the contact and fingertip poses above are post-step.
+                # Compute the local point from this same frame.  Otherwise a
+                # newly established contact can transform the preceding zero
+                # placeholder and create a metre-scale local-coordinate spike.
+                tip_quaternion = tip_pose[..., 3:7]
+                tip_quaternion_inverse = torch.cat(
+                    (tip_quaternion[..., :1], -tip_quaternion[..., 1:]), dim=-1
+                )
+                contact_pos_tip = _wxyz_apply(
+                    tip_quaternion_inverse,
+                    contact_pos - tip_pose[..., :3],
+                )
+                back_limit = torch.as_tensor(
+                    TIP_BACK_CONTACT_X_LIMIT_M,
+                    device=device,
+                    dtype=contact_pos_tip.dtype,
+                )
+                contact_point_plausible = (
+                    torch.isfinite(contact_pos_tip).all(dim=-1)
+                    & (
+                        torch.linalg.vector_norm(contact_pos_tip, dim=-1)
+                        <= 0.05
+                    )
+                )
+                current_pad_contact_valid = (
+                    contact_found
+                    & contact_point_plausible
+                    & (contact_pos_tip[..., 0] <= back_limit)
+                )
                 # Contact gate for the fixed teacher: all four tips loaded.
                 prev_all4 = (
-                    contact_found
+                    current_pad_contact_valid
                     & (
                         torch.linalg.vector_norm(tip_force, dim=-1)
                         >= args.contact_threshold
@@ -5602,6 +7313,12 @@ def main() -> None:
                 # Replace MuJoCo seam-contaminated contact normals with smooth
                 # oracle normals estimated from the source OBJ point cloud at
                 # the same contact positions (world -> object -> world).
+                contact_curvature_k1 = torch.zeros(
+                    (args.num_envs, 4), device=device
+                )
+                contact_curvature_k2 = torch.zeros(
+                    (args.num_envs, 4), device=device
+                )
                 if mesh_normal_oracle is not None and contact_found.any():
                     found_flat = contact_found.reshape(-1)
                     env_idx = (
@@ -5617,6 +7334,15 @@ def main() -> None:
                         )
                     ).to(device=device, dtype=contact_normal.dtype)
                     contact_normal.reshape(-1, 3)[found_flat] = oracle_normals
+                    k1, k2 = mesh_normal_oracle.query_curvature_world(
+                        pts_world, obj_pos, obj_quat
+                    )
+                    contact_curvature_k1.reshape(-1)[found_flat] = torch.from_numpy(
+                        k1
+                    ).to(device=device, dtype=contact_normal.dtype)
+                    contact_curvature_k2.reshape(-1)[found_flat] = torch.from_numpy(
+                        k2
+                    ).to(device=device, dtype=contact_normal.dtype)
                 object_angular_velocity_world = (
                     _wxyz_apply(
                         obj_pose[:, 3:7], motion_controller.rotation_axes
@@ -5637,7 +7363,10 @@ def main() -> None:
                         tip_force_magnitude[0].detach().cpu().numpy().copy()
                     )
                     quality_contacts.append(
-                        contact_found[0].detach().cpu().numpy().copy()
+                        (
+                            contact_found[0]
+                            & current_pad_contact_valid[0]
+                        ).detach().cpu().numpy().copy()
                     )
                     quality_object_pose.append(
                         obj_pose[0].detach().cpu().numpy().copy()
@@ -5676,6 +7405,21 @@ def main() -> None:
                         ],
                         "q_pre": debug["q_pre"],
                         "q_ref": debug["q_ref"],
+                        "q_prior": debug["q_prior"],
+                        "q_cmd": q_cmd_applied,
+                        "delta_q_comp": q_cmd_applied - debug["q_prior"],
+                        "e_servo": robot.data.joint_pos[
+                            :, hand_q_start : hand_q_start + 16
+                        ]
+                        - q_cmd_applied,
+                        "execution_perturbation_q": (
+                            q_cmd_applied - q_cmd_base
+                        ),
+                        "execution_perturbation_target_norm_rad": (
+                            execution_perturbation.amplitude
+                            if args.execution_randomization
+                            else torch.zeros(args.num_envs, device=device)
+                        ),
                         "arm_q_ref": debug["palm_arm_q_ref"],
                         "palm_x_des": debug["palm_x_des"],
                         "palm_x_ref": debug["palm_x_ref"],
@@ -5690,11 +7434,18 @@ def main() -> None:
                         "fingertip_contact_pos_world": contact_pos,
                         "fingertip_contact_normal_world": contact_normal,
                         "fingertip_contact_dist": contact_dist,
+                        "contact_curvature_k1": contact_curvature_k1,
+                        "contact_curvature_k2": contact_curvature_k2,
                         "fingertip_collision_found": contact_found.float(),
                         "fingertip_contact": (
                             contact_found
                             & (tip_force_magnitude >= args.contact_threshold)
+                            & current_pad_contact_valid
                         ).float(),
+                        "fingertip_pad_contact_valid": (
+                            current_pad_contact_valid.float()
+                        ),
+                        "fingertip_contact_pos_tip": contact_pos_tip,
                         "tip_x_des_world": debug["tip_x_des"],
                         "tip_x_ref_world": debug["tip_x_ref"],
                         "tip_x_ik_world": debug["tip_x_ik"],
@@ -5755,6 +7506,14 @@ def main() -> None:
                             "contact_qp_target_tip_velocity_palm",
                             torch.zeros((args.num_envs, 4, 3), device=device),
                         ),
+                        "contact_qp_tangent_delta_velocity_palm": debug.get(
+                            "contact_qp_tangent_delta_velocity_palm",
+                            torch.zeros((args.num_envs, 4, 3), device=device),
+                        ),
+                        "contact_qp_force_normal_velocity": debug.get(
+                            "contact_qp_force_normal_velocity",
+                            torch.zeros((args.num_envs, 4), device=device),
+                        ),
                         "contact_qp_normal_velocity_error": debug.get(
                             "contact_qp_normal_velocity_error",
                             torch.zeros((args.num_envs, 4), device=device),
@@ -5774,6 +7533,30 @@ def main() -> None:
                         "contact_qp_solve_time_us": debug.get(
                             "contact_qp_solve_time_us",
                             torch.zeros(args.num_envs, device=device),
+                        ),
+                        "grasp_keyframe_reference_q": debug.get(
+                            "grasp_keyframe_reference_q",
+                            torch.zeros((args.num_envs, 16), device=device),
+                        ),
+                        "grasp_keyframe_valid": debug.get(
+                            "grasp_keyframe_valid",
+                            torch.zeros(args.num_envs, device=device),
+                        ),
+                        "grasp_keyframe_max_residual_m": debug.get(
+                            "grasp_keyframe_max_residual_m",
+                            torch.full(
+                                (args.num_envs,),
+                                float("nan"),
+                                device=device,
+                            ),
+                        ),
+                        "grasp_keyframe_max_pad_angle_rad": debug.get(
+                            "grasp_keyframe_max_pad_angle_rad",
+                            torch.full(
+                                (args.num_envs,),
+                                float("nan"),
+                                device=device,
+                            ),
                         ),
                         "palm_surface_normal_world": debug.get(
                             "palm_surface_normal_world",
@@ -6012,14 +7795,61 @@ def main() -> None:
                 print(f"[REJECT] {summary}")
     finally:
         progress.close()
+        if planner_palm_trajectory is not None:
+            # DP_DATA_COLLECTION_GUIDE sample contract: the future commanded
+            # palm trajectory (object frame) is a condition for the sample,
+            # and the nominal grasp q (plan q_hand[0]) is the residual base.
+            logger.write_static(
+                "palm_command_pose_object", planner_palm_trajectory
+            )
+            if planner_q_nominal is not None:
+                logger.write_static("q_nominal", planner_q_nominal)
+            if planner_fingertip_pose_object is not None:
+                logger.write_static(
+                    "fingertip_pose_object", planner_fingertip_pose_object
+                )
         logger.close(
             {
                 "task_id": TASK_ID,
-                "schema_version": "mcc_tip_v1",
+                "schema_version": "mcc_tip_dual_track_v2",
+                "dual_track_timing": (
+                    "q_prior_and_q_cmd_pre_step__q_live_and_tactile_post_step"
+                ),
+                "q_prior_semantics": "teacher_planner_before_fullhand_mcc",
+                "q_cmd_semantics": "final_position_target_applied_to_actuator",
+                "q_live_semantics": "post_step_encoder_joint_position",
+                "delta_q_comp_semantics": "q_cmd_minus_q_prior",
+                "e_servo_semantics": "q_live_post_step_minus_q_cmd",
+                "execution_randomization": bool(args.execution_randomization),
+                "execution_perturbation_min_norm_rad": (
+                    args.execution_perturbation_min_rad
+                ),
+                "execution_perturbation_max_norm_rad": (
+                    args.execution_perturbation_max_rad
+                ),
+                "execution_clean_env_fraction": (
+                    args.execution_clean_env_fraction
+                ),
+                "execution_perturbation_time_constant_s": (
+                    args.execution_perturbation_time_constant_s
+                ),
+                "execution_perturbation_ramp_steps": (
+                    args.execution_perturbation_ramp_steps
+                ),
                 "teacher_controller": args.teacher_controller,
                 "force_feedback_enabled": args.teacher_controller == "fullhand_mcc",
                 "privileged_surface_oracle": args.teacher_controller == "fullhand_mcc",
                 "differential_contact_qp": bool(args.differential_contact_qp),
+                "manifold_qp_blend": float(args.manifold_qp_blend),
+                "manifold_qp_max_reference_error_rad": float(
+                    args.manifold_qp_max_reference_error_rad
+                ),
+                "grasp_keyframe_interval_frames": int(
+                    args.grasp_keyframe_interval_frames
+                ),
+                "grasp_keyframe_projection_iterations": int(
+                    args.grasp_keyframe_projection_iterations
+                ),
                 "contact_recovery_state_machine": (
                     args.teacher_controller == "fullhand_mcc"
                 ),
@@ -6067,6 +7897,10 @@ def main() -> None:
                 "physics_substeps": args.physics_substeps,
                 "initial_orientation_mode": args.initial_orientation_mode,
                 "object_angular_velocity_frame": "world",
+                "object_collision_backend": "+".join(mesh_backends),
+                "object_sdf_octree_depth": np.asarray(
+                    sdf_depths, dtype=np.int32
+                ),
                 "object_rotation_axis_frame": "object_local",
                 "object_translation_axis_frame": "world",
                 "motion_mode": args.motion_mode,
@@ -6110,6 +7944,7 @@ def main() -> None:
                     args.initial_orientation_jitter_deg
                 ),
                 "seed": args.seed,
+                **planner_attrs,
             }
         )
         env.close()

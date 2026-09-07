@@ -16,6 +16,8 @@ import daqp
 import mink
 import mujoco
 import numpy as np
+from scipy.optimize import least_squares
+from scipy.spatial import ConvexHull
 from scipy.spatial.transform import Rotation as R
 
 # This is deliberately the same numerical fingertip admittance used by the
@@ -57,6 +59,17 @@ TIP_SITE_LOCAL_POSITIONS = (
     (-0.0106151, -0.0326103, 0.0140386),
     (-0.0106383, -0.0453895, -0.0144321),
 )
+# The tactile face of every current fingertip mesh lies on the negative-X
+# side of its MCC site frame.  Do not infer this axis from the current pose:
+# doing so lets a side or the back of a fingertip satisfy the orientation
+# objective merely because another frame axis happens to be close to the
+# object normal.
+TIP_PAD_OUTWARD_AXIS_LOCAL = np.asarray((-1.0, 0.0, 0.0), dtype=np.float64)
+# A physical contact beyond the middle of the distal mesh is unambiguously a
+# back-side contact.  The thumb is longer, hence its separate threshold.
+TIP_BACK_CONTACT_X_LIMIT_M = np.asarray(
+    (0.012, 0.012, 0.012, 0.016), dtype=np.float64
+)
 # MuJoCo tree/action order used by the standalone tactile hand.
 HAND_JOINT_NAMES = (
     "1", "0", "2", "3",
@@ -93,6 +106,15 @@ DEFAULT_OPEN_Q = np.asarray(
     dtype=np.float64,
 )
 
+# The reachability maps depend only on the fixed Leap Hand model and are
+# shared by all controller instances in one process.  Aude/Khadivar et al.
+# used 10,000 uniformly sampled joint configurations per finger; retaining
+# that sample count here makes the teacher-data health metric comparable while
+# avoiding a GPR approximation in the offline optimizer.
+_KINEMATIC_HEALTH_CACHE: dict[
+    tuple[int, int], list[dict[str, np.ndarray | float]]
+] = {}
+
 
 def _normalize(vectors: np.ndarray) -> np.ndarray:
     vectors = np.asarray(vectors, dtype=np.float64)
@@ -100,6 +122,47 @@ def _normalize(vectors: np.ndarray) -> np.ndarray:
     if np.any(norms < 1.0e-9):
         raise ValueError("Surface normals must be non-zero")
     return vectors / norms
+
+
+def _fixed_pad_normal_target(
+    current_rotation: np.ndarray, surface_normal: np.ndarray
+) -> np.ndarray:
+    """Minimally turn the physical pad face toward an object surface.
+
+    ``surface_normal`` is the object's outward normal.  The outward normal of
+    the fingertip pad must oppose it, so local ``-X`` is aligned with
+    ``-surface_normal``.  Rotation about that axis remains unconstrained.
+    """
+
+    rotation = np.asarray(current_rotation, dtype=np.float64).reshape(3, 3)
+    normal = np.asarray(surface_normal, dtype=np.float64).reshape(3)
+    normal /= max(float(np.linalg.norm(normal)), 1.0e-12)
+    source = rotation @ TIP_PAD_OUTWARD_AXIS_LOCAL
+    target = -normal
+    cosine = float(np.clip(source @ target, -1.0, 1.0))
+    if cosine >= 1.0 - 1.0e-10:
+        return rotation
+    if cosine <= -1.0 + 1.0e-10:
+        # local +Y is guaranteed to be perpendicular to local -X and gives a
+        # deterministic 180-degree correction without changing pad twist.
+        alignment = R.from_rotvec(np.pi * rotation[:, 1]).as_matrix()
+        return alignment @ rotation
+    cross = np.cross(source, target)
+    sine_sq = float(cross @ cross)
+    skew = np.asarray(
+        (
+            (0.0, -cross[2], cross[1]),
+            (cross[2], 0.0, -cross[0]),
+            (-cross[1], cross[0], 0.0),
+        ),
+        dtype=np.float64,
+    )
+    alignment = (
+        np.eye(3)
+        + skew
+        + (skew @ skew) * ((1.0 - cosine) / max(sine_sq, 1.0e-12))
+    )
+    return alignment @ rotation
 
 
 def _clip_row_norm(vectors: np.ndarray, limit: float) -> np.ndarray:
@@ -312,37 +375,25 @@ class GeometrySurfaceOracle:
         scale: float,
         rotation: np.ndarray,
     ) -> dict:
-        """Merge a mesh geom's convex collision parts into one trimesh.
+        """Build the privileged outer surface used by contact planning.
 
-        The merged mesh lives in the object frame with the geom quat applied,
-        mirroring how ``add_object_body`` places the collision parts in the
-        sim, so oracle surface queries match the physical contact surface.
+        MuJoCo still collides against the V-HACD parts configured in
+        ``collision_dir``.  Those convex pieces must *not* be concatenated for
+        closest-point queries: concatenation is not a Boolean union and keeps
+        every internal hull face, so a nearest-point query can incorrectly
+        send a fingertip centimetres into the object.  The undecomposed source
+        mesh is the authoritative outer surface; V-HACD is only its physical
+        approximation.
         """
-        import trimesh
-
         from object_catalog import _load_scaled_mesh
 
-        part_paths = (
-            sorted(Path(geom_config.collision_dir).glob("*.obj"))
-            if geom_config.collision_dir
-            else []
+        surface = _load_scaled_mesh(
+            Path(geom_config.file), geom_config, scale
         )
-        if not part_paths:
-            raise ValueError(
-                f"mesh geom has no collision parts in "
-                f"{geom_config.collision_dir or '(none)'}"
-            )
-        parts = [
-            _load_scaled_mesh(part_path, geom_config, scale)
-            for part_path in part_paths
-        ]
-        for part in parts:
-            part.vertices = part.vertices @ rotation.T
-        merged = trimesh.util.concatenate(parts)
-        merged.merge_vertices()
+        surface.vertices = surface.vertices @ rotation.T
         return {
             "type": "mesh",
-            "mesh": merged,
+            "mesh": surface,
             "pos": np.zeros(3, dtype=np.float64),
             "rotation": np.eye(3, dtype=np.float64),
         }
@@ -554,11 +605,9 @@ class GeometrySurfaceOracle:
         rotation_wo = self.rotation_world_from_object
         center = self.center_world
 
-        # YCB and the other decomposed assets are represented by one merged
-        # collision mesh in this oracle.  Query all palm-outline/fingertip
-        # points together: the scalar path below rebuilt trimesh proximity
-        # candidates once per point and made a dense palm contour prohibitively
-        # expensive without changing any geometry result.
+        # YCB and the other decomposed assets use their undecomposed outer
+        # surface in the oracle. Query all palm-outline/fingertip points
+        # together; the convex decomposition remains a physics-only detail.
         if len(self._geoms) == 1 and self._geoms[0]["type"] == "mesh":
             geom = self._geoms[0]
             rotation_go = geom["rotation"]
@@ -783,89 +832,7 @@ class SurfaceMCCFingerController:
     def _pad_normal_target(
         current_rotation: np.ndarray, surface_normal: np.ndarray
     ) -> np.ndarray:
-        rotation = np.asarray(current_rotation, dtype=np.float64).reshape(3, 3)
-        normal = np.asarray(surface_normal, dtype=np.float64).reshape(3)
-        normal /= max(float(np.linalg.norm(normal)), 1.0e-12)
-        axis_index = int(np.argmax(np.abs(rotation.T @ normal)))
-        axis = rotation[:, axis_index]
-        target = normal if float(axis @ normal) >= 0.0 else -normal
-        cross = np.cross(axis, target)
-        sine = float(np.linalg.norm(cross))
-        cosine = float(np.clip(axis @ target, -1.0, 1.0))
-        if sine < 1.0e-9:
-            return rotation
-        skew = np.array(
-            ((0.0, -cross[2], cross[1]),
-             (cross[2], 0.0, -cross[0]),
-             (-cross[1], cross[0], 0.0)),
-            dtype=np.float64,
-        ) / sine
-        angle = np.arctan2(sine, cosine)
-        return rotation @ (np.eye(3) + np.sin(angle) * skew + (1.0 - cosine) * (skew @ skew))
-
-    @staticmethod
-    def _pad_normal_target(
-        current_rotation: np.ndarray, surface_normal: np.ndarray
-    ) -> np.ndarray:
-        """Rotate a fingertip frame minimally so one pad axis faces the surface.
-
-        The axis is selected from the current pad frame, rather than assumed
-        globally (the thumb and ordinary fingers use different geometries).
-        The sign is chosen to preserve the current inward/outward convention,
-        so this constraint aligns the pad with the normal without flipping it.
-        """
-        rotation = np.asarray(current_rotation, dtype=np.float64).reshape(3, 3)
-        normal = np.asarray(surface_normal, dtype=np.float64).reshape(3)
-        normal /= max(float(np.linalg.norm(normal)), 1.0e-12)
-        axis_index = int(np.argmax(np.abs(rotation.T @ normal)))
-        axis = rotation[:, axis_index]
-        target = normal if float(axis @ normal) >= 0.0 else -normal
-        cross = np.cross(axis, target)
-        sine = float(np.linalg.norm(cross))
-        cosine = float(np.clip(axis @ target, -1.0, 1.0))
-        if sine < 1.0e-9:
-            return rotation
-        skew = np.array(
-            ((0.0, -cross[2], cross[1]),
-             (cross[2], 0.0, -cross[0]),
-             (-cross[1], cross[0], 0.0)),
-            dtype=np.float64,
-        ) / sine
-        angle_rotation = (
-            np.eye(3)
-            + np.sin(np.arctan2(sine, cosine)) * skew
-            + (1.0 - cosine) * (skew @ skew)
-        )
-        return angle_rotation @ rotation
-
-    @staticmethod
-    def _pad_normal_target(
-        current_rotation: np.ndarray, surface_normal: np.ndarray
-    ) -> np.ndarray:
-        rotation = np.asarray(current_rotation, dtype=np.float64).reshape(3, 3)
-        normal = np.asarray(surface_normal, dtype=np.float64).reshape(3)
-        normal /= max(float(np.linalg.norm(normal)), 1.0e-12)
-        axis_index = int(np.argmax(np.abs(rotation.T @ normal)))
-        axis = rotation[:, axis_index]
-        target = normal if float(axis @ normal) >= 0.0 else -normal
-        cross = np.cross(axis, target)
-        sine = float(np.linalg.norm(cross))
-        cosine = float(np.clip(axis @ target, -1.0, 1.0))
-        if sine < 1.0e-9:
-            return rotation
-        skew = np.array(
-            ((0.0, -cross[2], cross[1]),
-             (cross[2], 0.0, -cross[0]),
-             (-cross[1], cross[0], 0.0)),
-            dtype=np.float64,
-        ) / sine
-        angle = np.arctan2(sine, cosine)
-        alignment = (
-            np.eye(3)
-            + np.sin(angle) * skew
-            + (1.0 - cosine) * (skew @ skew)
-        )
-        return alignment @ rotation
+        return _fixed_pad_normal_target(current_rotation, surface_normal)
 
     def tip_positions_palm(self, q_action_order: np.ndarray) -> np.ndarray:
         self._set_q(self.data, np.asarray(q_action_order, dtype=np.float64))
@@ -1219,6 +1186,7 @@ class FullHandMCCFingerConfig:
     natural_flexion_floor: float | None = None
     qp_normal_velocity_weight: float = 10.0
     qp_tangential_velocity_weight: float = 2.0
+    qp_thumb_tangential_velocity_weight: float | None = None
     # Cartesian Jacobians are measured in metres/radian, so posture weights
     # must be milliscale; a 0.1-scale value overwhelms surface tracking.
     qp_posture_weight: float = 0.002
@@ -1228,6 +1196,14 @@ class FullHandMCCFingerConfig:
     qp_lookahead_steps: float = 2.0
     qp_max_target_speed: float = 0.05
     qp_target_velocity_ema_alpha: float = 0.35
+    # Low-frequency force term used by the privileged contact-manifold
+    # planner.  MCC still owns the high-frequency force loop; this term only
+    # biases the planned normal velocity so that a weakly loaded contact is
+    # not treated as equivalent to a healthy one.  Units are
+    # (metre / second) / newton and metre / second respectively.
+    qp_force_velocity_gain: float = 0.0004
+    qp_force_deadband: float = 0.20
+    qp_max_force_velocity: float = 0.003
     # The three ordinary fingers are arranged along the palm Y axis.  A full
     # Euclidean tip distance can stay large when two pads overlap laterally
     # but sit at different flexion depths, so crowding must be measured only
@@ -1275,6 +1251,12 @@ class FullHandMCCFingerConfig:
     # contact centre may differ from the fixed MCC site, but not by tens of
     # centimetres.
     contact_anchor_max_site_distance: float = 0.05
+    # Contacts behind the middle of the distal mesh are not tactile-pad
+    # contacts.  Treat them as lost contacts so recovery opens/repositions the
+    # finger instead of increasing force on its back shell.
+    back_contact_x_limit_m: tuple[float, float, float, float] = tuple(
+        TIP_BACK_CONTACT_X_LIMIT_M
+    )
     project_nominal_normal_motion: bool = False
     overforce_trigger_ratio: float = 1.20
     overforce_release_ratio: float = 0.90
@@ -1515,6 +1497,18 @@ class FullHandMCCFingerController:
             self.transient_search_offset[stable]
             - float(cfg.transient_release_step),
         )
+        # A collision sensor may alternate for a few frames while a pad is
+        # physically grazing a convex-decomposition seam.  Treat a found
+        # frame in phase 3 as partial recovery and release the search offset
+        # immediately; otherwise a missing/found/missing pattern integrates
+        # an ever-growing inward offset even though contact is repeatedly
+        # present.
+        recontacting = found & ~stable
+        self.transient_search_offset[recontacting] = np.maximum(
+            0.0,
+            self.transient_search_offset[recontacting]
+            - float(cfg.transient_release_step),
+        )
 
     def reset_admittance_fingers(
         self,
@@ -1571,34 +1565,556 @@ class FullHandMCCFingerController:
     def _pad_normal_target(
         current_rotation: np.ndarray, surface_normal: np.ndarray
     ) -> np.ndarray:
-        rotation = np.asarray(current_rotation, dtype=np.float64).reshape(3, 3)
-        normal = np.asarray(surface_normal, dtype=np.float64).reshape(3)
-        normal /= max(float(np.linalg.norm(normal)), 1.0e-12)
-        axis_index = int(np.argmax(np.abs(rotation.T @ normal)))
-        axis = rotation[:, axis_index]
-        target = normal if float(axis @ normal) >= 0.0 else -normal
-        cross = np.cross(axis, target)
-        sine = float(np.linalg.norm(cross))
-        cosine = float(np.clip(axis @ target, -1.0, 1.0))
-        if sine < 1.0e-9:
-            return rotation
-        skew = np.array(
-            ((0.0, -cross[2], cross[1]),
-             (cross[2], 0.0, -cross[0]),
-             (-cross[1], cross[0], 0.0)),
-            dtype=np.float64,
-        ) / sine
-        angle = np.arctan2(sine, cosine)
-        alignment = (
-            np.eye(3)
-            + np.sin(angle) * skew
-            + (1.0 - cosine) * (skew @ skew)
-        )
-        return alignment @ rotation
+        return _fixed_pad_normal_target(current_rotation, surface_normal)
 
     def tip_positions_palm(self, q_action_order: np.ndarray) -> np.ndarray:
         self._set_q(self.data, q_action_order)
         return self.data.site_xpos[self.tip_ids].copy()
+
+    def solve_fingertip_targets(
+        self,
+        target_points_palm: np.ndarray,
+        seed_q: np.ndarray,
+        *,
+        target_normals_palm: np.ndarray | None = None,
+        nominal_q: np.ndarray | None = None,
+        max_iterations: int = 40,
+        tolerance: float = 7.5e-4,
+        damping: float = 0.012,
+        position_gain: float = 0.18,
+        orientation_weight: float = 0.012,
+        posture_gain: float = 0.01,
+        max_joint_step: float = 0.012,
+        joint_margin: float = 0.05,
+    ) -> tuple[np.ndarray, np.ndarray, int]:
+        """Solve four fingertip contacts with the palm held fixed.
+
+        This follows the joint allocation used by ``Module/full_hand_mcc``:
+        each finger owns its complete four-joint block, the Cartesian task is
+        three position rows plus one soft pad-normal row, and a small direct
+        pull toward ``nominal_q`` remains active even when the four-row task is
+        full rank.  The direct posture term is important: a null-space-only
+        regularizer disappears at a nonsingular 4x4 task and permits the
+        proximal-flexed/distal-open branch that looks like a folded finger.
+
+        The command is rate limited and kept away from hard joint limits on
+        every iteration.  ``seed_q`` should be the preceding trajectory frame
+        so this resolved-rate solve also acts as a temporal branch selector.
+        """
+
+        targets = np.asarray(target_points_palm, dtype=np.float64).reshape(4, 3)
+        normals = None
+        if target_normals_palm is not None:
+            normals = _normalize(
+                np.asarray(target_normals_palm, dtype=np.float64).reshape(4, 3)
+            )
+        q = self.clamp_joint_positions(
+            np.asarray(seed_q, dtype=np.float64).reshape(16)
+        ).astype(np.float64)
+        nominal = (
+            self.grasp_closure_q
+            if nominal_q is None
+            else self.clamp_joint_positions(
+                np.asarray(nominal_q, dtype=np.float64).reshape(16)
+            ).astype(np.float64)
+        )
+        safe_lower = np.minimum(self.lower + float(joint_margin), self.upper)
+        safe_upper = np.maximum(self.upper - float(joint_margin), self.lower)
+        invalid_margin = safe_lower > safe_upper
+        if np.any(invalid_margin):
+            midpoint = 0.5 * (self.lower + self.upper)
+            safe_lower[invalid_margin] = midpoint[invalid_margin]
+            safe_upper[invalid_margin] = midpoint[invalid_margin]
+
+        iterations = 0
+        for iterations in range(1, max(1, int(max_iterations)) + 1):
+            self._set_q(self.data, q)
+            current = self.data.site_xpos[self.tip_ids].copy()
+            residual = np.linalg.norm(targets - current, axis=1)
+            if float(np.max(residual)) <= float(tolerance):
+                break
+            q_next = q.copy()
+            for finger in range(4):
+                block = slice(4 * finger, 4 * finger + 4)
+                jac_pos = np.zeros((3, self.model.nv), dtype=np.float64)
+                jac_rot = np.zeros_like(jac_pos)
+                mujoco.mj_jacSite(
+                    self.model,
+                    self.data,
+                    jac_pos,
+                    jac_rot,
+                    int(self.tip_ids[finger]),
+                )
+                position_jacobian = jac_pos[:, self.dof_indices[block]]
+                task_jacobian = position_jacobian
+                task_error = targets[finger] - current[finger]
+                if normals is not None and float(orientation_weight) > 0.0:
+                    current_rotation = self.data.site_xmat[
+                        int(self.tip_ids[finger])
+                    ].reshape(3, 3)
+                    target_rotation = self._pad_normal_target(
+                        current_rotation, normals[finger]
+                    )
+                    rotation_error = (
+                        R.from_matrix(target_rotation)
+                        * R.from_matrix(current_rotation).inv()
+                    ).as_rotvec()
+                    angle = float(np.linalg.norm(rotation_error))
+                    if angle > 1.0e-9:
+                        axis = rotation_error / angle
+                    else:
+                        axis = np.asarray((1.0, 0.0, 0.0), dtype=np.float64)
+                    rotation_row = axis @ jac_rot[:, self.dof_indices[block]]
+                    task_jacobian = np.vstack(
+                        (
+                            position_jacobian,
+                            float(orientation_weight) * rotation_row[None, :],
+                        )
+                    )
+                    task_error = np.concatenate(
+                        (task_error, (float(orientation_weight) * angle,))
+                    )
+                regularized = (
+                    task_jacobian @ task_jacobian.T
+                    + float(damping) ** 2
+                    * np.eye(task_jacobian.shape[0], dtype=np.float64)
+                )
+                correction = (
+                    float(position_gain)
+                    * task_jacobian.T
+                    @ np.linalg.solve(regularized, task_error)
+                )
+                # Deliberately not null-space projected.  This is the Module
+                # controller's mechanism for choosing a natural IK branch.
+                correction += float(posture_gain) * (
+                    nominal[block] - q[block]
+                )
+                q_next[block] += np.clip(
+                    correction,
+                    -float(max_joint_step),
+                    float(max_joint_step),
+                )
+            candidate = np.clip(q_next, safe_lower, safe_upper)
+            # Backtrack the coupled update. Although fingertip kinematics are
+            # block diagonal, this also keeps the nominal posture term smooth.
+            old_cost = float(
+                np.sum((targets - current) ** 2)
+                + 1.0e-4 * np.sum((q - nominal) ** 2)
+            )
+            accepted = False
+            scale = 1.0
+            while scale >= 1.0 / 32.0:
+                trial = np.clip(
+                    q + scale * (candidate - q), safe_lower, safe_upper
+                ).astype(np.float64)
+                trial_points = self.tip_positions_palm(trial)
+                trial_cost = float(
+                    np.sum((targets - trial_points) ** 2)
+                    + 1.0e-4 * np.sum((trial - nominal) ** 2)
+                )
+                if trial_cost < old_cost:
+                    q = trial
+                    accepted = True
+                    break
+                scale *= 0.5
+            if not accepted:
+                break
+        residual = np.linalg.norm(
+            targets - self.tip_positions_palm(q), axis=1
+        )
+        return q.astype(np.float32), residual.astype(np.float32), iterations
+
+    def _kinematic_health_maps(
+        self, sample_count: int = 10_000, seed: int = 20230804
+    ) -> list[dict[str, np.ndarray | float]]:
+        """Build the paper's per-finger reachability/manipulability maps.
+
+        The paper fits GPR surrogates because it solves online.  This planner
+        runs offline with exact kinematics, so only the reachability boundary
+        is precomputed; manipulability is evaluated from the live Jacobian.
+        """
+
+        key = (int(sample_count), int(seed))
+        cached = _KINEMATIC_HEALTH_CACHE.get(key)
+        if cached is not None:
+            return cached
+        rng = np.random.default_rng(seed)
+        maps: list[dict[str, np.ndarray | float]] = []
+        restore_q = self.data.qpos.copy()
+        for finger in range(4):
+            block = slice(4 * finger, 4 * finger + 4)
+            lower = self.lower[block] + 0.03
+            upper = self.upper[block] - 0.03
+            sampled_q = rng.uniform(lower, upper, size=(sample_count, 4))
+            positions = np.zeros((sample_count, 3), dtype=np.float64)
+            manipulability = np.zeros(sample_count, dtype=np.float64)
+            q_full = self.grasp_closure_q.copy()
+            for sample_id, q_finger in enumerate(sampled_q):
+                q_full[block] = q_finger
+                self._set_q(self.data, q_full)
+                site_id = int(self.tip_ids[finger])
+                positions[sample_id] = self.data.site_xpos[site_id]
+                jac_pos = np.zeros((3, self.model.nv), dtype=np.float64)
+                jac_rot = np.zeros_like(jac_pos)
+                mujoco.mj_jacSite(
+                    self.model, self.data, jac_pos, jac_rot, site_id
+                )
+                jacobian = jac_pos[:, self.dof_indices[block]]
+                determinant = float(np.linalg.det(jacobian @ jacobian.T))
+                manipulability[sample_id] = np.sqrt(max(determinant, 0.0))
+            hull = ConvexHull(positions, qhull_options="QJ")
+            equations = np.asarray(hull.equations, dtype=np.float64)
+            equation_norm = np.maximum(
+                np.linalg.norm(equations[:, :-1], axis=1), 1.0e-12
+            )
+            equations[:, :-1] /= equation_norm[:, None]
+            equations[:, -1] /= equation_norm
+            # ConvexHull equations use a*x+b <= 0 for points inside.
+            maps.append(
+                {
+                    "equations": equations,
+                    "boundary_points": positions[hull.vertices],
+                    "manipulability_scale": float(
+                        max(np.percentile(manipulability, 99.5), 1.0e-9)
+                    ),
+                }
+            )
+        self.data.qpos[:] = restore_q
+        mujoco.mj_forward(self.model, self.data)
+        _KINEMATIC_HEALTH_CACHE[key] = maps
+        return maps
+
+    def _finger_kinematic_health(
+        self,
+        finger: int,
+        point_palm: np.ndarray,
+        health_map: dict[str, np.ndarray | float],
+    ) -> tuple[float, float]:
+        """Return Aude/Khadivar isotropic reachability eta and mu."""
+
+        equations = np.asarray(health_map["equations"], dtype=np.float64)
+        plane_distance = -(
+            equations[:, :3] @ np.asarray(point_palm, dtype=np.float64)
+            + equations[:, 3]
+        )
+        d_min = max(float(np.min(plane_distance)), 0.0)
+        boundary = np.asarray(
+            health_map["boundary_points"], dtype=np.float64
+        )
+        d_max = max(
+            float(
+                np.max(
+                    np.linalg.norm(
+                        boundary - np.asarray(point_palm, dtype=np.float64),
+                        axis=1,
+                    )
+                )
+            ),
+            1.0e-9,
+        )
+        eta = float(np.clip(d_min / d_max, 0.0, 1.0))
+
+        block = slice(4 * finger, 4 * finger + 4)
+        site_id = int(self.tip_ids[finger])
+        jac_pos = np.zeros((3, self.model.nv), dtype=np.float64)
+        jac_rot = np.zeros_like(jac_pos)
+        mujoco.mj_jacSite(self.model, self.data, jac_pos, jac_rot, site_id)
+        jacobian = jac_pos[:, self.dof_indices[block]]
+        determinant = float(np.linalg.det(jacobian @ jacobian.T))
+        raw_mu = np.sqrt(max(determinant, 0.0))
+        mu = float(
+            np.clip(
+                raw_mu / float(health_map["manipulability_scale"]),
+                0.0,
+                1.0,
+            )
+        )
+        return eta, mu
+
+    def solve_geometry_contact_posture(
+        self,
+        oracle: GeometrySurfaceOracle,
+        palm_pose_world: np.ndarray,
+        seed_q: np.ndarray,
+        nominal_q: np.ndarray,
+        *,
+        preload_m: float = 0.002,
+        projection_iterations: int = 12,
+        posture_gain: float = 0.025,
+        pad_alignment_gain: float = 0.8,
+        multistart: bool = False,
+    ) -> tuple[np.ndarray, dict[str, np.ndarray | float | bool]]:
+        """Jointly select reachable mesh contacts and a healthy hand posture.
+
+        This planner deliberately does *not* trace an open-to-grasp joint
+        path.  Each seed defines one reachable fingertip-workspace branch;
+        alternating exact mesh projection and complete 4-DoF fingertip IK
+        selects a surface material point on that branch.  Multiple structured
+        seeds let the first keyframe choose between nearby branches without
+        coupling contact existence to one hard-coded closure trajectory.
+
+        The score combines surface residual, physical pad attitude, temporal
+        continuity, flexion synergy, joint-limit margin, nominal posture and
+        index/middle/ring lateral ordering.  It is a privileged teacher-data
+        optimizer; deployment MCC receives only its resulting targets.
+        """
+
+        seed = self.clamp_joint_positions(seed_q).astype(np.float64)
+        nominal = self.clamp_joint_positions(nominal_q).astype(np.float64)
+        health_maps = self._kinematic_health_maps()
+        candidates: list[np.ndarray] = [seed.copy()]
+        if not np.allclose(seed, nominal, atol=1.0e-5):
+            candidates.append(nominal.copy())
+
+        if multistart:
+            flex_indices = np.asarray(
+                [
+                    index
+                    for finger in range(4)
+                    for index in (4 * finger, 4 * finger + 2, 4 * finger + 3)
+                ],
+                dtype=np.int32,
+            )
+            # Uniform flexion changes preserve a natural-looking phalanx
+            # distribution while exploring surface patches nearer/farther
+            # from the palm.  These are independent posture seeds, not a
+            # one-dimensional contact path.
+            for offset in (-0.45, -0.25, 0.25, 0.45):
+                trial = nominal.copy()
+                trial[flex_indices] += offset
+                candidates.append(
+                    self.clamp_joint_positions(trial).astype(np.float64)
+                )
+            # Explore lateral/opposition alternatives explicitly.  Index and
+            # ring move in opposite directions so the bank never encourages
+            # all three ordinary fingers to crowd toward the middle finger.
+            for fan in (-0.40, -0.20, 0.20, 0.40):
+                trial = nominal.copy()
+                trial[1] += fan
+                trial[9] -= fan
+                trial[13] -= 0.35 * fan
+                candidates.append(
+                    self.clamp_joint_positions(trial).astype(np.float64)
+                )
+            # A difficult curved patch may require only one finger to open or
+            # close.  Independent perturbations retain the other three stable
+            # contacts and are essential for ring/thumb recovery.
+            for finger in range(4):
+                flex = np.asarray(
+                    (4 * finger, 4 * finger + 2, 4 * finger + 3),
+                    dtype=np.int32,
+                )
+                for offset in (-0.35, 0.35):
+                    trial = seed.copy()
+                    trial[flex] += offset
+                    candidates.append(
+                        self.clamp_joint_positions(trial).astype(np.float64)
+                    )
+
+        lateral_axis = np.asarray(
+            self.config.qp_lateral_axis_palm, dtype=np.float64
+        )
+        lateral_axis /= max(float(np.linalg.norm(lateral_axis)), 1.0e-12)
+        nominal_tip = self.tip_positions_palm(nominal)[:3]
+        nominal_lateral = nominal_tip @ lateral_axis
+        palm_rotation = _quat_wxyz_to_matrix(
+            np.asarray(palm_pose_world, dtype=np.float64).reshape(7)[3:7]
+        )
+
+        # Optimize each 4-DoF finger against the exact signed-distance field.
+        # Contact points are therefore decision results on the mesh, not
+        # predefined points sampled from a closure trajectory.
+        best_q = seed.copy()
+        safe_lower = np.minimum(self.lower + 0.03, self.upper)
+        safe_upper = np.maximum(self.upper - 0.03, self.lower)
+        evaluations = 0
+        for finger in range(4):
+            block = slice(4 * finger, 4 * finger + 4)
+            finger_seeds: list[np.ndarray] = []
+            for candidate in candidates:
+                value = np.clip(candidate[block], safe_lower[block], safe_upper[block])
+                if not any(np.allclose(value, old, atol=1.0e-5) for old in finger_seeds):
+                    finger_seeds.append(value.copy())
+
+            best_finger = np.clip(
+                seed[block], safe_lower[block], safe_upper[block]
+            )
+            best_finger_score = np.inf
+
+            def residual(q_finger: np.ndarray) -> np.ndarray:
+                nonlocal evaluations
+                evaluations += 1
+                q_full = best_q.copy()
+                q_full[block] = q_finger
+                self._set_q(self.data, q_full)
+                site_id = int(self.tip_ids[finger])
+                point_palm = self.data.site_xpos[site_id].copy()
+                rotation_palm = self.data.site_xmat[site_id].reshape(3, 3).copy()
+                point_world = self.points_palm_to_world(
+                    point_palm[None, :], palm_pose_world
+                )[0]
+                observation = oracle.observe(point_world[None, :])
+                surface_point = np.asarray(
+                    observation.points_world, dtype=np.float64
+                )[0]
+                surface_normal = oracle.normals_at_world(
+                    surface_point[None, :]
+                )[0]
+                signed_distance = float(
+                    np.asarray(observation.signed_distance, dtype=np.float64)[0]
+                )
+                eta, mu = self._finger_kinematic_health(
+                    finger, point_palm, health_maps[finger]
+                )
+                pad_outward = (
+                    palm_rotation @ rotation_palm @ TIP_PAD_OUTWARD_AXIS_LOCAL
+                )
+                posture = q_finger - nominal[block]
+                temporal = q_finger - seed[block]
+                # Equal normalized deviations of the three flexion joints are
+                # the local healthy-hand model: no proximal-open/distal-folded
+                # solution can satisfy these two residuals cheaply.
+                flex_local = np.asarray((0, 2, 3), dtype=np.int32)
+                flex_global = np.asarray(
+                    (4 * finger, 4 * finger + 2, 4 * finger + 3),
+                    dtype=np.int32,
+                )
+                flex_fraction = (
+                    q_finger[flex_local] - self.lower[flex_global]
+                ) / np.maximum(
+                    self.upper[flex_global] - self.lower[flex_global],
+                    1.0e-6,
+                )
+                synergy = np.asarray(
+                    (
+                        flex_fraction[1] - flex_fraction[0],
+                        flex_fraction[2] - flex_fraction[0],
+                    )
+                )
+                result = [
+                    (signed_distance + float(preload_m)) / 0.001,
+                    *(
+                        np.sqrt(max(float(pad_alignment_gain), 1.0e-5))
+                        * (pad_outward + surface_normal)
+                    ),
+                    *(np.sqrt(max(float(posture_gain), 1.0e-5)) * posture / 0.35),
+                    *(np.sqrt(0.08) * temporal / 0.30),
+                    # Flexion balance is now only a weak anti-folding visual
+                    # prior.  Aude/Khadivar kinematic health is carried by
+                    # reciprocal manipulability and isotropic reachability.
+                    *(np.sqrt(0.04) * synergy / 0.25),
+                    np.sqrt(0.004) * (1.0 / (mu + 0.05) - 1.0 / 1.05),
+                    np.sqrt(0.002) * (1.0 / (eta + 0.02) - 1.0 / 1.02),
+                ]
+                if finger < 3:
+                    # Preserve each ordinary finger's nominal lateral lane;
+                    # this is the separable form of the global ordering and
+                    # prevents index/ring from converging onto the middle.
+                    lateral = float(point_palm @ lateral_axis)
+                    result.append(
+                        np.sqrt(0.12)
+                        * (lateral - nominal_lateral[finger])
+                        / 0.020
+                    )
+                return np.asarray(result, dtype=np.float64)
+
+            for finger_seed in finger_seeds:
+                solution = least_squares(
+                    residual,
+                    finger_seed,
+                    bounds=(safe_lower[block], safe_upper[block]),
+                    method="trf",
+                    max_nfev=max(30, int(projection_iterations) * 8),
+                    ftol=1.0e-6,
+                    xtol=1.0e-6,
+                    gtol=1.0e-6,
+                )
+                score = float(np.sum(residual(solution.x) ** 2))
+                if score < best_finger_score:
+                    best_finger_score = score
+                    best_finger = solution.x.copy()
+            best_q[block] = best_finger
+
+        best_q = self.clamp_joint_positions(best_q).astype(np.float64)
+        tip_palm = self.tip_positions_palm(best_q)
+        tip_world = self.points_palm_to_world(tip_palm, palm_pose_world)
+        final_surface = oracle.observe(tip_world)
+        points_world = np.asarray(final_surface.points_world, dtype=np.float64)
+        normals_world = oracle.normals_at_world(points_world)
+        signed_distance = np.asarray(
+            final_surface.signed_distance, dtype=np.float64
+        )
+        pad_error = self.pad_normal_errors(
+            best_q, palm_pose_world, normals_world
+        )
+        synergy_spread, synergy_residual = self.flexion_synergy_metrics(best_q)
+        isotropic_reachability = np.zeros(4, dtype=np.float64)
+        manipulability = np.zeros(4, dtype=np.float64)
+        self._set_q(self.data, best_q)
+        for finger in range(4):
+            isotropic_reachability[finger], manipulability[finger] = (
+                self._finger_kinematic_health(
+                    finger, tip_palm[finger], health_maps[finger]
+                )
+            )
+        ordinary_tip = tip_palm[:3]
+        nominal_order = np.asarray(
+            [
+                lateral_axis @ (nominal_tip[left] - nominal_tip[right])
+                for left, right in ((0, 1), (1, 2))
+            ]
+        )
+        order_sign = np.where(nominal_order >= 0.0, 1.0, -1.0)
+        lateral_margin = np.asarray(
+            [
+                order_sign[pair]
+                * lateral_axis
+                @ (ordinary_tip[left] - ordinary_tip[right])
+                for pair, (left, right) in enumerate(((0, 1), (1, 2)))
+            ],
+            dtype=np.float64,
+        )
+        joint_margin = np.minimum(
+            best_q - self.lower, self.upper - best_q
+        )
+        surface_error = np.abs(signed_distance + float(preload_m))
+        posture_deviation = np.abs(best_q - nominal)
+        temporal_deviation = np.abs(best_q - seed)
+        score = float(
+            1.0e5 * np.sum(surface_error**2)
+            + np.sum(pad_error**2)
+            + 2.0 * np.sum(synergy_residual**2)
+            + 0.2 * np.sum(posture_deviation**2)
+            + 0.08 * np.sum(temporal_deviation**2)
+        )
+        valid = bool(
+            np.isfinite(best_q).all()
+            and float(np.max(surface_error)) <= 0.003
+            and float(np.max(pad_error)) <= np.deg2rad(105.0)
+            and float(np.min(isotropic_reachability)) > 0.0
+            and float(np.min(manipulability)) >= 0.03
+            and float(np.min(lateral_margin)) >= 0.008
+            and float(np.min(joint_margin)) >= 0.0
+        )
+        debug: dict[str, np.ndarray | float | bool] = {
+            "surface_point_world": points_world.astype(np.float32),
+            "surface_normal_world": normals_world.astype(np.float32),
+            "signed_distance": signed_distance.astype(np.float32),
+            "surface_error": surface_error.astype(np.float32),
+            "pad_normal_error": pad_error.astype(np.float32),
+            "synergy_spread": synergy_spread.astype(np.float32),
+            "synergy_residual": synergy_residual.astype(np.float32),
+            "isotropic_reachability": isotropic_reachability.astype(np.float32),
+            "manipulability": manipulability.astype(np.float32),
+            "lateral_margin": lateral_margin.astype(np.float32),
+            "joint_margin": joint_margin.astype(np.float32),
+            "posture_deviation": float(np.max(posture_deviation)),
+            "temporal_deviation": float(np.max(temporal_deviation)),
+            "score": score,
+            "valid": valid,
+            "function_evaluations": float(evaluations),
+        }
+        return best_q.astype(np.float32), debug
 
     def orient_toward_surface_normals(
         self,
@@ -1647,7 +2163,14 @@ class FullHandMCCFingerController:
     def flexion_synergy_metrics(
         self, q_action_order: np.ndarray
     ) -> tuple[np.ndarray, np.ndarray]:
-        """Measure per-finger departure from the natural closure branch."""
+        """Measure phalanx balance without referencing a closure path.
+
+        Each of the three flexion joints is mapped to its own physical joint
+        range.  A healthy finger has comparable normalized flexion fractions;
+        the pathological proximal-open/distal-folded branch has a large
+        spread.  This definition remains valid for geometry-planned contacts
+        that never lie on the legacy open-to-grasp line.
+        """
         q = np.asarray(q_action_order, dtype=np.float64).reshape(16)
         spread = np.zeros(4, dtype=np.float64)
         residual = np.zeros(4, dtype=np.float64)
@@ -1656,20 +2179,12 @@ class FullHandMCCFingerController:
                 (4 * finger, 4 * finger + 2, 4 * finger + 3),
                 dtype=np.int32,
             )
-            origin = self.open_grasp_q[flex]
-            direction = self.grasp_closure_q[flex] - origin
-            denominator = np.where(np.abs(direction) > 1.0e-5, direction, 1.0)
-            ratio = (q[flex] - origin) / denominator
+            lower = self.lower[flex]
+            travel = np.maximum(self.upper[flex] - lower, 1.0e-6)
+            ratio = (q[flex] - lower) / travel
             spread[finger] = float(np.ptp(ratio))
-            fraction = float(
-                np.clip(
-                    (direction @ (q[flex] - origin))
-                    / max(float(direction @ direction), 1.0e-9),
-                    0.0,
-                    1.25,
-                )
-            )
-            projected = origin + fraction * direction
+            fraction = float(np.clip(np.mean(ratio), 0.0, 1.0))
+            projected = lower + fraction * travel
             residual[finger] = float(np.linalg.norm(q[flex] - projected))
         return spread, residual
 
@@ -1722,6 +2237,48 @@ class FullHandMCCFingerController:
             )
         return errors
 
+    def pad_contact_validity(
+        self,
+        q_action_order: np.ndarray,
+        palm_pose_world: np.ndarray,
+        contact_points_world: np.ndarray,
+        found: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Classify physical contacts using their location on each tip mesh.
+
+        Returns a pad-valid mask and the measured contact points expressed in
+        the corresponding fingertip site frames.  Local X near zero is the
+        tactile/front face; large positive X lies on the back shell.
+        """
+
+        collision = np.asarray(found, dtype=bool).reshape(4)
+        points_world = np.asarray(
+            contact_points_world, dtype=np.float64
+        ).reshape(4, 3)
+        local = np.full((4, 3), np.nan, dtype=np.float64)
+        if not np.any(collision):
+            return collision.copy(), local
+        self._set_q(self.data, q_action_order)
+        points_palm = self.points_world_to_palm(
+            points_world, palm_pose_world
+        )
+        for finger in np.flatnonzero(collision):
+            site_id = int(self.tip_ids[finger])
+            rotation = self.data.site_xmat[site_id].reshape(3, 3)
+            local[finger] = rotation.T @ (
+                points_palm[finger] - self.data.site_xpos[site_id]
+            )
+        limits = np.asarray(
+            self.config.back_contact_x_limit_m, dtype=np.float64
+        ).reshape(4)
+        plausible = np.isfinite(local).all(axis=1)
+        plausible &= (
+            np.linalg.norm(local, axis=1)
+            <= float(self.config.contact_anchor_max_site_distance)
+        )
+        pad_valid = collision & plausible & (local[:, 0] <= limits)
+        return pad_valid, local
+
     def update_contact_point_anchors(
         self,
         q_action_order: np.ndarray,
@@ -1760,6 +2317,34 @@ class FullHandMCCFingerController:
                 point - origin
             )
             self.contact_point_valid[finger] = True
+
+    def finger_control_points_palm(
+        self,
+        q_action_order: np.ndarray,
+        measured_mask: np.ndarray | None = None,
+    ) -> np.ndarray:
+        """Return the physical pad control points at ``q`` in palm frame.
+
+        Before a finger has made contact, its fixed MCC site is the only
+        available bootstrap point.  Once a measured contact centre has been
+        captured, keep using that body-local pad point at every hypothetical
+        closure posture.  Testing the fixed site after contact is incorrect:
+        on the Leap Hand it can sit more than a centimetre away from the
+        collision point while the pad is already touching the object.
+        """
+
+        self._set_q(self.data, q_action_order)
+        points = self.data.site_xpos[self.tip_ids].copy()
+        use_measured = self.contact_point_valid.copy()
+        if measured_mask is not None:
+            use_measured &= np.asarray(measured_mask, dtype=bool).reshape(4)
+        for finger in np.flatnonzero(use_measured):
+            body_id = int(self.tip_body_ids[finger])
+            rotation = self.data.xmat[body_id].reshape(3, 3)
+            points[finger] = self.data.xpos[body_id] + (
+                rotation @ self.contact_point_body_local[finger]
+            )
+        return points.astype(np.float64)
 
     def _finger_control_point_jacobian(self, finger: int) -> np.ndarray:
         """Return the 3x4 Jacobian at the measured pad contact centre.
@@ -1820,6 +2405,8 @@ class FullHandMCCFingerController:
         target_velocity_palm: np.ndarray,
         surface_normals_palm: np.ndarray,
         nominal_posture_q: np.ndarray,
+        normal_force: np.ndarray | None = None,
+        contact_observed: np.ndarray | None = None,
     ) -> tuple[np.ndarray, dict[str, np.ndarray | float | int]]:
         """Predict a feasible hand posture from the moving contact manifold.
 
@@ -1838,7 +2425,52 @@ class FullHandMCCFingerController:
 
         cfg = self.config
         q = np.asarray(q_live, dtype=np.float64).reshape(16)
-        velocity = np.asarray(target_velocity_palm, dtype=np.float64).reshape(4, 3)
+        surface_velocity = np.asarray(
+            target_velocity_palm, dtype=np.float64
+        ).reshape(4, 3).copy()
+        surface_speed = np.linalg.norm(
+            surface_velocity, axis=-1, keepdims=True
+        )
+        surface_velocity *= np.minimum(
+            1.0,
+            float(cfg.qp_max_target_speed)
+            / np.maximum(surface_speed, 1.0e-9),
+        )
+        normals = _normalize(
+            np.asarray(surface_normals_palm, dtype=np.float64).reshape(4, 3)
+        )
+
+        # Couple the slow geometric planner to measured contact quality.
+        # The outward source-mesh normal defines positive velocity.  Therefore
+        # F_meas < F_des produces a negative (inward) normal velocity, while an
+        # over-loaded pad is allowed to retreat.  This deliberately remains a
+        # small bounded bias: the direct MCC force servo below runs every
+        # control tick and is still responsible for precise force regulation.
+        force_normal_velocity = np.zeros(4, dtype=np.float64)
+        if normal_force is not None:
+            measured = np.asarray(normal_force, dtype=np.float64).reshape(4)
+            observed = (
+                np.ones(4, dtype=bool)
+                if contact_observed is None
+                else np.asarray(contact_observed, dtype=bool).reshape(4)
+            )
+            force_error = measured - self.force_setpoint
+            deadband = float(max(0.0, cfg.qp_force_deadband))
+            force_error = np.sign(force_error) * np.maximum(
+                np.abs(force_error) - deadband,
+                0.0,
+            )
+            force_normal_velocity = np.clip(
+                float(cfg.qp_force_velocity_gain) * force_error,
+                -float(cfg.qp_max_force_velocity),
+                float(cfg.qp_max_force_velocity),
+            )
+            # Complete loss is handled by the recovery state machine.  Do not
+            # integrate a fictitious force error when no physical normal/force
+            # measurement exists.
+            force_normal_velocity[~observed] = 0.0
+
+        velocity = surface_velocity + force_normal_velocity[:, None] * normals
         speed = np.linalg.norm(velocity, axis=-1, keepdims=True)
         velocity = velocity * np.minimum(
             1.0,
@@ -1850,9 +2482,6 @@ class FullHandMCCFingerController:
             + (1.0 - alpha) * self.filtered_qp_target_velocity
         )
         velocity = self.filtered_qp_target_velocity.copy()
-        normals = _normalize(
-            np.asarray(surface_normals_palm, dtype=np.float64).reshape(4, 3)
-        )
         nominal = np.asarray(nominal_posture_q, dtype=np.float64).reshape(16)
         self._set_q(self.data, q)
         nominal_tip_positions = None
@@ -1870,11 +2499,17 @@ class FullHandMCCFingerController:
             jacobian = self._finger_control_point_jacobian(finger)
             finger_jacobians.append(jacobian)
             normal = normals[finger]
+            tangential_weight = float(
+                cfg.qp_thumb_tangential_velocity_weight
+                if finger == 3
+                and cfg.qp_thumb_tangential_velocity_weight is not None
+                else cfg.qp_tangential_velocity_weight
+            )
             weight = (
-                cfg.qp_tangential_velocity_weight * identity3
+                tangential_weight * identity3
                 + (
                     cfg.qp_normal_velocity_weight
-                    - cfg.qp_tangential_velocity_weight
+                    - tangential_weight
                 )
                 * np.outer(normal, normal)
             )
@@ -2010,6 +2645,7 @@ class FullHandMCCFingerController:
 
         predicted_velocity = np.zeros((4, 3), dtype=np.float64)
         normal_error = np.zeros(4, dtype=np.float64)
+        tangent_delta_velocity = np.zeros((4, 3), dtype=np.float64)
         for finger in range(4):
             block = slice(4 * finger, 4 * finger + 4)
             jacobian = finger_jacobians[finger]
@@ -2018,10 +2654,25 @@ class FullHandMCCFingerController:
                 normals[finger]
                 @ (predicted_velocity[finger] - velocity[finger])
             )
+            relative_velocity = (
+                predicted_velocity[finger] - surface_velocity[finger]
+            )
+            tangent_delta_velocity[finger] = relative_velocity - (
+                normals[finger] @ relative_velocity
+            ) * normals[finger]
         return q_target.astype(np.float32), {
             "joint_velocity": solution.astype(np.float32),
             "predicted_tip_velocity_palm": predicted_velocity.astype(np.float32),
             "target_tip_velocity_palm": velocity.astype(np.float32),
+            "surface_velocity_palm": surface_velocity.astype(np.float32),
+            "force_normal_velocity": force_normal_velocity.astype(np.float32),
+            # This is the planner's selected motion on the current contact
+            # tangent plane.  It is not prescribed by closure-path geometry;
+            # it emerges from the trade-off between future surface motion,
+            # reachability, posture comfort, finger ordering and smoothness.
+            "tangent_delta_velocity_palm": tangent_delta_velocity.astype(
+                np.float32
+            ),
             "normal_velocity_error": normal_error.astype(np.float32),
             "adjacent_lateral_distance": adjacent_distances.astype(np.float32),
             "separation_active": separation_active,
@@ -2408,12 +3059,30 @@ class FullHandMCCFingerController:
     ) -> tuple[np.ndarray, dict[str, np.ndarray]]:
         cfg = self.config
         q_live = np.asarray(q_live, dtype=np.float64).reshape(16)
-        found = np.asarray(found, dtype=bool).reshape(4)
+        raw_found = np.asarray(found, dtype=bool).reshape(4)
+        pad_contact_valid = raw_found.copy()
+        contact_point_tip_local = np.full((4, 3), np.nan, dtype=np.float64)
+        if contact_points_world is not None:
+            pad_contact_valid, contact_point_tip_local = (
+                self.pad_contact_validity(
+                    q_live,
+                    palm_pose_world,
+                    contact_points_world,
+                    raw_found,
+                )
+            )
+        # A collision on the back shell is a loss of tactile-pad contact, not
+        # a healthy force measurement.  Feeding it to the force integrator was
+        # what kept folded fingers pressed against the object indefinitely.
+        found = raw_found & pad_contact_valid
         if cfg.enable_loss_state_machine and manage_contact_state:
             state_contact = (
                 found
                 if contact_observed is None
-                else np.asarray(contact_observed, dtype=bool).reshape(4)
+                else (
+                    np.asarray(contact_observed, dtype=bool).reshape(4)
+                    & pad_contact_valid
+                )
             )
             self._update_contact_recovery_state(state_contact)
         actual = self.tip_positions_palm(q_live)
@@ -2425,6 +3094,16 @@ class FullHandMCCFingerController:
             np.asarray(force_world, dtype=np.float64).reshape(4, 3),
             axis=-1,
         )
+        hard_ratio = np.full(4, cfg.overforce_hard_ratio, dtype=np.float64)
+        if cfg.thumb_overforce_hard_ratio is not None:
+            hard_ratio[3] = cfg.thumb_overforce_hard_ratio
+        collision_overforce = raw_found & (
+            raw_force_magnitude >= hard_ratio * self.force_setpoint
+        )
+        # This mask is refined with a short release hold in the direct force
+        # loop below.  It deliberately starts from raw collision/force data,
+        # not the tactile-pad validity used by the task controller.
+        collision_safety_active = collision_overforce.copy()
         if force_magnitude_only:
             # The admittance core only needs a scalar load along its control
             # axis.  Reconstruct that scalar from the 3-D force magnitude so
@@ -2516,16 +3195,16 @@ class FullHandMCCFingerController:
                 )
                 self.force_servo_filtered[search_missing] = 0.0
                 self.force_servo_filter_valid[search_missing] = False
-            hard_ratio = np.full(4, cfg.overforce_hard_ratio, dtype=np.float64)
-            if cfg.thumb_overforce_hard_ratio is not None:
-                hard_ratio[3] = cfg.thumb_overforce_hard_ratio
-            hard_overforce = found & (
-                raw_force_magnitude >= hard_ratio * self.force_setpoint
-            )
-            self.overforce_recontact_hold[hard_overforce] = (
+            # Contact validity and collision safety have different semantics.
+            # ``found`` deliberately rejects contacts on the back/side of the
+            # tactile pad so they cannot masquerade as a healthy task contact.
+            # Such a collision must nevertheless trigger outward safety
+            # motion; masking it here previously allowed multi-kN forces to be
+            # ignored whenever pad_contact_validity() rejected the point.
+            self.overforce_recontact_hold[collision_overforce] = (
                 cfg.overforce_recontact_hold_frames
             )
-            decay_hold = found & ~hard_overforce
+            decay_hold = raw_found & ~collision_overforce
             self.overforce_recontact_hold[decay_hold] = np.maximum(
                 self.overforce_recontact_hold[decay_hold] - 1,
                 0,
@@ -2534,13 +3213,23 @@ class FullHandMCCFingerController:
                 self.overforce_recontact_hold[held_missing] - 1,
                 0,
             )
+            collision_safety_active = collision_overforce | (
+                self.overforce_recontact_hold > 0
+            )
+            # While safety owns a finger, never let the ordinary force loop
+            # integrate inward again.  This hysteresis prevents one-frame
+            # release/reload chatter around the hard threshold.
+            offset_step[collision_safety_active] = np.minimum(
+                offset_step[collision_safety_active], 0.0
+            )
             hard_step = np.full(
                 4, cfg.force_servo_hard_step, dtype=np.float64
             )
             if cfg.thumb_force_servo_hard_step is not None:
                 hard_step[3] = cfg.thumb_force_servo_hard_step
-            offset_step[hard_overforce] = np.minimum(
-                offset_step[hard_overforce], -hard_step[hard_overforce]
+            offset_step[collision_overforce] = np.minimum(
+                offset_step[collision_overforce],
+                -hard_step[collision_overforce],
             )
             lower_offset = np.full(4, -cfg.max_normal_offset)
             if cfg.thumb_max_outward_offset is not None:
@@ -2548,6 +3237,14 @@ class FullHandMCCFingerController:
             upper_offset = np.full(4, cfg.max_normal_offset)
             if cfg.thumb_max_inward_offset is not None:
                 upper_offset[3] = cfg.thumb_max_inward_offset
+            # The ordinary force loop is intentionally local (millimetres),
+            # while an invalid-pad collision can require a larger emergency
+            # retreat.  Reuse the independently bounded overforce budget only
+            # for fingers that are currently above the hard raw-force gate.
+            lower_offset[collision_safety_active] = -max(
+                cfg.max_normal_offset,
+                cfg.overforce_max_offset,
+            )
             self.force_servo_offset[:] = np.clip(
                 self.force_servo_offset + offset_step,
                 lower_offset,
@@ -2625,19 +3322,30 @@ class FullHandMCCFingerController:
             else:
                 nominal_increment = np.zeros(16, dtype=np.float64)
                 q_command = nominal_q.copy()
+            # A hard collision is a controller mode switch, not merely a
+            # larger force error.  Starting from the (possibly deeply
+            # infeasible) DP posture and adding a 20 mm normal correction can
+            # still leave the position servo pushing into the object.  Freeze
+            # that finger at its measured posture; the normal correction below
+            # is then a pure outward escape command.
+            for finger in np.flatnonzero(collision_safety_active):
+                block = slice(4 * finger, 4 * finger + 4)
+                q_command[block] = q_live[block]
             normal_projection = np.zeros(4, dtype=np.float64)
             if cfg.use_direct_force_servo:
-                self.overforce_active[:] = found & (
-                    raw_force_magnitude >= hard_ratio * self.force_setpoint
+                self.overforce_active[:] = collision_safety_active
+                self.overforce_outward_offset[:] = np.where(
+                    collision_safety_active,
+                    np.maximum(-self.force_servo_offset, 0.0),
+                    0.0,
                 )
-                self.overforce_outward_offset[:] = 0.0
             else:
                 trigger = cfg.overforce_trigger_ratio * self.force_setpoint
                 release = cfg.overforce_release_ratio * self.force_setpoint
-                self.overforce_active |= found & (
+                self.overforce_active |= raw_found & (
                     raw_force_magnitude >= trigger
                 )
-                self.overforce_active &= found & (
+                self.overforce_active &= raw_found & (
                     raw_force_magnitude > release
                 )
                 overforce_ratio = raw_force_magnitude / np.maximum(
@@ -2798,9 +3506,16 @@ class FullHandMCCFingerController:
                 )
                 self.configuration.integrate_inplace(velocity, cfg.control_dt)
             q_command = self.configuration.data.qpos[self.qpos_indices].copy()
+        safety_command = np.asarray(q_command, dtype=np.float64).copy()
         q_command, flexion_synergy_spread = self.regularize_flexion_synergy(
             q_command, nominal_q
         )
+        # The posture regularizer normally keeps a healthy grasp branch, but
+        # during hard overforce it would pull the just-retreated finger back
+        # toward the unsafe nominal posture.  Safety has strict priority.
+        for finger in np.flatnonzero(collision_safety_active):
+            block = slice(4 * finger, 4 * finger + 4)
+            q_command[block] = safety_command[block]
         if self.previous_command is None:
             self.previous_command = q_live.copy()
         q_command = self.previous_command + np.clip(
@@ -2816,6 +3531,16 @@ class FullHandMCCFingerController:
         filtered_command = self.previous_command + alpha * (
             q_command - self.previous_command
         )
+        # Do not make an emergency retreat wait for a stale inward actuator
+        # target or the cosmetic EMA.  It remains bounded by the same joint
+        # rate limit, but that bound is applied from the measured posture.
+        for finger in np.flatnonzero(collision_safety_active):
+            block = slice(4 * finger, 4 * finger + 4)
+            filtered_command[block] = q_live[block] + np.clip(
+                safety_command[block] - q_live[block],
+                -cfg.action_rate_limit,
+                cfg.action_rate_limit,
+            )
         q_command = filtered_command
         self.previous_command = q_command.copy()
         self._set_q(self.configuration.data, q_command)
@@ -2830,6 +3555,9 @@ class FullHandMCCFingerController:
             "normal_force": measured_normal_force.astype(np.float32),
             "force_error": force_error.astype(np.float32),
             "contact_active": contact_active.copy(),
+            "pad_contact_valid": pad_contact_valid.copy(),
+            "raw_collision_found": raw_found.copy(),
+            "collision_safety_active": self.overforce_active.copy(),
             "reference_speed": np.abs(
                 normal_velocity_debug
             ).astype(np.float32),
@@ -2851,6 +3579,11 @@ class FullHandMCCFingerController:
                 np.asarray(force_world, dtype=np.float64).reshape(4, 3),
                 axis=-1,
             ).astype(np.float32),
+            "raw_collision_found": raw_found.copy(),
+            "pad_contact_valid": pad_contact_valid.copy(),
+            "contact_point_tip_local": contact_point_tip_local.astype(
+                np.float32
+            ),
             "flexion_synergy_spread": flexion_synergy_spread.astype(np.float32),
             "overforce_active": self.overforce_active.copy(),
             "overforce_outward_offset": (

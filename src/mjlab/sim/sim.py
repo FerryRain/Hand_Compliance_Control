@@ -100,6 +100,10 @@ class MujocoCfg:
   ls_iterations: int = 50
   ls_tolerance: float = 0.01
   ccd_iterations: int = 50
+  sdf_initpoints: int = 40
+  """Starting points per SDF collision pair used by narrow-phase descent."""
+  sdf_iterations: int = 10
+  """Maximum gradient-descent iterations for each SDF starting point."""
 
   # Other.
   gravity: tuple[float, float, float] = (0.0, 0.0, -9.81)
@@ -124,6 +128,8 @@ class MujocoCfg:
     model.opt.ls_iterations = self.ls_iterations
     model.opt.ls_tolerance = self.ls_tolerance
     model.opt.ccd_iterations = self.ccd_iterations
+    model.opt.sdf_initpoints = self.sdf_initpoints
+    model.opt.sdf_iterations = self.sdf_iterations
     for flag in self.disableflags:
       if flag not in _DISABLE_FLAG_MAP:
         raise ValueError(

@@ -41,6 +41,7 @@ in one direction only, so the two sources never overwrite each other.
 
 from __future__ import annotations
 
+import copy
 import math
 from collections import deque
 from dataclasses import dataclass
@@ -152,9 +153,20 @@ class NativeMujocoViewer(BaseViewer):
   def setup(self) -> None:
     """Setup MuJoCo viewer resources."""
     sim = self.env.unwrapped.sim
-    self.mjm = sim.mj_model
-    self.mjd = sim.mj_data
+    # Keep rendering options isolated from the CPU model retained by the
+    # simulation bridge.  The GPU/MJWarp state is copied into this model each
+    # frame, so the viewer only needs matching topology and kinematics.
+    self.mjm = copy.copy(sim.mj_model)
+    self.mjd = mujoco.MjData(self.mjm)
     assert self.mjm is not None
+    if np.any(self.mjm.geom_type == mujoco.mjtGeom.mjGEOM_SDF):
+      # This CPU-side model is only a rendering mirror.  Contacts have already
+      # been computed by the simulation backend and debug contact markers read
+      # those simulation results directly.  Re-running SDF narrow phase here is
+      # both redundant and unsafe: the native SDF collider can return more
+      # candidates than mj_maxContact permits for a geom pair.  Disable contact
+      # generation only on the private viewer copy; MJWarp physics is unchanged.
+      self.mjm.opt.disableflags |= int(mujoco.mjtDisableBit.mjDSBL_CONTACT)
     if self.cfg.fovy is not None:
       self.mjm.vis.global_.fovy = self.cfg.fovy
 

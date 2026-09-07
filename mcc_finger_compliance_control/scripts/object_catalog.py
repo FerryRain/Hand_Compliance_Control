@@ -79,6 +79,12 @@ class ObjectGeomConfig:
     # mesh is translated so ``pos`` lands on the origin and scaled by ``size``.
     file: str = ""
     collision_dir: str = ""
+    # Collision representation for mesh objects.  ``convex_decomposition``
+    # loads collision_part_*.obj from ``collision_dir``.  ``sdf`` builds one
+    # MuJoCo volume SDF/octree directly from ``file`` so contact positions and
+    # normals are not contaminated by decomposition seams.
+    collision_backend: str = "convex_decomposition"
+    sdf_octree_maxdepth: int = 8
 
 
 @dataclass(frozen=True)
@@ -238,6 +244,10 @@ def load_object_config(object_id: str) -> ObjectConfig:
         quat = tuple(float(item) for item in quat_array / quat_norm)
         rounding_radius = float(raw.get("rounding_radius", 0.0))
         mesh_subdivisions = int(raw.get("mesh_subdivisions", 0))
+        file_path: Path | None = None
+        collision_path: Path | None = None
+        collision_backend = "convex_decomposition"
+        sdf_octree_maxdepth = 8
         if geom_type == "rounded_box":
             if not 0.0 < rounding_radius < min(compact_size):
                 raise ValueError(
@@ -255,6 +265,19 @@ def load_object_config(object_id: str) -> ObjectConfig:
                 )
             file_value = str(raw.get("file", ""))
             collision_value = str(raw.get("collision_dir", ""))
+            collision_backend = str(
+                raw.get("collision_backend", "convex_decomposition")
+            )
+            if collision_backend not in ("convex_decomposition", "sdf"):
+                raise ValueError(
+                    f"geoms[{index}].collision_backend must be "
+                    "'convex_decomposition' or 'sdf'"
+                )
+            sdf_octree_maxdepth = int(raw.get("sdf_octree_maxdepth", 8))
+            if not 4 <= sdf_octree_maxdepth <= 9:
+                raise ValueError(
+                    f"geoms[{index}].sdf_octree_maxdepth must be in [4, 9]"
+                )
             if not file_value:
                 raise ValueError(f"geoms[{index}] type=mesh requires 'file'")
             file_path = _resolve_asset_path(file_value)
@@ -262,21 +285,23 @@ def load_object_config(object_id: str) -> ObjectConfig:
                 raise FileNotFoundError(
                     f"geoms[{index}] visual mesh not found: {file_path}"
                 )
-            if collision_value:
+            if collision_backend == "convex_decomposition" and collision_value:
                 collision_path = _resolve_asset_path(collision_value)
                 if not collision_path.is_dir():
                     raise NotADirectoryError(
                         f"geoms[{index}] collision_dir not found: {collision_path}"
                     )
+            elif collision_backend == "convex_decomposition":
+                collision_path = None
             else:
+                # Kept only as provenance in the resolved YAML; SDF collision
+                # must not accidentally load any decomposition parts.
                 collision_path = None
         else:
             if rounding_radius != 0.0 or mesh_subdivisions != 0:
                 raise ValueError(
                     f"geoms[{index}] rounding options require type=rounded_box"
                 )
-            file_path = None
-            collision_path = None
         geoms.append(
             ObjectGeomConfig(
                 geom_type=geom_type,
@@ -299,6 +324,8 @@ def load_object_config(object_id: str) -> ObjectConfig:
                 collision_dir=(
                     str(collision_path) if collision_path is not None else ""
                 ),
+                collision_backend=collision_backend,
+                sdf_octree_maxdepth=sdf_octree_maxdepth,
             )
         )
 
@@ -445,6 +472,92 @@ class MeshNormalOracle:
             normals[index] = normal
         return normals[0] if single else normals
 
+    def query_curvature_object_frame(
+        self, points: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Estimate principal curvatures (k1, k2) at object-frame points.
+
+        Privileged geometry metadata (not available at deployment): fits a
+        local quadric ``w = 0.5*(a u^2 + b v^2) + c u v`` in the tangent
+        frame of the neighbourhood; k1/k2 are the eigenvalues of the
+        Hessian [[a, c], [c, b]].  Returns (k1, k2) with shape matching
+        ``points``; NaNs mark points with too few neighbours for a
+        well-posed fit.
+        """
+
+        points = np.asarray(points, dtype=np.float64)
+        single = points.ndim == 1
+        batch = points[None, :] if single else points
+        k1 = np.full(len(batch), np.nan, dtype=np.float64)
+        k2 = np.full(len(batch), np.nan, dtype=np.float64)
+        for index, point in enumerate(batch):
+            neighbours = self.tree.query_ball_point(point, self.radius_m)
+            if len(neighbours) < self.min_neighbours:
+                _, nearest = self.tree.query(point, k=self.min_neighbours)
+                neighbours = nearest.tolist()
+            local = self.vertices[neighbours]
+            if len(local) < 6:
+                continue
+            deltas = local - self.vertices[neighbours].mean(axis=0)
+            dist2 = np.einsum("ij,ij->i", deltas, deltas)
+            sigma = max(self.radius_m, 0.5 * np.sqrt(dist2.max()))
+            weights = np.exp(-0.5 * dist2 / sigma**2)
+            if not np.isfinite(weights).all() or weights.sum() <= 0.0:
+                weights = np.ones_like(dist2)
+            weighted_mean = weights @ local / weights.sum()
+            centered = local - weighted_mean
+            covariance = (centered * weights[:, None]).T @ centered / weights.sum()
+            _, eigenvectors = np.linalg.eigh(covariance)
+            # Smallest-variance eigenvector is the local normal.
+            normal = eigenvectors[:, 0]
+            basis_u = eigenvectors[:, 1]
+            basis_v = eigenvectors[:, 2]
+            u = centered @ basis_u
+            v = centered @ basis_v
+            w = centered @ normal
+            # Weighted least-squares quadric fit
+            # w = A u^2 + B v^2 + C u v (+ plane terms).
+            design = np.stack(
+                [u * u, v * v, u * v, u, v, np.ones_like(u)], axis=1
+            )
+            sqrt_w = np.sqrt(weights)
+            try:
+                coef, *_ = np.linalg.lstsq(
+                    design * sqrt_w[:, None], w * sqrt_w, rcond=None
+                )
+            except np.linalg.LinAlgError:
+                continue
+            a, b, c = coef[0], coef[1], coef[2]
+            # w = a u^2 + b v^2 + c u v => Hessian [[2a, c], [c, 2b]];
+            # its eigenvalues are the principal curvatures.  The normal
+            # points outward so convex patches have w < 0; negate so
+            # convex curvature reads positive (consistent with SDF sign).
+            hessian = np.asarray([[2.0 * a, c], [c, 2.0 * b]])
+            eigenvalues = -np.linalg.eigvalsh(hessian)
+            k1[index] = eigenvalues[0]
+            k2[index] = eigenvalues[1]
+        return (k1[0], k2[0]) if single else (k1, k2)
+
+    def query_curvature_world(
+        self,
+        points_world: np.ndarray,
+        object_pos_world: np.ndarray,
+        object_quat_world: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Principal curvatures at world-frame points (see query_world)."""
+        quats = np.asarray(object_quat_world, dtype=np.float64).reshape(-1, 4)
+        rotmats = (
+            Rotation.from_quat(quats[:, [1, 2, 3, 0]]).as_matrix()
+            if quats.shape[0]
+            else np.empty((0, 3, 3))
+        )
+        points_object = np.einsum(
+            "ij,ikj->ik",
+            np.asarray(points_world) - np.asarray(object_pos_world),
+            rotmats,
+        )
+        return self.query_curvature_object_frame(points_object)
+
     def query_world(
         self,
         points_world: np.ndarray,
@@ -536,6 +649,58 @@ def _add_mesh_geom(
     geom.condim = int(contact.get("condim", 3))
 
 
+def _add_sdf_geom(
+    spec: mujoco.MjSpec,
+    body: mujoco.MjsBody,
+    geom_name: str,
+    mesh: trimesh.Trimesh,
+    mass: float,
+    *,
+    octree_maxdepth: int,
+    contact: dict[str, Any],
+    solref: tuple[float, float],
+    solimp: tuple[float, float, float, float, float],
+    friction: tuple[float, float, float],
+) -> None:
+    """Add an invisible mesh-volume SDF used only for collision.
+
+    MuJoCo compiles the watertight triangle mesh into an adaptive SDF octree;
+    MuJoCo Warp consumes the same octree on CUDA.  The original mesh remains
+    a separate visual-only geom, so changing the collision backend cannot
+    alter rendering or object dimensions.
+    """
+
+    if not mesh.is_watertight or not mesh.is_winding_consistent:
+        raise ValueError(
+            f"SDF collision mesh {geom_name!r} must be watertight with "
+            "consistent winding"
+        )
+    mesh_name = f"{geom_name}_mesh"
+    mesh_asset = spec.add_mesh(
+        name=mesh_name,
+        uservert=np.asarray(mesh.vertices, dtype=np.float64).ravel(),
+        userface=np.asarray(mesh.faces, dtype=np.int32).ravel(),
+        smoothnormal=1,
+    )
+    mesh_asset.octree_maxdepth = int(octree_maxdepth)
+    geom = body.add_geom(
+        name=geom_name,
+        type=mujoco.mjtGeom.mjGEOM_SDF,
+        meshname=mesh_name,
+        rgba=(0.0, 0.0, 0.0, 0.0),
+        mass=mass,
+        contype=1,
+        conaffinity=1,
+    )
+    geom.solref[:] = solref
+    geom.solimp[:] = solimp
+    geom.friction[:] = friction
+    geom.margin = float(contact.get("margin_m", 0.0))
+    geom.gap = float(contact.get("gap_m", 0.0))
+    geom.priority = int(contact.get("priority", 10))
+    geom.condim = int(contact.get("condim", 3))
+
+
 def add_object_body(
     spec: mujoco.MjSpec,
     config: ObjectConfig,
@@ -605,6 +770,20 @@ def add_object_body(
                 contact=contact, solref=solref, solimp=solimp, friction=friction,
                 contype=0, conaffinity=0,
             )
+            if geom_config.collision_backend == "sdf":
+                _add_sdf_geom(
+                    spec,
+                    body,
+                    f"{geom_name}_collision_sdf",
+                    visual,
+                    config.total_mass_kg * geom_config.mass_fraction,
+                    octree_maxdepth=geom_config.sdf_octree_maxdepth,
+                    contact=contact,
+                    solref=solref,
+                    solimp=solimp,
+                    friction=friction,
+                )
+                continue
             part_paths = (
                 sorted(
                     Path(geom_config.collision_dir).glob(

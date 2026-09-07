@@ -1,253 +1,162 @@
-# MCC fingertip position-teacher pipeline
+# MCC fingertip position-teacher pipeline(mustard v4 主线)
 
-This directory is intentionally separate from the legacy FSR pipeline in
-`finger_compliance_control/`.
+本目录独立于 legacy 管线 `finger_compliance_control/`。当前任务主线为
+`Leaphand-Finger-MCC-Position-Control` 下的 **mustard 瓶身接触轨迹 DP**:
 
-完整中文配置、采集、反演、replay 与 DP 训练说明见：
+- **Teacher**:MCC 指尖位置控制器(特权表面 oracle + 四指法向力伺服),手指
+  目标为 palm 系内绝对 tip 目标(12D);DP 学习"接触历史 + 未来手掌运动
+  → 未来四指 tip 目标"。
+- **Action contract(v4)**:`tip_target_palm`(palm 系绝对目标、无跨步累积,
+  部署经 IK 解码,MCC 独立叠加法向力偏移)。
+- **Observation**:dual-track B2 242D 因果状态(schema
+  `contact_geometry_planner_motion_dual_track_v3`)。
 
-[`MCC-Finger-Pipeline-Guide.md`](MCC-Finger-Pipeline-Guide.md)
+详细配置、采集、反演、replay、DAgger 恢复数据与 DP 训练说明:
 
-面向多物体、接触流形 DP、全手触觉和主动探索的分阶段路线见：
+- [`MCC-Finger-Pipeline-Guide.md`](MCC-Finger-Pipeline-Guide.md) — 全流程 guide
+- [`DAgger_Recovery_Data_Guide.md`](DAgger_Recovery_Data_Guide.md) — DAgger 式失触→恢复数据采集(状态 A/B,规划中)
+- [`DP_DATA_COLLECTION_GUIDE.md`](DP_DATA_COLLECTION_GUIDE.md) — 数据设计讨论与 O/A 契约
+- [`SPEED_UNIFORM_PROGRESS.md`](SPEED_UNIFORM_PROGRESS.md) — 逐日进度与 Gate(§32-44 为 DP/DAgger 记录)
 
-[`Tactile-Exploration-DP-Roadmap.md`](Tactile-Exploration-DP-Roadmap.md)
+## 当前数据与模型
 
-## Visual check
+| 内容 | 路径 |
+|---|---|
+| v4 训练文件(220 ep,含 ep226) | `data/dp/mustard_randomized_dual_track_v4_220_tip_target.h5` |
+| v4 已训模型(219 ep = 220 剔除 226,15k 步) | `data/models/mustard_randomized_dual_track_v4_B2_tiptarget_219_15k/best.pt` |
+| 闭环 rollout(DAgger 轮次/接管) | `data/closed_loop_rollouts/{dagger_mustard_*, current_policy}/` |
+| 椭圆 palm 轨道与关键节点 | `data/plans/mustard_so3_v1/`(`*_opt.h5` 含 26 关键节点四指抓握) |
+
+以下命令均在 `mcc_finger_compliance_control/scripts/` 目录内执行。Python 解释器:
+`/home/rimlab/miniconda3/envs/mjlab/bin/python`(或先 `conda activate mjlab`)。
+
+## 1. 数据采集(数采)
+
+两条主链:批量轨道采集(planner_inverse,四指沿瓶身接触流形)与 dual-track
+随机化(执行扰动制造 clean/perturbed 双轨,当前 v4 训练集来源)。
+
+### 1.1 批量轨道采集 + 筛选(推荐)
 
 ```bash
-python mcc_finger_compliance_control/scripts/run_test.py --viewer native
+cd mcc_finger_compliance_control/scripts
+
+# 第一步:椭圆 palm 轨道批量生成 + 离线关键节点筛选(约 35 min @ 12 workers)
+python batch_generate_so3_plans.py \
+  --output-dir ../data/plans/mustard_so3_v2 --workers 12
+
+# 第二步:通过离线检查的 plan 并行采集 + 接触率筛选(16 env/批)
+python batch_collect_and_filter.py \
+  --plans-dir ../data/plans/mustard_so3_v2 \
+  --output-dir ../data/trajectories/mustard_so3_v2 \
+  --selected-dir ../data/trajectories/mustard_so3_v2/selected \
+  --envs-per-batch 16 --min-contact-rate 0.98
 ```
 
-If the machine's GLX stack is unreliable, use `--viewer viser`.
+采集内部逐批 bundle 后调用 `collect_trajectories.py --motion-mode planner_inverse
+--planner-file batch.h5`(物体固定、palm 沿轨道反演运动,教师逐帧解四指接触),
+并在末端按接触率把合格轨迹导出到 `selected/`。`--execution-randomization` 可在
+批量层透传,同一轨道生成 clean/perturbed 双轨标签。
 
-使用与数据采集相同的随机姿态、物体旋转和控制参数观察 `0.06–0.12 rad/s` 测试：
+### 1.2 单批/单模式采集(调试或定制)
 
 ```bash
-MPLCONFIGDIR=/tmp/matplotlib WARP_CACHE_PATH=/tmp/warp \
-python mcc_finger_compliance_control/scripts/run_test.py \
-  --viewer native \
-  --device cuda:0 \
-  --rotate-object \
-  --motion-start 350 \
-  --motion-length 1800 \
-  --angular-speed-min 0.06 \
-  --angular-speed-max 0.12 \
-  --initial-orientation-mode uniform \
-  --seed 20260716 \
-  --print-every 50
+python collect_trajectories.py \
+  --device cuda:0 --num-envs 16 --trajectory-length 2500 \
+  --max-trajectories 16 --motion-mode planner_inverse \
+  --planner-file ../data/plans/<suite>/<plan>_opt.h5 \
+  --initial-orientation-mode fixed --fixed-motion-start \
+  --differential-contact-qp --no-contact-gate \
+  --physics-substeps 10 --seed 42 --filename my_run
 ```
 
-该命令只用于观察，不写 H5。若 native 窗口出现 GLX 错误，把 `--viewer native` 改为
-`--viewer viser`。
+物体随机旋转等早期单轨模式仍可用(`--motion-mode rotation + angular-speed-*`,
+见 `MCC-Finger-Pipeline-Guide.md` §4.2)。产物统一写 `data/trajectories/<name>.h5`。
 
-The first controller version uses four MCC Cartesian fingertip references and
-position-only multi-site IK.  Its measured wrench input is fixed to zero.  The
-four simulated fingertip 3-D forces are recorded for supervision and quality
-analysis, but are not fed back into the controller yet.  Passive compliance
-comes from the low-gain joint position actuators.
+## 2. DP 训练
 
-## 1. Collect
+当前 v4 推荐命令(219 ep、15k 步,含适度增广;增广只作用于训练窗口、验证集恒干净):
 
 ```bash
-python mcc_finger_compliance_control/scripts/collect_trajectories.py \
-  --device cuda:0 --num-envs 1 --trajectory-length 2500 \
-  --max-trajectories 5 --motion-start 350
-```
+cd mcc_finger_compliance_control/scripts
 
-## 2. Invert to an object-fixed trajectory
-
-```bash
-python mcc_finger_compliance_control/scripts/invert_trajectories.py \
-  --file mcc_finger_compliance_control/data/trajectories/<name>.h5
-```
-
-## 3. Geometry replay
-
-```bash
-python mcc_finger_compliance_control/scripts/replay_inverted.py \
-  --file mcc_finger_compliance_control/data/inverted/<name>_inverted.h5 \
-  --viewer native --mode teacher
-```
-
-Use `--viewer headless` for a finite replay and contact summary.
-
-## 4. 下载当前 DP 模型与数据
-
-Git 不跟踪大体积 checkpoint/H5。当前可复现版本发布在 GitHub Release
-`dp-capsule-v1`，包含：
-
-| Release 文件 | 放置位置 | 用途 |
-|---|---|---|
-| `best.pt` | `data/models/so3_uniform_v2_palm_geometry_local_planner_absolute_q_dp_25k/best.pt` | 部署 checkpoint |
-| `dataset_info.json` | 与 `best.pt` 同目录 | 模型输入输出和训练配置 |
-| `metrics.json` | 与 `best.pt` 同目录 | 训练指标 |
-| `so3_uniform_v2_255x2500_relaxed999_inverted.h5` | `data/inverted/` | teacher replay、DP 部署初始状态 |
-| `so3_uniform_v2_255x2500_relaxed999_palm_geometry_local_planner_dp.h5` | `data/inverted/` | 56 维 palm-frame DP 训练集 |
-
-安装了 GitHub CLI 时，一次下载并放到约定位置：
-
-```bash
-cd ~/Code/Hand_Compliance_Control
-mkdir -p /tmp/dp-capsule-v1
-gh release download dp-capsule-v1 \
-  --repo FerryRain/Hand_Compliance_Control \
-  --dir /tmp/dp-capsule-v1
-
-MODEL_DIR=mcc_finger_compliance_control/data/models/so3_uniform_v2_palm_geometry_local_planner_absolute_q_dp_25k
-DATA_DIR=mcc_finger_compliance_control/data/inverted
-mkdir -p "${MODEL_DIR}" "${DATA_DIR}"
-cp /tmp/dp-capsule-v1/best.pt "${MODEL_DIR}/best.pt"
-cp /tmp/dp-capsule-v1/dataset_info.json "${MODEL_DIR}/dataset_info.json"
-cp /tmp/dp-capsule-v1/metrics.json "${MODEL_DIR}/metrics.json"
-cp /tmp/dp-capsule-v1/so3_uniform_v2_255x2500_relaxed999_inverted.h5 "${DATA_DIR}/"
-cp /tmp/dp-capsule-v1/so3_uniform_v2_255x2500_relaxed999_palm_geometry_local_planner_dp.h5 "${DATA_DIR}/"
-```
-
-未安装 `gh` 时，可以在项目的 Releases 页面下载同名文件，再按表格放置。部署参数快照保存在
-[`configs/deployment/capsule_dp_mcc_v1.yaml`](configs/deployment/capsule_dp_mcc_v1.yaml)。
-
-## 5. DP replay 与应用部署
-
-先设置公共路径：
-
-```bash
-cd ~/Code/Hand_Compliance_Control
-conda activate mjlab
-
-INVERTED=mcc_finger_compliance_control/data/inverted/so3_uniform_v2_255x2500_relaxed999_inverted.h5
-MODEL=mcc_finger_compliance_control/data/models/so3_uniform_v2_palm_geometry_local_planner_absolute_q_dp_25k/best.pt
-```
-
-### 5.1 完全 teacher replay
-
-palm pose 和 `q_hand` 都逐帧来自 H5。这一步只验证反演坐标和碰撞环境：
-
-```bash
-MPLCONFIGDIR=/tmp/matplotlib WARP_CACHE_PATH=/tmp/warp \
-python mcc_finger_compliance_control/scripts/replay_inverted.py \
-  --file "${INVERTED}" \
-  --episode-id 216 \
-  --viewer headless \
-  --mode teacher \
-  --device cuda:0 \
-  --max-steps 2150 \
-  --contact-threshold 0.05
-```
-
-### 5.2 Teacher palm 路径上的闭环 DP + FullHandMCC
-
-DP 使用实时手指状态；palm 仍执行 H5 中的教师路径；FullHandMCC 在高频层维持指尖接触：
-
-```bash
-MPLCONFIGDIR=/tmp/matplotlib WARP_CACHE_PATH=/tmp/warp \
-python mcc_finger_compliance_control/scripts/deploy_dp_inverse.py \
-  --file "${INVERTED}" \
-  --model "${MODEL}" \
-  --episode-id 216 \
-  --mode live_dp \
-  --viewer headless \
-  --device cuda:0 \
-  --inference-steps 10 \
-  --chunk-execution \
-  --dp-replan-interval 20 \
-  --execution-layer fullhand_mcc \
-  --mcc-direction-source oracle \
-  --contact-threshold 0.05 \
-  --max-steps 2150
-```
-
-### 5.3 主动规划 palm 的应用部署
-
-下面不再 replay 教师 palm 路径：上层 active planner 沿胶囊子午线移动 palm，DP 预测手指
-nominal pose，FullHandMCC 负责接触恢复和目标力。当前 `oracle` 法向来自解析胶囊，是仿真特权信息；
-它用于验证完整 pipeline，不应被描述成无特权真机部署。
-
-```bash
-MPLCONFIGDIR=/tmp/matplotlib WARP_CACHE_PATH=/tmp/warp \
-python mcc_finger_compliance_control/scripts/deploy_dp_inverse.py \
-  --file "${INVERTED}" \
-  --model "${MODEL}" \
-  --episode-id 216 \
-  --mode live_dp \
-  --viewer headless \
-  --device cuda:0 \
-  --max-steps 2150 \
-  --inference-steps 10 \
-  --chunk-execution \
-  --dp-replan-interval 20 \
-  --execution-layer fullhand_mcc \
-  --mcc-direction-source oracle \
-  --contact-threshold 0.05 \
-  --palm-source active_capsule \
-  --active-palm-surface-speed-mm-s 20 \
-  --active-palm-travel-mm 400 \
-  --active-palm-direction -1 \
-  --active-palm-min-contact-fingers 3
-```
-
-`400 mm` 是请求值；planner 会按剩余胶囊子午线长度裁剪，episode 216 的有效路程约为
-`313 mm`。CSV 中 `found_contacts` 是几何接触数，`loaded_contacts` 是同时满足
-`|F_3D| >= 0.05 N` 的接触数。
-
-## 6. 打开可视化
-
-把上一节部署命令中的 `--viewer headless` 改成 `--viewer native` 即可打开 MuJoCo 窗口，并保留
-DP target、法向和实时接触点标记：
-
-```bash
-MPLCONFIGDIR=/tmp/matplotlib WARP_CACHE_PATH=/tmp/warp \
-python mcc_finger_compliance_control/scripts/deploy_dp_inverse.py \
-  --file "${INVERTED}" --model "${MODEL}" \
-  --episode-id 216 --mode live_dp --viewer native --device cuda:0 \
-  --inference-steps 10 --chunk-execution --dp-replan-interval 20 \
-  --execution-layer fullhand_mcc --mcc-direction-source oracle \
-  --palm-source active_capsule --active-palm-surface-speed-mm-s 20 \
-  --active-palm-travel-mm 400 --active-palm-direction -1 \
-  --active-palm-min-contact-fingers 3 --highlight-contacts
-```
-
-若 GLFW/GLX 无法创建窗口，将 `native` 改成 `viser`。无 NVIDIA GPU 时将
-`--device cuda:0` 改成 `--device cpu`；CPU 可以检查功能，但实时性明显更低。
-
-## 7. 录制跟手视角 MP4
-
-`--viewer video` 使用离屏渲染，相机固定跟随 `robot/palm_lower`：
-
-仓库内示例：[`outputs/active_capsule_dp_mcc_direction-1_400mm.mp4`](outputs/active_capsule_dp_mcc_direction-1_400mm.mp4)。
-该次运行完成 `313.0 mm` 可达路径，`>=3` 指接触率为 `98.9%`，四指接触率为
-`93.6%`，最大指尖力为 `2.01 N`。
-
-```bash
-MUJOCO_GL=egl MPLCONFIGDIR=/tmp/matplotlib WARP_CACHE_PATH=/tmp/warp \
-python mcc_finger_compliance_control/scripts/deploy_dp_inverse.py \
-  --file "${INVERTED}" --model "${MODEL}" \
-  --episode-id 216 --mode live_dp --viewer video --device cuda:0 \
-  --video-output mcc_finger_compliance_control/outputs/active_capsule_dp_mcc_direction-1_400mm.mp4 \
-  --video-fps 30 --video-width 960 --video-height 720 \
-  --video-camera-distance 0.45 --video-camera-azimuth 300 --video-camera-elevation -10 \
-  --max-steps 2150 --inference-steps 10 \
-  --chunk-execution --dp-replan-interval 20 \
-  --execution-layer fullhand_mcc --mcc-direction-source oracle \
-  --contact-threshold 0.05 --palm-source active_capsule \
-  --active-palm-surface-speed-mm-s 20 --active-palm-travel-mm 400 \
-  --active-palm-direction -1 --active-palm-min-contact-fingers 3 \
-  --highlight-contacts --seed 42
-```
-
-## 8. 训练同架构模型
-
-Release 中较小的 `*_palm_geometry_local_planner_dp.h5` 是直接训练输入：
-
-```bash
-python mcc_finger_compliance_control/scripts/train_dp.py \
-  --file mcc_finger_compliance_control/data/inverted/so3_uniform_v2_255x2500_relaxed999_palm_geometry_local_planner_dp.h5 \
-  --output mcc_finger_compliance_control/data/models/my_capsule_dp \
-  --device cuda:0 --steps 25000 --batch-size 256 \
-  --stride 5 --obs-horizon 16 --pred-horizon 32 \
+python train_dp.py \
+  --file ../data/dp/mustard_randomized_dual_track_v4_220_tip_target.h5 \
+  --output ../data/models/mustard_randomized_dual_track_v4_B2_tiptarget_219_15k \
+  --device cuda:0 --steps 15000 --batch-size 256 --lr 1e-5 \
+  --stride 5 --obs-horizon 16 --pred-horizon 16 \
+  --input-profile B2 \
+  --action-field tip_target_palm --action-dim 12 \
   --action-representation absolute_q \
-  --diffusion-steps 100 --inference-steps 50 \
-  --down-dims 256 512 1024 --seed 20260724
+  --diffusion-steps 100 --inference-steps 100 --noise-scheduler DDPM \
+  --down-dims 256 512 1024 --kernel-size 5 --n-groups 8 \
+  --val-ratio 0.1 --num-workers 4 \
+  --contact-dropout-probability 0.10 --max-contact-dropout-steps 3 \
+  --qhand-dropout-probability 0.05 --qhand-dropout-max-steps 6 \
+  --qhand-dropout-sigma 0.02 \
+  --bus-contact-dropout-probability 0.05 \
+  --exclude-episode-ids 226 \
+  --seed 20260831 --save-every 1000 --eval-every 1000 --eval-samples 64
 ```
 
-正式流水线脚本保留在 `scripts/`：采集、筛选、反演、replay、训练、统一部署、多物体目录与
-YCB/碰撞分解工具。早期一次性 A/B、独立 Surface-MCC 部署和烟测入口已经移除，避免与当前
-`deploy_dp_inverse.py --execution-layer fullhand_mcc` 混淆。
+DAgger 混训:先用 `build_dagger_dataset.py` 把 rollout 切为
+`action_q_hand`(时间对齐的成功教师 q),再给 `train_dp.py` 加
+`--dagger-file <dagger.h5>` 与 `--dagger-sample-ratio`(见 §3 与
+`DAgger_Recovery_Data_Guide.md`)。模型目录含 `run_manifest.json`
+(完整参数与 episode 划分)、`metrics.csv`、`best.pt`。
+
+## 3. 闭环部署(DP + FullHandMCC)
+
+单条部署(也用于采集 DAgger rollout;此命令与 `collect_dagger_rollouts.py`
+内部调用一致):
+
+```bash
+cd mcc_finger_compliance_control/scripts
+
+python deploy_dp_inverse.py \
+  --file ../data/dp/mustard_randomized_dual_track_v4_220_tip_target.h5 \
+  --model ../data/models/mustard_randomized_dual_track_v4_B2_tiptarget_219_15k/best.pt \
+  --episode-id 24 --mode live_dp --viewer headless --device cuda:0 \
+  --inference-steps 10 \
+  --execution-layer fullhand_mcc --mcc-direction-source hybrid \
+  --mcc-preset collection_matched_sensor \
+  --dp-history-q-source nominal \
+  --chunk-execution --dp-replan-interval 10 \
+  --max-steps 600 --seed 42 \
+  --rollout-h5 ../data/closed_loop_rollouts/<round>/ep024.h5 \
+  --report ../data/closed_loop_rollouts/<round>/ep024.csv
+```
+
+说明:
+
+- `--mode live_dp`:DP 用实时手指状态闭环预测,`--max-steps` 限制部署长度;
+- 物体与初始手型读自 `--file`(H5 attrs),不需要单独传 object;
+- `--rollout-h5/--report` 记录因果观测 + 教师 q(csv 逐帧诊断);
+- `--live-teacher-takeover-frame N`:第 N 帧起保留物理状态、改执行教师 q
+  (失触后打恢复标签的现有机制);
+- 失触检测/暂停(状态 A)→ 恢复数据采集流程见
+  [`DAgger_Recovery_Data_Guide.md`](DAgger_Recovery_Data_Guide.md)。
+
+批量多 episode rollout:
+
+```bash
+python collect_dagger_rollouts.py \
+  --file ../data/dp/mustard_randomized_dual_track_v4_220_tip_target.h5 \
+  --model ../data/models/mustard_randomized_dual_track_v4_B2_tiptarget_219_15k/best.pt \
+  --episodes 24 186 226 \
+  --output-dir ../data/closed_loop_rollouts/dagger_mustard_round4 \
+  --max-steps 600 --device cuda:0 --seed 20260831
+```
+
+## 4. 可视化
+
+- 几何轨道/关键节点检查:`view_inverse_palm_plans.py <plan>_opt.h5`
+- 采集轨迹接触诊断:`visualize_orbit_contact.py <traj.h5>`
+- 部署看过程:把部署命令 `--viewer headless` 改为 `--viewer native`
+  (GLX 不稳用 `viser`);录像用 `--viewer video`(见脚本 `--video-*` 参数)。
+
+## 5. 历史说明
+
+早期 capsule-DP 发布(`so3_uniform_v2`、GitHub Release `dp-capsule-v1`、56D
+palm 输入、absolute_q 16D 输出)已被当前 mustard v4 tip-target 契约取代,
+代码与文档仍留在仓库(replay/release 命令见 git 历史与旧版 README)。当前
+v4 决策记录于 `data/models/.../run_manifest.json` 与 `SPEED_UNIFORM_PROGRESS.md`。

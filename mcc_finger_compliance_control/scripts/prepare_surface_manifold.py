@@ -65,6 +65,13 @@ def prepare(
         raise ValueError("stride and future_steps must be positive")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with h5py.File(source_path, "r") as source:
+        if str(source.attrs.get("contact_mask_source", "")) != (
+            "same_frame_collision_force_and_tip_surface_geometry"
+        ):
+            raise ValueError(
+                "The manifold source predates same-frame contact correction; "
+                "re-run invert_trajectories.py first."
+            )
         episode_id = np.asarray(source["episode_id"]).reshape(-1).astype(np.int32)
         unique_ids = np.unique(episode_id)
         sampled_count = sum(len(np.flatnonzero(episode_id == eid)[::stride]) for eid in unique_ids)
@@ -164,6 +171,12 @@ def prepare(
             target.attrs["gp_config"] = json.dumps(asdict(config), sort_keys=True)
             target.attrs["causal"] = True
             target.attrs["future_fields_are_targets_only"] = True
+            target.attrs["dp_input_frame"] = "palm"
+            target.attrs["palm_frame_body"] = "palm_lower"
+            target.attrs["coordinate_contract"] = (
+                "gp_points, planner_command, future_contact_delta and "
+                "future_contact_normal are expressed in the current palm_lower frame"
+            )
     print(f"[SUCCESS] causal GP manifold data saved to {output_path}")
 
 

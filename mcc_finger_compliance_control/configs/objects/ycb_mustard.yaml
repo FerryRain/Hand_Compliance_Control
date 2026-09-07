@@ -38,6 +38,12 @@ geoms:
     # Pipeline order: original PLY -> center/scale 2.8x -> OBJ -> V-HACD-256
     # -> one MuJoCo convex mesh geom per collision_part_*.obj.
     file: assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/visual_scaled.obj
+    # Use the 256-part V-HACD representation for dynamics.  Native/MJWarp
+    # mesh-to-SDF narrow phase currently produces spurious/missing contacts
+    # for this hand-object setup, so the source surface must not be used as a
+    # physics SDF.  High-resolution surface geometry belongs in the separate
+    # tactile/oracle layer and does not replace the stable collision backend.
+    collision_backend: convex_decomposition
     collision_dir: assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage
     # The preprocessing step already centered the mesh at the origin.
     pos: [0.0, 0.0, 0.0]

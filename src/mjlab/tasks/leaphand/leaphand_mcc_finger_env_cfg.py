@@ -122,6 +122,18 @@ DEFAULT_PREGRASP_Q = (
     1.05, 1.30, 0.85, 0.85,
 )
 
+# Canonical 16-D hand-vector order.  MuJoCo stores the first two joints of
+# each ordinary finger in this XML/tree order (proximal flexion first, then
+# lateral/abduction), which is also the order resolved by ``hand_delta``.
+# Do not initialize these vectors by numeric joint name: doing so swaps the
+# proximal and lateral joints on index/middle/ring fingers.
+HAND_ACTION_JOINT_NAMES = (
+    "1", "0", "2", "3",
+    "5", "4", "6", "7",
+    "9", "8", "10", "11",
+    "12", "13", "14", "15",
+)
+
 # Arm pose whose palm-control world pose remains the fixed MCC target.
 MCC_TARGET_ARM_Q = np.array(
     (0.0, 1.183, -3.1416, 3.1415, 1.183, -1.569), dtype=np.float32
@@ -245,7 +257,7 @@ def _load_palm_free_leaphand_spec() -> mujoco.MjSpec:
     return spec
 
 
-def _tip_sensor_cfgs() -> tuple[ContactSensorCfg, ...]:
+def _tip_sensor_cfgs(*, include_arm_guard: bool = True) -> tuple[ContactSensorCfg, ...]:
     tip_sensors = tuple(
         ContactSensorCfg(
             name=f"{site_name}_contact",
@@ -312,12 +324,8 @@ def _tip_sensor_cfgs() -> tuple[ContactSensorCfg, ...]:
         reduce="maxforce",
         num_slots=1,
     )
-    return (
-        *tip_sensors,
-        arm_object_guard,
-        incidental_hand_depth,
-        incidental_hand_force,
-    )
+    extra = (arm_object_guard,) if include_arm_guard else ()
+    return (*tip_sensors, *extra, incidental_hand_depth, incidental_hand_force)
 
 
 def fingertip_force_3d_world(env: ManagerBasedRlEnv) -> torch.Tensor:
@@ -377,6 +385,10 @@ def mcc_finger_contact_env_cfg(
     if object_config is not None and object_id != "capsule_medium":
         raise ValueError("Pass either object_id or object_config, not both")
     resolved_object = object_config or load_object_config(object_id)
+    uses_sdf_collision = any(
+        geom.geom_type == "mesh" and geom.collision_backend == "sdf"
+        for geom in resolved_object.geoms
+    )
     if physics_substeps <= 0:
         raise ValueError("physics_substeps must be positive")
     control_dt = 0.01
@@ -484,6 +496,12 @@ def mcc_finger_contact_env_cfg(
                 timestep=control_dt / float(physics_substeps),
                 gravity=(0.0, 0.0, -9.81),
                 ccd_iterations=200,
+                # Forty SDF starts per candidate pair is intended for highly
+                # non-convex multi-minimum geometry.  On a nearly convex
+                # mustard bottle it creates many redundant whole-hand
+                # constraints, overflows nefc and exaggerates contact force.
+                sdf_initpoints=4 if uses_sdf_collision else 40,
+                sdf_iterations=10,
                 solver="newton",
             ),
             njmax=1000,
@@ -506,9 +524,9 @@ def _free_joint_quat_pos(
     rotvec: tuple[float, float, float],
     pos: tuple[float, float, float],
 ) -> tuple[tuple[float, ...], tuple[float, ...]]:
-    """Split a (rotvec, xyz) palm pose into free-joint qpos pieces."""
+    """Split a palm pose into MuJoCo free-joint ``xyz + wxyz`` pieces."""
     quat = R.from_rotvec(np.asarray(rotvec)).as_quat()  # (x, y, z, w)
-    return (float(quat[3]), float(quat[0]), float(quat[1]), float(quat[2])), tuple(pos)
+    return tuple(pos), (float(quat[3]), float(quat[0]), float(quat[1]), float(quat[2]))
 
 
 def mcc_palm_free_contact_env_cfg(
@@ -520,43 +538,53 @@ def mcc_palm_free_contact_env_cfg(
     palm_init_pos: tuple[float, float, float] = PALM_FREE_INIT_POS,
     palm_init_rotvec: tuple[float, float, float] = PALM_FREE_INIT_ROTVEC,
     pregrasp_q: tuple[float, ...] = DEFAULT_PREGRASP_Q,
+    finger_stiffness: float = 5.0,
+    finger_damping: float = 0.5,
+    finger_effort_limit: float = 10.0,
+    contact_solref: tuple[float, float] = HARD_CONTACT_SOLREF,
+    contact_solimp: tuple[float, float, float, float, float] = HARD_CONTACT_SOLIMP,
+    physics_substeps: int = 10,
 ) -> ManagerBasedRlEnvCfg:
     """Hand-only environment with the palm as a free 6-DoF body.
 
-    No xArm: the ``palm_base`` free joint is driven by a stiff position
-    servo so the collection script commands the palm's absolute world pose
-    directly.  Fingers keep the same 16-DoF soft position servo as the arm
-    environment.  Joint qpos order is 7 (free palm: wxyz + xyz) then the 16
-    hand joints, so ``q`` observations are 23-D and the hand block starts
-    at index 7 (controllers use ``hand_q_start=7``).
+    No xArm: the collection script writes the ``palm_base`` free-joint pose
+    directly from the planned palm trajectory. Fingers retain the same 16-DoF
+    soft position servos as the arm environment. mjlab excludes the freejoint
+    from ``joint_pos`` observations, so the observed hand block is exactly
+    16-D and starts at index 0; palm pose is recorded separately.
     """
     if object_config is not None and object_id != "capsule_medium":
         raise ValueError("Pass either object_id or object_config, not both")
     resolved_object = object_config or load_object_config(object_id)
-    palm_qpos_quat, palm_qpos_pos = _free_joint_quat_pos(
+    uses_sdf_collision = any(
+        geom.geom_type == "mesh" and geom.collision_backend == "sdf"
+        for geom in resolved_object.geoms
+    )
+    if physics_substeps <= 0:
+        raise ValueError("physics_substeps must be positive")
+    control_dt = 0.01
+    palm_qpos_pos, palm_qpos_quat = _free_joint_quat_pos(
         palm_init_rotvec, palm_init_pos
     )
-    hand_init = dict(
-        (str(index), float(value))
-        for index, value in enumerate(pregrasp_q)
-    )
+    if len(pregrasp_q) != len(HAND_ACTION_JOINT_NAMES):
+        raise ValueError(
+            "pregrasp_q must contain 16 values in hand action/XML order"
+        )
+    hand_init = {
+        name: float(value)
+        for name, value in zip(
+            HAND_ACTION_JOINT_NAMES, pregrasp_q, strict=True
+        )
+    }
     robot_cfg = EntityCfg(
         spec_fn=_load_palm_free_leaphand_spec,
         articulation=EntityArticulationInfoCfg(
             actuators=(
                 BuiltinPositionActuatorCfg(
-                    target_names_expr=(r"^palm_base$",),
-                    # Stiff 6-DoF servo on the free palm: this is the direct
-                    # absolute-pose control channel (no arm in the model).
-                    stiffness=3000.0,
-                    damping=300.0,
-                    effort_limit=500.0,
-                ),
-                BuiltinPositionActuatorCfg(
                     target_names_expr=(r"^[0-9]+$",),
-                    stiffness=5.0,
-                    damping=0.5,
-                    effort_limit=10.0,
+                    stiffness=float(finger_stiffness),
+                    damping=float(finger_damping),
+                    effort_limit=float(finger_effort_limit),
                     armature=0.0,
                     frictionloss=0.001,
                 ),
@@ -564,12 +592,16 @@ def mcc_palm_free_contact_env_cfg(
         ),
         init_state=EntityCfg.InitialStateCfg(
             pos=(0.0, 0.0, 0.0),
-            joint_pos={"palm_base": (*palm_qpos_quat, *palm_qpos_pos), **hand_init},
+            joint_pos={"palm_base": (*palm_qpos_pos, *palm_qpos_quat), **hand_init},
         ),
     )
     target_cfg = EntityCfg(
         spec_fn=partial(
-            _get_hard_contact_target_spec, resolved_object, object_scale
+            _get_hard_contact_target_spec,
+            resolved_object,
+            object_scale,
+            contact_solref,
+            contact_solimp,
         ),
         init_state=EntityCfg.InitialStateCfg(
             pos=resolved_object.initial_pos,
@@ -596,11 +628,6 @@ def mcc_palm_free_contact_env_cfg(
         ),
     }
     actions: dict[str, ActionTermCfg] = {
-        "palm_pose": JointPositionActionCfg(
-            entity_name="robot",
-            actuator_names=(r"^palm_base$",),
-            use_default_offset=False,
-        ),
         "hand_delta": JointRelativePositionActionCfg(
             entity_name="robot",
             actuator_names=(r"^[0-9]+$",),
@@ -609,11 +636,11 @@ def mcc_palm_free_contact_env_cfg(
         ),
     }
     return ManagerBasedRlEnvCfg(
-        decimation=5,
+        decimation=int(physics_substeps),
         scene=SceneCfg(
             terrain=TerrainEntityCfg(terrain_type="plane"),
             entities={"robot": robot_cfg, "target": target_cfg},
-            sensors=_tip_sensor_cfgs(),
+            sensors=_tip_sensor_cfgs(include_arm_guard=False),
             num_envs=num_envs,
             env_spacing=2.0,
         ),
@@ -623,9 +650,11 @@ def mcc_palm_free_contact_env_cfg(
         terminations={},
         sim=SimulationCfg(
             mujoco=MujocoCfg(
-                timestep=0.002,
+                timestep=control_dt / float(physics_substeps),
                 gravity=(0.0, 0.0, -9.81),
                 ccd_iterations=200,
+                sdf_initpoints=4 if uses_sdf_collision else 40,
+                sdf_iterations=10,
                 solver="newton",
             ),
             njmax=1000,
@@ -763,6 +792,14 @@ class MCCLeapHandPositionController:
     def _world_palm_pose(
         self, q_full: np.ndarray
     ) -> tuple[np.ndarray, np.ndarray]:
+        if self.hand_q_start == 0 and q_full.shape[0] == 16:
+            # Palm-direct observations intentionally contain only the 16 hand
+            # joints; the free root pose is recorded by the environment, not
+            # appended to ``joint_pos``.  Finger MCC is solved entirely in the
+            # fixed palm frame, so an identity world transform is sufficient
+            # for its diagnostic fields.  The collection adapter supplies the
+            # real moving palm pose for all FullHandMCC world-frame logic.
+            return np.zeros(3, dtype=np.float64), np.eye(3, dtype=np.float64)
         if q_full.shape[0] == 23:
             # Palm-free env: qpos starts with the free palm (wxyz quat + xyz).
             quat = q_full[:4]
@@ -797,12 +834,12 @@ class MCCLeapHandPositionController:
         batch = int(policy_obs.shape[0])
         if batch != self.num_envs:
             raise ValueError(f"Controller configured for {self.num_envs} envs, got {batch}")
-        # Finger obs layout: [fingertip force (12), full joint_pos (22 arm /
-        # 23 palm-free)].  q_actual keeps the FULL qpos so the world model
-        # palm pose stays available; the hand block is sliced per env below.
+        # Finger obs layout: [fingertip force (12), joint_pos].  The arm task
+        # contributes 22 joint values; palm-direct contributes only its 16
+        # articulated hand joints because mjlab keeps the free root separate.
         q_start = 12
         q_actual = policy_obs[
-            :, q_start : q_start + (23 if self.hand_q_start == 7 else 22)
+            :, q_start : q_start + (16 if self.hand_q_start == 0 else 22)
         ].detach().cpu().numpy().astype(np.float64)
 
         q_ref_batch = np.zeros((batch, 16), dtype=np.float32)
@@ -907,7 +944,10 @@ class MCCLeapHandPositionController:
                 x_ik_local, palm_pos, palm_rot
             ).astype(np.float32)
 
-        q_hand = policy_obs[:, 18:34]
+        q_hand = policy_obs[
+            :,
+            q_start + self.hand_q_start : q_start + self.hand_q_start + 16,
+        ]
         q_ref_t = torch.as_tensor(q_ref_batch, device=self.device)
         action_cmd = torch.clamp((q_ref_t - q_hand) / 0.08, -1.0, 1.0)
         delta = torch.clamp(
@@ -1085,9 +1125,9 @@ class MCCFixedPalmPositionController:
         self, qpos: np.ndarray
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Palm_lower free-joint pose plus the control-site pose, no arm."""
-        q7 = np.asarray(qpos, dtype=np.float64)[:7]  # wxyz quat + xyz
-        quat = q7[:4]
-        pos = q7[4:7]
+        q7 = np.asarray(qpos, dtype=np.float64)[:7]  # xyz + wxyz quat
+        pos = q7[:3]
+        quat = q7[3:7]
         rotmat = R.from_quat((quat[1], quat[2], quat[3], quat[0])).as_matrix()
         rotvec = R.from_matrix(rotmat).as_rotvec().astype(np.float32)
         site_pos = (pos + rotmat @ self.control_point_local).astype(np.float32)

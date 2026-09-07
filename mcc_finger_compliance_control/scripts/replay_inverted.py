@@ -47,12 +47,12 @@ MCC_TIP_SITE_LOCAL_POSITIONS = (
     (-0.0106151, -0.0326103, 0.0140386),
     (-0.0106383, -0.0453895, -0.0144321),
 )
-# Keep deployment contact close to FullHandMCC while allowing a slightly more
-# compliant fingertip transition.  The previous collection-style contact
-# (-200, -18) with an 18 mm width was far too soft; this midpoint retains a
-# millimetre-scale transition without making the hand visually rigid.
-CONTACT_SOLREF = (-10_000.0, -280.0)
+# The replay/deployment physics must match the trajectory collector.  A
+# softer replay material changes both q_live and the MCC correction required
+# for the same nominal finger posture, invalidating closed-loop DP tests.
+CONTACT_SOLREF = (-20_000.0, -400.0)
 CONTACT_SOLIMP = (0.90, 0.98, 0.002, 0.5, 2.0)
+REPLAY_PHYSICS_SUBSTEPS = 10
 
 
 def _apply_contact_material(spec: mujoco.MjSpec) -> None:
@@ -176,7 +176,9 @@ def _sensor_cfgs(target_body_name: str = "target_ball") -> tuple[ContactSensorCf
                 name=f"{site_name}_contact",
                 primary=primary,
                 secondary=secondary,
-                fields=("found", "force"),
+                # Match collection: force, point, normal and contact mask are
+                # reduced from the same physical contact patch.
+                fields=("found", "force", "dist", "pos", "normal", "tangent"),
                 reduce="netforce",
                 num_slots=1,
             )
@@ -203,7 +205,10 @@ def replay_env_cfg(
     thumb_effort_limit: float | None = None,
     object_config=None,
     object_scale: float = 1.0,
+    physics_substeps: int = REPLAY_PHYSICS_SUBSTEPS,
 ) -> ManagerBasedRlEnvCfg:
+    if physics_substeps <= 0:
+        raise ValueError("physics_substeps must be positive")
     thumb_stiffness = (
         hand_stiffness if thumb_stiffness is None else thumb_stiffness
     )
@@ -265,7 +270,7 @@ def replay_env_cfg(
         )
     }
     return ManagerBasedRlEnvCfg(
-        decimation=5,
+        decimation=int(physics_substeps),
         scene=SceneCfg(
             terrain=None,
             entities={"robot": robot, "target": target},
@@ -279,7 +284,7 @@ def replay_env_cfg(
         terminations={},
         sim=SimulationCfg(
             mujoco=MujocoCfg(
-                timestep=0.002,
+                timestep=0.01 / float(physics_substeps),
                 gravity=(0.0, 0.0, -9.81),
                 ccd_iterations=200,
                 solver="newton",
