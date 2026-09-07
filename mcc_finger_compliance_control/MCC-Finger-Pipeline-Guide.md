@@ -756,18 +756,21 @@ python mcc_finger_compliance_control/scripts/train_dp.py \
 ## 8. 闭环部署与 DAgger rollout
 
 部署入口 `deploy_dp_inverse.py`(单条 episode、单进程;物体与初始手型读自
-`--file` 的 H5 attrs,不单独传 object)。闭环 DP + FullHandMCC 单条命令:
+`--file` 的 H5 attrs,不单独传 object)。闭环 DP + FullHandMCC 单条命令。
+**必须从仓库根目录执行**(hand XML 按仓库相对路径解析),不能像数采那样
+`cd scripts/`:
 
 ```bash
-MPLCONFIGDIR=/tmp/matplotlib WARP_CACHE_PATH=/tmp/warp \
+cd /home/rimlab/Code/Hand_Compliance_Control
+
 python mcc_finger_compliance_control/scripts/deploy_dp_inverse.py \
-  --file mcc_finger_compliance_control/data/dp/mustard_randomized_dual_track_v4_220_tip_target.h5 \
+  --file mcc_finger_compliance_control/data/inverted/mustard_randomized_dual_track_221_inverted.h5 \
   --model mcc_finger_compliance_control/data/models/mustard_randomized_dual_track_v4_B2_tiptarget_219_15k/best.pt \
   --episode-id 24 --mode live_dp --viewer headless --device cuda:0 \
   --inference-steps 10 \
   --execution-layer fullhand_mcc --mcc-direction-source hybrid \
   --mcc-preset collection_matched_sensor \
-  --dp-history-q-source nominal \
+  --dp-history-q-source live \
   --chunk-execution --dp-replan-interval 10 \
   --max-steps 600 --seed 42 \
   --rollout-h5 mcc_finger_compliance_control/data/closed_loop_rollouts/<round>/ep024.h5 \
@@ -776,9 +779,14 @@ python mcc_finger_compliance_control/scripts/deploy_dp_inverse.py \
 
 - `--mode live_dp`:DP 使用实时手指状态闭环预测;`--max-steps` 限制部署长度
   (rollout 帧数 = `min(len(q_hand), max_steps)`);
+- `--file` 必须用反演中间文件(`data/inverted/*_inverted.h5`,训练链标准产物,
+  含手掌系轨迹 `palm_pose_object`/`palm_twist_object` 与 `q_hand`);
+  palm-frame 训练文件(`data/dp/*_tip_target.h5`)只有 tip 目标、无手掌轨迹,
+  不能作部署源;
+- `--dp-history-q-source live` 为 v4 双轨部署强制值(缺省 `nominal` 会被
+  deploy 校验拒绝;`--allow-dual-track-nominal-history` 仅复现已知无效 A/B);
 - `--rollout-h5/--report`:记录因果状态(`dp_observation_state`、`q_live`、
-  `fingertip_contact_mask`、`teacher_q_hand`)与逐帧 CSV 诊断;只在 palm-frame
-  输入下可用,进程结束统一落盘;
+  `fingertip_contact_mask`、`teacher_q_hand`)与逐帧 CSV 诊断,进程结束统一落盘;
 - `--live-teacher-takeover-frame N`:保留 DP 达到的物理状态,第 N 帧起改执行
   time-aligned teacher q——"失触后从现场教师接管打恢复标签"的既有机制
   (产物示例:`data/closed_loop_rollouts/current_policy/ep24_takeover_200.h5`);
@@ -790,7 +798,7 @@ python mcc_finger_compliance_control/scripts/deploy_dp_inverse.py \
 
 ```bash
 python mcc_finger_compliance_control/scripts/collect_dagger_rollouts.py \
-  --file mcc_finger_compliance_control/data/dp/mustard_randomized_dual_track_v4_220_tip_target.h5 \
+  --file mcc_finger_compliance_control/data/inverted/mustard_randomized_dual_track_221_inverted.h5 \
   --model mcc_finger_compliance_control/data/models/mustard_randomized_dual_track_v4_B2_tiptarget_219_15k/best.pt \
   --episodes 24 186 226 \
   --output-dir mcc_finger_compliance_control/data/closed_loop_rollouts/dagger_mustard_round4 \

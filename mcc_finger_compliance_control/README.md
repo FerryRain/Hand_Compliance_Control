@@ -27,7 +27,8 @@
 | 闭环 rollout(DAgger 轮次/接管) | `data/closed_loop_rollouts/{dagger_mustard_*, current_policy}/` |
 | 椭圆 palm 轨道与关键节点 | `data/plans/mustard_so3_v1/`(`*_opt.h5` 含 26 关键节点四指抓握) |
 
-以下命令均在 `mcc_finger_compliance_control/scripts/` 目录内执行。Python 解释器:
+§1–§2 命令均在 `mcc_finger_compliance_control/scripts/` 目录内执行;**§3 闭环部署例外:
+必须从仓库根目录执行**(hand XML 按仓库相对路径 `src/mjlab/...` 解析)。Python 解释器:
 `/home/rimlab/miniconda3/envs/mjlab/bin/python`(或先 `conda activate mjlab`)。
 
 ## 1. 数据采集(数采)
@@ -107,43 +108,52 @@ DAgger 混训:先用 `build_dagger_dataset.py` 把 rollout 切为
 ## 3. 闭环部署(DP + FullHandMCC)
 
 单条部署(也用于采集 DAgger rollout;此命令与 `collect_dagger_rollouts.py`
-内部调用一致):
+内部调用一致)。**必须从仓库根目录执行**(hand XML 按仓库相对路径
+`src/mjlab/...` 解析,从 `scripts/` 启动会直接打不开模型文件):
 
 ```bash
-cd mcc_finger_compliance_control/scripts
+cd /home/rimlab/Code/Hand_Compliance_Control
 
-python deploy_dp_inverse.py \
-  --file ../data/dp/mustard_randomized_dual_track_v4_220_tip_target.h5 \
-  --model ../data/models/mustard_randomized_dual_track_v4_B2_tiptarget_219_15k/best.pt \
+python mcc_finger_compliance_control/scripts/deploy_dp_inverse.py \
+  --file mcc_finger_compliance_control/data/inverted/mustard_randomized_dual_track_221_inverted.h5 \
+  --model mcc_finger_compliance_control/data/models/mustard_randomized_dual_track_v4_B2_tiptarget_219_15k/best.pt \
   --episode-id 24 --mode live_dp --viewer headless --device cuda:0 \
   --inference-steps 10 \
   --execution-layer fullhand_mcc --mcc-direction-source hybrid \
   --mcc-preset collection_matched_sensor \
-  --dp-history-q-source nominal \
+  --dp-history-q-source live \
   --chunk-execution --dp-replan-interval 10 \
   --max-steps 600 --seed 42 \
-  --rollout-h5 ../data/closed_loop_rollouts/<round>/ep024.h5 \
-  --report ../data/closed_loop_rollouts/<round>/ep024.csv
+  --rollout-h5 mcc_finger_compliance_control/data/closed_loop_rollouts/<round>/ep024.h5 \
+  --report mcc_finger_compliance_control/data/closed_loop_rollouts/<round>/ep024.csv
 ```
 
 说明:
 
 - `--mode live_dp`:DP 用实时手指状态闭环预测,`--max-steps` 限制部署长度;
-- 物体与初始手型读自 `--file`(H5 attrs),不需要单独传 object;
+- 物体与初始手型读自 `--file`,不需要单独传 object;
+- **`--file` 必须用反演中间文件**(`data/inverted/*_inverted.h5`,训练链标准
+  产物,含 `palm_pose_object`/`q_hand`/`palm_twist_object` 通道):部署把
+  手掌沿其物体系轨迹移动、物体固定,逐帧检测接触。palm-frame 训练文件
+  (`data/dp/*_tip_target.h5`)只有 tip 目标、没有手掌轨迹,不能作部署源;
+- **`--dp-history-q-source live` 是 v4 双轨契约的强制值**:缺省 `nominal`
+  会被 deploy 校验直接拒绝(`--allow-dual-track-nominal-history` 仅用于复现
+  已知无效的历史 A/B,不要在生产部署里加);
 - `--rollout-h5/--report` 记录因果观测 + 教师 q(csv 逐帧诊断);
 - `--live-teacher-takeover-frame N`:第 N 帧起保留物理状态、改执行教师 q
   (失触后打恢复标签的现有机制);
 - 失触检测/暂停(状态 A)→ 恢复数据采集流程见
   [`DAgger_Recovery_Data_Guide.md`](DAgger_Recovery_Data_Guide.md)。
 
-批量多 episode rollout:
+批量多 episode rollout(同样在仓库根执行;脚本内部已用 live 契约启动
+deploy):
 
 ```bash
-python collect_dagger_rollouts.py \
-  --file ../data/dp/mustard_randomized_dual_track_v4_220_tip_target.h5 \
-  --model ../data/models/mustard_randomized_dual_track_v4_B2_tiptarget_219_15k/best.pt \
+python mcc_finger_compliance_control/scripts/collect_dagger_rollouts.py \
+  --file mcc_finger_compliance_control/data/inverted/mustard_randomized_dual_track_221_inverted.h5 \
+  --model mcc_finger_compliance_control/data/models/mustard_randomized_dual_track_v4_B2_tiptarget_219_15k/best.pt \
   --episodes 24 186 226 \
-  --output-dir ../data/closed_loop_rollouts/dagger_mustard_round4 \
+  --output-dir mcc_finger_compliance_control/data/closed_loop_rollouts/dagger_mustard_round4 \
   --max-steps 600 --device cuda:0 --seed 20260831
 ```
 

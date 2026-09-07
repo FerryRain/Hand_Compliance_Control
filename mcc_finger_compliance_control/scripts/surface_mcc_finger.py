@@ -3204,13 +3204,11 @@ class FullHandMCCFingerController:
             self.overforce_recontact_hold[collision_overforce] = (
                 cfg.overforce_recontact_hold_frames
             )
-            decay_hold = raw_found & ~collision_overforce
+            # Release also after geometric loss; otherwise the escape itself
+            # causes a permanent safety latch that prevents re-contact.
+            decay_hold = ~collision_overforce
             self.overforce_recontact_hold[decay_hold] = np.maximum(
                 self.overforce_recontact_hold[decay_hold] - 1,
-                0,
-            )
-            self.overforce_recontact_hold[held_missing] = np.maximum(
-                self.overforce_recontact_hold[held_missing] - 1,
                 0,
             )
             collision_safety_active = collision_overforce | (
@@ -3419,6 +3417,17 @@ class FullHandMCCFingerController:
                 normal_distance = float(
                     np.dot(normal_displacement[finger], normals[finger])
                 )
+                if collision_safety_active[finger]:
+                    # Safety is based at measured q, unlike the accumulated
+                    # nominal-relative force offset. Apply only one outward
+                    # step, with no inward preload and no repeated integration
+                    # of the entire historical retreat at the moving base.
+                    normal_distance = (
+                        float(hard_step[finger])
+                        if cfg.use_direct_force_servo
+                        and collision_overforce[finger]
+                        else 0.0
+                    )
                 if cfg.normal_synergy_control and found[finger]:
                     # One scalar closure coordinate owns normal pressure.
                     # All three flexion joints advance by the same normalized

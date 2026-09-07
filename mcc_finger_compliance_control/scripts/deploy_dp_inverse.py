@@ -707,6 +707,10 @@ def teacher_state(
     motion_feature_step_frames: int = 5,
     control_dt: float = 0.01,
 ) -> np.ndarray:
+    if state_schema == DUAL_TRACK_V3_SCHEMA:
+        if "teacher_state_dual_track" not in data:
+            raise ValueError("Dual-track teacher evaluation requires the aligned training observation fields")
+        return data["teacher_state_dual_track"]
     normals = data["fingertip_contact_normal_object"]
     twist = data["palm_twist_object"]
     if state_schema == "force_normal":
@@ -1442,7 +1446,10 @@ def run_inverse(
                 )
                 else None
             )
-            self.fullhand_mcc_calibrated = False
+            # Every action decoder already produces absolute joint targets.
+            # Enable force regulation from startup for each finger; neither
+            # recorded q nor reconstructed DP q needs a new grasp anchor.
+            self.fullhand_mcc_calibrated = self.fullhand_mcc is not None
             self.fullhand_precontact_closure = np.zeros(16, dtype=np.float32)
             self.fullhand_contact_anchor_q = data["q_hand"][0].copy()
             self.fullhand_dp_anchor_q = data["q_hand"][0].copy()
@@ -2011,23 +2018,28 @@ def run_inverse(
                     if self.active_palm_planner is not None
                     else data["q_hand"][t]
                 )
-                # Replaying a loaded teacher posture by writing qpos on every
-                # bootstrap frame bypasses contact dynamics and can teleport
-                # the pads through the collision proxy.  Start open once, then
-                # approach the recorded grasp with a smooth actuator command.
-                # Teacher-forced observations remain read from H5 separately;
-                # this only makes the physical initialization safe.
+                # Write the initial state only once, then use actuators. Start
+                # from the recorded grasp for every action contract: a generic
+                # open posture can collide at this fixed palm/object pose (V4
+                # note), and it also leaves q_hand-contract fingers so far from
+                # the surface that the precontact search cannot settle and the
+                # episode is stuck in precontact with growing force. The
+                # recorded start does not certify the initial pose as
+                # penetration-free; force regulation is active immediately.
                 if self.fullhand_mcc is not None:
+                    initial_q = data["q_hand"][0]
                     progress = float(t) / max(float(bootstrap_end), 1.0)
                     smooth = progress * progress * (3.0 - 2.0 * progress)
                     bootstrap_q = (
-                        (1.0 - smooth) * self.fullhand_mcc.open_grasp_q
+                        (1.0 - smooth) * initial_q
                         + smooth * bootstrap_target
                     )
                     if t == 0:
+                        # Controller states may be float64; sim qpos is float32.
                         q_open = torch.as_tensor(
-                            self.fullhand_mcc.open_grasp_q,
+                            initial_q,
                             device=env.device,
+                            dtype=torch.float32,
                         ).unsqueeze(0)
                         robot.write_joint_state_to_sim(
                             position=q_open,
@@ -2558,12 +2570,11 @@ def run_inverse(
                         if bool(np.any(self.fullhand_recovery_active))
                         else "track"
                     )
-                    # DP tangential progression continues during recovery.
-                    # The normal-search correction is a separate bounded
-                    # state, equivalent to q_ref + dq_DP + dq_contact.
+                    # Decoders already return absolute targets. Adding a
+                    # loaded-grasp anchor here moves even exact recorded q
+                    # away from its intended contact geometry.
                     base_plan_q = self.fullhand_mcc.clamp_joint_positions(
-                        self.fullhand_contact_anchor_q
-                        + (dp_desired - self.fullhand_dp_anchor_q)
+                        dp_desired
                     )
                     if bool(np.any(self.fullhand_recovery_active)):
                         if mcc_direction_source == "oracle":
@@ -2636,7 +2647,7 @@ def run_inverse(
                     self.fullhand_mcc.calibrate_force_sign(
                         live_forces, live_found, control_outward_world
                     )
-                if t <= bootstrap_end:
+                if t <= bootstrap_end and not self.fullhand_mcc_calibrated:
                     desired = plan_q
                     self.fullhand_mcc.previous_command = desired.copy()
                 elif self.fullhand_mcc_calibrated:
@@ -3682,9 +3693,12 @@ def main() -> None:
         choices=("live", "nominal"),
         default="nominal",
         help=(
-            "Joint state fed back to live DP. 'nominal' prevents MCC contact "
-            "corrections from being recursively integrated; 'live' is an "
-            "explicit closed-loop A/B diagnostic."
+            "Joint state fed back to live DP. Dual-track checkpoints "
+            "(tip_target_palm / q_ref / tip-* action fields) require 'live': "
+            "physical execution/task-est feedback is the trained contract. "
+            "'nominal' is the legacy pre-dual-track contract, only reachable "
+            "with --allow-dual-track-nominal-history to reproduce the "
+            "known-invalid historical A/B."
         ),
     )
     parser.add_argument(
@@ -3840,6 +3854,37 @@ def main() -> None:
         args.seed,
         samples=args.dp_samples,
     )
+    if runtime.state_schema == DUAL_TRACK_V3_SCHEMA and (
+        args.mode != "live_dp"
+        or args.teacher_observation_source == "teacher_tactile"
+    ):
+        # Filtering can change episode numbering. Match the complete executed
+        # joint sequence, not just an ID or initial pose, before loading the
+        # exact observation contract used by this checkpoint.
+        training_path = Path(runtime.config.file)
+        with h5py.File(training_path, "r") as teacher_file:
+            ids = np.asarray(teacher_file["episode_id"])
+            steps = np.asarray(teacher_file["episode_step"])
+            candidates = []
+            for row, env_id in np.argwhere(steps == 0):
+                if np.allclose(teacher_file["q_hand"][row, env_id], data["q_hand"][0], atol=1e-6, rtol=0):
+                    candidates.append(int(ids[row, env_id]))
+            matches = []
+            for candidate in candidates:
+                q = _episode(teacher_file, candidate, "q_hand")
+                if q.shape == data["q_hand"].shape and np.allclose(q, data["q_hand"], atol=1e-6, rtol=0):
+                    matches.append(candidate)
+            if len(matches) != 1:
+                raise ValueError(f"Expected one exact teacher episode match in {training_path}; got {matches}")
+            fields = str(teacher_file.attrs["state_fields"]).split(",")
+            state = np.concatenate([
+                _episode(teacher_file, matches[0], field).reshape(len(data["q_hand"]), -1)
+                for field in fields
+            ], axis=-1)
+            if state.shape[1] != 242:
+                raise ValueError(f"Invalid dual-track teacher shape: {state.shape}")
+            data["teacher_state_dual_track"] = state
+            print(f"[TEACHER] exact training fields: {training_path} episode={matches[0]} shape={state.shape}")
     if (
         args.mode == "live_dp"
         and runtime.action_field in (

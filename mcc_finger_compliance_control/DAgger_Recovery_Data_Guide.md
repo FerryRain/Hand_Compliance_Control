@@ -1,5 +1,174 @@
 # DAgger 式恢复数据采集 Guide
 
+## 推荐的第一轮：旧96D q-policy（可直接执行）
+
+这轮只验证一个问题：在 `teacher_dp + MCC` 已能保持四指接触的前提下，
+局部 corrective/DAgger 数据能否抑制 nominal history 的自回归漂移。它不是最终
+架构承诺，也不能直接迁移到 V4 的242D输入。
+
+固定资产版本：GitHub Release `mustard-legacy-dagger-v1`。从仓库根目录下载：
+
+```bash
+cd /home/rimlab/Code/Hand_Compliance_Control
+mkdir -p mcc_finger_compliance_control/data/models/mustard_v1_239_motion96_kinematic_residual_pred8_25k
+mkdir -p mcc_finger_compliance_control/data/inverted
+
+gh release download mustard-legacy-dagger-v1 \
+  --repo FerryRain/Hand_Compliance_Control \
+  --pattern best.pt \
+  --dir mcc_finger_compliance_control/data/models/mustard_v1_239_motion96_kinematic_residual_pred8_25k
+gh release download mustard-legacy-dagger-v1 \
+  --repo FerryRain/Hand_Compliance_Control \
+  --pattern mustard_v1_239_mesh_normal_inward_inverted.h5 \
+  --pattern mustard_v1_239_motion96_kinematic_palm_dp.h5 \
+  --dir mcc_finger_compliance_control/data/inverted
+```
+
+三个文件用途：`best.pt` 是25k checkpoint；`*_mesh_normal_inward_inverted.h5`
+提供部署的手掌轨迹和教师对照；`*_motion96_kinematic_palm_dp.h5` 是clean训练集，
+也是恢复建集的schema/normalization基准。
+
+下载后可核对：
+
+```text
+1542b01abc8090f54f4fb54e06e19d90f84964d05860a1d90648648b15a3b1c7  best.pt
+34ea1a8181af1d3bc5cef29351b217390825976200235343aeeb8c43bc2d9f57  mustard_v1_239_mesh_normal_inward_inverted.h5
+1beb6406a99661d987ec68475a4a4b3af802a78dae8f75eff5a5d69e33ebc18a  mustard_v1_239_motion96_kinematic_palm_dp.h5
+```
+
+### 1. 先复现基线
+
+同一 ep24、MCC和法向配置下，当前实测：`teacher_dp` 2500帧四指接触100%，
+q MAE 0.003214rad；`live_dp + nominal history` 800帧四指接触23.6%，q MAE
+0.038977rad；`live_dp + live-q history` 虽有95.3%四指接触，2500帧q MAE仍增至
+0.265488rad。因此第一轮恢复采集固定使用 **nominal history**，避免将MCC补偿
+递归解释成任务运动。
+
+### 2. 批量采集当前策略访问到的局部偏离状态
+
+```bash
+cd /home/rimlab/Code/Hand_Compliance_Control
+conda activate mjlab
+
+MPLCONFIGDIR=/tmp/matplotlib WARP_CACHE_PATH=/tmp/warp \
+python mcc_finger_compliance_control/scripts/collect_dagger_rollouts.py \
+  --file mcc_finger_compliance_control/data/inverted/mustard_v1_239_mesh_normal_inward_inverted.h5 \
+  --model mcc_finger_compliance_control/data/models/mustard_v1_239_motion96_kinematic_residual_pred8_25k/best.pt \
+  --episodes 24 30 45 53 59 \
+  --output-dir mcc_finger_compliance_control/data/closed_loop_rollouts/legacy_dagger_round1 \
+  --max-steps 800 --device cuda:0 --seed 20260831 \
+  --inference-steps 100 --dp-replan-interval 10 --dp-samples 1 \
+  --dp-history-q-source nominal \
+  --dp-tactile-normal-source source_mesh_oracle
+```
+
+脚本逐episode前台运行、输出进度并可断点续跑；只有加入 `--overwrite` 才覆盖完整
+rollout。这里记录的是失败策略访问到的因果状态，不把失败动作当监督标签。
+
+### 3. 筛选“刚开始偏离”的状态并生成教师标签
+
+```bash
+MPLCONFIGDIR=/tmp/matplotlib \
+python mcc_finger_compliance_control/scripts/build_dagger_dataset.py \
+  --reference-dp mcc_finger_compliance_control/data/inverted/mustard_v1_239_motion96_kinematic_palm_dp.h5 \
+  --rollout mcc_finger_compliance_control/data/closed_loop_rollouts/legacy_dagger_round1/ep*.h5 \
+  --output mcc_finger_compliance_control/data/dp/mustard_legacy_dagger_round1.h5 \
+  --require-dp-history-q-source nominal \
+  --max-teacher-q-mae-rad 0.015 --min-valid-pad-contacts 3 \
+  --max-force-n 12 --minimum-segment-frames 120
+```
+
+默认标签是同时间教师 q。先做phase对齐，防止把lag/lead误认为姿态错误：
+
+```bash
+MPLCONFIGDIR=/tmp/matplotlib \
+python mcc_finger_compliance_control/scripts/relabel_dagger_phase_aligned.py \
+  --dagger mcc_finger_compliance_control/data/dp/mustard_legacy_dagger_round1.h5 \
+  --teacher mcc_finger_compliance_control/data/inverted/mustard_v1_239_motion96_kinematic_palm_dp.h5 \
+  --output mcc_finger_compliance_control/data/dp/mustard_legacy_dagger_round1_phase.h5 \
+  --search-radius-frames 50 --label-stride-frames 5 --label-horizon 8
+```
+
+这条链是局部教师重标注，不是假装已经实现“任意失败物理状态下重新运行专家”的
+完整 DAgger。若需要严重失触后的真实恢复，仍需后文A→B专家恢复流程；第一轮只学习
+0.003–0.015rad附近的局部收缩。ep24烟测中0.02rad门限导致14.01%的归一化
+action超出训练范围，而0.015rad降为2.86%，因此不要随意放宽此门限。
+
+### 4. 从原checkpoint微调
+
+```bash
+MPLCONFIGDIR=/tmp/matplotlib WARP_CACHE_PATH=/tmp/warp \
+python mcc_finger_compliance_control/scripts/train_dp.py \
+  --file mcc_finger_compliance_control/data/inverted/mustard_v1_239_motion96_kinematic_palm_dp.h5 \
+  --dagger-file mcc_finger_compliance_control/data/dp/mustard_legacy_dagger_round1_phase.h5 \
+  --dagger-sample-ratio 0.25 \
+  --resume mcc_finger_compliance_control/data/models/mustard_v1_239_motion96_kinematic_residual_pred8_25k/best.pt \
+  --output mcc_finger_compliance_control/data/models/mustard_legacy_dagger_round1 \
+  --device cuda:0 --steps 5000 --batch-size 256 --lr 1e-4 \
+  --stride 5 --obs-horizon 16 --pred-horizon 8 \
+  --action-representation kinematic_residual_q --kinematic-velocity-clip-rad-s 1.0 \
+  --diffusion-steps 100 --inference-steps 50 \
+  --down-dims 256 512 1024 --kernel-size 5 --n-groups 8 \
+  --diffusion-step-embed-dim 128 --val-ratio 0.1 --num-workers 4 \
+  --contact-dropout-probability 0.1 --max-contact-dropout-steps 3 \
+  --seed 20260829 --save-every 1000 --eval-every 500 --eval-samples 64
+```
+
+训练后必须在同一组episode重新运行第2步，将 `--model` 换成新 `best.pt`，比较
+四指接触、首次持续失触时间、q MAE随时间的斜率；不能只看离线noise loss。
+
+---
+
+## 当前可复现的短期稳定部署（2026-09-07）
+
+当前选用 `mustard_randomized_dual_track_v4_B2_tiptarget_219_15k/best.pt`。
+模型输出 12D 掌系绝对指尖目标，242D 双轨输入保持不变。以下是实际运行的
+live_dp 配置：不使用 recorded tactile/teacher action，不启用完整物体 oracle；
+仅允许已发生实际接触处查询 source mesh 法向，失触用 hybrid 运动学方向。
+手掌仍由反演 H5 的轨迹提供上层运动命令，初始 q 从该轨迹载入一次，随后不重写关节状态。
+
+已验证 ep53、seed42 的前 800 帧：从首次 DP 接管 frame75 开始，前 200 帧
+loaded==4 为 **99.0%**，前 500 帧为 **94.8%**，最长连续 loaded==4 为
+249 帧；75–799 帧 found==4 为 92.4%。loaded 的力阈值为 0.05 N。
+这只证明此轨迹的短期稳定，不代表所有物体/轨迹泛化或完整轨迹无漂移。
+2500帧复测已完成：前200帧 loaded4=99.0%，前500帧97.8%；整个执行段
+found4=58.9%，后期仍漂移。结果保存在 `v4_repaired/ep53_full.csv/.h5`。
+初始重放仍有瞬态大力，不将 bootstrap 算进 DP 稳定段，也未据此排除初始化穿透。
+
+可视化（从仓库根目录运行）：
+
+```bash
+cd /home/rimlab/Code/Hand_Compliance_Control
+conda activate mjlab
+
+MPLCONFIGDIR=/tmp/matplotlib WARP_CACHE_PATH=/tmp/warp \
+python mcc_finger_compliance_control/scripts/deploy_dp_inverse.py \
+  --file mcc_finger_compliance_control/data/inverted/mustard_randomized_dual_track_221_inverted.h5 \
+  --model mcc_finger_compliance_control/data/models/mustard_randomized_dual_track_v4_B2_tiptarget_219_15k/best.pt \
+  --episode-id 53 --mode live_dp --viewer native --device cuda:0 \
+  --execution-layer fullhand_mcc --mcc-preset collection_matched_sensor \
+  --dp-history-q-source live --dp-tactile-normal-source source_mesh_oracle \
+  --mcc-direction-source hybrid --contact-threshold 0.05 \
+  --chunk-execution --dp-replan-interval 10 --inference-steps 100 \
+  --dp-samples 1 --seed 42 --max-steps 2500 --highlight-contacts \
+  --rollout-h5 mcc_finger_compliance_control/data/closed_loop_rollouts/v4_repaired/ep53_visual.h5 \
+  --report mcc_finger_compliance_control/data/closed_loop_rollouts/v4_repaired/ep53_visual.csv
+```
+
+无头部署：将 `--viewer native` 改为 `--viewer headless`，报告文件名改为
+`ep53_headless.h5/.csv`。只观察已验证短段时使用 `--max-steps 800`。
+100 diffusion steps 是本次实测配置，尚未验证降低推理步数的等价性。
+
+本次修复包括：失触时安全 hold 倒计时继续递减；安全接管从实际 q 做单步退让，
+不重复积分累计偏移；解码后的绝对目标去掉旧 grasp anchor 平移；从 bootstrap 即启用
+各指力环，不再等待四指全部到位。`fullhand_mcc_calibrated=1` 表示力环已启用，
+不再表示已经四指稳定接触；评估必须看 found/loaded。
+
+后续恢复采集可从以下流程继续，但本节 H5 是 **policy rollout，不是已标注的恢复教师数据**。
+需按第 2–4 步从真实失触状态规划、执行并验证专家恢复，不能把失败动作当监督标签。
+下文标为“新增参数/新增脚本”的示例仍是设计草案，不能直接复制运行；上面的部署 CLI
+只使用已实现参数。本轮范围是筛出短期稳定部署配置，不启动新一轮 DAgger 训练。
+
 > 目标读者:需要跑恢复数据采集的合作者。
 > 一句话:让当前还不够好的 DP 在闭环部署中自己"找出"会失触的时刻,我们在失触现场用专家(数采控制器)从同一个状态重新抓一次、恢复接触,把这整段"失触 → 恢复"过程变成训练数据,教会 DP 下次自己回来。
 
@@ -48,19 +217,22 @@ DAgger 的思路:policy 自己跑,在**即将/已经失触**的地方停下来,�
 **示例命令**:
 
 ```bash
-cd mcc_finger_compliance_control/scripts
+cd /home/rimlab/Code/Hand_Compliance_Control   # 部署必须从仓库根执行(hand XML 为仓库相对路径)
 
-python deploy_dp_inverse.py \
-  --file ../data/dp/mustard_randomized_dual_track_v4_220_tip_target.h5 \
-  --model ../data/models/mustard_randomized_dual_track_v4_B2_tiptarget_219_15k/best.pt \
+python mcc_finger_compliance_control/scripts/deploy_dp_inverse.py \
+  --file mcc_finger_compliance_control/data/inverted/mustard_randomized_dual_track_221_inverted.h5 \
+  --model mcc_finger_compliance_control/data/models/mustard_randomized_dual_track_v4_B2_tiptarget_219_15k/best.pt \
   --episode-id 24 --mode live_dp --viewer headless \
-  --execution-layer fullhand_mcc \
-  --rollout-h5 ../data/closed_loop_rollouts/recovery_round1/ep024.h5 \
-  --report   ../data/closed_loop_rollouts/recovery_round1/ep024.csv \
+  --execution-layer fullhand_mcc --dp-history-q-source live \
+  --rollout-h5 mcc_finger_compliance_control/data/closed_loop_rollouts/recovery_round1/ep024.h5 \
+  --report   mcc_finger_compliance_control/data/closed_loop_rollouts/recovery_round1/ep024.csv \
   --fail-stop-min-contact-fingers 3 --fail-stop-grace-frames 30   # [新增参数]
 ```
 
-（`--file` 是"被部署的专家轨迹"(提供 palm 路径、物体、初始手型);想部署更多条就循环换 `--episode-id`。）
+（`--file` 是反演中间文件(训练链标准产物):提供手掌系轨迹、物体与初始手型,
+部署时手掌沿轨迹移动、物体固定。**必须加 `--dp-history-q-source live`** ——
+v4 双轨部署强制 live 反馈,缺省 nominal 会被 deploy 校验拒绝。想部署更多条
+就循环换 `--episode-id`。）
 
 ## 3. 第 2 步:规划恢复目标 → 状态 B
 
@@ -176,7 +348,7 @@ python build_recovery_samples.py \
 | 恢复段采集 | `data/trajectories/`(自动) | `recovery_s24_fromA_*.h5` |
 | 拼接训练文件 | `data/dp/` | `mustard_recovery_round1.h5` |
 
-训练:`train_dp.py --dagger-file mustard_recovery_round1.h5` 混入下一轮 fine-tune(与既有 DAgger 轮次 `dagger_mustard_nominal_round*` 相同用法)。
+训练:`train_dp.py --dagger-file mustard_recovery_round1.h5` 混入下一轮 fine-tune(与既有 DAgger 轮次 `dagger_mustard_round*` 相同用法;rollout 由部署写 `dp_history_q_source=live`,`build_dagger_dataset.py` 默认只接受 live rollout,与 deploy 强制一致)。
 
 ## 7. 既有能力 vs 需要的小改动(汇总)
 

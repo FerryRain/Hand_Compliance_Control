@@ -2840,9 +2840,9 @@ frame779 达 2962N，分别为 0.778rad/53.7mm；K=16 的 middle 在 frame307 �
 
 同时确认一个独立的安全门控缺陷：`FullHandMCCFingerController.update()` 先用
 pad-validity 将 `found = raw_found & pad_contact_valid`，随后 hard-overforce 也使用这个
-过滤后的 `found`。上述 1--3kN 峰值帧中 `mcc_overforce_active` 仍全部为 0，说明碰撞
-落在被判为非有效指腹的区域后，MCC 正确地不把它当成任务接触，却也错误地不把它当成
-必须退让的危险碰撞。任务接触 gate 与全手碰撞安全 gate 必须拆开：前者只接受有效 pad，
+过滤后的 `found`。另一个直接原因是旧 collection_matched_sensor 将 hard ratio 设为
+1000，几千牛峰值仍可能低于触发门槛；不能仅凭 active=0 断言碰撞落在无效指腹。
+任务接触 gate 与碰撞安全 gate 必须拆开：前者只接受有效 pad，
 后者应对任何 raw finger-object 高力立即撤回/冻结 nominal action。
 
 当前 CSV 的 ContactSensor `dist` 在有效碰撞帧均报告 0，无法据此量化 source mesh
@@ -2858,3 +2858,148 @@ S1_ORACLE=93.4%。v3 B2 在 §44.9 前没有执行过 S1/S2。因此旧 99.8% �
 tip-delta label/decoder 契约问题。一般而言 teacher forcing 还会每次用 recorded history
 重新锚定输入，误差不会回写下一次 condition；即使 teacher-conditioned 接触率高，也不
 等于该 action 能作为 free-running nominal state 稳定递推。
+
+### 44.11 v4 tip-target 15k 闭环评估与部署文档勘误（2026-09-07）
+
+**部署勘误(实测敲定,代码与文档同日修正)**:
+- v4 dual-track checkpoint 的 `--dp-history-q-source` 必须为 `live`(缺省
+  `nominal` 会被 deploy 校验拒绝;`--allow-dual-track-nominal-history` 仅复现
+  已知无效 A/B)。此前 README/DAgger guide/Pipeline guide 与
+  `collect_dagger_rollouts.py`/`build_dagger_dataset.py` 默认/示例均为
+  `nominal`,全部修正为 live(collect 启动参数、`_complete()` attr 检查、
+  manifest、build_dagger_dataset 默认 `--require-dp-history-q-source live`)。
+- 部署 `--file` 必须用反演中间文件(`data/inverted/mustard_randomized_dual_track_221_inverted.h5`,
+  训练链标准产物,含 `palm_pose_object`/`q_hand`/`palm_twist_object`);
+  palm-frame 训练文件(`data/dp/*_tip_target.h5`)无手掌轨迹,不能部署。
+  对拍确认:inverted 的 palm 通道 = raw 的 `palm_pose_world` 经物体位姿变换
+  (`_relative_pose`)+逐帧向后差分;`q_hand` 与 raw 全帧 0 差。文档统一写清
+  反演文件为部署源。
+- 部署**必须从仓库根目录执行**(hand XML 按仓库相对路径 `src/mjlab/...`
+  解析;数采/训练无此限制),三个 guide 文档已注明。
+- dtype bug:`FullHandMCC.open_grasp_q` 为 float64,sim qpos tensor 为 float32,
+  bootstrap t=0 写 qpos 崩溃 → deploy 该处显式 `dtype=torch.float32`。
+
+**v4 15k 闭环(S2_ORACLE 协议,live + matched MCC + hybrid normal + chunk10 +
+seed42,800 帧,四集 30/45/53/59;模型 219ep tip_target,2026-09-07 训练)**:
+
+| 集 | calibrated 首帧 | 全 800 帧 loaded==4 | 稳定段起点(+100) | 稳定段 loaded==4 |
+|---|---|---|---|---|
+| ep30 | 无(never settle) | 0.0% | — | — |
+| ep45 | 287 | 7.0% | 387 | 0.0% |
+| ep53 | 515 | 29.0% | 615 | 0.0% |
+| ep59 | 78 | 6.5% | 178 | 3.2% |
+
+- q 域:四集 qMAE 0.060–0.294 rad(v3 tip-delta §44.9 为 0.444)——v4
+  tip_target 绝对目标契约修复真实,IK 解码误差大幅下降。
+- MCC 补偿状态:ep45/53/59 在 settle 后进入 track,`FullHandMCC.update()`
+  每帧合成,伺服环路有效(ep45 track 内 thumb setpoint 4N→实测 3.7N P50,
+  middle 3N→2.0N,normal offset 0.4–3.1mm 动作);**ep30 从未 calibrated**
+  (found==4 全 800 帧为 0),全程纯位置执行 → P50 392N 压触、峰值 1981N。
+- 失败形态分层(修正 §44.9 后同口径的粗判):
+  1. **进不去稳态**(ep30 永不、ep53 515 帧):precontact settle 判据
+     (四指同时 found 连续帧)在部分 episode 上永不/很晚达成;
+  2. **稳态保不住**(ep45/ep59 稳定段 0–3.2%,track 内最长连续失触
+     268–452 帧):settle 后约 ≤100 帧维持,随后系统性失触且回不来——
+     与 DAgger 恢复数据目标能力(失触→恢复)吻合;
+  3. 千牛力峰(1.1–2.6kN)集中在 bootstrap/precontact；此批 CSV 的 track/recover
+     已有 collision_safety_active=1，安全接管并非完全未修。继续审计发现失触时
+     hold 倒计时不递减，以及接管重复执行累计偏移的问题（见后续修复）。
+- 门控口径修正:闭环 gate 应分 bootstrap(75 帧)/precontact/settle 后稳定段
+  三段报告,以稳定段为准;两类失败(进不去 vs 保不住)分开审计。
+- 下一步:审计 (a) precontact settle 为何部分 episode 永不达成;(b) settle
+  后 DP tip 目标为何驱动手指离开接触(index/ring 接触建立失败,thumb 能锁
+  力);(c) §44.10 安全 gate 修复。未达 S2 门控,不进 DAgger 扩展采集。
+
+### 44.12 V4 短期稳定部署修复（2026-09-07）
+
+用户本轮目标收敛为：选出短期稳定的 live DP；后期漂移允许，后续按 DAgger guide
+生成恢复教师数据。未改变 checkpoint、训练输入、碰撞参数或读取未来 teacher 手型。
+
+已修复：
+
+- safety hold 在无接触帧仍递减，避免失触后永久锁住。
+- hard-force 接管从 q_live 执行单步向外运动；不再将累计 nominal-relative offset
+  重复施加到每一帧 q_live，也不把 preload 当成安全阶段的向内运动。
+- V4 绝对 tip target 解码后直接作 nominal q，去掉 contact_anchor-dp_anchor 偏移。
+- V4 从 bootstrap 开启每指 MCC 力环，不再等待所有手指 settle。
+- 反演初始化一次载入初始记录手型，其后为执行器控制；通用 open grasp 在这些
+  固定 palm/object 初始配置下会产生更大重叠，不能假设张开必定安全。
+
+同一 B2 V4 15k / CUDA / live / hybrid / source_mesh_oracle contact-anchored /
+chunk10 / DDPM100 / seed42，800 帧短测 CSV 位于 `data/closed_loop_rollouts/v4_repaired/*_r2.csv`。
+ep53 达到本轮短期门槛：75–274 帧 loaded4=99.0%，75–574 帧=94.8%，
+最长连续四指有力接触249帧；575–799降为85.8%，q MAE 从前200帧0.0506rad
+升至末225帧0.1408rad。75–799整体 found4=92.4%，found>=3=98.6%，力峰63.1N。
+ep30/45/59整体 found4=27.2/9.1/28.0%，仍未通过，不能将选中的 ep53 宣称为普遍成功。
+
+ep53 已完成2500帧并保存 `v4_repaired/ep53_full.csv/.h5`：排除前75帧，
+found4=58.9%，found>=3=75.3%，qMAE=0.128313rad，力峰59.07N。
+前200帧 loaded4=99.0%，前500帧97.8%；800–1299帧55.8%，1300–2499帧38.3%。
+同seed两次运行有小幅数值差异，不能将短测和长测逐帧视为相同轨迹。
+可视化/无头 CLI 已登记
+`DAgger_Recovery_Data_Guide.md` 首节。初始瞬态力仍存在；不宣称已经排除穿模。
+本轮不把未标注 live rollout 直接作为 DAgger label，不启动恢复重训。
+
+### 44.13 用户 MCC 修改后的 teacher_dp 回归排查（2026-09-07）
+
+保留用户修改，发现 §44.12 的绝对目标/启动力环修复仅覆盖 V4，旧 q 模型仍走
+全局四指预接触门控及 `contact_anchor + dp_desired - dp_anchor`。
+所有 decoder 已还原绝对 q，二次锚定会改变原目标；且未四指 settle 时不启用
+MCC 力环，会让控制器长期停在 precontact。现统一取消二次锚定，并从初始化即
+允许各指执行 MCC；calibrated 字段现在表示控制器启用，不能再当接触成功指标。
+
+CUDA / ep24 / 旧 mustard239 motion96 kinematic_residual pred8 25k best / hybrid /
+source_mesh_oracle / chunk10 / inference100 / seed42，报告在
+`data/closed_loop_rollouts/retest_239_ep24/`：
+
+| 动作来源 | 帧数 | 四指 found / loaded（frame75起） | qMAE | 执行段力峰 |
+|---|---:|---:|---:|---:|
+| recorded 教师 q + MCC | 800 | 100% / 100% | 0.002636rad | 4.82N |
+| teacher_dp 真实 DP 输出 + MCC | 2500 | 100% / 100% | 0.003214rad | 6.87N |
+
+第二行文件 `ep24_teacherdp_absolute_mcc_full.csv`，不是绕过 DP 的实验。
+当前证明修正后的部署链能恢复此旧模型的 teacher-forced 接触；不等于 V4 teacher_dp
+已验证，更不等于 live 自回归问题已解决。用户此前部分测试使用 contact_sensor，
+这里统一 source_mesh_oracle，因此前后数值不能作为仅门控/锚定单变量消融。
+初始化仍有千牛级瞬态（未计入上述执行段峰值），不能声称已经排除初始穿透。
+另外 `mcc_direction_source=oracle` 当前使用 capsule 专用几何，不可用于 mustard；
+本次使用 hybrid，仅实际接触处允许 source mesh 法向修正。
+
+### 44.14 纠正验证对象：V4 teacher_dp（2026-09-07）
+
+用户明确要求 V4，§44.13 旧模型结果不回答此问题。检查发现通用 teacher_state
+未实现 DUAL_TRACK_V3 的242D组装；现从 checkpoint.config.file 读取训练导出文件
+的 state_fields，先按完整2500帧 q_hand 精确匹配唯一 episode（atol=1e-6），
+再载入所有双轨观测，不使用缺少 qvel 的 inverse 文件拼凑教师输入。
+这仅用于显式 teacher 诊断，不进入正常 live_dp 输入。
+
+V4 15k best / ep53 / CUDA / teacher_dp真实预测 / matched MCC / hybrid /
+source_mesh_oracle / chunk10 / DDPM100 / seed42 / 800帧：
+frame75起 found4=loaded4=95.9%，>=3=100%，qMAE=0.036416rad，P95=0.047297rad，
+执行段力峰18.83N。各指接触率100/100/100/95.9%，失触来自拇指。
+报告 `/tmp/v4_teacher_ep53_cuda.csv`。初始帧力1098N仍未排除初始化穿透。
+因此 V4 teacher_dp 确实尚未达到99%，不能用旧模型100%替代，更不能把此失败
+归因于 nominal 自回归（本次输入为完整教师观测）。后续应对比记录 tip_target
+与预测 tip_target 的同一 IK+MCC执行，分离笛卡尔预测误差、IK解码和补偿。
+
+### 44.15 旧96D模型恢复数据pilot定案（2026-09-07）
+
+在 §44.13 修复后的同一 ep24 / CUDA / matched MCC / hybrid /
+source_mesh_oracle / chunk10 / DDPM100 / seed42 上完成两种真实 live_dp：
+
+| q history | 帧数 | found4 | >=3指 | qMAE / P95 |
+|---|---:|---:|---:|---:|
+| nominal | 800 | 23.6% | 70.3% | 0.038977 / 0.073072rad |
+| live | 2500 | 95.3% | 99.9% | 0.265488 / 0.471698rad |
+
+nominal在frame100/200/300/700的qMAE约0.0039/0.0105/0.0185/0.0683rad，
+同时从四指降为2–3指，确认纯名义自回归失稳。live-q依靠MCC保持接触，但末段
+qMAE约0.47rad，不能作为任务轨迹正确的成功。第一轮corrective/DAgger pilot因此
+固定 nominal history，避免把MCC补偿写回任务链。
+
+恢复链已实际烟测：ep24 nominal rollout → `build_dagger_dataset.py`（0.015rad局部
+门限）→ constrained phase relabel → `train_dp.py --resume` 1步CUDA微调均通过。
+得到129帧/1段，3个训练window；归一化恢复action越界2.86%。门限放宽0.02rad时
+越界14.01%，触发训练安全门，故Guide固定0.015rad。采集封装已开放并记录
+inference steps、replan interval、sample count、history source、normal source，取消
+原先硬编码DDPM10/live-q。完整可执行CLI见 `DAgger_Recovery_Data_Guide.md`。

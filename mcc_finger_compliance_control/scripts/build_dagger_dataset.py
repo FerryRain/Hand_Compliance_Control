@@ -1,9 +1,11 @@
 """Build local-stability data from causally aligned closed-loop DP rollouts.
 
-The default observation is the nominal state actually fed back to DP, not the
-MCC-compensated live joint state.  The action is always the time-indexed
-successful teacher q.  This targets nominal autoregressive exposure bias
-without asking DP to reproduce or cancel low-level MCC compensation.
+The observation is the state actually fed back to DP (dp_observation_state).
+For the legacy 96-D q-policy pilot, nominal history is required so MCC
+correction is not recursively learned as task motion.  Dual-track checkpoints
+use live history and need their own schema-aware builder.  The action here is
+the successful teacher q; this file therefore implements local corrective
+relabeling, not physical expert recovery from an arbitrary failed state.
 """
 
 from __future__ import annotations
@@ -385,7 +387,11 @@ def main() -> None:
         "--require-dp-history-q-source",
         choices=("nominal", "live", "any"),
         default="nominal",
-        help="Reject rollouts collected with the wrong DP feedback contract.",
+        help=(
+            "Reject rollouts collected with the wrong DP feedback contract. "
+            "Use nominal for the released legacy 96-D q-policy pilot. "
+            "Dual-track v4 rollouts carry live but are not supported by this 96-D builder."
+        ),
     )
     parser.add_argument("--max-teacher-q-mae-rad", type=float, default=0.015)
     parser.add_argument("--min-valid-pad-contacts", type=int, default=3)

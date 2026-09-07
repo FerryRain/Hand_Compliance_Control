@@ -352,6 +352,16 @@ def main() -> None:
     same_d_all = np.concatenate(all_same_distance)
     aligned_d_all = np.concatenate(all_aligned_distance)
     conflict = np.abs(all_offsets) > 10
+    if np.any(conflict):
+        conflict_same_mean = float(np.mean(same_d_all[conflict]))
+        conflict_aligned_mean = float(np.mean(aligned_d_all[conflict]))
+        conflict_improved_fraction = float(
+            np.mean(aligned_d_all[conflict] < same_d_all[conflict])
+        )
+    else:
+        conflict_same_mean = None
+        conflict_aligned_mean = None
+        conflict_improved_fraction = None
     report = {
         "dagger_file": str(args.dagger),
         "teacher_file": str(args.teacher),
@@ -368,11 +378,9 @@ def main() -> None:
             "same_mean": float(np.mean(same_d_all)),
             "aligned_mean": float(np.mean(aligned_d_all)),
             "improved_fraction": float(np.mean(aligned_d_all < same_d_all)),
-            "conflict_same_mean": float(np.mean(same_d_all[conflict])),
-            "conflict_aligned_mean": float(np.mean(aligned_d_all[conflict])),
-            "conflict_improved_fraction": float(
-                np.mean(aligned_d_all[conflict] < same_d_all[conflict])
-            ),
+            "conflict_same_mean": conflict_same_mean,
+            "conflict_aligned_mean": conflict_aligned_mean,
+            "conflict_improved_fraction": conflict_improved_fraction,
         },
         "fallback_same_time_labels": fallback_count,
         "per_segment": per_segment,
@@ -385,8 +393,8 @@ def main() -> None:
         f"backward {report['path']['backward_transitions']} "
         f"same_d {report['distance']['same_mean']:.3f} -> "
         f"aligned_d {report['distance']['aligned_mean']:.3f} "
-        f"(conflict: {report['distance']['conflict_same_mean']:.3f} -> "
-        f"{report['distance']['conflict_aligned_mean']:.3f})",
+        f"(conflict: {report['distance']['conflict_same_mean']} -> "
+        f"{report['distance']['conflict_aligned_mean']})",
         flush=True,
     )
 
