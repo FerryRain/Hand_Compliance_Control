@@ -53,7 +53,82 @@ DP 不学习 MCC 补偿。`q_cmd`、`delta_q_comp` 和 `e_servo` 只用于诊断
 
 ### 步骤一：运行 DP，采集失触历史
 
-使用 `collect_dagger_rollouts.py` 批量运行 live DP：
+不要直接开始批量采集。先用 `deploy_dp_inverse.py` 对一条 episode 做可视化闭环部署，
+确认 DP 的确经历“稳定接触 → 逐渐漂移 → 持续失触”，而不是初始化穿模、错误法向、
+MCC 参数不一致或接触检测抖动造成的假失败。
+
+#### 1.1 单条可视化闭环测试
+
+~~~bash
+cd /home/rimlab/Code/Hand_Compliance_Control
+conda activate mjlab
+
+MPLCONFIGDIR=/tmp/matplotlib WARP_CACHE_PATH=/tmp/warp \
+python mcc_finger_compliance_control/scripts/deploy_dp_inverse.py \
+  --file mcc_finger_compliance_control/data/inverted/mustard_v1_239_mesh_normal_inward_inverted.h5 \
+  --model mcc_finger_compliance_control/data/models/mustard_v1_239_motion96_kinematic_residual_pred8_25k/best.pt \
+  --episode-id 24 \
+  --mode live_dp \
+  --viewer native \
+  --device cuda:0 \
+  --execution-layer fullhand_mcc \
+  --mcc-preset collection_matched_sensor \
+  --dp-history-q-source live \
+  --dp-tactile-normal-source source_mesh_oracle \
+  --mcc-direction-source hybrid \
+  --contact-threshold 0.05 \
+  --chunk-execution \
+  --dp-replan-interval 10 \
+  --inference-steps 100 \
+  --dp-samples 1 \
+  --seed 20260831 \
+  --max-steps 2500 \
+  --highlight-contacts \
+  --report /tmp/recovery_ep024_visual.csv
+~~~
+
+先观察并确认：
+
+- 初始四指能够正常建立接触；
+- 接触点高亮与画面中的真实接触一致；
+- 失触发生在 DP 接管之后；
+- 失触前存在逐步漂移，而不是单帧瞬移；
+- MCC 没有产生异常振荡、持续穿透或巨大力峰值。
+
+#### 1.2 保存一条完整失触 rollout
+
+确认单条现象正确后，保持所有控制参数不变，只改成 headless 并保存 H5：
+
+~~~bash
+MPLCONFIGDIR=/tmp/matplotlib WARP_CACHE_PATH=/tmp/warp \
+python mcc_finger_compliance_control/scripts/deploy_dp_inverse.py \
+  --file mcc_finger_compliance_control/data/inverted/mustard_v1_239_mesh_normal_inward_inverted.h5 \
+  --model mcc_finger_compliance_control/data/models/mustard_v1_239_motion96_kinematic_residual_pred8_25k/best.pt \
+  --episode-id 24 \
+  --mode live_dp \
+  --viewer headless \
+  --device cuda:0 \
+  --execution-layer fullhand_mcc \
+  --mcc-preset collection_matched_sensor \
+  --dp-history-q-source live \
+  --dp-tactile-normal-source source_mesh_oracle \
+  --mcc-direction-source hybrid \
+  --contact-threshold 0.05 \
+  --chunk-execution \
+  --dp-replan-interval 10 \
+  --inference-steps 100 \
+  --dp-samples 1 \
+  --seed 20260831 \
+  --max-steps 2500 \
+  --rollout-h5 mcc_finger_compliance_control/data/closed_loop_rollouts/recovery_round1/ep024.h5 \
+  --report mcc_finger_compliance_control/data/closed_loop_rollouts/recovery_round1/ep024.csv
+~~~
+
+检查这条 H5 的帧数、live-q、触觉和控制字段完整后，再进入批量阶段。
+
+#### 1.3 批量扩展到更多失败 episode
+
+`collect_dagger_rollouts.py` 是上述单条命令的批量包装器：
 
 ~~~bash
 cd /home/rimlab/Code/Hand_Compliance_Control
@@ -74,6 +149,9 @@ python mcc_finger_compliance_control/scripts/collect_dagger_rollouts.py \
   --dp-history-q-source live \
   --dp-tactile-normal-source source_mesh_oracle
 ~~~
+
+批量脚本的模型、MCC、history source、法向来源、推理步数和 replan interval 必须与
+已经验证的单条部署完全一致。批量阶段只扩大 failure-state 覆盖，不能同时改控制配置。
 
 每条 rollout 至少保存：
 
