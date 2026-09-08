@@ -70,8 +70,10 @@ also produce hundreds of hulls, which is unsuitable for large GPU batches.
 Tune both fit error and hull count rather than accepting an asset by error
 alone.  The acceptance flags still write the manifest and preview before
 returning a nonzero exit status, so rejected objects remain diagnosable.
-Generated third-party collision assets remain under
-``assets_external/`` and are intentionally not committed.
+Generated third-party collision assets normally remain under
+``assets_external/``. The repository includes the small, runtime-critical
+`006_mustard_bottle/vhacd_256_scaled2p8_objstage` derivative as an explicit
+exception, together with its source attribution, checksum and V-HACD manifest.
 
 The official YCB Google scans are available at 16k, 64k, and 512k polygon
 tiers. Download selected high-resolution reference meshes without RGB/RGB-D

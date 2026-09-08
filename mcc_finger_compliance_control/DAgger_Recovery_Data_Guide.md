@@ -1,52 +1,61 @@
-# DAgger 式恢复数据采集 Guide
+# DAgger 恢复数据采集指南
 
-## 推荐的第一轮：旧96D q-policy（可直接执行）
+本文只说明如何采集并训练“DP 失触后由专家恢复”的数据。
 
-这轮只验证一个问题：在 `teacher_dp + MCC` 已能保持四指接触的前提下，
-局部 corrective/DAgger 数据能否抑制 nominal history 的自回归漂移。它不是最终
-架构承诺，也不能直接迁移到 V4 的242D输入。
+## 1. 数据采集目标
 
-固定资产版本：GitHub Release `mustard-legacy-dagger-v1`。从仓库根目录下载：
+每条恢复数据由两个片段组成：
 
-```bash
-cd /home/rimlab/Code/Hand_Compliance_Control
-mkdir -p mcc_finger_compliance_control/data/models/mustard_v1_239_motion96_kinematic_residual_pred8_25k
-mkdir -p mcc_finger_compliance_control/data/inverted
+~~~text
+片段 A：DP 闭环运行
+稳定抓握 → 逐渐漂移 → 持续失触 → 保存失触状态 A
 
-gh release download mustard-legacy-dagger-v1 \
-  --repo FerryRain/Hand_Compliance_Control \
-  --pattern best.pt \
-  --dir mcc_finger_compliance_control/data/models/mustard_v1_239_motion96_kinematic_residual_pred8_25k
-gh release download mustard-legacy-dagger-v1 \
-  --repo FerryRain/Hand_Compliance_Control \
-  --pattern mustard_v1_239_mesh_normal_inward_inverted.h5 \
-  --pattern mustard_v1_239_motion96_kinematic_palm_dp.h5 \
-  --dir mcc_finger_compliance_control/data/inverted
-```
+片段 B：专家恢复
+从状态 A 重新初始化 → 椭圆规划器重新规划 → 数采控制器执行恢复
+→ 四指重新接触 → 保持一段稳定尾帧
 
-三个文件用途：`best.pt` 是25k checkpoint；`*_mesh_normal_inward_inverted.h5`
-提供部署的手掌轨迹和教师对照；`*_motion96_kinematic_palm_dp.h5` 是clean训练集，
-也是恢复建集的schema/normalization基准。
+最终：A + B 合并为一个 recovery episode
+~~~
 
-下载后可核对：
+两个片段可以来自两次仿真，不要求使用同一个 simulator instance。但片段 B 必须从片段 A 的失触状态 A 初始化，拼接前必须检查状态连续性。
 
-```text
-1542b01abc8090f54f4fb54e06e19d90f84964d05860a1d90648648b15a3b1c7  best.pt
-34ea1a8181af1d3bc5cef29351b217390825976200235343aeeb8c43bc2d9f57  mustard_v1_239_mesh_normal_inward_inverted.h5
-1beb6406a99661d987ec68475a4a4b3af802a78dae8f75eff5a5d69e33ebc18a  mustard_v1_239_motion96_kinematic_palm_dp.h5
-```
+正式恢复采集统一使用：
 
-### 1. 先复现基线
+~~~text
+DP history q = live q
+tactile      = 实时 solver contact 锚定、原始表面修正后的 tactile
+DP label     = 专家 q_ref 或 expert tip target
+~~~
 
-同一 ep24、MCC和法向配置下，当前实测：`teacher_dp` 2500帧四指接触100%，
-q MAE 0.003214rad；`live_dp + nominal history` 800帧四指接触23.6%，q MAE
-0.038977rad；`live_dp + live-q history` 虽有95.3%四指接触，2500帧q MAE仍增至
-0.265488rad。因此第一轮恢复采集固定使用 **nominal history**，避免将MCC补偿
-递归解释成任务运动。
+DP 不学习 MCC 补偿。`q_cmd`、`delta_q_comp` 和 `e_servo` 只用于诊断或作为独立执行上下文，不能作为动作标签。
 
-### 2. 批量采集当前策略访问到的局部偏离状态
+这里的 tactile 不是凸分解碰撞面的原始几何，也不是脱离物理接触独立查询出来的 SDF
+“伪接触”。各通道来源固定为：
 
-```bash
+| 通道 | 来源 |
+|---|---|
+| contact mask / 接触是否存在 | 当前帧 MuJoCo solver 的真实 fingertip contact |
+| 3D force | 当前帧 MuJoCo contact force |
+| contact point | solver contact 锚点；有可靠 correspondence 时再局部映射到原始表面 |
+| contact normal | 仅在真实 contact 锚点处查询未凸分解 source mesh/SDF，并按传感器约定定向 |
+
+因此它仍然是 **live observation**，只是几何法向不采用凸分解 hull 的面法向。当前
+`--dp-tactile-normal-source source_mesh_oracle` 实现的正是“actual-contact-anchored normal”：
+它不能凭空创建接触，也不能在失触后向 DP 暴露物体距离或未来表面。
+
+当前实现只修正 normal，contact point 仍来自凸分解 collision。若 convex contact 到原始
+表面的映射距离过大或映射前后法向差异过大，该帧应降低 confidence 或从训练窗口中剔除，
+不能把它当成高质量 tactile。后续可再补充 contact-point lifting 与一致性 gate，但不能
+因此退回 recorded teacher tactile；recorded tactile 与当前 `q_live` 不同步，会产生更严重的
+状态语义错误。
+
+## 2. 完整流程
+
+### 步骤一：运行 DP，采集失触历史
+
+使用 `collect_dagger_rollouts.py` 批量运行 live DP：
+
+~~~bash
 cd /home/rimlab/Code/Hand_Compliance_Control
 conda activate mjlab
 
@@ -54,315 +63,345 @@ MPLCONFIGDIR=/tmp/matplotlib WARP_CACHE_PATH=/tmp/warp \
 python mcc_finger_compliance_control/scripts/collect_dagger_rollouts.py \
   --file mcc_finger_compliance_control/data/inverted/mustard_v1_239_mesh_normal_inward_inverted.h5 \
   --model mcc_finger_compliance_control/data/models/mustard_v1_239_motion96_kinematic_residual_pred8_25k/best.pt \
-  --episodes 24 30 45 53 59 \
-  --output-dir mcc_finger_compliance_control/data/closed_loop_rollouts/legacy_dagger_round1 \
-  --max-steps 800 --device cuda:0 --seed 20260831 \
-  --inference-steps 100 --dp-replan-interval 10 --dp-samples 1 \
-  --dp-history-q-source nominal \
+  --episodes 24 30 40 45 51 53 57 59 \
+  --output-dir mcc_finger_compliance_control/data/closed_loop_rollouts/recovery_round1 \
+  --max-steps 2500 \
+  --device cuda:0 \
+  --seed 20260831 \
+  --inference-steps 100 \
+  --dp-replan-interval 10 \
+  --dp-samples 1 \
+  --dp-history-q-source live \
   --dp-tactile-normal-source source_mesh_oracle
-```
+~~~
 
-脚本逐episode前台运行、输出进度并可断点续跑；只有加入 `--overwrite` 才覆盖完整
-rollout。这里记录的是失败策略访问到的因果状态，不把失败动作当监督标签。
+每条 rollout 至少保存：
 
-### 3. 筛选“刚开始偏离”的状态并生成教师标签
+- `q_live`、`qvel_live`；
+- 实时 solver contact 的点、mask 和力，以及在该 contact 锚点查询的 source-surface 法向；
+- palm/object pose 与 twist；
+- planner command/phase；
+- DP observation、DP reference、`q_cmd`、`delta_q_comp` 和 `e_servo`；
+- 失触开始帧和最终选定的 `failure_frame`。
 
-```bash
-MPLCONFIGDIR=/tmp/matplotlib \
-python mcc_finger_compliance_control/scripts/build_dagger_dataset.py \
-  --reference-dp mcc_finger_compliance_control/data/inverted/mustard_v1_239_motion96_kinematic_palm_dp.h5 \
-  --rollout mcc_finger_compliance_control/data/closed_loop_rollouts/legacy_dagger_round1/ep*.h5 \
-  --output mcc_finger_compliance_control/data/dp/mustard_legacy_dagger_round1.h5 \
-  --require-dp-history-q-source nominal \
-  --max-teacher-q-mae-rad 0.015 --min-valid-pad-contacts 3 \
-  --max-force-n 12 --minimum-segment-frames 120
-```
+推荐将“有效接触指少于 3 根并持续 20–30 帧”作为第一版失触触发条件。短暂的 1–3 帧接触抖动不应触发专家。
 
-默认标签是同时间教师 q。先做phase对齐，防止把lag/lead误认为姿态错误：
+### 步骤二：从失触状态 A 规划恢复轨迹
 
-```bash
-MPLCONFIGDIR=/tmp/matplotlib \
-python mcc_finger_compliance_control/scripts/relabel_dagger_phase_aligned.py \
-  --dagger mcc_finger_compliance_control/data/dp/mustard_legacy_dagger_round1.h5 \
-  --teacher mcc_finger_compliance_control/data/inverted/mustard_v1_239_motion96_kinematic_palm_dp.h5 \
-  --output mcc_finger_compliance_control/data/dp/mustard_legacy_dagger_round1_phase.h5 \
-  --search-radius-frames 50 --label-stride-frames 5 --label-horizon 8
-```
+从 rollout 的 `failure_frame` 提取状态 A：
 
-这条链是局部教师重标注，不是假装已经实现“任意失败物理状态下重新运行专家”的
-完整 DAgger。若需要严重失触后的真实恢复，仍需后文A→B专家恢复流程；第一轮只学习
-0.003–0.015rad附近的局部收缩。ep24烟测中0.02rad门限导致14.01%的归一化
-action超出训练范围，而0.015rad降为2.86%，因此不要随意放宽此门限。
+~~~text
+q/qvel
+palm pose/twist
+object pose/twist
+当前 planner 方向与剩余任务
+实时指尖接触状态
+~~~
 
-### 4. 从原checkpoint微调
+专家不是从 A 任意生成一条新的椭圆，而是**沿失触前的原 planner 轨迹继续规划**。
+状态 A 除了提供当前位姿，还要提供原轨迹的 phase、运动方向、切向速度和角速度；恢复
+规划器在 A 附近对原路径做局部续接/修正，使新轨迹先顺着原运动趋势继续，再逐渐进入
+可恢复四指接触的局部椭圆/运动。它也不是读取原 teacher 数据中相同时间戳的 q。
 
-```bash
+续接边界至少满足：
+
+~~~text
+p_new(0)     = p_A
+R_new(0)     = R_A
+v_new(0)     ≈ v_original(A)
+omega_new(0) ≈ omega_original(A)
+~~~
+
+即 palm position/orientation 严格连续，线速度和角速度至少一阶连续。接管后的专家
+手型参考也必须从当前 `q_live(A)` 平滑开始，再逐渐收敛到优化出的稳定抓握目标，不能在
+专家第一帧直接跳到新关键点 q。
+
+实现时建议在 A 后设置约 50–100 个控制帧的五次多项式或 B-spline 过渡段：以原轨迹
+在 A 的 pose/twist 为起始边界，以恢复椭圆的首个稳定段为终止边界。不要先把速度清零，
+再突然启动一条新轨迹。
+
+恢复规划不是由单个脚本完成，而是两级规划：
+
+1. `generate_manifold_palm_plan.py` 负责 **palm path**：沿原 planner 在 A 点的
+   pose/twist 续接局部椭圆轨迹；
+2. `optimize_contact_plan.py` 负责 **finger keyframes**：在已经生成的 palm path 上
+   离线求稀疏四指接触点和健康抓握姿势。它不负责生成椭圆轨迹；
+3. `collect_trajectories.py` 中的接触流形 QP 在相邻关键帧之间生成逐帧手指运动，
+   FullHandMCC 再负责实际追踪和接触力调节；
+4. `view_inverse_palm_plans.py` 用于可视化检查 palm path 和抓握关键帧。
+
+因此正确调用顺序应当是：
+
+~~~text
+state A
+  → generate_manifold_palm_plan.py       生成并平滑续接 palm trajectory
+  → optimize_contact_plan.py             求稀疏 finger/contact keyframes
+  → collect_trajectories.py              QP 插值 + FullHandMCC 执行恢复
+~~~
+
+当前缺少一个适配器，把 rollout 的任意 `failure_frame` 转换为轨迹生成器可直接使用的起点。该接口未完成前，不能把原 episode 第一帧冒充状态 A。建议接口：
+
+~~~text
+extract_recovery_state.py
+  --rollout <rollout.h5>
+  --frame <failure_frame>
+  --output <state_A.h5>
+
+generate_manifold_palm_plan.py
+  --recovery-state <state_A.h5>
+  --output <from_A.h5>
+
+optimize_contact_plan.py
+  --input <from_A.h5>
+  --output <from_A_opt.h5>
+  --recovery-state <state_A.h5>
+~~~
+
+以上 `--recovery-state` 目前还没有实现。它对两个规划器的作用不同：
+
+- 对 palm planner：提供 A 点的原路径 phase、pose 和 twist，生成连续的椭圆续接；
+- 对 contact optimizer：用 `q_live(A)` 和当前四指接触状态 warm-start 第一关键帧，
+  后续关键帧再逐步转入优化出的稳定抓握分支。
+
+所以不能只运行现有的：
+
+~~~bash
+python mcc_finger_compliance_control/scripts/optimize_contact_plan.py \
+  --input from_A.h5 --output from_A_opt.h5 --object-id ycb_mustard
+~~~
+
+这条现有命令适合对一条完整的离线 palm plan 做常规抓握筛选，但不包含状态 A 的
+恢复边界，也不能单独产生需要的 recovery plan。
+
+恢复轨迹应满足：
+
+- 起点与状态 A 的 palm/object 相对位姿一致；
+- 延续原 planner 的 phase、切向、速度和任务方向，不能重新随机选择椭圆方向；
+- 接管边界的 palm pose 连续，linear/angular velocity 无明显突变；
+- 专家 q reference 从 `q_live(A)` 平滑过渡到恢复目标；
+- 手掌轨迹平滑并满足安全距离；
+- 关键点四指可达且手型健康；
+- 长度足以完成接触恢复，并保留至少一个 DP prediction horizon 的稳定尾段。
+
+### 步骤三：数采控制器执行专家恢复
+
+将专家仿真重置到状态 A，然后让原数据采集逻辑执行 `from_A_opt.h5`：
+
+~~~text
+状态 A
+→ 必要的控制器 warm-up
+→ FullHandMCC/数采接触控制器执行新规划
+→ 搜索并恢复接触
+→ 四指稳定接触 50–100 帧
+→ 保存完整恢复片段
+~~~
+
+这里使用 `collect_trajectories.py` 中的教师控制逻辑。专家可以使用仿真特权几何和 surface oracle，因为这些信息只负责生成教师标签；最终 policy observation 不得包含未授权特权信息。
+
+恢复片段必须保存专家任务参考，例如 `q_ref_expert` 或 `tip_x_des_palm`。不要把 `q_live`、`q_cmd` 或 MCC compensation 当作专家动作。
+
+当前 `collect_trajectories.py` 尚未提供完整的任意状态注入接口。需要补充以下调用契约：
+
+~~~text
+collect_trajectories.py
+  --motion-mode planner_inverse
+  --planner-file <from_A_opt.h5>
+  --init-h5 <state_A.h5>
+  --record-controller-source
+  --filename <recovery_name>
+~~~
+
+`--init-h5` 至少应恢复 q、qvel、palm/object pose、planner phase。无法恢复的 MCC 滤波/积分状态应清零，并把 warm-up 区间显式记录下来。
+
+### 步骤四：拼接并生成训练窗口
+
+将 DP 片段和专家恢复片段按状态 A 合并：
+
+~~~text
+[DP stable → drift → loss at A]
+                  +
+[A → expert takeover → recovery → stable]
+                  ↓
+          one recovery episode
+~~~
+
+拼接工具建议独立实现为 `build_recovery_dataset.py`：
+
+~~~text
+build_recovery_dataset.py
+  --rollout <DP rollout.h5>
+  --failure-frame <A>
+  --recovery <expert recovery.h5>
+  --reference-dp <clean training.h5>
+  --output <recovery_round1.h5>
+~~~
+
+拼接前必须检查：
+
+- A 两侧的 q、qvel 跳变量；
+- palm/object 相对位姿误差；
+- 控制频率和字段时序；
+- tactile/contact 字段坐标系、contact mask 与 source-surface normal 的锚定关系；
+- planner phase 和运动方向。
+- 新旧 palm trajectory 在 A 处的位置、姿态、线速度和角速度连续性；
+
+超过阈值的片段直接拒绝，不用插值掩盖不连续。
+
+训练切窗规则：
+
+- DP 失触段可以进入 observation history；
+- warm-up 段可以进入 history，但没有有效 expert label；
+- prediction horizon 必须全部落在有效专家控制段；
+- 失败 DP action 不作为 target；
+- target 只取专家 `q_ref` 或 expert tip target；
+- 保存 `controller_source`、`expert_label_valid`、`failure_frame`、`expert_start_frame` 和 `recovery_confirm_frame`。
+
+## 3. 与 clean 数据混合训练
+
+不要覆盖原 clean H5。通过 `--dagger-file` 混合：
+
+~~~bash
 MPLCONFIGDIR=/tmp/matplotlib WARP_CACHE_PATH=/tmp/warp \
 python mcc_finger_compliance_control/scripts/train_dp.py \
   --file mcc_finger_compliance_control/data/inverted/mustard_v1_239_motion96_kinematic_palm_dp.h5 \
-  --dagger-file mcc_finger_compliance_control/data/dp/mustard_legacy_dagger_round1_phase.h5 \
-  --dagger-sample-ratio 0.25 \
+  --dagger-file mcc_finger_compliance_control/data/dp/mustard_recovery_round1.h5 \
+  --dagger-sample-ratio 0.10 \
   --resume mcc_finger_compliance_control/data/models/mustard_v1_239_motion96_kinematic_residual_pred8_25k/best.pt \
-  --output mcc_finger_compliance_control/data/models/mustard_legacy_dagger_round1 \
-  --device cuda:0 --steps 5000 --batch-size 256 --lr 1e-4 \
-  --stride 5 --obs-horizon 16 --pred-horizon 8 \
-  --action-representation kinematic_residual_q --kinematic-velocity-clip-rad-s 1.0 \
-  --diffusion-steps 100 --inference-steps 50 \
-  --down-dims 256 512 1024 --kernel-size 5 --n-groups 8 \
-  --diffusion-step-embed-dim 128 --val-ratio 0.1 --num-workers 4 \
-  --contact-dropout-probability 0.1 --max-contact-dropout-steps 3 \
-  --seed 20260829 --save-every 1000 --eval-every 500 --eval-samples 64
-```
-
-训练后必须在同一组episode重新运行第2步，将 `--model` 换成新 `best.pt`，比较
-四指接触、首次持续失触时间、q MAE随时间的斜率；不能只看离线noise loss。
-
----
-
-## 当前可复现的短期稳定部署（2026-09-07）
-
-当前选用 `mustard_randomized_dual_track_v4_B2_tiptarget_219_15k/best.pt`。
-模型输出 12D 掌系绝对指尖目标，242D 双轨输入保持不变。以下是实际运行的
-live_dp 配置：不使用 recorded tactile/teacher action，不启用完整物体 oracle；
-仅允许已发生实际接触处查询 source mesh 法向，失触用 hybrid 运动学方向。
-手掌仍由反演 H5 的轨迹提供上层运动命令，初始 q 从该轨迹载入一次，随后不重写关节状态。
-
-已验证 ep53、seed42 的前 800 帧：从首次 DP 接管 frame75 开始，前 200 帧
-loaded==4 为 **99.0%**，前 500 帧为 **94.8%**，最长连续 loaded==4 为
-249 帧；75–799 帧 found==4 为 92.4%。loaded 的力阈值为 0.05 N。
-这只证明此轨迹的短期稳定，不代表所有物体/轨迹泛化或完整轨迹无漂移。
-2500帧复测已完成：前200帧 loaded4=99.0%，前500帧97.8%；整个执行段
-found4=58.9%，后期仍漂移。结果保存在 `v4_repaired/ep53_full.csv/.h5`。
-初始重放仍有瞬态大力，不将 bootstrap 算进 DP 稳定段，也未据此排除初始化穿透。
-
-可视化（从仓库根目录运行）：
-
-```bash
-cd /home/rimlab/Code/Hand_Compliance_Control
-conda activate mjlab
-
-MPLCONFIGDIR=/tmp/matplotlib WARP_CACHE_PATH=/tmp/warp \
-python mcc_finger_compliance_control/scripts/deploy_dp_inverse.py \
-  --file mcc_finger_compliance_control/data/inverted/mustard_randomized_dual_track_221_inverted.h5 \
-  --model mcc_finger_compliance_control/data/models/mustard_randomized_dual_track_v4_B2_tiptarget_219_15k/best.pt \
-  --episode-id 53 --mode live_dp --viewer native --device cuda:0 \
-  --execution-layer fullhand_mcc --mcc-preset collection_matched_sensor \
-  --dp-history-q-source live --dp-tactile-normal-source source_mesh_oracle \
-  --mcc-direction-source hybrid --contact-threshold 0.05 \
-  --chunk-execution --dp-replan-interval 10 --inference-steps 100 \
-  --dp-samples 1 --seed 42 --max-steps 2500 --highlight-contacts \
-  --rollout-h5 mcc_finger_compliance_control/data/closed_loop_rollouts/v4_repaired/ep53_visual.h5 \
-  --report mcc_finger_compliance_control/data/closed_loop_rollouts/v4_repaired/ep53_visual.csv
-```
-
-无头部署：将 `--viewer native` 改为 `--viewer headless`，报告文件名改为
-`ep53_headless.h5/.csv`。只观察已验证短段时使用 `--max-steps 800`。
-100 diffusion steps 是本次实测配置，尚未验证降低推理步数的等价性。
-
-本次修复包括：失触时安全 hold 倒计时继续递减；安全接管从实际 q 做单步退让，
-不重复积分累计偏移；解码后的绝对目标去掉旧 grasp anchor 平移；从 bootstrap 即启用
-各指力环，不再等待四指全部到位。`fullhand_mcc_calibrated=1` 表示力环已启用，
-不再表示已经四指稳定接触；评估必须看 found/loaded。
+  --output mcc_finger_compliance_control/data/models/mustard_recovery_round1 \
+  --device cuda:0 \
+  --steps 5000 \
+  --batch-size 256 \
+  --lr 1e-4 \
+  --stride 5 \
+  --obs-horizon 16 \
+  --pred-horizon 8 \
+  --action-representation kinematic_residual_q \
+  --diffusion-steps 100 \
+  --inference-steps 50 \
+  --seed 20260829
+~~~
 
-后续恢复采集可从以下流程继续，但本节 H5 是 **policy rollout，不是已标注的恢复教师数据**。
-需按第 2–4 步从真实失触状态规划、执行并验证专家恢复，不能把失败动作当监督标签。
-下文标为“新增参数/新增脚本”的示例仍是设计草案，不能直接复制运行；上面的部署 CLI
-只使用已实现参数。本轮范围是筛出短期稳定部署配置，不启动新一轮 DAgger 训练。
-
-> 目标读者:需要跑恢复数据采集的合作者。
-> 一句话:让当前还不够好的 DP 在闭环部署中自己"找出"会失触的时刻,我们在失触现场用专家(数采控制器)从同一个状态重新抓一次、恢复接触,把这整段"失触 → 恢复"过程变成训练数据,教会 DP 下次自己回来。
-
-## 0. 为什么需要这份数据
-
-现在的训练数据全部来自**专家成功轨迹**。DP 在闭环中一旦漂移、手指脱开瓶身,它进入了自己从未见过的状态分布(接触 mask 全空、几何信息冻结),而训练数据里没有"从这种状态回到接触"的例子——于是越漂越远。
-
-DAgger 的思路:policy 自己跑,在**即将/已经失触**的地方停下来,把现场状态记下来;然后让专家从**同一个现场状态**重新做一次成功的恢复;把"失败前状态 + 专家恢复过程"加入训练集。
-
-## 1. 总体流程(四步)
-
-```text
-第1步  部署找失败        闭环跑 DP → 失触达阈值 → 暂停并保存现场 = 状态 A
-                                        │
-                                        ▼
-第2步  规划恢复目标      从状态 A 重新规划一小段椭圆轨迹(起点 = A 的手掌位姿);
-                        状态 B = 这段轨迹上第一个四指全部 valid 的关键节点(稳定抓握手型)
-                                        │
-                                        ▼
-第3步  专家恢复采集      采集环境重置到状态 A;数采控制器追踪这段新轨迹,
-                        手指从失触状态追回接触,到达下一关键点上的稳定抓握状态 B
-                                        │
-                                        ▼
-第4步  拼接与建集        失触段 + 恢复段拼成完整 episode → 与主训练集同格式 → 混训
-```
-
-一次完整恢复数据 = **失触段(第1步产出,只有真实状态)** + **恢复段(第3步产出,状态 + 专家目标)**。
-
-## 2. 第 1 步:部署中找失触 → 状态 A
-
-**做什么**:用当前 DP checkpoint 在一条专家采集轨迹上闭环部署(`deploy_dp_inverse.py`,palm 走轨迹、手指由 DP 预测、FullHandMCC 执行)。一旦检测到"失触":
-
-- **失触定义**:loaded 接触指 `< 3`(力 ≥0.05 N 才算),即同一时刻至少两根手指已脱开;
-- **触发阈值**(暂停条件):失触**连续 ≥30 帧(0.3 s)** 或失触期间指尖力缺口持续扩大——先冻结这个默认值,跑几条看触发率再定;
-- **触发动作**:停止 replan、记录触发帧(状态 A),把**从 episode 起点到 A 的整段闭环状态**落盘。
+第一轮建议比较 `--dagger-sample-ratio 0.05 / 0.10 / 0.20`。clean validation 和 recovery validation 必须按 episode 分组，不能把同一条恢复轨迹的相邻窗口同时放入训练集和验证集。
 
-**当前状态**:失触计数与 `[TACTILE-HOLD]` 逻辑在 `deploy_dp_inverse.py` 已存在(只挡 replan,不暂停);闭环记录 `--rollout-h5`(含 q、接触 mask、发给 DP 的状态)已可用,且在脚本结束时会整段写盘。
+## 4. 数据质量要求
 
-**需要的小改动**:把"失触连续帧数 ≥ 阈值"接成**提前结束闭环并走既有落盘路径**(保证 A 前轨迹不丢),并在输出里记 `splice_frame = A 帧号`。建议加 `--fail-stop-min-contact-fingers 3 --fail-stop-grace-frames 30` 两个参数。
+一条恢复 episode 合格需要同时满足：
 
-**产物**:每一条失败部署写
+- 失触前包含足够的稳定抓握与漂移历史；
+- 状态 A 是真实持续失触，不是单帧检测抖动；
+- 专家确实从 A 重新规划，而不是复制同时间 teacher q；
+- 恢复轨迹顺着原 planner 续接，接管处没有 palm pose、twist 或 q reference 跳变；
+- 恢复段包含接管、搜索、恢复和稳定尾段；
+- 恢复后四指接触率建议不低于 98%；
+- 手型健康、无持续穿透和异常力峰值；
+- 拼接边界状态连续；
+- contact-anchored live observation 与 expert target 时序严格对齐；
+- 所有 DP 几何输入使用手掌坐标系。
 
-- `rollouts/<round>/epXXX.h5` — 失触前闭环状态(`dp_observation_state`、`q_live`、`fingertip_contact_mask`、A 帧号)
-- `rollouts/<round>/epXXX.csv` — 逐帧诊断,便于人工确认失触段
+第一轮先采 20–40 条，覆盖拇指失触、其他单指失触、双指失触、切向滑移和手型退化。验证有效后，再用新 policy 重新 rollout 并采下一轮，而不是一直使用旧 checkpoint 生成所有恢复数据。
 
-**示例命令**:
+## 5. 各脚本的具体职责
 
-```bash
-cd /home/rimlab/Code/Hand_Compliance_Control   # 部署必须从仓库根执行(hand XML 为仓库相对路径)
+### `deploy_dp_inverse.py`
 
-python mcc_finger_compliance_control/scripts/deploy_dp_inverse.py \
-  --file mcc_finger_compliance_control/data/inverted/mustard_randomized_dual_track_221_inverted.h5 \
-  --model mcc_finger_compliance_control/data/models/mustard_randomized_dual_track_v4_B2_tiptarget_219_15k/best.pt \
-  --episode-id 24 --mode live_dp --viewer headless \
-  --execution-layer fullhand_mcc --dp-history-q-source live \
-  --rollout-h5 mcc_finger_compliance_control/data/closed_loop_rollouts/recovery_round1/ep024.h5 \
-  --report   mcc_finger_compliance_control/data/closed_loop_rollouts/recovery_round1/ep024.csv \
-  --fail-stop-min-contact-fingers 3 --fail-stop-grace-frames 30   # [新增参数]
-```
+单条部署实验的实际执行入口。它加载一个 inverse H5 和 DP checkpoint，让上层 palm
+沿给定轨迹运动，DP 生成手指任务参考，FullHandMCC 执行参考并维持接触。
 
-（`--file` 是反演中间文件(训练链标准产物):提供手掌系轨迹、物体与初始手型,
-部署时手掌沿轨迹移动、物体固定。**必须加 `--dp-history-q-source live`** ——
-v4 双轨部署强制 live 反馈,缺省 nominal 会被 deploy 校验拒绝。想部署更多条
-就循环换 `--episode-id`。）
+- 输入：inverse H5、checkpoint、episode id 和部署参数；
+- 输出：逐帧 CSV 和可选 rollout H5；
+- 用于：观察某条轨迹如何从稳定状态漂移到失触，并记录真实 `q_live`、tactile、DP
+  reference 和 MCC 执行量；
+- 不负责：重新规划恢复轨迹或生成专家恢复标签。
 
-## 3. 第 2 步:规划恢复目标 → 状态 B
+### `collect_dagger_rollouts.py`
 
-**做什么**:从失触段 h5 读出状态 A 那一刻的**手掌位姿 + 物体位姿**(mocap 记录的物体 7-DoF pose、palm 7-DoF pose),以它们为起点**重新规划一小段椭圆轨迹**(覆盖 A 所在瓶身区域、向前延伸一段),再在这段轨迹上解出**关键节点的稳定四指抓握**(接触点/法向/q)。
+`deploy_dp_inverse.py` 的批量前台包装器。它依次运行多个 episode，并检查输出是否完整，
+适合批量寻找失败状态 A。
 
-**状态 B = 这段新轨迹上第一个四指全部 valid 的关键节点**,也就是恢复完成后要到达的稳定抓握手型。
+- 输入：inverse H5、checkpoint 和 episode 列表；
+- 输出：每个 episode 一组 rollout H5/CSV；
+- 正式恢复采集必须使用 `--dp-history-q-source live`；
+- 不负责：筛选最终 failure frame、运行专家或拼接恢复数据。
 
-**为什么恢复目标是"追踪轨迹到 B",而不是一个静态手型**:
+### `generate_manifold_palm_plan.py`
 
-- 数采专家(`FullHandMCC`)的工作方式是 **palm 沿路径运动,它逐帧从表面几何解出四指该贴在哪**、保持接触并调节法向力——它不接受"给定一个静态手型、手指走过去"这种指令;
-- 失触时手指脱开,要找回接触必须依托 palm 路径 + 表面几何作为锚。所以恢复 = 控制器**追踪从 A 出发的新轨迹**,手指在到达关键点 B 之前把接触全部建立回来,在 B 处达成稳定抓握;
-- 轨迹从 A 到 B 通常要走一小段(手指重新接近、接触搜索),控制器追踪的过程本身就是要学的"从失触中恢复"。
+只负责规划 **palm trajectory**。它根据物体原始几何生成保持安全距离的椭圆/流形
+手掌位姿轨迹，输出逐帧 `palm_pose_object` 和 `palm_twist_object`。
 
-**用到的规划器**(已存在,产物都是 H5):
+- 输入：物体、椭圆平面/覆盖范围、速度参数化和初始 palm 条件；
+- 输出：palm-only planner H5；
+- 用于恢复时：沿原 planner 在状态 A 的 phase、pose 和 twist 继续规划；
+- 不负责：求四指关节姿势、执行动力学或维持接触力；
+- 当前限制：还不能直接读取 rollout 的任意 failure state A。
 
-| 步骤 | 脚本 | 干什么 | 输入 → 输出 |
-|---|---|---|---|
-| 1 | `generate_manifold_palm_plan.py` | 生成 palm 椭圆轨道 | 初始 palm/object 位姿 → 含 `palm_pose_object` 的轨道 |
-| 2 | `optimize_contact_plan.py` | 在轨道关键节点解四指抓握 | 轨道 → 含 `grasp_keyframe_q / contact_point / normal / valid`(26 节点) |
-| 3 | `view_inverse_palm_plans.py` | 可视化检查轨道 + 手型 | `_opt.h5` → MuJoCo 窗口 |
+### `optimize_contact_plan.py`
 
-**需要的小改动**:现在 `generate_manifold_palm_plan.py --source` 只取源轨迹**第一帧**做起点。恢复场景需要"从任意中间帧(A)起步",因此:
-- 方案 A(推荐):给 `generate_manifold_palm_plan.py` 加 `--start-palm-pose 7 个值 --start-object-pose 7 个值`(直接从 rollout 的 A 帧读数传入);
-- 状态 B 取新轨迹上**第一个全部 valid 的关键节点**;轨迹长度建议 600–800 帧,使 B 位于轨迹中前段、从 A 到 B 有足够帧完成"手指重新接近 + 接触搜索",B 之后也留足帧数给训练目标(每样本需未来 16 步 × 5 帧)。
+在已经生成的 palm trajectory 上，离线求解稀疏四指抓握关键帧。优化考虑原始 mesh
+表面接触、指腹方向、手指可达性、manipulability、关节范围、手型和指间关系。
 
-**示例命令**:
+- 输入：`generate_manifold_palm_plan.py` 生成的 planner H5；
+- 输出：在原 H5 内容上增加 `grasp_keyframe_q`、接触点、法向、质量指标和 valid mask；
+- 关键帧 q 是接触流形控制的边界/姿态参考，不是要求每帧直接追踪的完整轨迹；
+- 不负责：生成椭圆 palm path、执行 MuJoCo 或进行实时力控制；
+- 当前限制：恢复场景还需用 `q_live(A)` warm-start 第一关键帧。
 
-```bash
-cd mcc_finger_compliance_control/scripts
+### `view_inverse_palm_plans.py`
 
-# 1) 以状态 A 为起点生成一小段椭圆轨道(数值来自 rollout 的 A 帧)
-python generate_manifold_palm_plan.py \
-  --output ../data/plans/recovery_round1/fromA_s24.h5 \
-  --object-id ycb_mustard \
-  --frames 800 --angle-deg 55 \
-  --path-mode minimum_enclosing_ellipse \
-  --ellipse-arc-region calibrated \
-  --palm-tangent-sign -1 \
-  --start-palm-pose 0.70 0.00 0.80 -3.14 0 0 1 \      # [新增参数]A 帧 palm pose(wxyz 末 4)
-  --start-object-pose 0.70 0.00 0.80 1 0 0 0           # [新增参数]A 帧物体 pose
+纯几何可视化工具。它把物体固定在 inverse 空间，用不同颜色显示
+`palm_pose_object` 轨迹，并可显示每条路径起点处的手模型和初始 q。
 
-# 2) 解关键节点抓握 → 状态 B 所在
-python optimize_contact_plan.py \
-  --input ../data/plans/recovery_round1/fromA_s24.h5 \
-  --output ../data/plans/recovery_round1/fromA_s24_opt.h5 \
-  --object-id ycb_mustard
+- 用于：检查轨迹位置、朝向、覆盖区域和初始手型是否合理；
+- 不逐帧播放 `grasp_keyframe_q`，因此不能靠它检查所有关键帧手型；
+- 不运行 physics、MCC 或接触率测试，因此可视化通过不代表物理采集合格。
 
-# 3) 可视化确认轨道贴着瓶身、关键节点手型合理
-python view_inverse_palm_plans.py ../data/plans/recovery_round1/fromA_s24_opt.h5
-```
+### `collect_trajectories.py`
 
-## 4. 第 3 步:专家恢复采集
+专家物理执行与原始数据记录入口。`planner_inverse` 模式下，它反演 palm plan 使物体
+相对固定手运动，并使用预计算抓握关键帧、接触流形 QP 和 FullHandMCC 生成逐帧教师动作。
 
-**做什么**:把采集环境**重置到状态 A**(手指 q、物体位姿与 A 帧一致),让数采控制器(`collect_trajectories.py`,特权表面 oracle + MCC)从第 0 帧起**追踪第 2 步新规划的这段椭圆轨迹**;手指从失触状态逐渐追回接触,**到达下一关键点 B 时处于稳定抓握状态**——这就是恢复过程,整段(从 A 到 B 及之后)都作为恢复数据记录下来。
+- 输入：优化后的 planner H5、物体/环境参数和采集参数；
+- 输出：包含 q、专家 reference、接触、力、pose 和控制诊断的 raw H5；
+- 接触流形 QP：连接相邻稀疏抓握关键帧；
+- FullHandMCC：追踪任务参考并进行法向接触补偿；
+- 用于恢复时：从状态 A 执行新规划，记录专家接管到恢复稳定的全过程；
+- 当前限制：尚缺完整的 `--init-h5 <state_A.h5>` 状态注入接口。
 
-**关键点**:
-- 专家能看到真实表面(数采本来就是特权教师),它从 A 的坏姿势**自己找接触**,这正是要学的能力;
-- 与主数据集完全同一条采集链 → 输出格式(raw h5、`tip_x_des_palm` 等标签)天然一致,无需特殊转换;
-- 初始注入:需要把 rollout 的 A 帧 `q_hand` + `object_pose_world` 传进 reset。**需要的小改动**:给 `collect_trajectories.py` 加 `--init-h5 rollouts/ep024.h5 --init-frame N`(读该帧 q_hand 与物体位姿作初态),其余全部走既有 `planner_inverse` 流程。
+### `invert_trajectories.py`
 
-**示例命令**:
+把“手固定、物体运动”的 raw 数采结果转换为“物体固定、手沿表面运动”的等价轨迹，
+并处理 palm/object 相对 pose、接触点和法向的坐标变换。
 
-```bash
-cd mcc_finger_compliance_control/scripts
+- 用于：将专家恢复 raw H5 转成 DP 所需的任务视角；
+- 注意：恢复段和 DP 失触段必须采用同一坐标约定和同一帧时序后才能拼接。
 
-python collect_trajectories.py \
-  --device cuda:0 --num-envs 1 --trajectory-length 2500 \
-  --motion-mode planner_inverse \
-  --planner-file ../data/plans/recovery_round1/fromA_s24_opt.h5 \
-  --init-h5 ../data/closed_loop_rollouts/recovery_round1/ep024.h5 --init-frame <A帧号> \  # [新增参数]
-  --filename recovery_s24_fromA
-```
+### `export_palm_dp.py` / `export_dual_track_v3.py` / `export_task_tip_motion_v4.py`
 
-产物:`data/trajectories/recovery_s24_fromA_*.h5` —— 一条**标准格式**的专家恢复轨迹(建议每条恢复段采集 2–3 条,扰动 seed 略有不同,提高稳健性)。
+这些是不同模型版本的数据导出器，不应混用：
 
-**人工核对**(打开看或看 CSV):恢复段开头确实从失触状态开始、接触在 ~0.5–2 s 内全部建立、之后沿轨道不失触、质量与主数据集一致(四指接触率 ≥98%)。
+- `export_palm_dp.py`：导出旧 palm-frame q-policy 数据；
+- `export_dual_track_v3.py`：导出包含 task prior 与 live execution 的 242D 双轨状态；
+- `export_task_tip_motion_v4.py`：在双轨状态基础上导出 V4 absolute fingertip target。
 
-## 5. 第 4 步:拼接与建集
+恢复数据必须选择与待微调 checkpoint 完全相同的 exporter、schema、action representation、
+normalization 和 horizon。
 
-**做什么**:把一条恢复数据的**失触段(第1步)** 与 **恢复段(第3步)** 拼成一个连续 episode,导出成与 v4 主训练文件**同 schema** 的训练 H5。
+### `build_dagger_dataset.py` / `relabel_dagger_phase_aligned.py`
 
-**拼接规则**(核心,务必一致):
+这两个脚本属于旧的局部 teacher relabel 实验：前者用 rollout 构建 96D DAgger 样本，
+后者在原 teacher 轨迹附近进行 phase 对齐。它们不会调用椭圆规划器，也不会产生真实的
+专家恢复过程，因此不能替代本 Guide 的 recovery builder。
 
-- 两段都按 100 Hz(帧长一致),按帧直接连接:失触段帧 `0..N_A` + 恢复段帧 `0..M` → 新 episode 帧 `0..N_A+M`;
-- 状态通道(发给 DP 的 242 维因果状态)**逐字段重映射拼接**——失触段来自 rollout 的 `dp_observation_state`,恢复段来自采集 raw 经既有导出链(`invert/export`)得到的同一 schema;
-- 专家标签通道(`tip_target_palm` 12D)在**恢复段才有值**,失触段填占位并记录 splice 位置;
-- 建集时样本窗口规则:**允许窗口起点上溯到 splice 前若干帧**(让历史覆盖失触帧),但窗口的**未来目标必须全部落在恢复段内**。这样每条拼接 episode 只在交界处与恢复段内产生样本——学到的正是"从失触中恢复"。
+### `train_dp.py`
 
-**需要的新增**:一个小工具 `build_recovery_samples.py`(拼接 + 按上述规则切窗 + 写 H5),输入 = 失触段 rollout + 恢复段训练格式文件 + splice 帧号,输出 = 与 `--file` 同 schema 的 H5(直接可 `train_dp.py --dagger-file` 或合并进主文件)。
+训练和微调入口。clean 数据由 `--file` 提供，恢复数据由 `--dagger-file` 提供，
+`--dagger-sample-ratio` 控制每个 batch 中恢复样本比例。它不负责把 raw trajectory 自动
+转换成训练 schema。
 
-**示例命令**:
+### 尚需补充的两个工具
 
-```bash
-cd mcc_finger_compliance_control/scripts
+- `extract_recovery_state.py`：从 DP rollout 的 failure frame 导出完整状态 A；
+- `build_recovery_dataset.py`：审计拼接边界，把 DP 失触段与专家恢复段合并，并按
+  `expert_label_valid` 生成训练窗口。
 
-# 先按主流程把恢复段 raw 转成 v4 同款训练格式(与既有 219 数据同一套导出链)
-python export_dual_track_v3.py --file ../data/trajectories/recovery_s24_fromA_*.h5 ...   # 与主数据一致
-
-# 拼接 + 切窗建集
-python build_recovery_samples.py \
-  --lost-segment ../data/closed_loop_rollouts/recovery_round1/ep024.h5 \   # 第1步产物(状态)
-  --recovery-file ../data/dp/recovery_s24_fromA_tiptarget.h5 \             # 第3步产物(状态+标签)
-  --splice-frame <A帧号> \
-  --output ../data/dp/mustard_recovery_round1.h5                          # [新增脚本]
-```
-
-## 6. 数据目录约定(仅 4 个目录)
-
-| 内容 | 目录 | 例子 |
-|---|---|---|
-| 失触段 rollout | `data/closed_loop_rollouts/recovery_round<N>/` | `ep024.h5/.csv` |
-| A→B 轨道 | `data/plans/recovery_round<N>/` | `fromA_s24.h5`、`fromA_s24_opt.h5` |
-| 恢复段采集 | `data/trajectories/`(自动) | `recovery_s24_fromA_*.h5` |
-| 拼接训练文件 | `data/dp/` | `mustard_recovery_round1.h5` |
-
-训练:`train_dp.py --dagger-file mustard_recovery_round1.h5` 混入下一轮 fine-tune(与既有 DAgger 轮次 `dagger_mustard_round*` 相同用法;rollout 由部署写 `dp_history_q_source=live`,`build_dagger_dataset.py` 默认只接受 live rollout,与 deploy 强制一致)。
-
-## 7. 既有能力 vs 需要的小改动(汇总)
-
-| 环节 | 可直接用 | 需小改/新增 |
-|---|---|---|
-| 第1步 失触检测 | 失触计数、`[TACTILE-HOLD]`、`--rollout-h5` 闭环记录 | 失触阈值→提前结束 + 记 splice 帧 |
-| 第2步 B 规划 | `generate_manifold_palm_plan.py`、`optimize_contact_plan.py`、`view_inverse_palm_plans.py` | 支持以任意帧(A)位姿为起点 |
-| 第3步 恢复采集 | `collect_trajectories.py --motion-mode planner_inverse` 全套 | `--init-h5/--init-frame` 初始状态注入 |
-| 第4步 拼接建集 | v4 导出链、`train_dp.py --dagger-file` | `build_recovery_samples.py`(拼接+切窗) |
-
-## 8. 每轮采集的核对清单
-
-1. 失触段:A 帧确实处于失触(loaded 接触 <3),不是误触发;
-2. A→B 轨道:可视化贴着瓶身、无穿模,`grasp_keyframe_valid` 全 True;
-3. 恢复段:四指接触率 ≥98%、恢复建立时间 <2 s、无 over-force、与主数据同格式可导出;
-4. 拼接:帧率一致、splice 标记正确、样本窗口规则生效(目标全在恢复段);
-5. 一轮建议 ≥20 条恢复 episode(覆盖不同失触形态:单指/双指脱开、漂移方向),再进入训练。
+在状态 A 注入和 recovery builder 完成之前，可以分别运行 DP rollout、palm planner、
+contact optimizer 和专家采集，但还不能把它们可靠地串成最终恢复训练 H5。
