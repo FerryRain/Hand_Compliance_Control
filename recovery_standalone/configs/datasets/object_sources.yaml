@@ -1,0 +1,129 @@
+schema_version: 1
+
+# This file is a source/rights manifest, not an instruction to commit dataset
+# payloads. Re-check upstream terms when an asset subset is frozen.
+sources:
+  google_scanned_objects_mujoco:
+    priority: P0
+    object_count: 1030
+    content: scanned_household_objects
+    formats: [obj, png, mjcf]
+    collision: vhacd_convex_parts
+    official_dataset_url: https://research.google/blog/scanned-objects-by-google-research-a-dataset-of-3d-scanned-common-household-items/
+    adapter_url: https://github.com/kevinzakka/mujoco_scanned_objects
+    license:
+      assets: CC-BY-4.0
+      adapter_mjcf: MIT
+    recommended_use: first_real_object_subset
+    ingest_status: planned
+    notes: Select 30-50 hand-sized, watertight objects before bulk collection.
+
+  ycb_object_model_set:
+    priority: P0
+    object_count: 77
+    content: standardized_manipulation_objects
+    formats: [obj, textured_mesh, point_cloud, rgbd]
+    official_url: https://www.ycbbenchmarks.com/object-models/
+    download_url: https://ycb-benchmarks.s3-website-us-east-1.amazonaws.com/
+    license:
+      assets: CC-BY-4.0
+      downloader_code: MIT
+    recommended_use: sim_to_real_and_standard_benchmark
+    ingest_status: planned
+    notes: Generate and visually validate collision decompositions.
+
+  egad:
+    priority: P0
+    object_count:
+      train: 2282
+      evaluation: 49
+    content: procedurally_evolved_grasping_shapes
+    formats: [obj]
+    official_url: https://dougsm.github.io/egad/
+    code_url: https://github.com/dougsm/egad
+    license:
+      repository: BSD-3-Clause
+      dataset_archive: verify_with_download_record
+    recommended_use: geometry_complexity_curriculum
+    ingest_status: planned
+    notes: Begin with all 49 evaluation meshes; normalize scale to the hand envelope.
+
+  omniobject3d:
+    priority: P1
+    object_count: 6000
+    category_count: 190
+    content: real_scanned_daily_objects
+    formats: [textured_mesh, point_cloud, multiview_images, video]
+    official_url: https://omniobject3d.github.io/
+    download_url: https://openxlab.org.cn/datasets/OpenXDLab/OmniObject3D-New
+    license:
+      assets: verify_and_accept_upstream_terms
+    recommended_use: unseen_category_expansion
+    ingest_status: research_only
+    notes: High-quality scans but requires mesh repair, decimation, and term review.
+
+  amazon_berkeley_objects:
+    priority: P1
+    object_count_3d: 7953
+    content: artist_created_household_product_models
+    formats: [glb]
+    official_url: https://amazon-berkeley-objects.s3.amazonaws.com/index.html
+    registry_url: https://registry.opendata.aws/amazon-berkeley-objects/
+    license:
+      assets: CC-BY-NC-4.0
+    recommended_use: noncommercial_long_tail_generalization
+    ingest_status: planned
+    notes: Filter handheld categories and convert GLB to visual/collision meshes.
+
+  contactdb:
+    priority: P1
+    object_count: 50
+    contact_mesh_count: 3750
+    content: household_meshes_with_human_contact_maps
+    formats: [mesh, contact_texture, rgbd, thermal]
+    official_url: https://contactdb.cc.gatech.edu/
+    code_url: https://github.com/samarth-robo/contactdb_utils
+    license:
+      assets: custom_verify_before_download
+    recommended_use: contact_region_prior_and_evaluation
+    ingest_status: research_only
+    notes: Valuable supervision source, not the primary scale source.
+
+  objaverse:
+    priority: P2
+    object_count: 800000
+    content: web_collected_3d_long_tail
+    formats: [glb]
+    official_url: https://objaverse.allenai.org/
+    huggingface_repo: allenai/objaverse
+    license:
+      collection: ODC-By-1.0
+      assets: per_object_creative_commons
+    recommended_use: heavily_filtered_long_tail_only
+    ingest_status: deferred
+    notes: Preserve and filter per-object license, scale, category, and mesh quality.
+
+  objaverse_xl:
+    priority: P2
+    object_count: 10000000
+    content: very_large_web_collected_3d_long_tail
+    formats: [mixed]
+    official_url: https://github.com/allenai/objaverse-xl
+    license:
+      collection: ODC-By-1.0
+      assets: per_object_mixed
+    recommended_use: deferred_manifest_subset_only
+    ingest_status: deferred
+    notes: Not suitable for unfiltered physical simulation ingestion.
+
+  shapenet_partnet:
+    priority: P2
+    content: category_cad_and_articulated_objects
+    formats: [obj, json, articulated_parts]
+    shapenet_url: https://shapenet.org/
+    partnet_url: https://partnet.cs.stanford.edu/
+    license:
+      assets: registration_or_research_terms_apply
+    recommended_use: category_shape_and_later_articulation_curriculum
+    ingest_status: deferred
+    notes: Keep articulated objects out of the static-object pipeline initially.

@@ -1,0 +1,58 @@
+id: rounded_box_medium
+display_name: Rounded box
+family: smooth_convex
+rgba: [0.92, 0.46, 0.18, 1.00]
+
+collection:
+  surface_preload_m: 0.0025
+
+geoms:
+  - type: rounded_box
+    # Final half-size. The 25 mm radius is carved inside this envelope.
+    size: [0.14, 0.105, 0.09]
+    rounding_radius: 0.025
+    mesh_subdivisions: 3
+
+motion:
+  translation:
+    contact_gated: true
+    allowed_axes: [principal_x, principal_y, principal_z]
+    distance_mode: object_extent_ratio
+    distance_ratio_range: [0.12, 0.38]
+    absolute_max_m: 0.050
+    segment_move_steps: 180
+    segment_hold_steps: 80
+    axis_profiles:
+      principal_x:
+        speed_range_m_s: [0.0030, 0.0070]
+        distance_ratio_range: [0.10, 0.25]
+        absolute_max_m: 0.035
+      principal_y:
+        speed_range_m_s: [0.0025, 0.0060]
+        distance_ratio_range: [0.08, 0.22]
+        absolute_max_m: 0.025
+      principal_z:
+        speed_range_m_s: [0.0015, 0.0035]
+        distance_ratio_range: [0.04, 0.10]
+        absolute_max_m: 0.012
+        segment_move_steps: 100
+        segment_hold_steps: 120
+  rotation:
+    contact_gated: true
+    allowed_axes: [principal_x, principal_y, principal_z, uniform_sphere]
+    angle_range_deg: [45.0, 220.0]
+    segment_move_steps: 100
+    segment_hold_steps: 120
+    axis_profiles:
+      principal_x:
+        angular_speed_range_rad_s: [0.012, 0.030]
+      principal_y:
+        angular_speed_range_rad_s: [0.010, 0.025]
+      principal_z:
+        angular_speed_range_rad_s: [0.020, 0.045]
+        segment_move_steps: 140
+        segment_hold_steps: 100
+      uniform_sphere:
+        angular_speed_range_rad_s: [0.010, 0.025]
+        segment_move_steps: 80
+        segment_hold_steps: 140
