@@ -75,14 +75,21 @@ $PY $B/batch_run_recovery_pipeline.py \
 
 ## 已知限制（交付前请知晓）
 
-1. **恢复段缺少「接管→搜索→恢复」过程。** 编排默认
-   `--record-start-step 160`，即从注入后第 160 步才开始记录，而 `build_recovery_dataset.py`
-   的 `recovery_confirm_frame` 实测为 0——恢复段第一帧就已经是四指稳定接触。结果是数据由
-   「失触前 80 帧」+「已恢复稳定 50 帧」拼成，中间的失触与接管过程不入库，与 Guide
-   「恢复段包含接管、搜索、恢复和稳定尾段」的要求不符。
-2. **`--max-q-jump-rad` 被放宽到 0.13。** 默认 0.05 会拒绝全部恢复片段；实测拼接边界的
-   帧间 q 跳变是段内正常值的 8–53 倍，属真实不连续（由限制 1 的 160 步空档造成），
-   放宽阈值只是让它通过审计而非修复。
+1. **[PENDING VALIDATION，2026-09-11 已修复代码，未跑真实数据验证] 恢复段缺少「接管→搜索
+   →恢复」过程。** 根因：`--init-h5` 注入后 `FullHandMCC` 立即开始搜索/接触，但
+   `collect_trajectories.py` 把 `--planner-settle-steps`（默认 200）整段排除在录制窗口外
+   （`effective_record_delay = record_delay + planner_settle_steps`），导致
+   `build_recovery_dataset.py` 的 `recovery_confirm_frame` 实测为 0——恢复段第一帧就已经是
+   四指稳定接触。已修改 `collect_trajectories.py`：`--init-h5` 运行不再从录制预算里扣掉
+   settle 窗口，且 `actual_record_start` 改为在 teleport 那一步立刻生效（不再等
+   `planner_settle_until`），使接管/搜索/恢复过程本身被录制下来。**尚未在 handcomp 环境
+   里重新跑过 `batch_run_recovery_pipeline.py` 验证**——需要重新生成至少一条恢复片段，
+   用 `visualize_inverse_trajectory.py` 确认拼接处不再有异常跳变、且片段里确实能看到
+   接管/搜索/恢复过程，再更新本条状态。
+2. **[待复核] `--max-q-jump-rad` 被放宽到 0.13。** 默认 0.05 会拒绝全部恢复片段；实测拼接
+   边界的帧间 q 跳变是段内正常值的 8–53 倍，是限制 1 描述的 160+ 步未录制空档造成的真实
+   不连续，放宽阈值只是让它通过审计而非修复。限制 1 的代码修复应从根源消除这个跳变——
+   等真实数据验证后再评估能否把这个阈值调回 0.05 附近，现在不要盲目改回默认值。
 3. **失触检测偏松。** 默认 `--failure-trigger-threshold 3`（Guide 建议「有效接触指
    少于 3 根」），实际会接受「丢一指仍在 3 指振动」的片段；部分片段 80 帧 ctx 里
    近乎全程四指接触，几乎没有可学的失触前兆。

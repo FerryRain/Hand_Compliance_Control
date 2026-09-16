@@ -6149,9 +6149,13 @@ def main() -> None:
         raise ValueError("record-start-step cannot precede motion-start")
     record_delay = record_start - args.motion_start
     # planner_inverse spends an additional settling interval with the
-    # inverted object pose fixed. Those frames are excluded from recording.
+    # inverted object pose fixed. Those frames are excluded from recording --
+    # except for --init-h5 (recovery) runs, where that same interval is the
+    # takeover/search/recovery transient we specifically want recorded.
     effective_record_delay = record_delay + (
-        args.planner_settle_steps if planner_inverse_mode else 0
+        args.planner_settle_steps
+        if planner_inverse_mode and args.init_h5 is None
+        else 0
     )
     post_start_steps = args.trajectory_length - args.motion_start
     saved_frames_per_trajectory = post_start_steps - effective_record_delay
@@ -7204,6 +7208,20 @@ def main() -> None:
                             # just-teleported hand posture.
                             policy.restart_contact_manifold()
                         planner_pose_initialized = True
+                        if init_h5_q is not None:
+                            # Recovery runs: record from the teleport frame
+                            # onward so the takeover/search/recovery transient
+                            # that unfolds during the settle window is
+                            # captured, instead of only the already-stable
+                            # frames after planner_settle_until.
+                            actual_motion_start = episode_step
+                            actual_record_start = episode_step + record_delay
+                            print(
+                                "[INIT-H5] recording starts at "
+                                f"{actual_record_start} (from the teleport "
+                                f"step, through settle until "
+                                f"{planner_settle_until})"
+                            )
                         print(
                             "[PLANNER-INVERSE] object initialized at step "
                             f"{episode_step}; settling until {planner_settle_until}"

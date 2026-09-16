@@ -84,11 +84,20 @@ def subprocess_env() -> dict[str, str]:
     ``dp_motion_features``, ...) and ``collect_trajectories.py`` writes into
     ``BUNDLE_ROOT/data/trajectories``. On sys.path is therefore the one thing
     every stage needs, and it is the same directory for all of them.
+
+    ``collect_trajectories.py`` also pulls in ``mjlab.tasks.leaphand``,
+    which does ``from mcc_finger_compliance_control.scripts.object_catalog
+    import ...`` -- an absolute import of the *main repo's* top-level
+    package, not the bundle's own copy. That only resolves if the actual
+    repo root (this bundle's parent directory) is on sys.path too, so it is
+    appended here alongside ``SCRIPTS``.
     """
 
     env = dict(os.environ)
     existing = env.get("PYTHONPATH", "")
-    env["PYTHONPATH"] = f"{SCRIPTS}{os.pathsep}{existing}" if existing else str(SCRIPTS)
+    repo_root = str(BUNDLE_ROOT.parent)
+    entries = f"{SCRIPTS}{os.pathsep}{repo_root}"
+    env["PYTHONPATH"] = f"{entries}{os.pathsep}{existing}" if existing else entries
     return env
 
 

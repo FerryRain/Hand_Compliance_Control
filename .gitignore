@@ -19,6 +19,7 @@ assets_external/
 finger_compliance_control/data/
 palm_compliance_control/data/
 mcc_finger_compliance_control/data/
+recovery_standalone/data/
 CLAUDE.md
 /.idea/
 /screenshots/
