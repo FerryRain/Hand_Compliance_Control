@@ -29,7 +29,35 @@ def task_mesh():
     return max(mesh.split(only_watertight=False), key=lambda m: abs(m.volume))
 
 
-def replay(directory, *, speed=40., fps=15):
+def detail_segments(trace, object_position):
+    """Six stable real contact windows, classified from recorded sensors."""
+    normal = trace['normals_world']
+    points = trace['contact_positions_world_m']-np.array(object_position)
+    safe = trace['active'] & (trace['forces_n'] <= 8.)
+    any_point = np.ones(safe.shape, bool)
+    regions = [('RIGHT SIDE (+X)', 0, 1, any_point), ('LEFT SIDE (-X)', 0, -1, any_point),
+        ('BOTTLE BASE (+Y)', 1, 1, points[:, :, 1] > .22),
+        ('NECK / CAP (-Y)', 1, -1, points[:, :, 1] < -.22),
+        ('UPPER BROAD FACE (+Z)', 2, 1, (points[:, :, 1] > -.10) & (points[:, :, 1] < .20)),
+        ('LOWER BROAD FACE (-Z)', 2, -1, (points[:, :, 1] > -.10) & (points[:, :, 1] < .20))]
+    result = []
+    for label, axis, sign, restriction in regions:
+        mask = (safe & (normal[:, :, axis]*sign > .6) & restriction).any(axis=1)
+        changes = np.diff(np.r_[False, mask, False].astype(int))
+        starts, ends = np.flatnonzero(changes == 1), np.flatnonzero(changes == -1)
+        durations = trace['time_s'][ends-1]-trace['time_s'][starts]
+        candidates = np.flatnonzero(durations >= .15-1e-9)
+        if not len(candidates): raise ValueError(f'No stable recorded touch in {label}')
+        selected = int(candidates[np.argmax(durations[candidates])])
+        onset = float(trace['time_s'][starts[selected]])
+        center = onset+min(.3, durations[selected]/2)
+        result.append(dict(label=label, real_contact_onset_s=onset,
+            continuous_region_contact_s=float(durations[selected]),
+            start_s=max(0., center-.8), end_s=min(float(trace['time_s'][-1]), center+1.2)))
+    return result
+
+
+def replay(directory, *, speed=40., fps=15, contact_details=False):
     """Two views of the same recorded physical state; playback adds no credit."""
     directory = Path(directory)
     with np.load(directory/'trace.npz') as archive:
@@ -51,10 +79,19 @@ def replay(directory, *, speed=40., fps=15):
     option = mujoco.MjvOption()
     option.geomgroup[3:] = 0
     font = ImageFont.truetype('C:/Windows/Fonts/arial.ttf', 17)
-    path = directory/'full_traversal.mp4'
+    path = directory/('contact_details.mp4' if contact_details else 'full_traversal.mp4')
     colors = [(0.2, .8, 1., 1.), (.9, .3, .9, 1.), (.3, 1., .3, 1.), (1., .3, .3, 1.)]
-    frames = np.arange(0., float(trace['time_s'][-1])+1e-9, speed/fps)
-    frames = np.r_[frames, float(trace['time_s'][-1])]
+    segments = []
+    if contact_details:
+        manifest = json.loads((directory/'manifest.json').read_text(encoding='utf-8'))
+        segments = detail_segments(trace, manifest['object_position_m'])
+        times = [np.arange(s['start_s'], s['end_s']+1e-9, speed/fps) for s in segments]
+        labels = [s['label'] for s, values in zip(segments, times) for _ in values]
+        frames = np.concatenate(times)
+    else:
+        frames = np.arange(0., float(trace['time_s'][-1])+1e-9, speed/fps)
+        frames = np.r_[frames, float(trace['time_s'][-1])]
+        labels = ['WHOLE CONTINUOUS ROUTE']*len(frames)
     with imageio.get_writer(path, fps=fps, codec='libx264', quality=7, macro_block_size=16) as writer:
         for frame, time in enumerate(frames):
             row = min(int(np.searchsorted(trace['time_s'], time)), len(trace['time_s'])-1)
@@ -75,7 +112,8 @@ def replay(directory, *, speed=40., fps=15):
                 panel = Image.fromarray(renderer.render())
                 draw = ImageDraw.Draw(panel)
                 draw.rectangle((0, 0, 640, 90), fill=(15, 23, 42))
-                draw.text((12, 7), f'{label} | saved physics t={trace["time_s"][row]:.2f}s', font=font, fill='white')
+                display_label = labels[frame] if contact_details else label
+                draw.text((12, 7), f'{display_label} | saved t={trace["time_s"][row]:.2f}s', font=font, fill='white')
                 draw.text((12, 32), f'measured coverage={100*trace["coverage"][row]:.3f}%  '
                     f'goals={trace["covered_goals"][row]}/388  contacts={trace["active"][row].sum()}', font=font, fill='#9ee9bc')
                 draw.text((12, 57), f'{trace["phase"][row]} | peak pad force={trace["forces_n"][row].max():.2f}N '
@@ -84,7 +122,8 @@ def replay(directory, *, speed=40., fps=15):
             combined = np.concatenate(panels, axis=1)
             writer.append_data(combined)
             if frame in (0, len(frames)//3, 2*len(frames)//3, len(frames)-1):
-                Image.fromarray(combined).save(directory/f'replay_frame_{frame:04d}.png')
+                prefix = 'detail' if contact_details else 'replay'
+                Image.fromarray(combined).save(directory/f'{prefix}_frame_{frame:04d}.png')
             if frame % 300 == 0: print(f'RENDER {frame}/{len(frames)}', flush=True)
         # Keep the last measured state readable for two seconds.
         for _ in range(2*fps): writer.append_data(combined)
@@ -93,8 +132,10 @@ def replay(directory, *, speed=40., fps=15):
         ('vendor', GL.GL_VENDOR), ('renderer', GL.GL_RENDERER), ('version', GL.GL_VERSION))}
     backend.update(display_style='Saved joint states; solid yellow mustard; dots are measured contacts',
                    playback_speed=speed, fps=fps, physical_duration_s=float(trace['time_s'][-1]),
+                   contact_detail_segments=segments,
                    video_source='trace.npz; no trajectory resimulation or inferred contact credit')
-    (directory/'render_backend.json').write_text(json.dumps(backend, indent=2), encoding='utf-8')
+    name = 'render_backend_details.json' if contact_details else 'render_backend.json'
+    (directory/name).write_text(json.dumps(backend, indent=2), encoding='utf-8')
     renderer.close()
     print('VIDEO', path, flush=True)
 
@@ -185,6 +226,10 @@ def review(directory):
         '<video controls preload="metadata" src="full_traversal.mp4"></video>'
         '<p>同一时间的记录状态，两侧相机展示上下与背面。画面中的彩点来自实测接触；'
         '黄色是便于识别的显示颜色。回放本身不增加覆盖。</p></div>') if (directory/'full_traversal.mp4').exists() else ''
+    if (directory/'contact_details.mp4').exists():
+        video = ('<div class="card"><h2>各面实际接触特写 · 4 倍慢放</h2><video controls preload="metadata" src="contact_details.mp4"></video>'
+            '<p>从同次实测触点、力和法向中选取六个稳定接触片段：左右侧、底面、盖/颈、上下大面。'
+            '片段以实际仿真时刻标注；下面的完整连续回放保留全部换面运动。</p></div>')+video
     page = f'''<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>mustard 全表面遍历</title>
     <style>body{{max-width:1280px;margin:30px auto;padding:0 24px;background:#f6f8fb;font-family:system-ui,"Microsoft YaHei",sans-serif;color:#182235}}.card{{background:white;padding:22px;margin:20px 0;border:1px solid #dde3ec;border-radius:12px}}p{{line-height:1.7}}img,video{{width:100%}}a{{color:#2563eb}}</style>
     <h1>mustard 全表面实际触摸 · {summary['cell']}</h1><p>状态：{'全表面实测覆盖完成' if complete else '完整覆盖尚未完成'}。
@@ -209,9 +254,11 @@ def review(directory):
 def main():
     parser = argparse.ArgumentParser(); parser.add_argument('directory', type=Path)
     parser.add_argument('--video', action='store_true')
+    parser.add_argument('--details', action='store_true')
     parser.add_argument('--speed', type=float, default=40.)
     args = parser.parse_args()
     if args.video: replay(args.directory, speed=args.speed)
+    if args.details: replay(args.directory, speed=.25, contact_details=True)
     review(args.directory)
 
 

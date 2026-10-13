@@ -2,19 +2,30 @@
 
 > 本文件是仓库唯一的项目实施与实验主计划。开始任何模块前必须先检查本文件。
 
-## 2026-10-13 全物体遍历补做
+## 2026-10-14 mustard 全物体 MCC 遍历完成
 
 用户指出 mustard 只摸了局部，尚未遍历摸一遍。本轮把全物体实际触摸覆盖作为完成目标；
-当前唯一活动模块 `NEW_I04_MUSTARD_FULL_TRAVERSAL / IN_PROGRESS`。DP 继续延后。
+本轮模块 `NEW_I04_MUSTARD_FULL_TRAVERSAL / FULL_TRAVERSAL_VERIFIED`。DP 继续延后。
 原 v2 接触恢复实验和 18 次记录保留，不作为完整任务通过。旧路线 600 s development 诊断
 仅覆盖 19.857%，不能以延长预算或接触率代替遍历完成。
-正在完成整瓶几何可达性、绕物体路径、到达后的局部接触恢复与完整实测覆盖审计。
+已完成整瓶几何可达性、绕物体路径、到达后的局部接触恢复与完整实测覆盖审计。
 新路径独立位于 `i04_geometric_traversal/full_surface.py`，不改写 v1/v2 冻结 runtime。
-完整 development ledger 已覆盖 8192/8192 vertices、388/388 points；full-surface v1
-的 B seed7/11 已分别连续完成全部实测覆盖。v1 的外侧 offset IK 阻塞发现并修正后，
-统一冻结 `i04-mustard-full-surface.v1.2`，A/B seeds 7/11/19 从共同初态重新评测。
-v1/v1.1 初步记录保留但不混入修正版配对结果；另修复已有正间隙进入规划缓冲后的退出，
-实际碰撞参数、力保护与完整分母不变。当前仍 IN_PROGRESS，未提前标 PASSED。
+冻结协议 `i04-mustard-full-surface.v1.2`，source `20ea869`；A/B seeds 7/11/19 共 6 次，
+全部从共同 5 s 初态连续运行，不继承开发覆盖。6/6 完成 100% 实测面积覆盖，
+8192/8192 vertices、388/388 points；三组 q/qvel/ctrl 逐元素相同，31 项回归及六份独立账本审计通过。
+覆盖仍为 25 mm mesh-geodesic 扫描分辨率，只有实际 pad contacts 增加覆盖；末段还确认安全接触稳定 150 ms。
+Object 固定、原始 2.8 烘焙尺寸和全部 256-part 碰撞保持；GT 仅修复 4 个零体积重复/退化 faces，
+没有因不可达删去真实区域。共享路径处理不可达外侧 offset 与正间隙缓冲退出，实际碰撞和力保护不变。
+
+A/B 平均完成时间 6667.658 /5888.035 s，平均真实接触率 9.456% /13.335%，
+瞬时峰值最大 12.204 /11.337 N；全部未触发持续 >12 N/20 ms 或实际碰撞停止。
+完整扫描已成立，但转移仍长，安全接触 gap 最长 339.026 s；不能宣称连续贴面、低冲击或实时/实机性能。
+本次全部观察到的安全接触 gap 最终恢复；没有 full-traversal recovery-OFF 消融，不能全部归因于显式层。
+v1/v1.1 的初步/中断记录保留并排除在同版配对结果之外。
+
+报告 `generated/new_i04_mustard_full_surface_v12_formal_20261013/index.html`，含完整 A/B 双视角回放、
+六个面的真实稳定接触慢放、覆盖图和首次实际触摸时间图。
+证据 `evidence/2026-10-14_NEW_I04_MUSTARD_FULL_TRAVERSAL.md/json`。
 
 ## 2026-10-13 mustard 接触恢复更新
 
@@ -61,16 +72,16 @@ B-MCC 为 14.536–34.988 s，平均面积覆盖 7.284%，包含全指失联。
 | 项目 | 当前值 |
 | --- | --- |
 | 计划版本 | `v4.0` |
-| 最近更新 | `2026-10-13` |
+| 最近更新 | `2026-10-14` |
 | 授权状态 | `AUTHORIZED_NEW_I04_MCC_ONLY_MUSTARD_RECOVERY` |
-| 实施状态 | `NEW_I04_MUSTARD_FULL_TRAVERSAL_IN_PROGRESS` |
-| 当前活动模块 | `NEW_I04_MUSTARD_FULL_TRAVERSAL` |
-| 当前 Gate | `NEW_I04_DESCRIPTIVE_EVALUATION / OLD_G2_G3_LEGACY` |
+| 实施状态 | `NEW_I04_MUSTARD_FULL_TRAVERSAL_VERIFIED` |
+| 当前活动模块 | `NEW_I04_MUSTARD_FULL_TRAVERSAL_COMPLETED_MCC_ONLY` |
+| 当前 Gate | `MCC_FULL_TRAVERSAL_VERIFIED / DP_DEFERRED / OLD_G2_G3_LEGACY` |
 | 固定环境 | `handcomp` |
 | 本轮 Python | `D:\Environment\Anaconda\envs\handcomp\python.exe` |
 
 下文 2026-08 的 Mx、Explicit I04、G2/G3 状态和 Python/Linux 命令保留为历史证据；
-新 I04 的当前范围与本机运行以顶部 2026-10-13 更新、冻结协议和新 evidence 为准。
+新 I04 的当前范围与本机运行以顶部 2026-10-14 更新、冻结协议和新 evidence 为准。
 
 本轮已完成 M0–M3 的 FR3+Leap Hand 扩展、M04 的 MCC 控制链和 central-palm mount 修正。
 FR3+Leap 模型为 `7 arm + 16 finger = 23 DoF`；MCC 初始 hand q 精确取自原 DP 视频

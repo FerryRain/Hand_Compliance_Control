@@ -25,6 +25,12 @@ def report(directory):
             f'<td>{summary["endpoint_local_recovery_count"]}</td>'
             f'<td>{summary["peak_force_n"]:.2f} N</td></tr>')
     videos = []
+    detail_path = directory/'B-MCC_seed7/contact_details.mp4'
+    if detail_path.exists():
+        videos.append('<section><h2>六个面的实际接触特写 · B-MCC · 4 倍慢放</h2>'
+            '<video controls preload="metadata" src="B-MCC_seed7/contact_details.mp4"></video>'
+            '<p>从同一次记录里选取左右侧、底面、盖/颈、上下大面六个稳定接触片段。'
+            '彩点和力读数来自实测触点，仿真时刻标在画面上；下方完整连续回放保留全部运动过程。</p></section>')
     for cell in ('B-MCC', 'A-MCC'):
         run = directory/f'{cell}_seed7'
         if (run/'full_traversal.mp4').exists():
@@ -40,6 +46,10 @@ def report(directory):
                 f'<img src="{cell}_seed7/surface_coverage.png" alt="六面实际覆盖图">'
                 '<p>绿色为已实际触摸的 25 mm 测地邻域并集；红色为尚未覆盖。'
                 '计划点、IK 可行姿态和录像都不增加覆盖。</p></section>')
+    if (directory/'B-MCC_seed7/first_touch_time.png').exists():
+        pictures.append('<section><h2>瓶体各处第一次实际覆盖的时间 · B-MCC</h2>'
+            '<img src="B-MCC_seed7/first_touch_time.png" alt="各处首次触摸时间">'
+            '<p>时间来自独立接触账本的重建，颜色展示逐面推进和末段补扫的顺序。</p></section>')
     pairs = results['paired_initial_states']
     pair_check = len(pairs) == 3 and all(p['initial_q_qvel_ctrl_exactly_equal'] for p in pairs)
     n = results['full_completed_cases']
@@ -59,6 +69,9 @@ def report(directory):
     <p>A 只接收 wrist 位姿；B 额外接收四个 tip XYZ。两侧共享几何规划、MCC 和恢复规则。
     三组初始 q/qvel/ctrl 逐元素配对核验：{'通过' if pair_check else '待核验'}。每次运行都从初始化重新开始。
     当前记录绑定同一冻结 runtime，未继承 development 的覆盖。</p></section>
+    <section><h2>仍需改进的部分</h2><p>当前实现先保证整瓶实际覆盖，转移路径仍长，部分计划换面会长时间失联。
+    这不能视为连续贴面扫描；后续需要缩短自由空间转移并提高触摸占比。瞬时力峰也仍存在。
+    当前结果只支持固定物体 MuJoCo 仿真范围，不能外推为实机或动态抓持验证。</p></section>
     {''.join(videos)}{''.join(pictures)}
     <section><details><summary>覆盖与实验来源的核验</summary><p>独立审计从保存的 actual pad contacts、normal 和 force
     重建全部覆盖，不使用目标/预测触点。审计同时核对完整 mesh、FK、command rate、信息边界、source hash 和配对初态。
