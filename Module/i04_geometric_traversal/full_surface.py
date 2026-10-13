@@ -717,6 +717,16 @@ def run_sweep(h, graph, data, witnesses, directory, *, cell='B-MCC', seed=7,
             segment_phase, segment_target = queue[0]
             plan, failure = planner.plan(data, segment_target,
                 allow_rrt=(segment_phase == 'OUTSIDE' or transferred))
+            if plan is None and segment_phase == 'OUTSIDE':
+                # An offset outside pose can be unreachable even when the
+                # actual surface pose is reachable. Its failure must not
+                # prevent the geometry planner from testing that safe route.
+                plan, failure = planner.plan(data, base_target, allow_rrt=True)
+                if plan is not None:
+                    events.append({'time_s': elapsed, 'kind': 'DIRECT_SURFACE_GEOMETRIC_TRANSFER',
+                        'goal_id': goal_id, 'basis': 'Outside offset failed; surface pose has a checked geometric path'})
+                    queue = [('SURFACE', base_target)]; segment_phase = 'SURFACE'
+                    transferred = True
             if plan is None and segment_phase == 'SURFACE' and not transferred:
                 current = pose(h, data)
                 if np.any(active):
@@ -934,7 +944,7 @@ def physical_run(geometry_directory, directory, cell, budget, max_targets=0, see
     root = Path(__file__).resolve().parents[2]
     snapshot = directory/'source_snapshot'; snapshot.mkdir(exist_ok=True)
     (snapshot/'full_surface.py').write_bytes(Path(__file__).read_bytes())
-    manifest = dict(protocol='i04-mustard-full-surface.v1' if formal else 'i04-mustard-full-surface.development',
+    manifest = dict(protocol='i04-mustard-full-surface.v1.1' if formal else 'i04-mustard-full-surface.development',
         object_position_m=h.object_position_m.tolist(),
         source_commit=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
         cell=cell, seed=seed, budget_s=budget, pilot_max_targets=max_targets, initial_state=initial,

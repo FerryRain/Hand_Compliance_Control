@@ -32,7 +32,8 @@ def task_mesh():
 def replay(directory, *, speed=40., fps=15):
     """Two views of the same recorded physical state; playback adds no credit."""
     directory = Path(directory)
-    trace = np.load(directory/'trace.npz')
+    with np.load(directory/'trace.npz') as archive:
+        trace = {key: archive[key] for key in archive.files}
     model = compile_model_xml((directory/'model.xml').read_text(encoding='utf-8'))
     geom = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, 'mustard_visual')
     model.geom_matid[geom] = -1
@@ -102,7 +103,8 @@ def review(directory):
     directory = Path(directory)
     summary = json.loads((directory/'summary.json').read_text(encoding='utf-8'))
     manifest = json.loads((directory/'manifest.json').read_text(encoding='utf-8'))
-    trace = np.load(directory/'trace.npz')
+    with np.load(directory/'trace.npz') as archive:
+        trace = {key: archive[key] for key in archive.files}
     mesh = task_mesh()
     if len(mesh.vertices) != len(trace['covered_vertices']):
         raise RuntimeError('Coverage mask and complete task surface differ')
@@ -115,7 +117,11 @@ def review(directory):
              (90, -90, 'Upper broad face (+Z)'), (-90, -90, 'Lower broad face (-Z)')]
     for i, (elevation, azimuth, title) in enumerate(views):
         ax = fig.add_subplot(2, 3, i+1, projection='3d')
-        collection = Poly3DCollection(mesh.triangles, facecolors=colors(face_covered),
+        direction = np.array([np.cos(np.deg2rad(azimuth))*np.cos(np.deg2rad(elevation)),
+            np.sin(np.deg2rad(azimuth))*np.cos(np.deg2rad(elevation)), np.sin(np.deg2rad(elevation))])
+        shade = .45+.55*np.clip(mesh.face_normals@direction, 0., 1.)
+        face_colors = colors(face_covered); face_colors[:, :3] *= shade[:, None]
+        collection = Poly3DCollection(mesh.triangles, facecolors=face_colors,
                                       edgecolors='none', linewidth=0.)
         ax.add_collection3d(collection)
         low, high = mesh.bounds
@@ -130,6 +136,30 @@ def review(directory):
     bar.set_label('Measured covered vertex fraction per triangle (red = untouched)')
     fig.savefig(directory/'surface_coverage.png', dpi=150)
     plt.close(fig)
+    first_touch_picture = ''
+    if (directory/'coverage_independent.npz').exists() and not manifest.get('resumed_development_run'):
+        with np.load(directory/'coverage_independent.npz') as ledger:
+            first_touch = ledger['first_touch_time_s']
+        if np.all(np.isfinite(first_touch)):
+            face_times = first_touch[mesh.faces].mean(axis=1)
+            norm = Normalize(0., float(trace['time_s'][-1]))
+            fig = plt.figure(figsize=(15, 8), layout='constrained')
+            for i, (elevation, azimuth, title) in enumerate(views):
+                ax = fig.add_subplot(2, 3, i+1, projection='3d')
+                direction = np.array([np.cos(np.deg2rad(azimuth))*np.cos(np.deg2rad(elevation)),
+                    np.sin(np.deg2rad(azimuth))*np.cos(np.deg2rad(elevation)), np.sin(np.deg2rad(elevation))])
+                shade = .45+.55*np.clip(mesh.face_normals@direction, 0., 1.)
+                face_colors = plt.cm.viridis(norm(face_times)); face_colors[:, :3] *= shade[:, None]
+                ax.add_collection3d(Poly3DCollection(mesh.triangles, facecolors=face_colors, edgecolors='none', linewidth=0.))
+                low, high = mesh.bounds
+                ax.set_xlim(low[0], high[0]); ax.set_ylim(low[1], high[1]); ax.set_zlim(low[2], high[2])
+                ax.set_box_aspect(np.array(mesh.extents, copy=True)); ax.view_init(elev=elevation, azim=azimuth)
+                ax.set(title=title); ax.set_axis_off()
+            fig.suptitle('When each part first received measured touch coverage', fontsize=16)
+            bar = fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap='viridis'), ax=fig.axes, shrink=.6, pad=.02)
+            bar.set_label('First actual touch-neighborhood coverage time (s)')
+            fig.savefig(directory/'first_touch_time.png', dpi=150); plt.close(fig)
+            first_touch_picture = '<div class="card"><h2>全瓶各处第一次实测覆盖的时间</h2><img src="first_touch_time.png" alt="first measured touch time"><p>时间来自独立重建的实测接触账本，展示各面被逐步触摸的顺序。</p></div>'
     vertex_area = np.zeros(len(mesh.vertices))
     np.add.at(vertex_area, mesh.faces.ravel(), np.repeat(mesh.area_faces/3, 3))
     normals = mesh.vertex_normals
@@ -166,6 +196,7 @@ def review(directory):
     只有整个瓶体 vertices 和 required goals 全部实际覆盖才判完成。</p></div>
     {video}
     <div class="card"><img src="surface_coverage.png" alt="actual measured coverage from six sides"></div>
+    {first_touch_picture}
     <div class="card"><img src="coverage_time.png" alt="measured physical coverage over time"></div>
     <div class="card"><p><a href="summary.json">运行指标</a> · <a href="surface_sectors.json">各面覆盖</a> ·
     <a href="manifest.json">配置与来源</a> · <a href="audit.json">独立接触账本核验</a> ·

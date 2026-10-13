@@ -1,7 +1,7 @@
 # 新 I04 mustard 全表面触摸遍历
 
 日期：2026-10-13。用户要求实际遍历摸一遍，接触可短暂中断，MCC-only、DP 延后。
-冻结协议：`i04-mustard-full-surface.v1`。数值配置和 runtime hash 在正式配对评测前冻结。
+冻结协议：`i04-mustard-full-surface.v1.1`。数值配置和 runtime hash 在正式配对评测前冻结。
 旧 Bunny v1、mustard recovery v2 原始记录保留，不改写其冻结协议。
 
 ## 完成目标
@@ -48,6 +48,9 @@ bounded arm/finger IK，外侧几何转移使用 7-DoF RRT-Connect（最多 1500
 非 pad 几何规划间隙 3 mm；margin 扩大只用于 scratch 查询，mj_step 的原 contact 参数不变。
 法向退出受阻时先查询 ±X/±Y/±Z 的 10/20/35 mm 小步退出，必要时直接规划 joint-space 外侧转移。
 缓存可行几何 pose 不增加 coverage；相同世界目标仍在当前实测 root 上重新检查路径。
+v1.1 修正外侧 offset IK 不可达时的几何死循环：直接检查 surface target 的 safe joint-space 路径。
+不读取 Oracle joint witness，不放宽任何碰撞或力保护。v1 原始记录/快照保留；
+v1.1 全部正式 A/B 从共同 acquisition 重跑，不能将不同 runtime 的结果当作配对。
 
 到达后允许 150 ms 失联/未覆盖缓冲，沿已暴露 wrist frame 与初始实测 normal history
 生成有界几何接近：1.5 mm/s、最多 8 mm、local timeout=7 s。真实触点存在但目标区域尚未覆盖时，
@@ -63,7 +66,7 @@ soft relief：≥8 N 暂停路径并卸力，低于 4 N 后继续；hard stop：
 Windows 固定 `handcomp`：
 
 ```powershell
-./scripts/run_i04_full_surface_mcc.ps1 --geometry Module/generated/mustard_true_ellipsoid_geometry07 --output Module/generated/new_i04_mustard_full_surface_formal_20261013 --jobs 3
+./scripts/run_i04_full_surface_mcc.ps1 --geometry Module/generated/mustard_true_ellipsoid_geometry07 --output Module/generated/new_i04_mustard_full_surface_v11_formal_20261013 --jobs 4
 ```
 
 单个记录用 `python -m Module.i04_geometric_traversal.full_review <run-directory> --video` 生成双视角回放与六面覆盖图。

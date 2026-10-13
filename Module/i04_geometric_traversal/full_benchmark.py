@@ -14,6 +14,46 @@ import numpy as np
 from .full_audit import audit
 
 
+def collect(output):
+    """Re-audit already finished continuous records without rerunning physics."""
+    output = Path(output).resolve()
+    manifest = json.loads((output/'benchmark_manifest.json').read_text(encoding='utf-8'))
+    results = []
+    for seed in manifest['seeds']:
+        for cell in manifest['cells']:
+            directory = output/f'{cell}_seed{seed}'
+            summary = json.loads((directory/'summary.json').read_text(encoding='utf-8'))
+            run_manifest = json.loads((directory/'manifest.json').read_text(encoding='utf-8'))
+            assert run_manifest['protocol'] == manifest['protocol']
+            assert run_manifest['code_hashes']['Module/i04_geometric_traversal/full_surface.py'] == manifest['runtime_sha256']
+            assert run_manifest['resumed_development_run'] is None
+            assert run_manifest['pilot_max_targets'] == 0
+            assert run_manifest['budget_s'] == manifest['budget_s']
+            assert run_manifest['source_commit'] == manifest['source_commit']
+            verified = audit(directory)
+            results.append(dict(cell=cell, seed=seed, directory=str(directory), summary=summary, audit=verified))
+    pairs = []
+    for seed in manifest['seeds']:
+        paths = [output/f'{cell}_seed{seed}' for cell in ('A-MCC', 'B-MCC')]
+        snapshots = [np.load(path/'initial.npz') for path in paths]
+        for key in ('qpos', 'qvel', 'ctrl'):
+            np.testing.assert_array_equal(snapshots[0][key], snapshots[1][key])
+        timelines = []
+        for path in paths:
+            with np.load(path/'trace.npz') as archive:
+                timelines.append((archive['time_s'], archive['coverage']))
+        time = min(float(times[-1]) for times, _ in timelines)
+        coverages = [float(curve[np.searchsorted(times, time, side='right')-1]) for times, curve in timelines]
+        pairs.append(dict(seed=seed, initial_q_qvel_ctrl_exactly_equal=True, common_observation_s=time,
+            A_coverage_at_common_time=coverages[0], B_coverage_at_common_time=coverages[1]))
+    status = dict(protocol=manifest['protocol'], results=results, errors=[], paired_initial_states=pairs,
+        audited_cases=len(results), requested_cases=6,
+        full_completed_cases=sum(r['summary']['full_surface_complete'] for r in results), dp='DEFERRED_BY_USER')
+    (output/'benchmark_summary.json').write_text(json.dumps(status, indent=2), encoding='utf-8')
+    print('COLLECTED', status['audited_cases'], 'audited;', status['full_completed_cases'], 'full', flush=True)
+    return status
+
+
 def benchmark(geometry, output, jobs=3):
     geometry, output = Path(geometry).resolve(), Path(output).resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -21,7 +61,7 @@ def benchmark(geometry, output, jobs=3):
         raise FileExistsError('Use a fresh formal evaluation directory')
     source = Path(__file__).with_name('full_surface.py')
     frozen_hash = sha256(source.read_bytes()).hexdigest()
-    manifest = dict(protocol='i04-mustard-full-surface.v1', seeds=[7, 11, 19], cells=['A-MCC', 'B-MCC'],
+    manifest = dict(protocol='i04-mustard-full-surface.v1.1', seeds=[7, 11, 19], cells=['A-MCC', 'B-MCC'],
         budget_s=9000., common_acquisition_s=5., source_commit=subprocess.check_output(
             ['git', 'rev-parse', 'HEAD'], text=True).strip(), runtime_sha256=frozen_hash,
         geometry_source=str(geometry), dp='DEFERRED_BY_USER',
@@ -83,10 +123,17 @@ def benchmark(geometry, output, jobs=3):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--geometry', type=Path, required=True)
+    parser.add_argument('--geometry', type=Path)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--jobs', type=int, choices=(1, 2, 3, 4), default=3)
-    args = parser.parse_args(); result = benchmark(args.geometry, args.output, args.jobs)
+    parser.add_argument('--collect', action='store_true')
+    args = parser.parse_args()
+    if args.collect:
+        result = collect(args.output)
+    elif args.geometry:
+        result = benchmark(args.geometry, args.output, args.jobs)
+    else:
+        parser.error('--geometry is required to start new physical runs')
     if result['errors']: raise SystemExit(1)
 
 

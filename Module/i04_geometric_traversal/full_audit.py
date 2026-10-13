@@ -23,7 +23,9 @@ def audit(directory):
     directory = Path(directory)
     manifest = json.loads((directory/'manifest.json').read_text(encoding='utf-8'))
     summary = json.loads((directory/'summary.json').read_text(encoding='utf-8'))
-    trace = np.load(directory/'trace.npz')
+    # NpzFile reads/decompresses on every __getitem__; materialize once.
+    with np.load(directory/'trace.npz') as archive:
+        trace = {key: archive[key] for key in archive.files}
     root = Path(__file__).resolve().parents[2]
     for name, digest in manifest['code_hashes'].items():
         source = directory/'source_snapshot/full_surface.py' if name.endswith('/full_surface.py') else root/name
@@ -125,7 +127,8 @@ def audit(directory):
         actual_contact_samples=int(len(rows)), accepted_contact_samples=int(valid.sum()),
         accepted_contact_anchor_vertices=int(len(np.unique(vertices[valid]))),
         vertices=int(mask.sum()), total_vertices=len(mask), required_goals=int(mask[graph.required_vertices].sum()),
-        total_required_goals=len(graph.required_vertices), full_surface_complete=bool(mask.all()),
+        total_required_goals=len(graph.required_vertices), full_surface_complete=summary['full_surface_complete'],
+        all_surface_measured=bool(mask.all()),
         area_fraction=float(vertex_area@mask/vertex_area.sum()), fk_checked_states=len(checked_rows),
         maximum_fk_tip_error_m=max_tip_error, maximum_logged_command_speed_rad_s=speed,
         continuous_from_acquisition=not bool(manifest.get('resumed_development_run')),

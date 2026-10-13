@@ -10,6 +10,10 @@
 仅覆盖 19.857%，不能以延长预算或接触率代替遍历完成。
 正在完成整瓶几何可达性、绕物体路径、到达后的局部接触恢复与完整实测覆盖审计。
 新路径独立位于 `i04_geometric_traversal/full_surface.py`，不改写 v1/v2 冻结 runtime。
+完整 development ledger 已覆盖 8192/8192 vertices、388/388 points；full-surface v1
+的 B seed7/11 已分别连续完成全部实测覆盖。v1 的外侧 offset IK 阻塞发现并修正后，
+统一冻结 `i04-mustard-full-surface.v1.1`，A/B seeds 7/11/19 从共同初态重新评测，
+v1 初步记录保留但不混入修正版配对结果。当前仍 IN_PROGRESS，未提前标 PASSED。
 
 ## 2026-10-13 mustard 接触恢复更新
 
