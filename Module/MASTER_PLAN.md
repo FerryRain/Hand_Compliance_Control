@@ -2,6 +2,15 @@
 
 > 本文件是仓库唯一的项目实施与实验主计划。开始任何模块前必须先检查本文件。
 
+## 2026-10-13 全物体遍历补做
+
+用户指出 mustard 只摸了局部，尚未遍历摸一遍。本轮把全物体实际触摸覆盖作为完成目标；
+当前唯一活动模块 `NEW_I04_MUSTARD_FULL_TRAVERSAL / IN_PROGRESS`。DP 继续延后。
+原 v2 接触恢复实验和 18 次记录保留，不作为完整任务通过。旧路线 600 s development 诊断
+仅覆盖 19.857%，不能以延长预算或接触率代替遍历完成。
+正在完成整瓶几何可达性、绕物体路径、到达后的局部接触恢复与完整实测覆盖审计。
+新路径独立位于 `i04_geometric_traversal/full_surface.py`，不改写 v1/v2 冻结 runtime。
+
 ## 2026-10-13 mustard 接触恢复更新
 
 用户追加要求：先使用 mustard，接触允许短暂中断，研究丢失后的恢复；仍仅运行 MCC。
@@ -49,8 +58,8 @@ B-MCC 为 14.536–34.988 s，平均面积覆盖 7.284%，包含全指失联。
 | 计划版本 | `v4.0` |
 | 最近更新 | `2026-10-13` |
 | 授权状态 | `AUTHORIZED_NEW_I04_MCC_ONLY_MUSTARD_RECOVERY` |
-| 实施状态 | `NEW_I04_MUSTARD_RECOVERY_EVALUATED_FULL_COVERAGE_INCOMPLETE` |
-| 当前活动模块 | `NONE / MCC_MUSTARD_EVALUATION_FINISHED` |
+| 实施状态 | `NEW_I04_MUSTARD_FULL_TRAVERSAL_IN_PROGRESS` |
+| 当前活动模块 | `NEW_I04_MUSTARD_FULL_TRAVERSAL` |
 | 当前 Gate | `NEW_I04_DESCRIPTIVE_EVALUATION / OLD_G2_G3_LEGACY` |
 | 固定环境 | `handcomp` |
 | 本轮 Python | `D:\Environment\Anaconda\envs\handcomp\python.exe` |

@@ -34,3 +34,5 @@ CLAUDE.md
 /.runtime/
 /.runtime_cache/
 /.runtime_tmp/
+/.runtime_debug/
+/.runtime_tmpdebug/
