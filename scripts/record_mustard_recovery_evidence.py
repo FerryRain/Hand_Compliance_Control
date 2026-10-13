@@ -5,6 +5,7 @@ import argparse
 import csv
 import html
 import json
+from hashlib import sha256
 from pathlib import Path
 
 import numpy as np
@@ -51,6 +52,28 @@ def main():
             'recovery_on_stable_count': on['stable_contact_recovery_count'],
             'recovery_off_stable_count': off['stable_contact_recovery_count'],
             'on_gap_episodes': on['contact_loss_episodes'], 'off_gap_episodes': off['contact_loss_episodes']})
+
+    challenges = []
+    for row in runs['challenge']['results']['episodes']:
+        folder = Path(runs['challenge']['directory']) / f"{row['cell']}_seed{row['seed']}"
+        events = json.loads((folder / 'events.json').read_text(encoding='utf-8'))
+        start = next(e for e in events if e['kind'] == 'PHYSICAL_WITHDRAWAL_START')
+        end = next(e for e in events if e['kind'] == 'PHYSICAL_WITHDRAWAL_END')
+        episode = next(e for e in row['contact_loss_episodes'] if e['context'] == 'physical_withdrawal'
+                       and e['recovered'] and e['stable_recovered_at_s'] > end['time_s'])
+        trace = np.load(folder / 'trace.npz')
+        indices = [int(np.argmin(abs(trace['time_s'] - e['time_s']))) for e in (start, end)]
+        displacement = trace['palm_pose_world'][indices[1], :3] - trace['palm_pose_world'][indices[0], :3]
+        projection = float(displacement @ np.asarray(start['direction_world']))
+        if start['safe_contact_count_at_start'] < 1 or projection < .020:
+            raise RuntimeError('Challenge did not start in contact or did not physically withdraw 20 mm')
+        challenges.append({'cell': row['cell'], 'seed': row['seed'],
+            'safe_contact_count_at_withdrawal_start': start['safe_contact_count_at_start'],
+            'measured_outward_displacement_m': projection,
+            'first_stable_after_release_at_s': episode['stable_recovered_at_s'],
+            'stable_delay_after_release_s': episode['stable_recovered_at_s'] - end['time_s'],
+            'final_persistent_gap_recovery_s': episode['recovery_time_s'],
+            'additional_covered_area_fraction': episode['additional_covered_area_fraction']})
 
     rows = []
     for name, run in runs.items():
@@ -104,8 +127,10 @@ def main():
     full_budget = sum(r['full_requested_budget'] for r in rows)
     recover_on = sum(p['recovery_on_stable_count'] > 0 for p in paired)
     recover_off = sum(p['recovery_off_stable_count'] > 0 for p in paired)
+    hold_times = [e['recovery_time_s'] for p in paired for e in p['on_gap_episodes'] if e['recovered']]
     scope = (f'完成 {len(rows)} 次真实 native MuJoCo 运行，其中 {full_budget} 次达到预算。'
              f'隔离撤离实验：恢复层开启 {recover_on}/3 次稳定恢复，关闭 {recover_off}/3；'
+             f'开启时稳定恢复耗时 {min(hold_times):.3f}–{max(hold_times):.3f} s。'
              '两侧初态及撤离前完整保存历史逐元素一致。')
     findings = []
     for name in ('natural', 'challenge'):
@@ -116,10 +141,22 @@ def main():
                 f"覆盖 {100*ag['final_covered_area_fraction']['mean']:.3f}%，"
                 f"安全接触失联 {rec['safe_contact_gap_count']} 次、稳定恢复 {rec['stable_recovered_gap_count']} 次，"
                 f"保护提前停止 {ag['episode_count']-ag['full_budget_episode_count']} 次。")
+    for cell in ('A-MCC', 'B-MCC'):
+        group = [r for r in challenges if r['cell'] == cell]
+        values = [r['final_persistent_gap_recovery_s'] for r in group]
+        findings.append(f"撤离后持续失联段 / {cell}：稳定恢复 {min(values):.3f}–{max(values):.3f} s，"
+            f"恢复后到终点新增覆盖 {100*min(r['additional_covered_area_fraction'] for r in group):.3f}–"
+            f"{100*max(r['additional_covered_area_fraction'] for r in group):.3f} 个百分点。")
+    findings.append('A 当前以最近两指稳定接触的历史作为恢复参考；后段仅一指接触时，该参考会较旧。'
+                    '恢复速度和更多手指的参与仍需改进，四指同时接触比例在本轮均为 0。')
     limitations = ('失联次数包括短暂 gap；稳定恢复要求至少一指连续正常接触 150 ms。'
         '恢复后运动和新增覆盖在各次运行报告逐事件列出；其后缀可能重叠，不能相加。'
+        'wrist 路程包含细微接触振荡，探索推进以新增实测覆盖为据。'
         '撤离挑战若开始时已无接触，不能算作撤离造成失联。'
         '未完成完整 mustard 覆盖；3 seeds、固定物体、gravity-off、GT 离线规划的结果不外推到实机。')
+    video_path = Path(runs['hold_on']['directory']) / 'recovery_control_seed7.mp4'
+    video_card = (f'<div class="card"><b>恢复开关对照回放 · seed 7 · 5×</b><p>同一初态、相同真实撤离、无自动返回；画面来自保存的实际关节状态。mustard 表面统一黄色便于识别。</p><video style="width:100%" controls src="../{video_path.parent.name}/{video_path.name}"></video></div>'
+                  if video_path.exists() else '')
     page = f'''<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>mustard MCC 接触恢复</title>
     <style>body{{font-family:system-ui,"Microsoft YaHei",sans-serif;max-width:1300px;margin:30px auto;padding:0 20px;background:#f6f8fb;color:#182235}}p{{line-height:1.7}}.card{{background:white;border:1px solid #dde3ec;border-radius:12px;padding:22px;margin:20px 0}}img{{max-width:100%}}table{{border-collapse:collapse;width:100%;font-size:13px}}th,td{{padding:9px;border-bottom:1px solid #e5e9f0;text-align:left}}a{{color:#2563eb}}</style>
     <h1>mustard · MCC 接触丢失与恢复</h1><p>{scope}</p><p>DPRef 未运行。自然探索、撤离挑战和固定位置的恢复层消融分别报告。</p>
@@ -127,12 +164,16 @@ def main():
     <div class="card"><b>接触可以中断，恢复需要证据</b><p>全指失联 100 ms 后，由共享恢复层返回最近安全接触附近，保留指令预载，再沿实测法向作最多 3 mm 局部探触。
     稳定接触恢复后重新规划；8 s 超时继续实验。≥8 N 局部卸力；持续 >12 N/20 ms 及真实非指尖碰撞等仍独立保护。</p><p>{limitations}</p></div>
     <div class="card" style="overflow:auto"><table><tr>{''.join('<th>'+v+'</th>' for v in ['运行','组','Seed','treatment s','接触率','覆盖','稳定恢复/失联','停止原因'])}</tr>{''.join(body)}</table></div>
+    {video_card}
     <div class="card"><b>原始证据与回放</b><p>{links}</p><p><a href="episodes.csv">全部 episode 数据</a> · <a href="hold_ablation_audit.json">恢复层隔离比较审计</a> · <a href="evidence.json">配置、结果和审计汇总</a></p></div></html>'''
     (output / 'index.html').write_text(page, encoding='utf-8')
     payload = {'status': 'EVALUATED / FULL_COVERAGE_INCOMPLETE', 'runs': runs,
-               'hold_ablation_pairs': paired, 'limitations': limitations}
+               'hold_ablation_pairs': paired, 'withdrawal_diagnostics': challenges, 'limitations': limitations,
+               'analysis_code_hashes': {name: sha256((ROOT / name).read_bytes()).hexdigest() for name in (
+                   'scripts/record_mustard_recovery_evidence.py', 'Module/i04_geometric_traversal/review.py')}}
     (output / 'evidence.json').write_text(json.dumps(payload, indent=2), encoding='utf-8')
     (output / 'hold_ablation_audit.json').write_text(json.dumps(paired, indent=2), encoding='utf-8')
+    (output / 'withdrawal_diagnostics.json').write_text(json.dumps(challenges, indent=2), encoding='utf-8')
     evidence = ROOT / 'Module/evidence'
     md = f'''# 新 I04 mustard 接触恢复记录
 

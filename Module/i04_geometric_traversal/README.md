@@ -31,3 +31,8 @@ Windows 中文工作区通过 MuJoCo VFS 读取二进制 meshes；缺失依赖�
 
 本机 28 项接口/恢复语义与执行/覆盖权限/force-sign/机器人与 MCC 回归检查通过。
 正式实验结果与 source/config/environment hashes 由 generated 目录的 manifest 保存。
+
+2026-10-13：mustard 自然/撤离遍历＋hold 恢复开关共 18 次运行全部达到预算，
+独立审计通过；hold 开启恢复 3/3、关闭 0/3。完整覆盖未完成、四指参与仍待改善。
+见 [`../evidence/2026-10-13_NEW_I04_MUSTARD_RECOVERY.md`](../evidence/2026-10-13_NEW_I04_MUSTARD_RECOVERY.md) 和
+[`../generated/new_i04_mustard_recovery_review_20261013/index.html`](../generated/new_i04_mustard_recovery_review_20261013/index.html)。

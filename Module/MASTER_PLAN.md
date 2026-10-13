@@ -5,20 +5,27 @@
 ## 2026-10-13 mustard 接触恢复更新
 
 用户追加要求：先使用 mustard，接触允许短暂中断，研究丢失后的恢复；仍仅运行 MCC。
-当前唯一活动模块 `NEW_I04_MUSTARD_RECOVERY`，状态 `IN_PROGRESS`。
+本轮模块 `NEW_I04_MUSTARD_RECOVERY`，状态 `EVALUATED / FULL_COVERAGE_INCOMPLETE`。
 冻结协议 `I04_MUSTARD_RECOVERY_PROTOCOL.md`；A/B 共享 measured-history recovery，
 不把新增强结果标作旧 Pure Passive MCC。物理沿用 mustard 256-part V-HACD，
 GT/覆盖包含完整三个 mesh components、388 required points，runtime 不重复 scale。
 全指失联不是 episode FAIL；100 ms 去抖、150 ms 稳定确认、8 s 恢复超时后继续。
 ≥8 N 局部卸力与持续 >12 N/20 ms 等独立安全保护保留。
-首个 smoke 的自然轨迹与真实撤离均观察到稳定接触恢复；关闭恢复的 hold 撤离对照未恢复。
-28 项相关检查通过；待运行三种子自然/挑战遍历及 hold 恢复开关消融、审计并登记证据。
+已完成 seeds 7/11/19 的自然/撤离 A/B 遍历与 hold 恢复开关消融，共 18 次真实运行，18/18 达到预算。
+自然遍历平均接触率 A/B 为 99.57%/97.45%，平均覆盖 5.062%/3.631%。
+撤离遍历均最终恢复；持续失联段恢复时间 A 16.394–16.478 s、B 4.048–5.562 s，
+之后仍有新增覆盖。hold 隔离对照恢复开/关为 3/3、0/3，开启时稳定恢复 3.796–3.874 s。
+两侧初态和撤离前完整保存历史逐元素一致。自然/挑战中所有记录的安全接触 gap 最终均稳定恢复，
+但短 gap 有自发恢复，不能全部归因于显式恢复层。A 历史参考较旧、四指参与不足仍待改善；完整覆盖未完成。
+28 项相关检查通过；source/manifest/model/256 parts/trace/paired-state/causal-recovery 审计全部 VERIFIED。
+证据 `evidence/2026-10-13_NEW_I04_MUSTARD_RECOVERY.md`；
+汇总 `generated/new_i04_mustard_recovery_review_20261013/index.html`，含原始记录、曲线与回放。
 下方 Bunny v1 冻结协议与证据不改写，DPRef 延后。
 
-## 2026-10-13 新 I04 MCC-only 实施更新
+## 2026-10-13 Bunny v1 历史实施更新
 
 用户明确授权运行新 I04，随后指定仅运行 MCC、DPRef 延后。
-当前模块：`NEW_I04_GEOMETRIC_MCC`，状态 `EVALUATED / FULL_COVERAGE_INCOMPLETE`。
+当次模块：`NEW_I04_GEOMETRIC_MCC`，状态 `EVALUATED / FULL_COVERAGE_INCOMPLETE`。
 有效设计为 `I04_REDESIGN_M06_M12_MIGRATION.md`；冻结运行协议为
 `I04_GEOMETRIC_MCC_PROTOCOL.md`。A-MCC/B-MCC 共用 GT 几何、初始化、规划框架和
 MCC/硬件安全参数。旧 G2/G3 和下方 2026-08-25 Mx 看板只保留为历史 Explicit 证据，
@@ -42,8 +49,8 @@ B-MCC 为 14.536–34.988 s，平均面积覆盖 7.284%，包含全指失联。
 | 计划版本 | `v4.0` |
 | 最近更新 | `2026-10-13` |
 | 授权状态 | `AUTHORIZED_NEW_I04_MCC_ONLY_MUSTARD_RECOVERY` |
-| 实施状态 | `NEW_I04_MUSTARD_RECOVERY_IN_PROGRESS` |
-| 当前活动模块 | `NEW_I04_MUSTARD_RECOVERY` |
+| 实施状态 | `NEW_I04_MUSTARD_RECOVERY_EVALUATED_FULL_COVERAGE_INCOMPLETE` |
+| 当前活动模块 | `NONE / MCC_MUSTARD_EVALUATION_FINISHED` |
 | 当前 Gate | `NEW_I04_DESCRIPTIVE_EVALUATION / OLD_G2_G3_LEGACY` |
 | 固定环境 | `handcomp` |
 | 本轮 Python | `D:\Environment\Anaconda\envs\handcomp\python.exe` |

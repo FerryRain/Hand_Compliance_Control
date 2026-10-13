@@ -115,6 +115,7 @@ def build_review(directory):
         单指丢失与重新接触另存于 summary。超时记录后继续运行。</p>
         <div style="overflow-x:auto"><table>{gap_table}</table></div>
         <p>“此后”指标覆盖从该次恢复到 episode 终点的整个后缀，可能包含再次失联或恢复，不能相加。
+        wrist 路程包含接触产生的细微振荡；探索推进应以新增实测覆盖判断。
         短促触碰不当作稳定恢复；physical_withdrawal 只标记撤离期间开始的真实失联。</p></div>'''
     incomplete = any(not r['full_requested_budget'] for r in rows)
     note = ('部分 episode 被硬件保护提前停止，执行时间不足共同预算。指标只对应已执行的时间，不能作等时长优势结论。'
@@ -151,6 +152,12 @@ def render_pair(directory, seed=7, speed=5.0, fps=24, control_directory=None):
     directory = Path(directory)
     from Module.fr3_leap.model import ARM_JOINT_NAMES, HAND_JOINT_NAMES
     model = compile_model_xml((directory / 'model.xml').read_text(encoding='utf-8'))
+    mustard_visual = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, 'mustard_visual')
+    if mustard_visual >= 0:
+        # The local source asset has a 2x2 placeholder texture. Give the
+        # recorded mustard geometry a readable, explicitly solid color.
+        model.geom_matid[mustard_visual] = -1
+        model.geom_rgba[mustard_visual] = [1., .72, .08, 1.]
     joint_ids = [mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, n)
                  for n in (*ARM_JOINT_NAMES, *HAND_JOINT_NAMES)]
     addresses = model.jnt_qposadr[joint_ids]
@@ -197,11 +204,12 @@ def render_pair(directory, seed=7, speed=5.0, fps=24, control_directory=None):
     from OpenGL import GL
     backend = {key: GL.glGetString(value).decode() for key, value in (
         ('vendor', GL.GL_VENDOR), ('renderer', GL.GL_RENDERER), ('version', GL.GL_VERSION))}
+    backend['display_style'] = 'Recorded geometry/state, mustard solid yellow surface'
     (directory / 'render_backend.json').write_text(json.dumps(backend, indent=2), encoding='utf-8')
     renderer.close()
     path = directory / 'index.html'
     text = path.read_text(encoding='utf-8')
-    text = text.replace('</html>', f'<div class="card"><b>同一 seed 的记录回放（{speed:g}×）</b><video controls src="{video.name}"></video><p>使用保存的关节状态进行 FK 回放；提前停止的组保持最后一帧并标注 stopped。</p></div></html>')
+    text = text.replace('</html>', f'<div class="card"><b>同一 seed 的记录回放（{speed:g}×）</b><video controls src="{video.name}"></video><p>使用保存的关节状态进行 FK 回放；mustard 表面统一黄色便于识别。提前停止的组保持最后一帧并标注 stopped。</p></div></html>')
     path.write_text(text, encoding='utf-8')
     print(f'Replay: {video}', flush=True)
 

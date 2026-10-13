@@ -1,10 +1,13 @@
 # Module：FR3 + LEAP Hand 模块化控制实验
 
 最新工作：按用户要求从 mustard 开始，允许短暂失联，并实现共享的实测历史接触恢复层。
-状态 `IN_PROGRESS`，协议见 [`I04_MUSTARD_RECOVERY_PROTOCOL.md`](I04_MUSTARD_RECOVERY_PROTOCOL.md)。
+18 次 MCC-only 运行全部达到预算；hold 恢复层开/关为 3/3、0/3 次稳定恢复，完整覆盖未完成。
+状态 `EVALUATED / FULL_COVERAGE_INCOMPLETE`，协议见 [`I04_MUSTARD_RECOVERY_PROTOCOL.md`](I04_MUSTARD_RECOVERY_PROTOCOL.md)。
+证据：[`evidence/2026-10-13_NEW_I04_MUSTARD_RECOVERY.md`](evidence/2026-10-13_NEW_I04_MUSTARD_RECOVERY.md)。
+汇总与回放：[`generated/new_i04_mustard_recovery_review_20261013/index.html`](generated/new_i04_mustard_recovery_review_20261013/index.html)。
 DPRef 继续延后。以下 Bunny v1 实验数字是保留的历史记录。
 
-2026-10-13 更新：新 I04 的 A-MCC/B-MCC 已在本机实现并完成 3-seed 配对评测。
+2026-10-13 Bunny v1 历史更新：新 I04 的 A-MCC/B-MCC 已在本机实现并完成 3-seed 配对评测。
 6/6 episode 因持续高力提前停止，完整表面覆盖未完成；DPRef 按用户要求延后。
 见 [`evidence/2026-10-13_NEW_I04_MCC.md`](evidence/2026-10-13_NEW_I04_MCC.md)、
 [`i04_geometric_traversal/README.md`](i04_geometric_traversal/README.md) 和
