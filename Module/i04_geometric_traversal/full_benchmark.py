@@ -61,7 +61,7 @@ def benchmark(geometry, output, jobs=3):
         raise FileExistsError('Use a fresh formal evaluation directory')
     source = Path(__file__).with_name('full_surface.py')
     frozen_hash = sha256(source.read_bytes()).hexdigest()
-    manifest = dict(protocol='i04-mustard-full-surface.v1.1', seeds=[7, 11, 19], cells=['A-MCC', 'B-MCC'],
+    manifest = dict(protocol='i04-mustard-full-surface.v1.2', seeds=[7, 11, 19], cells=['A-MCC', 'B-MCC'],
         budget_s=9000., common_acquisition_s=5., source_commit=subprocess.check_output(
             ['git', 'rev-parse', 'HEAD'], text=True).strip(), runtime_sha256=frozen_hash,
         geometry_source=str(geometry), dp='DEFERRED_BY_USER',
@@ -75,7 +75,8 @@ def benchmark(geometry, output, jobs=3):
         directory = output/f'{cell}_seed{seed}'; directory.mkdir()
         command = [sys.executable, '-u', '-m', 'Module.i04_geometric_traversal.full_surface',
             '--formal', '--geometry', str(geometry), '--output', str(directory),
-            '--cell', cell, '--seed', str(seed), '--budget', '9000']
+            '--cell', cell, '--seed', str(seed), '--budget', '9000',
+            '--expected-runtime-sha256', frozen_hash]
         with (directory/'console.log').open('w', encoding='utf-8') as log:
             result = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT)
         if result.returncode:

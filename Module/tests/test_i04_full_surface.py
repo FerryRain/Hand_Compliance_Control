@@ -1,6 +1,8 @@
 """Regressions for actual completion and orientation-preserving approach."""
 import unittest
 from types import SimpleNamespace
+from pathlib import Path
+import json
 import mujoco
 import numpy as np
 from Module.fr3_leap import build_full_robot, FullRobotModelConfig, ARM_HOME_Q, HAND_NATURAL_Q
@@ -9,6 +11,8 @@ from Module.i04_geometric_traversal.physics import set_joint_state, pose, positi
 from Module.i04_geometric_traversal.full_surface import (
     FullSurfacePlanner, endpoint_arm_offset, complete_surface, shifted_target, pad_support_vector,
     cached_target)
+from Module.i04_geometric_traversal.full_surface import build_scene
+from Module.i04_geometric_traversal.fixtures import MUSTARD
 
 
 class FullSurfaceTests(unittest.TestCase):
@@ -78,6 +82,41 @@ class FullSurfaceTests(unittest.TestCase):
         planner = FullSurfacePlanner(self.h, ExperimentConfig())
         planner.collision_reason(self.q)
         np.testing.assert_array_equal(self.h.model.geom_margin, margins)
+
+
+@unittest.skipUnless((MUSTARD/'visual_scaled.obj').exists(), 'Mustard local physical asset is required')
+class PositiveClearanceEscapeTests(unittest.TestCase):
+    def test_measured_positive_buffer_state_can_exit_without_reducing_clearance(self):
+        fixture = json.loads((Path(__file__).parent/'fixtures/i04_positive_clearance_state.json').read_text())
+        root = Path(__file__).resolve().parents[2]/'.runtime_tmp/i04_buffer_escape_test'
+        h, _, _, _ = build_scene(root)
+        data = mujoco.MjData(h.model); q = np.array(fixture['q_rad'])
+        set_joint_state(h, data, q)
+        planner = FullSurfacePlanner(h, ExperimentConfig())
+        margins = h.model.geom_margin.copy()
+        self.assertEqual(planner.collision_reason(q), 'NON_TIP_CLEARANCE')
+        minimum, _ = planner.clearance_state()
+        self.assertGreater(minimum, 0.)
+        self.assertLess(minimum, .003)
+        start = pose(h, data)
+        escape = None
+        for axis in range(3):
+            for sign in (1., -1.):
+                moved = start.copy(); moved[axis] += sign*.01
+                result, ep, er, _ = planner.solve(q, WristTarget(moved))
+                if ep < .002 and er < .04 and planner.collision_reason(result) is None and planner.edge_free(q, result):
+                    escape = result; break
+            if escape is not None: break
+        self.assertIsNotNone(escape, 'A safe measured buffer root must be able to move away')
+        last = minimum
+        for u in np.linspace(0, 1, 21):
+            reason = planner.collision_reason(q+u*(escape-q))
+            distance, _ = planner.clearance_state()
+            self.assertGreater(distance, 0.)
+            if reason == 'NON_TIP_CLEARANCE': self.assertGreaterEqual(distance, last-1e-6)
+            last = min(distance, .003)
+        self.assertIsNone(planner.command_collision_reason(q, q))
+        np.testing.assert_array_equal(h.model.geom_margin, margins)
 
 
 if __name__ == '__main__': unittest.main()

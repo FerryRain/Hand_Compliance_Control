@@ -137,7 +137,46 @@ class FullSurfacePlanner(SharedGeometricTrajectoryPlanner):
 
     def edge_free(self, a, b):
         steps = max(2, int(np.ceil(np.max(abs(b-a))/.025))+1)
-        return all(self.collision_reason(a+u*(b-a)) is None for u in np.linspace(0, 1, steps))
+        root_reason = self.collision_reason(a)
+        root_clearance, root_depth = self.clearance_state()
+        may_exit_buffer = root_reason in ('NON_TIP_CLEARANCE', 'DEEP_PAD_PENETRATION')
+        previous_clearance, previous_depth = root_clearance, root_depth
+        for u in np.linspace(0, 1, steps):
+            reason = self.collision_reason(a+u*(b-a))
+            if reason is None:
+                may_exit_buffer = False
+                continue
+            clearance, depth = self.clearance_state()
+            if (may_exit_buffer and reason in ('NON_TIP_CLEARANCE', 'DEEP_PAD_PENETRATION')
+                    and clearance > 0. and clearance >= previous_clearance-1e-6
+                    and depth <= previous_depth+1e-6):
+                previous_clearance, previous_depth = clearance, depth
+                continue
+            return False
+        return True
+
+    def clearance_state(self):
+        """Clearance/depth of the most recent scratch geometry query."""
+        objects = set(map(int, getattr(self.h, 'object_geom_ids', [self.h.object_geom_id])))
+        tips = set(map(int, self.h.tip_geom_ids))
+        clearance, depth = float('inf'), 0.
+        for c in self.scratch.contact:
+            pair = (int(c.geom1), int(c.geom2))
+            if objects.intersection(pair):
+                if tips.intersection(pair): depth = max(depth, -float(c.dist))
+                else: clearance = min(clearance, float(c.dist))
+        return clearance, depth
+
+    def command_collision_reason(self, measured_q, command):
+        reason = self.collision_reason(command)
+        proposed_clearance, _ = self.clearance_state()
+        if reason == 'NON_TIP_CLEARANCE':
+            measured_reason = self.collision_reason(measured_q)
+            measured_clearance, _ = self.clearance_state()
+            if (measured_reason == 'NON_TIP_CLEARANCE' and proposed_clearance > 0.
+                    and proposed_clearance >= measured_clearance-1e-6):
+                return None
+        return reason
 
     def _rrt(self, root, goal, seed=7):
         rng = np.random.default_rng(seed)
@@ -150,7 +189,7 @@ class FullSurfacePlanner(SharedGeometricTrajectoryPlanner):
             # Change that posture in the outside configuration before arm
             # transfer instead of freezing an incompatible hand throughout.
             prepared = root.copy(); prepared[7:] = goal[7:]
-            if self.collision_reason(prepared) or not self.edge_free(root, prepared):
+            if self.collision_reason(prepared) not in (None, 'NON_TIP_CLEARANCE') or not self.edge_free(root, prepared):
                 return None
             initial_prefix = [root.copy()]
             root = prepared; hold = prepared[7:].copy()
@@ -840,7 +879,7 @@ def run_sweep(h, graph, data, witnesses, directory, *, cell='B-MCC', seed=7,
         command = np.clip(command, last_command-.0024, last_command+.0024)
         command = np.clip(command, planner.lower, planner.upper)
         if step % 5 == 0 and phase != 'SELECT':
-            reason = planner.collision_reason(command)
+            reason = planner.command_collision_reason(joint_state(h, data), command)
             if reason in ('NON_TIP_CLEARANCE', 'NON_TIP_OBJECT_COLLISION', 'SELF_COLLISION'):
                 events.append({'time_s': elapsed, 'kind': 'COMMAND_GEOMETRY_DEFER',
                     'goal_id': goal_id, 'phase': phase, 'reason': reason})
@@ -895,8 +934,12 @@ def run_sweep(h, graph, data, witnesses, directory, *, cell='B-MCC', seed=7,
 
 
 def physical_run(geometry_directory, directory, cell, budget, max_targets=0, seed=7,
-                 resume_directory=None, formal=False):
+                 resume_directory=None, formal=False, expected_runtime_sha256=None):
     geometry_directory, directory = Path(geometry_directory), Path(directory)
+    runtime_source = Path(__file__).read_bytes()
+    runtime_digest = sha256(runtime_source).hexdigest()
+    if expected_runtime_sha256 is not None and runtime_digest != expected_runtime_sha256:
+        raise RuntimeError('Controller source changed before child experiment startup')
     directory.mkdir(parents=True, exist_ok=True)
     if (directory/'manifest.json').exists(): raise FileExistsError('Choose a fresh experiment directory')
     if formal and (resume_directory is not None or max_targets or budget != 9000.):
@@ -943,8 +986,8 @@ def physical_run(geometry_directory, directory, cell, budget, max_targets=0, see
     (directory/'model.xml').write_text(h.xml, encoding='utf-8')
     root = Path(__file__).resolve().parents[2]
     snapshot = directory/'source_snapshot'; snapshot.mkdir(exist_ok=True)
-    (snapshot/'full_surface.py').write_bytes(Path(__file__).read_bytes())
-    manifest = dict(protocol='i04-mustard-full-surface.v1.1' if formal else 'i04-mustard-full-surface.development',
+    (snapshot/'full_surface.py').write_bytes(runtime_source)
+    manifest = dict(protocol='i04-mustard-full-surface.v1.2' if formal else 'i04-mustard-full-surface.development',
         object_position_m=h.object_position_m.tolist(),
         source_commit=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
         cell=cell, seed=seed, budget_s=budget, pilot_max_targets=max_targets, initial_state=initial,
@@ -964,7 +1007,8 @@ def physical_run(geometry_directory, directory, cell, budget, max_targets=0, see
         coverage=dict(radius_m=.025, residual_limit_m=.005, normal_cosine=.5, force_threshold_n=.2,
                       source='actual MuJoCo pad contacts only', required_goals=graph.required_goal_count,
                       vertices=len(graph.vertices_m), area_m2=float(graph.mesh.area)),
-        code_hashes={name:sha256((root/name).read_bytes()).hexdigest() for name in (
+        code_hashes={name:(runtime_digest if name.endswith('/full_surface.py') else
+            sha256((root/name).read_bytes()).hexdigest()) for name in (
             'Module/i04_geometric_traversal/full_surface.py', 'Module/i04_geometric_traversal/physics.py',
             'Module/i04_geometric_traversal/contracts.py', 'Module/i04_geometric_traversal/planning.py',
             'Module/i04_geometric_traversal/recovery.py', 'Module/i04_geometric_traversal/fixtures.py',
@@ -986,9 +1030,11 @@ def main():
     parser.add_argument('--max-targets', type=int, default=0)
     parser.add_argument('--resume', type=Path, help='Continue a development physical checkpoint; not a frozen formal run')
     parser.add_argument('--formal', action='store_true', help='Frozen fresh-acquisition evaluation; no development resume')
+    parser.add_argument('--expected-runtime-sha256', help='Reject child startup if the frozen controller changed')
     args = parser.parse_args()
     if args.geometry:
-        physical_run(args.geometry, args.output, args.cell, args.budget, args.max_targets, args.seed, args.resume, args.formal)
+        physical_run(args.geometry, args.output, args.cell, args.budget, args.max_targets, args.seed,
+            args.resume, args.formal, args.expected_runtime_sha256)
     else:
         geometry_audit(args.output, args.position)
 
