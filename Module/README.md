@@ -1,5 +1,9 @@
 # Module：FR3 + LEAP Hand 模块化控制实验
 
+最新工作：按用户要求从 mustard 开始，允许短暂失联，并实现共享的实测历史接触恢复层。
+状态 `IN_PROGRESS`，协议见 [`I04_MUSTARD_RECOVERY_PROTOCOL.md`](I04_MUSTARD_RECOVERY_PROTOCOL.md)。
+DPRef 继续延后。以下 Bunny v1 实验数字是保留的历史记录。
+
 2026-10-13 更新：新 I04 的 A-MCC/B-MCC 已在本机实现并完成 3-seed 配对评测。
 6/6 episode 因持续高力提前停止，完整表面覆盖未完成；DPRef 按用户要求延后。
 见 [`evidence/2026-10-13_NEW_I04_MCC.md`](evidence/2026-10-13_NEW_I04_MCC.md)、

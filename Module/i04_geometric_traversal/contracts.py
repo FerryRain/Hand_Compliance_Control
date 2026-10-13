@@ -10,8 +10,8 @@ import numpy as np
 from numpy.typing import NDArray
 
 Cell = Literal['A-MCC', 'B-MCC']
-PROTOCOL_VERSION = 'i04-geometric-mcc.v1'
-SURFACE_VERSION = 'canonical-bunny-nonconvex-sdf.v1'
+PROTOCOL_VERSION = 'i04-geometric-mcc-contact-recovery.v2'
+SURFACE_VERSION = 'fixed-object-source-mesh.v2'
 
 
 def frozen_array(value, shape):
@@ -47,9 +47,12 @@ class WholeHandTarget:
 
 @dataclass(frozen=True, slots=True)
 class ExperimentConfig:
+    object_name: str = 'mustard'
+    task: str = 'traverse'
+    recovery_enabled: bool = True
     seed: int = 7
     dt_s: float = 0.002
-    acquisition_s: float = 3.0
+    acquisition_s: float = 5.0
     duration_s: float = 60.0
     coverage_radius_m: float = 0.025
     contact_threshold_n: float = 0.20
@@ -68,6 +71,16 @@ class ExperimentConfig:
     fingertip_tolerance_m: float = 0.003
     prefix_s: float = 0.10
     log_stride: int = 5
+    contact_loss_debounce_s: float = 0.10
+    recovery_confirmation_s: float = 0.15
+    recovery_timeout_s: float = 8.0
+    recovery_cooldown_s: float = 0.50
+    recovery_joint_speed_rad_s: float = 0.25
+    recovery_wrist_speed_m_s: float = 0.012
+    force_relief_n: float = 8.0
+    force_relief_speed_m_s: float = 0.030
+    withdrawal_at_s: float = 0.0
+    withdrawal_distance_m: float = 0.025
 
     def __post_init__(self):
         if not np.isclose(self.dt_s, 0.002):
@@ -75,10 +88,13 @@ class ExperimentConfig:
         if self.duration_s <= self.acquisition_s:
             raise ValueError('Duration must exceed acquisition')
         for key, value in self.__dataclass_fields__.items():
-            if key not in ('seed', 'normal_alignment_cos') and (not np.isfinite(getattr(self, key)) or getattr(self, key) <= 0):
+            if key not in ('seed', 'normal_alignment_cos', 'object_name', 'task', 'recovery_enabled', 'withdrawal_at_s') and (not np.isfinite(getattr(self, key)) or getattr(self, key) <= 0):
                 raise ValueError(f'{key} must be finite and positive')
         if not 0 < self.normal_alignment_cos <= 1:
             raise ValueError('Normal alignment must be in (0,1]')
+        if (self.object_name not in ('mustard', 'bunny') or self.task not in ('traverse', 'hold')
+                or not np.isfinite(self.withdrawal_at_s) or self.withdrawal_at_s < 0):
+            raise ValueError('Invalid object or withdrawal time')
 
 
 def array_digest(value) -> str:

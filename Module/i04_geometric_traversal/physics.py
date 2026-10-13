@@ -66,12 +66,13 @@ def contact_measurement(handles, data, threshold):
     wrench = np.zeros(6)
     unsafe = []
     penetration = 0.0
+    object_geoms = set(int(g) for g in getattr(handles, 'object_geom_ids', [handles.object_geom_id]))
     for index in range(data.ncon):
         contact = data.contact[index]
         a, b = int(contact.geom1), int(contact.geom2)
         mujoco.mj_contactForce(handles.model, data, index, wrench)
         magnitude = max(0.0, float(wrench[0]))
-        if handles.object_geom_id not in (a, b):
+        if not object_geoms.intersection((a, b)):
             ba, bb = int(handles.model.geom_bodyid[a]), int(handles.model.geom_bodyid[b])
             parents = handles.model.body_parentid
             if (contact.dist < -0.002 and magnitude > 0.5 and ba != bb
@@ -79,7 +80,7 @@ def contact_measurement(handles, data, threshold):
                 names = [mujoco.mj_id2name(handles.model, mujoco.mjtObj.mjOBJ_GEOM, g) for g in (a, b)]
                 unsafe.append('SELF_COLLISION:' + '/'.join(str(n) for n in names))
             continue
-        other = b if a == handles.object_geom_id else a
+        other = b if a in object_geoms else a
         penetration = max(penetration, -float(contact.dist))
         if other not in lookup:
             if magnitude > 0.05:
@@ -89,7 +90,7 @@ def contact_measurement(handles, data, threshold):
         normal = np.asarray(contact.frame[:3]).copy()
         # MuJoCo normal points geom1 -> geom2. Outward object normal points
         # from object into the pad, independent of contact ordering.
-        if b == handles.object_geom_id:
+        if b in object_geoms:
             normal *= -1
         forces[finger] += magnitude
         points[finger] += magnitude * np.asarray(contact.pos)

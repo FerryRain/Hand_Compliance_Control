@@ -4,6 +4,10 @@
 >
 > 状态：`MCC_IMPLEMENTED_AND_EVALUATED / FULL_COVERAGE_INCOMPLETE / DPREF_DEFERRED`
 >
+> 2026-10-13 追加：用户要求先使用 mustard、允许失联并研究恢复。v2 以
+> `I04_MUSTARD_RECOVERY_PROTOCOL.md` 为准；两组共享因果传感历史的恢复层，
+> 不将其结果混写为下文定义的 Pure Passive MCC。旧 v1 记录保留，DPRef 延后。
+>
 > 2026-10-13：按用户授权实现 `i04_geometric_traversal/` 功能层 runtime，完成 A-MCC/B-MCC
 > 的 3-seed 配对实验。6/6 提前硬件保护停止，未完成完整 Bunny coverage。
 > 证据见 `evidence/2026-10-13_NEW_I04_MCC.md`；DPRef 本轮不运行。

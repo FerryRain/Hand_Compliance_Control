@@ -1,4 +1,4 @@
-"""New I04 MCC-only experiments on the actual nonconvex Bunny plant."""
+"""New I04 MCC-only experiments with actual object contacts and recovery."""
 from __future__ import annotations
 
 from dataclasses import asdict
@@ -17,6 +17,7 @@ from .oracle import GTCoverageOracle, MeasuredCoverage
 from .physics import (BasicPassiveMCC, contact_measurement, joint_state,
                       pose, set_control, set_joint_state, tip_positions, rotation)
 from .planning import GenericTrajectoryExecutor, SharedGeometricTrajectoryPlanner
+from .recovery import SharedContactRecovery, ContactEpisodes
 
 
 def prepare_initial_state(handles, graph, config):
@@ -48,7 +49,8 @@ def prepare_initial_state(handles, graph, config):
         goal, ep, er, ef = planner.solve(goal, target, iterations=160)
     mcc = BasicPassiveMCC(h, config.dt_s)
     last_command = q.copy()
-    acquisition_nominal = goal.copy()
+    acquisition_nominal = q.copy() if config.object_name == 'mustard' else goal.copy()
+    acquisition_nominal[:7] = goal[:7]
     force_peak = 0.0
     unsafe_count = 0
     for _ in range(int(config.acquisition_s / config.dt_s)):
@@ -71,6 +73,18 @@ def prepare_initial_state(handles, graph, config):
                 acquisition_nominal[columns] = np.clip(acquisition_nominal[columns],
                     goal[columns] - 0.6, goal[columns] + 0.6)
         command = mcc.command(data, acquisition_nominal, forces, measured_normals, active, config.desired_force_n)
+        # Initial acquisition has the same causal force-relief protection as
+        # treatment, so a geometric preload cannot create a hidden unsafe start.
+        if np.max(forces) >= config.force_relief_n:
+            from .recovery import SharedContactRecovery
+            relief = SharedContactRecovery(config)
+            relief.mode = 'FORCE_RELEASE'
+            command = relief.relieve_force(h, data, joint_state(h, data), forces, measured_normals)
+            for finger in range(4):
+                if forces[finger] >= config.force_relief_n:
+                    columns = np.asarray([int(n) for n in FINGERS[finger].joint_names]) + 7
+                    acquisition_nominal[columns] = command[columns]
+                    mcc.controllers[finger].reset()
         step = config.max_joint_command_speed_rad_s * config.dt_s
         last_command = np.clip(command, last_command - step, last_command + step)
         last_command = np.clip(last_command, planner.lower, planner.upper)
@@ -103,18 +117,27 @@ def run_cell(handles, graph, config, cell, initial_state, initial_audit, output)
     data.ctrl[:] = initial_state['ctrl']
     data.time = float(initial_state['time'])
     mujoco.mj_forward(h.model, data)
-    initial_nominal_q = joint_state(h, data)
-    oracle = GTCoverageOracle(h, data, graph, config)
+    initial_nominal_q = np.r_[data.ctrl[h.arm_actuator_ids], data.ctrl[h.hand_actuator_ids]]
+    oracle = GTCoverageOracle(h, data, graph, config) if config.task == 'traverse' else None
     coverage = MeasuredCoverage(graph, config)
     planner = SharedGeometricTrajectoryPlanner(h, config)
     executor = GenericTrajectoryExecutor(config)
     mcc = BasicPassiveMCC(h, config.dt_s)
     last_command = initial_nominal_q.copy()
     events = []
+    recovery = SharedContactRecovery(config)
+    gaps = ContactEpisodes(config.recovery_confirmation_s)
+    finger_gaps = [ContactEpisodes(config.recovery_confirmation_s) for _ in range(4)]
+    hold_reference = initial_nominal_q.copy()
+    withdrawal = None
+    withdrawal_elapsed = 0.0
+    withdrawal_done = False
+    withdrawal_status = 'DISABLED' if config.withdrawal_at_s == 0 else 'NOT_REACHED'
     logs = {key: [] for key in ('time_s', 'q_rad', 'command_rad', 'palm_pose_world',
             'nominal_palm_pose_world', 'tip_positions_world_m', 'forces_n', 'active',
             'contact_positions_world_m', 'coverage', 'covered_goals', 'goal_id',
-            'max_penetration_m', 'controller_latency_s', 'wrist_tracking_m', 'wrist_tracking_rad')}
+            'max_penetration_m', 'controller_latency_s', 'wrist_tracking_m', 'wrist_tracking_rad',
+            'recovery_mode', 'perturbation_active', 'safe_active', 'normals_world')}
     steps = int((config.duration_s - config.acquisition_s) / config.dt_s)
     contact_counts = np.zeros(steps, dtype=int)
     peak = np.zeros(steps)
@@ -146,6 +169,21 @@ def run_cell(handles, graph, config, cell, initial_state, initial_audit, output)
         high_force_steps += bool(np.any(forces > config.hard_force_n))
         high_force_run = high_force_run + 1 if np.any(forces > config.hard_force_n) else 0
         non_tip_steps += bool(unsafe)
+        safe_contacts = int(np.sum(active & (forces <= config.force_relief_n)))
+        gaps.observe(elapsed, safe_contacts)
+        for finger in range(4):
+            finger_gaps[finger].observe(elapsed, int(active[finger] and forces[finger] <= config.force_relief_n))
+        recovered_or_released = recovery.observe(elapsed, joint_state(h, data), forces, normals, active,
+                                                 previous_command=last_command)
+        events.extend(recovery.pending_events)
+        recovery.pending_events.clear()
+        if recovered_or_released:
+            executor.plan = None
+            if cell == 'A-MCC':
+                initial_nominal_q[7:] = last_command[7:]
+            next_plan_time = elapsed
+            if config.task == 'hold':
+                hold_reference = last_command.copy()
         # Hardware protection may stop dangerous execution. Loss of all
         # fingertip contacts is deliberately NOT a task-level stop or veto.
         hardware_reason = None
@@ -166,7 +204,8 @@ def run_cell(handles, graph, config, cell, initial_state, initial_audit, output)
             stop_reason = hardware_reason
             executed_steps = step
             break
-        if executor.plan is None or executor.finished:
+        if (config.task == 'traverse' and (executor.plan is None or executor.finished)
+                and recovery.mode == 'NORMAL' and withdrawal is None):
             if elapsed >= next_plan_time:
                 oracle_start = perf_counter()
                 candidates = oracle.ordered_candidates(data, coverage)
@@ -219,20 +258,61 @@ def run_cell(handles, graph, config, cell, initial_state, initial_audit, output)
                     next_plan_time = elapsed + 0.50
         control_start = perf_counter()
         measured_q = joint_state(h, data)
+        if (config.withdrawal_at_s > 0 and not withdrawal_done and withdrawal is None
+                and elapsed >= config.withdrawal_at_s):
+            valid_normals = normals[active]
+            if not len(valid_normals):
+                valid_normals = recovery.last_normals[np.linalg.norm(recovery.last_normals, axis=1) > .5]
+            if len(valid_normals):
+                direction = valid_normals.mean(axis=0)
+                if np.linalg.norm(direction) < 1e-8:
+                    direction = valid_normals[0].copy()
+                direction /= np.linalg.norm(direction)
+                target_pose = pose(h, data)
+                target_pose[:3] += config.withdrawal_distance_m * direction
+                withdrawal, reason = planner.plan(data, WristTarget(target_pose))
+                if withdrawal is None:
+                    events.append({'time_s': elapsed, 'kind': 'LOSS_CHALLENGE_REJECT', **reason})
+                    withdrawal_done = True
+                    withdrawal_status = 'REJECTED'
+                else:
+                    withdrawal_elapsed = 0.0
+                    events.append({'time_s': elapsed, 'kind': 'PHYSICAL_WITHDRAWAL_START',
+                        'distance_m': config.withdrawal_distance_m, 'direction_world': direction.tolist(),
+                        'automatic_return': False, 'contact_count_at_start': int(active.sum()),
+                        'safe_contact_count_at_start': safe_contacts})
         if executor.plan is not None:
             previous_barriers = executor.prefix_boundaries
-            nominal = executor.step(elapsed, measured_q)
+            nominal = executor.step(elapsed, measured_q, advance=(recovery.mode == 'NORMAL' and withdrawal is None))
             if executor.prefix_boundaries > previous_barriers:
                 events.append({'time_s': elapsed, 'kind': 'FRESH_PREFIX_FEEDBACK',
                                'measured_q_sha256': array_digest(measured_q),
                                'plan_digest': executor.plan.digest, 'phase_s': executor.elapsed})
         else:
             nominal = measured_q.copy()
-        if cell == 'A-MCC':
+        if config.task == 'hold':
+            nominal = hold_reference.copy()
+        if cell == 'A-MCC' and recovery.mode == 'NORMAL':
             nominal[7:] = initial_nominal_q[7:]
         elif executor.plan is None:
             nominal[7:] = initial_nominal_q[7:]
+        nominal = recovery.nominal(h, data, nominal)
         command = mcc.command(data, nominal, forces, normals, active, config.desired_force_n)
+        command = recovery.relieve_force(h, data, command, forces, normals)
+        perturbation_active = withdrawal is not None
+        if withdrawal is not None:
+            withdrawal_elapsed += config.dt_s
+            command[:7] = withdrawal.sample(withdrawal_elapsed)[:7]
+            if withdrawal_elapsed >= withdrawal.duration_s:
+                events.append({'time_s': elapsed, 'kind': 'PHYSICAL_WITHDRAWAL_END', 'automatic_return': False})
+                withdrawal = None
+                withdrawal_done = True
+                withdrawal_status = 'COMPLETED'
+                executor.plan = None
+                # This experiment does not script an automatic return. An
+                # inactive recovery policy keeps the withdrawn arm reference.
+                if config.task == 'hold':
+                    hold_reference[:7] = command[:7]
         limit = config.max_joint_command_speed_rad_s * config.dt_s
         command = np.clip(command, last_command - limit, last_command + limit)
         command = np.clip(command, planner.lower, planner.upper)
@@ -247,9 +327,11 @@ def run_cell(handles, graph, config, cell, initial_state, initial_audit, output)
                 'palm_pose_world': measured_pose, 'nominal_palm_pose_world': nominal_pose,
                 'tip_positions_world_m': tip_positions(h, data), 'forces_n': forces.copy(),
                 'active': active.copy(), 'contact_positions_world_m': points.copy(),
+                'safe_active': active & (forces <= config.force_relief_n), 'normals_world': normals.copy(),
                 'coverage': coverage.area_fraction, 'covered_goals': int(coverage.visited_goals.sum()),
                 'goal_id': goal_id, 'max_penetration_m': penetration,
                 'controller_latency_s': controller_latency,
+                'recovery_mode': recovery.mode, 'perturbation_active': perturbation_active,
                 'wrist_tracking_m': float(np.linalg.norm(measured_pose[:3] - nominal_pose[:3])),
                 'wrist_tracking_rad': float((rotation(measured_pose[3:]) * rotation(nominal_pose[3:]).inv()).magnitude())}
             for key, value in values.items():
@@ -270,6 +352,21 @@ def run_cell(handles, graph, config, cell, initial_state, initial_audit, output)
     counts = contact_counts[:measured_samples]
     peaks = peak[:measured_samples]
     simulated_duration = executed_steps * config.dt_s
+    loss_episodes = gaps.result(simulated_duration)
+    challenge_start = next((e['time_s'] for e in events if e['kind'] == 'PHYSICAL_WITHDRAWAL_START'), None)
+    challenge_end = next((e['time_s'] for e in events if e['kind'] == 'PHYSICAL_WITHDRAWAL_END'), simulated_duration)
+    for episode in loss_episodes:
+        episode['context'] = ('physical_withdrawal' if challenge_start is not None
+            and challenge_start <= episode['lost_at_s'] <= challenge_end else 'natural_motion')
+        if episode['recovered']:
+            stable = episode['stable_recovered_at_s']
+            at = min(int(np.searchsorted(arrays['time_s'], stable)), len(arrays['time_s']) - 1)
+            episode['covered_area_at_recovery'] = float(arrays['coverage'][at])
+            episode['additional_covered_area_fraction'] = float(coverage.area_fraction - arrays['coverage'][at])
+            episode['observed_after_recovery_s'] = simulated_duration - stable
+            episode['wrist_path_after_recovery_m'] = float(np.linalg.norm(
+                np.diff(arrays['palm_pose_world'][at:, :3], axis=0), axis=1).sum())
+    terminal_forces, _, _, terminal_active, _, _ = contact_measurement(h, data, config.contact_threshold_n)
     summary = {
         'cell': cell, 'seed': config.seed, 'status': 'EVALUATED', 'stop_reason': stop_reason,
         'config': asdict(config), 'initial_state': initial_audit,
@@ -296,12 +393,25 @@ def run_cell(handles, graph, config, cell, initial_state, initial_audit, output)
         'oracle_latency_p95_s': float(np.percentile(oracle_latencies, 95)) if oracle_latencies else None,
         'prefix_boundaries': executor.prefix_boundaries,
         'task_contact_veto_count': executor.contact_task_vetoes,
+        'contact_loss_is_failure': False,
+        'contact_loss_episodes': loss_episodes,
+        'stable_contact_recovery_count': sum(e['recovered'] for e in loss_episodes),
+        'contact_loss_episode_count': len(loss_episodes),
+        'per_finger_contact_loss_episodes': [g.result(simulated_duration) for g in finger_gaps],
+        'recovery_attempt_count': recovery.recovery_attempts,
+        'recovery_policy_success_count': recovery.recovery_successes,
+        'recovery_timeout_count': recovery.recovery_timeouts,
+        'recovery_in_progress_count': int(recovery.recovery_started is not None),
+        'recovery_pause_s': recovery.pause_steps * config.dt_s,
+        'force_relief_count': recovery.force_release_count,
+        'withdrawal_completed': withdrawal_done,
+        'withdrawal_status': withdrawal_status,
         'normal_rejected_contact_samples': coverage.normal_rejected_contacts,
         'wall_duration_s': perf_counter() - wall_start,
         'trace_sha256': sha256((output / 'trace.npz').read_bytes()).hexdigest(),
         'terminal_observation': {'time_s': float(data.time - config.acquisition_s),
-            'q_rad': joint_state(h, data).tolist(), 'forces_n': forces.tolist(),
-            'contact_active': active.tolist()},
+            'q_rad': joint_state(h, data).tolist(), 'forces_n': terminal_forces.tolist(),
+            'contact_active': terminal_active.tolist()},
         'geometry_rejection_count': sum(e['kind'] == 'ORACLE_DEFER' for e in events),
         'plan_rejection_count': sum(e['kind'] == 'PLAN_REJECT' for e in events),
     }

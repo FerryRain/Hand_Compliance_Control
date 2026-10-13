@@ -2,6 +2,19 @@
 
 > 本文件是仓库唯一的项目实施与实验主计划。开始任何模块前必须先检查本文件。
 
+## 2026-10-13 mustard 接触恢复更新
+
+用户追加要求：先使用 mustard，接触允许短暂中断，研究丢失后的恢复；仍仅运行 MCC。
+当前唯一活动模块 `NEW_I04_MUSTARD_RECOVERY`，状态 `IN_PROGRESS`。
+冻结协议 `I04_MUSTARD_RECOVERY_PROTOCOL.md`；A/B 共享 measured-history recovery，
+不把新增强结果标作旧 Pure Passive MCC。物理沿用 mustard 256-part V-HACD，
+GT/覆盖包含完整三个 mesh components、388 required points，runtime 不重复 scale。
+全指失联不是 episode FAIL；100 ms 去抖、150 ms 稳定确认、8 s 恢复超时后继续。
+≥8 N 局部卸力与持续 >12 N/20 ms 等独立安全保护保留。
+首个 smoke 的自然轨迹与真实撤离均观察到稳定接触恢复；关闭恢复的 hold 撤离对照未恢复。
+28 项相关检查通过；待运行三种子自然/挑战遍历及 hold 恢复开关消融、审计并登记证据。
+下方 Bunny v1 冻结协议与证据不改写，DPRef 延后。
+
 ## 2026-10-13 新 I04 MCC-only 实施更新
 
 用户明确授权运行新 I04，随后指定仅运行 MCC、DPRef 延后。
@@ -28,9 +41,9 @@ B-MCC 为 14.536–34.988 s，平均面积覆盖 7.284%，包含全指失联。
 | --- | --- |
 | 计划版本 | `v4.0` |
 | 最近更新 | `2026-10-13` |
-| 授权状态 | `AUTHORIZED_NEW_I04_MCC_ONLY` |
-| 实施状态 | `NEW_I04_MCC_EVALUATED_FULL_COVERAGE_INCOMPLETE` |
-| 当前活动模块 | `NONE / MCC_ONLY_EVALUATION_FINISHED` |
+| 授权状态 | `AUTHORIZED_NEW_I04_MCC_ONLY_MUSTARD_RECOVERY` |
+| 实施状态 | `NEW_I04_MUSTARD_RECOVERY_IN_PROGRESS` |
+| 当前活动模块 | `NEW_I04_MUSTARD_RECOVERY` |
 | 当前 Gate | `NEW_I04_DESCRIPTIVE_EVALUATION / OLD_G2_G3_LEGACY` |
 | 固定环境 | `handcomp` |
 | 本轮 Python | `D:\Environment\Anaconda\envs\handcomp\python.exe` |

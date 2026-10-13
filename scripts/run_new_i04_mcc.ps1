@@ -1,3 +1,4 @@
+[CmdletBinding(PositionalBinding = $false)]
 param(
     [string]$Python = 'D:\Environment\Anaconda\envs\handcomp\python.exe',
     [Parameter(ValueFromRemainingArguments = $true)]

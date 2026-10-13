@@ -16,10 +16,8 @@ import numpy as np
 import scipy
 import trimesh
 
-from Module.i01_bunny_physics.surface import canonical_bunny_heightfield
-from Module.i04_oracle_next_point.surface_graph import BunnySurfaceGraph
+from .fixtures import load_fixture, SurfaceGraph
 from .contracts import ExperimentConfig, PROTOCOL_VERSION, SURFACE_VERSION, json_digest
-from .physics import make_plant
 from .runner import prepare_initial_state, run_cell
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -29,6 +27,12 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--profile', choices=('smoke', 'formal'), default='smoke')
     parser.add_argument('--duration', type=float)
+    parser.add_argument('--object', choices=('mustard', 'bunny'), default='mustard')
+    parser.add_argument('--no-recovery', action='store_true')
+    parser.add_argument('--task', choices=('traverse', 'hold'), default='traverse',
+                        help='Hold isolates recovery: after withdrawal, hold the withdrawn pose; no Oracle or automatic return')
+    parser.add_argument('--withdraw-at', type=float, default=0.0,
+                        help='Optional one-time physical outward wrist perturbation, in treatment seconds')
     parser.add_argument('--seeds', type=int, nargs='+')
     parser.add_argument('--cells', choices=('A-MCC', 'B-MCC'), nargs='+', default=['A-MCC', 'B-MCC'])
     parser.add_argument('--output', type=Path, default=ROOT / 'Module/generated/new_i04_mcc')
@@ -39,38 +43,51 @@ def main():
     if (output / 'manifest.json').exists():
         raise FileExistsError(f'Refusing to overwrite existing experiment {output}; choose another output')
     output.mkdir(parents=True, exist_ok=True)
-    print('Building canonical full Bunny mesh and 23-DoF SDF plant...', flush=True)
-    bunny = canonical_bunny_heightfield()
-    mesh_path = bunny.export_visual_mesh(output / 'canonical_bunny.obj')
-    config = ExperimentConfig(duration_s=duration)
-    graph = BunnySurfaceGraph(bunny.mesh, coverage_radius_m=config.coverage_radius_m)
-    h = make_plant(mesh_path, config.dt_s)
+    print(f'Building {args.object} fixture and 23-DoF plant...', flush=True)
+    fixture = load_fixture(args.object, output)
+    mesh_path = fixture.mesh_path
+    config = ExperimentConfig(duration_s=duration, object_name=args.object, task=args.task,
+                              recovery_enabled=not args.no_recovery, withdrawal_at_s=args.withdraw_at)
+    graph = SurfaceGraph(fixture.mesh, coverage_radius_m=config.coverage_radius_m)
+    h = fixture.make_plant(config.dt_s)
     manifest = {
         'protocol': PROTOCOL_VERSION, 'profile': args.profile, 'surface': SURFACE_VERSION,
         'started_at_utc': datetime.now(timezone.utc).isoformat(),
         'source_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
+        'source_worktree_clean': not bool(subprocess.check_output(
+            ['git', 'status', '--porcelain', '--untracked-files=no'], cwd=ROOT, text=True).strip()),
         'seeds': seeds, 'cells': args.cells, 'config': asdict(config), 'dpref': 'DEFERRED_BY_USER',
         'environment': {'python': sys.version, 'python_executable': sys.executable,
             'platform': platform.platform(), 'mujoco': mujoco.__version__, 'numpy': np.__version__,
             'scipy': scipy.__version__, 'trimesh': trimesh.__version__,
             'physics_backend': 'MuJoCo native CPU; GPU OpenGL rendering'},
-        'geometry': {'source_sha256': bunny.source_sha256,
+        'geometry': {'source_sha256': fixture.metadata['source_sha256'],
             'canonical_mesh_sha256': sha256(mesh_path.read_bytes()).hexdigest(),
             'vertices': len(graph.vertices_m), 'triangles': len(graph.faces),
             'required_goals': graph.required_goal_count, 'whole_mesh_area_m2': graph.total_area_m2,
-            'collision': 'native nonconvex mesh SDF', 'gravity_m_s2': 0.0},
+            'collision': fixture.metadata['collision_backend'], 'gravity_m_s2': 0.0,
+            'object_name': args.object, 'fixture': fixture.metadata},
+        'recovery': {'enabled': config.recovery_enabled, 'source': 'measured state/contact/force history',
+                     'loss_is_episode_failure': False, 'stable_confirmation_s': config.recovery_confirmation_s,
+                     'minimum_stable_contact_count': 1, 'timeout_continues_episode': True},
+        'physical_loss_challenge': {'enabled': args.withdraw_at > 0, 'at_s': args.withdraw_at,
+            'distance_m': config.withdrawal_distance_m, 'automatic_return': False},
         'method_boundaries': {'oracle_contact_labels': False, 'A_fingertip_targets': False,
             'B_fingertip_targets': True, 'contact_task_vetoes': False,
             'continuous_contact_hard_planning_constraint': False,
             'privileged_oracle_geometric_continuation': True,
             'coverage_source': 'measured physical pad contacts; geodesic area union'},
         'code_hashes': {str(p.relative_to(ROOT)): sha256(p.read_bytes()).hexdigest()
-                       for p in sorted(Path(__file__).parent.glob('*.py'))},
+                       for p in sorted(Path(__file__).parent.glob('*.py')) if p.name != 'review.py'},
     }
+    manifest['geometry']['collision_part_hashes'] = {
+        str(p.relative_to(output)): sha256(p.read_bytes()).hexdigest() for p in fixture.collision_parts}
+    manifest['method_boundaries']['oracle_used_during_treatment'] = args.task == 'traverse'
+    manifest['method_boundaries']['force_relief_shared_in_ablation'] = True
     for relative in ('Module/fr3_leap/model.py', 'Module/i01_bunny_physics/surface.py',
                      'Module/i04_oracle_next_point/surface_graph.py',
                      'Module/module_2_fingertip_mcc/controller.py',
-                     'Module/e05_physics/scene.py', 'Module/I04_GEOMETRIC_MCC_PROTOCOL.md'):
+                     'Module/e05_physics/scene.py', 'Module/I04_MUSTARD_RECOVERY_PROTOCOL.md'):
         manifest['code_hashes'][relative] = sha256((ROOT / relative).read_bytes()).hexdigest()
     manifest['model_xml_sha256'] = sha256(h.xml.encode()).hexdigest()
     manifest['planning_clock'] = 'Synchronous offline planning; wall latency reported separately from simulated physics time'
@@ -79,7 +96,8 @@ def main():
     (output / 'model.xml').write_text(h.xml, encoding='utf-8')
     rows = []
     for seed in seeds:
-        episode_config = ExperimentConfig(seed=seed, duration_s=duration)
+        episode_config = ExperimentConfig(seed=seed, duration_s=duration, object_name=args.object, task=args.task,
+                            recovery_enabled=not args.no_recovery, withdrawal_at_s=args.withdraw_at)
         print(f'Preparing identical acquisition state for seed {seed}...', flush=True)
         state, audit = prepare_initial_state(h, graph, episode_config)
         initial_path = output / 'initial_states'
@@ -87,7 +105,8 @@ def main():
         np.savez_compressed(initial_path / f'seed_{seed}.npz', **state)
         (initial_path / f'seed_{seed}.json').write_text(json.dumps(audit, indent=2), encoding='utf-8')
         print('Initial state:', json.dumps(audit), flush=True)
-        if audit['initial_contact_count'] < 1 or audit['initial_non_tip_contacts']:
+        if (audit['initial_contact_count'] < 1 or audit['initial_non_tip_contacts']
+                or audit['acquisition_peak_n'] > config.hard_force_n):
             raise RuntimeError('Invalid shared contact initialization; treatment not started')
         for cell in args.cells:
             row = run_cell(h, graph, episode_config, cell, state, audit, output / f'{cell}_seed{seed}')

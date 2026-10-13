@@ -86,11 +86,12 @@ class SharedGeometricTrajectoryPlanner:
     def collision_reason(self, q):
         set_joint_state(self.h, self.scratch, q)
         tips = set(int(g) for g in self.h.tip_geom_ids)
+        object_geoms = set(int(g) for g in getattr(self.h, 'object_geom_ids', [self.h.object_geom_id]))
         for index in range(self.scratch.ncon):
             c = self.scratch.contact[index]
             a, b = int(c.geom1), int(c.geom2)
-            if self.h.object_geom_id in (a, b):
-                other = b if a == self.h.object_geom_id else a
+            if object_geoms.intersection((a, b)):
+                other = b if a in object_geoms else a
                 if other not in tips and c.dist < -0.0005:
                     return 'NON_TIP_OBJECT_COLLISION'
             elif c.dist < -0.002:
@@ -146,14 +147,15 @@ class GenericTrajectoryExecutor:
         self.plan, self.elapsed = plan, 0.0
         self.last_timestamp = timestamp
 
-    def step(self, timestamp, measured_q):
+    def step(self, timestamp, measured_q, *, advance=True):
         if self.last_timestamp is not None and timestamp <= self.last_timestamp:
             raise ValueError('Measured timestamps must advance')
         self.last_timestamp = timestamp
         if self.plan is None:
             return np.asarray(measured_q).copy()
         old_prefix = int(self.elapsed / self.config.prefix_s)
-        self.elapsed += self.config.dt_s
+        if advance:
+            self.elapsed += self.config.dt_s
         if int(self.elapsed / self.config.prefix_s) > old_prefix:
             self.prefix_boundaries += 1
         return self.plan.sample(self.elapsed)

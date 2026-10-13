@@ -20,6 +20,9 @@ Finger DP 当前定位为多指 nominal trajectory/role generator，而不是高
 
 ## 当前实验状态
 
+- 新 I04 正在 mustard 上评测 MCC + 共享接触恢复：允许短暂失联，恢复后继续探索；DPRef 延后。
+  见 [mustard 冻结协议](Module/I04_MUSTARD_RECOVERY_PROTOCOL.md)。旧 Bunny 首轮数字另存历史证据。
+
 - M0–M3：FR3+LEAP robot、Oracle SurfaceModel、Fingertip MCC 和 Runtime Guards 已实现；
 - Exp.1：`Whole-hand MCC vs. DP-direct` 已完成，作为低层 controller replacement 消融；
 - Exp.2：`Plain MCC / Passive / Reactive / DPRef+MCC` 已完成接触优先重评；
