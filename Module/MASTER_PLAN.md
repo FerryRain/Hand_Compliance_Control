@@ -5,25 +5,38 @@
 ## 2026-10-13 新 I04 MCC-only 实施更新
 
 用户明确授权运行新 I04，随后指定仅运行 MCC、DPRef 延后。
-当前活动模块：`NEW_I04_GEOMETRIC_MCC`，状态 `IN_PROGRESS`。
+当前模块：`NEW_I04_GEOMETRIC_MCC`，状态 `EVALUATED / FULL_COVERAGE_INCOMPLETE`。
 有效设计为 `I04_REDESIGN_M06_M12_MIGRATION.md`；冻结运行协议为
 `I04_GEOMETRIC_MCC_PROTOCOL.md`。A-MCC/B-MCC 共用 GT 几何、初始化、规划框架和
 MCC/硬件安全参数。旧 G2/G3 和下方 2026-08-25 Mx 看板只保留为历史 Explicit 证据，
 不阻塞新 I04。只新增功能层 runtime，历史实现和用户文件保留。
 本轮不运行 DP、不训练新模型、不进入 GPIS。
 
+已完成 3 seeds × A-MCC/B-MCC 共 6 次实际 MuJoCo 评测。
+共同 60 s 总预算（3 s acquisition）；6/6 因持续高力提前停止，未完成完整表面覆盖。
+A-MCC 实际 treatment 为 5.418–5.998 s，平均面积覆盖 4.771%；
+B-MCC 为 14.536–34.988 s，平均面积覆盖 7.284%，包含全指失联。
+这些末段覆盖来自不同执行时长；严格等时长前缀诊断单独保存。
+21 项相关回归检查通过；source/trace/paired-state/method-boundary 审计通过。
+证据：`evidence/2026-10-13_NEW_I04_MCC.md`；
+报告：`generated/new_i04_mcc_formal_20261013/index.html`。
+本轮 MCC-only 请求已完成评测；DPRef 继续 `DEFERRED_BY_USER`，不将任务标为 PASSED。
+
 ## 当前状态
 
 | 项目 | 当前值 |
 | --- | --- |
-| 计划版本 | `v3.5` |
-| 最近更新 | `2026-08-25` |
-| 授权状态 | `AUTHORIZED_I04_EXPLICIT_MCC_DEVELOPMENT` |
-| 实施状态 | `I04_EXPLICIT_IMPLEMENTED_PHYSICAL_REGRESSION_INCOMPLETE` |
-| 当前活动模块 | `I04_TWO_ANCHOR_WRIST_OPTIMIZATION_BLOCKER` |
-| 当前 Gate | `G1a_ARCHIVED_PRE_RETUNE / G2_GO_BUNNY / G3_NO_GO_I02_NOT_MET` |
+| 计划版本 | `v4.0` |
+| 最近更新 | `2026-10-13` |
+| 授权状态 | `AUTHORIZED_NEW_I04_MCC_ONLY` |
+| 实施状态 | `NEW_I04_MCC_EVALUATED_FULL_COVERAGE_INCOMPLETE` |
+| 当前活动模块 | `NONE / MCC_ONLY_EVALUATION_FINISHED` |
+| 当前 Gate | `NEW_I04_DESCRIPTIVE_EVALUATION / OLD_G2_G3_LEGACY` |
 | 固定环境 | `handcomp` |
-| Python | `/home/ferry/data/Anaconda/envs/handcomp/bin/python` |
+| 本轮 Python | `D:\Environment\Anaconda\envs\handcomp\python.exe` |
+
+下文 2026-08 的 Mx、Explicit I04、G2/G3 状态和 Python/Linux 命令保留为历史证据；
+新 I04 的当前范围与本机运行以顶部 2026-10-13 更新、冻结协议和新 evidence 为准。
 
 本轮已完成 M0–M3 的 FR3+Leap Hand 扩展、M04 的 MCC 控制链和 central-palm mount 修正。
 FR3+Leap 模型为 `7 arm + 16 finger = 23 DoF`；MCC 初始 hand q 精确取自原 DP 视频

@@ -2,7 +2,11 @@
 
 > 日期：`2026-08-25`
 >
-> 状态：`REDESIGN_SPEC / IMPLEMENTATION_NOT_STARTED`
+> 状态：`MCC_IMPLEMENTED_AND_EVALUATED / FULL_COVERAGE_INCOMPLETE / DPREF_DEFERRED`
+>
+> 2026-10-13：按用户授权实现 `i04_geometric_traversal/` 功能层 runtime，完成 A-MCC/B-MCC
+> 的 3-seed 配对实验。6/6 提前硬件保护停止，未完成完整 Bunny coverage。
+> 证据见 `evidence/2026-10-13_NEW_I04_MCC.md`；DPRef 本轮不运行。
 >
 > 本文是新 I04 的设计迁移说明。它重新定义 I04 的实验问题，并说明历史 I01–I03 与旧 M06–M12 能力在新架构中的去留。
 > 现有 `I04_ORACLE_NEXT_POINT_PROTOCOL.md`、I01–I03、M06–M12 Explicit implementation 和物理回归结果继续保留为历史证据，

@@ -1,5 +1,12 @@
 # Module：FR3 + LEAP Hand 模块化控制实验
 
+2026-10-13 更新：新 I04 的 A-MCC/B-MCC 已在本机实现并完成 3-seed 配对评测。
+6/6 episode 因持续高力提前停止，完整表面覆盖未完成；DPRef 按用户要求延后。
+见 [`evidence/2026-10-13_NEW_I04_MCC.md`](evidence/2026-10-13_NEW_I04_MCC.md)、
+[`i04_geometric_traversal/README.md`](i04_geometric_traversal/README.md) 和
+[`generated/new_i04_mcc_formal_20261013/index.html`](generated/new_i04_mcc_formal_20261013/index.html)。
+以下 Mx/I01–I03 看板是旧 Explicit 历史证据；新 I04 使用功能层架构，不由旧 G2/G3 阻塞。
+
 `Module/` 是当前唯一实现入口，固定使用 `handcomp`。M0–M3、整手 MCC、已完成的 DP-direct
 架构消融、E05 evaluator，以及 Geometry-Oracle + MCC baseline 的 M06–M12 都在本目录内；
 `Module/` 外的历史实现不修改、不删除、也不作为当前证据。

@@ -1,0 +1,1002 @@
+{
+  "manifest": {
+    "protocol": "i04-geometric-mcc.v1",
+    "profile": "formal",
+    "surface": "canonical-bunny-nonconvex-sdf.v1",
+    "started_at_utc": "2026-10-13T08:21:50.408005+00:00",
+    "source_commit": "a1aa3a9175b316c2bbf074b3e265cc04abec5151",
+    "seeds": [
+      7,
+      11,
+      19
+    ],
+    "cells": [
+      "A-MCC",
+      "B-MCC"
+    ],
+    "config": {
+      "seed": 7,
+      "dt_s": 0.002,
+      "acquisition_s": 3.0,
+      "duration_s": 60.0,
+      "coverage_radius_m": 0.025,
+      "contact_threshold_n": 0.2,
+      "mesh_residual_limit_m": 0.005,
+      "normal_alignment_cos": 0.5,
+      "desired_force_n": 2.0,
+      "hard_force_n": 12.0,
+      "hard_force_duration_s": 0.02,
+      "joint_margin_rad": 0.015,
+      "max_joint_command_speed_rad_s": 1.2,
+      "wrist_speed_m_s": 0.012,
+      "wrist_rotation_speed_rad_s": 0.18,
+      "trajectory_joint_speed_rad_s": 0.6,
+      "goal_position_tolerance_m": 0.002,
+      "goal_rotation_tolerance_rad": 0.04,
+      "fingertip_tolerance_m": 0.003,
+      "prefix_s": 0.1,
+      "log_stride": 5
+    },
+    "dpref": "DEFERRED_BY_USER",
+    "environment": {
+      "python": "3.10.0 | packaged by conda-forge | (default, Nov 20 2021, 02:18:13) [MSC v.1916 64 bit (AMD64)]",
+      "python_executable": "D:\\Environment\\Anaconda\\envs\\handcomp\\python.exe",
+      "platform": "Windows-10-10.0.26200-SP0",
+      "mujoco": "3.6.0",
+      "numpy": "1.26.4",
+      "scipy": "1.15.3",
+      "trimesh": "4.8.3",
+      "physics_backend": "MuJoCo native CPU; GPU OpenGL rendering"
+    },
+    "geometry": {
+      "source_sha256": "b1e03a1611aac66d9032f3bda7e961bd4314254f40cd3638b4d01be29ed52fa8",
+      "canonical_mesh_sha256": "d2840066a620854a22d4121e19b0398474a5dc97314f3cd946ec623085e0fc7b",
+      "vertices": 34834,
+      "triangles": 69451,
+      "required_goals": 274,
+      "whole_mesh_area_m2": 0.21209275816449458,
+      "collision": "native nonconvex mesh SDF",
+      "gravity_m_s2": 0.0
+    },
+    "method_boundaries": {
+      "oracle_contact_labels": false,
+      "A_fingertip_targets": false,
+      "B_fingertip_targets": true,
+      "contact_task_vetoes": false,
+      "continuous_contact_hard_planning_constraint": false,
+      "privileged_oracle_geometric_continuation": true,
+      "coverage_source": "measured physical pad contacts; geodesic area union"
+    },
+    "code_hashes": {
+      "Module\\i04_geometric_traversal\\__init__.py": "1025f2f3300175bd514acab3b178133a6f5faff7dd2dfa98286c3e433a6b8269",
+      "Module\\i04_geometric_traversal\\benchmark.py": "b77da7c4f07b26d5e573e4be5a5a8dd1a78aa46249789795da61d5d9ce58b501",
+      "Module\\i04_geometric_traversal\\contracts.py": "ea116951fb95ce448af42620d327ca89ca19b03ca6d782f2c62467123dd7ad6d",
+      "Module\\i04_geometric_traversal\\oracle.py": "49a0387bf2367248472c200d5525d925db805699dcca0222c692a7f5c96d29ae",
+      "Module\\i04_geometric_traversal\\physics.py": "81313f370fd4d2de01aceee73540e76ce7e9a17a9f27690e20b6c29586db1f32",
+      "Module\\i04_geometric_traversal\\planning.py": "2bb3287ba7d180bc2c13c5abea6e6f617464aaebde04a0ba12430bf7b46832f6",
+      "Module\\i04_geometric_traversal\\review.py": "c43f061aab4d8eeed6d6de802a0506b816e5529950de4795f6615dbd97d7dcea",
+      "Module\\i04_geometric_traversal\\runner.py": "f2e9be3d7b707bc5a4fafa1d7c233f14b42abb75db39e6984e14998e1ef9d9ec",
+      "Module/fr3_leap/model.py": "59d41cecf86ec1c3514376eefdf7d0260d9d7b77daaeff301e5bbb2267f85c5e",
+      "Module/i01_bunny_physics/surface.py": "6f2626f9c58fc126e259c6886a75a2046428bf11286a0f4c408b989e3df913f7",
+      "Module/i04_oracle_next_point/surface_graph.py": "b22ee23a4e8a20283ff222c157e44544e68c7aa23a266b592e47824e5ef3fae9",
+      "Module/module_2_fingertip_mcc/controller.py": "2ed071dbc1ff5fec030d394f862097af206eae3a75e84772ab713e0c95182230",
+      "Module/e05_physics/scene.py": "8eccf945737fbc1ce3d1eafb22e0b6f7c028a191a22da702ae4e1ea93a4a24a2",
+      "Module/I04_GEOMETRIC_MCC_PROTOCOL.md": "f0f130997d83ed4c52f9f7f93064d51b5336360100ecf6f8352500dfc24b301e"
+    },
+    "model_xml_sha256": "06054830dc15d3d43c508b825e5d7159f197eeee3b3b209812460e461fe39995",
+    "planning_clock": "Synchronous offline planning; wall latency reported separately from simulated physics time",
+    "manifest_digest": "f7d37fc9966a4768b895961d3bb83b0381594271e98b9f6ecfb801caa6339d8b"
+  },
+  "results": {
+    "profile": "formal",
+    "protocol": "i04-geometric-mcc.v1",
+    "status": "EVALUATED",
+    "dpref": "DEFERRED_BY_USER",
+    "episodes": [
+      {
+        "cell": "A-MCC",
+        "seed": 7,
+        "status": "EVALUATED",
+        "stop_reason": "SUSTAINED_DANGEROUS_FORCE",
+        "config": {
+          "seed": 7,
+          "dt_s": 0.002,
+          "acquisition_s": 3.0,
+          "duration_s": 60.0,
+          "coverage_radius_m": 0.025,
+          "contact_threshold_n": 0.2,
+          "mesh_residual_limit_m": 0.005,
+          "normal_alignment_cos": 0.5,
+          "desired_force_n": 2.0,
+          "hard_force_n": 12.0,
+          "hard_force_duration_s": 0.02,
+          "joint_margin_rad": 0.015,
+          "max_joint_command_speed_rad_s": 1.2,
+          "wrist_speed_m_s": 0.012,
+          "wrist_rotation_speed_rad_s": 0.18,
+          "trajectory_joint_speed_rad_s": 0.6,
+          "goal_position_tolerance_m": 0.002,
+          "goal_rotation_tolerance_rad": 0.04,
+          "fingertip_tolerance_m": 0.003,
+          "prefix_s": 0.1,
+          "log_stride": 5
+        },
+        "initial_state": {
+          "initial_contact_count": 4,
+          "initial_forces_n": [
+            2.000982596990485,
+            1.8562346306287223,
+            1.9527497554817805,
+            1.8807198189886112
+          ],
+          "acquisition_peak_n": 2.7968035413845573,
+          "acquisition_non_tip_steps": 0,
+          "initial_non_tip_contacts": [],
+          "acquisition_ik": [
+            6.0714767812295414e-06,
+            3.961219355605934e-05,
+            0.00031704837016059586
+          ],
+          "state_sha256": "c782edd553822c0dc6916e4115f88d74f6a3d56e0b0f980e904a7697f6f826f9"
+        },
+        "requested_post_acquisition_s": 57.0,
+        "executed_post_acquisition_s": 5.998,
+        "measurement_samples": 3000,
+        "full_requested_budget": false,
+        "contact_continuity": 1.0,
+        "mean_contacts": 3.1763333333333335,
+        "four_contact_fraction": 0.343,
+        "at_least_three_fraction": 0.8333333333333334,
+        "per_finger_contact_fraction": [
+          0.8333333333333334,
+          1.0,
+          1.0,
+          0.343
+        ],
+        "maximum_all_contact_gap_s": 0.0,
+        "final_covered_area_fraction": 0.04722977890445361,
+        "visited_required_goals": 15,
+        "required_goal_count": 274,
+        "full_surface_complete": false,
+        "force_rmse_n": 1.825273679029122,
+        "peak_force_n": 14.963141734174432,
+        "dangerous_force_duration_s": 0.16,
+        "non_tip_contact_duration_s": 0.0,
+        "plan_count": 1,
+        "planning_latency_p95_s": 0.042684299987740815,
+        "oracle_latency_p95_s": 0.09631510000326671,
+        "prefix_boundaries": 59,
+        "task_contact_veto_count": 0,
+        "normal_rejected_contact_samples": 0,
+        "wall_duration_s": 11.469321100012166,
+        "trace_sha256": "ccd34041cb8affdea447b7dd2aecffd27f0f8fdd471e71ecb9185137ac162600",
+        "terminal_observation": {
+          "time_s": 5.997999999999674,
+          "q_rad": [
+            -0.04006884612159933,
+            -0.07463451653965378,
+            -0.07888951105291735,
+            -1.6202583000208675,
+            0.25166423368278995,
+            1.6479403237250698,
+            -0.8262144186505302,
+            0.17204719080423092,
+            0.023011091372241253,
+            0.4957509096341102,
+            0.6137201976937908,
+            0.30490683616155956,
+            0.05917679292262287,
+            0.4914180064023379,
+            0.6032400018092146,
+            0.18312243413010804,
+            -0.08977752490468256,
+            0.42836938127538915,
+            0.5887520411152011,
+            0.023240933538504174,
+            1.4957001637386778,
+            0.3887902413437784,
+            0.45464387881791685
+          ],
+          "forces_n": [
+            0.0,
+            1.5469757637473498,
+            12.33158561310196,
+            0.0
+          ],
+          "contact_active": [
+            false,
+            true,
+            true,
+            false
+          ]
+        },
+        "geometry_rejection_count": 0,
+        "plan_rejection_count": 0,
+        "actual_wrist_translation_m": 0.047007992616725267,
+        "actual_wrist_rotation_rad": 0.2930309373134743,
+        "wrist_tracking_p95_m": 0.0024295707203603385
+      },
+      {
+        "cell": "B-MCC",
+        "seed": 7,
+        "status": "EVALUATED",
+        "stop_reason": "SUSTAINED_DANGEROUS_FORCE",
+        "config": {
+          "seed": 7,
+          "dt_s": 0.002,
+          "acquisition_s": 3.0,
+          "duration_s": 60.0,
+          "coverage_radius_m": 0.025,
+          "contact_threshold_n": 0.2,
+          "mesh_residual_limit_m": 0.005,
+          "normal_alignment_cos": 0.5,
+          "desired_force_n": 2.0,
+          "hard_force_n": 12.0,
+          "hard_force_duration_s": 0.02,
+          "joint_margin_rad": 0.015,
+          "max_joint_command_speed_rad_s": 1.2,
+          "wrist_speed_m_s": 0.012,
+          "wrist_rotation_speed_rad_s": 0.18,
+          "trajectory_joint_speed_rad_s": 0.6,
+          "goal_position_tolerance_m": 0.002,
+          "goal_rotation_tolerance_rad": 0.04,
+          "fingertip_tolerance_m": 0.003,
+          "prefix_s": 0.1,
+          "log_stride": 5
+        },
+        "initial_state": {
+          "initial_contact_count": 4,
+          "initial_forces_n": [
+            2.000982596990485,
+            1.8562346306287223,
+            1.9527497554817805,
+            1.8807198189886112
+          ],
+          "acquisition_peak_n": 2.7968035413845573,
+          "acquisition_non_tip_steps": 0,
+          "initial_non_tip_contacts": [],
+          "acquisition_ik": [
+            6.0714767812295414e-06,
+            3.961219355605934e-05,
+            0.00031704837016059586
+          ],
+          "state_sha256": "c782edd553822c0dc6916e4115f88d74f6a3d56e0b0f980e904a7697f6f826f9"
+        },
+        "requested_post_acquisition_s": 57.0,
+        "executed_post_acquisition_s": 34.988,
+        "measurement_samples": 17495,
+        "full_requested_budget": false,
+        "contact_continuity": 0.7011146041726207,
+        "mean_contacts": 1.1489568448128036,
+        "four_contact_fraction": 0.10362960845955987,
+        "at_least_three_fraction": 0.1338096599028294,
+        "per_finger_contact_fraction": [
+          0.13438125178622465,
+          0.115061446127465,
+          0.510374392683624,
+          0.38913975421549013
+        ],
+        "maximum_all_contact_gap_s": 5.132,
+        "final_covered_area_fraction": 0.0803683897764429,
+        "visited_required_goals": 23,
+        "required_goal_count": 274,
+        "full_surface_complete": false,
+        "force_rmse_n": 1.153459325397611,
+        "peak_force_n": 17.86242709619745,
+        "dangerous_force_duration_s": 0.064,
+        "non_tip_contact_duration_s": 0.0,
+        "plan_count": 4,
+        "planning_latency_p95_s": 0.03914766999951098,
+        "oracle_latency_p95_s": 0.15103019499074433,
+        "prefix_boundaries": 348,
+        "task_contact_veto_count": 0,
+        "normal_rejected_contact_samples": 1,
+        "wall_duration_s": 60.45713930000784,
+        "trace_sha256": "7263791d931b36f2fae042219cc64a1bd4645794680dbd98df1314f05cd89db9",
+        "terminal_observation": {
+          "time_s": 34.98800000000046,
+          "q_rad": [
+            -0.2914374779856972,
+            -0.3379962736491861,
+            0.47512017604261286,
+            -2.1168142096740152,
+            -0.6061509852304169,
+            2.0020287285645955,
+            -0.3317732174338545,
+            0.2460400234596757,
+            0.13012474125684606,
+            0.5293867601945799,
+            0.5674977146940575,
+            0.264143913466003,
+            0.053199498978424166,
+            0.5086095415267712,
+            0.5446679454214369,
+            0.07730928827370796,
+            0.17109804047433375,
+            0.535046481609586,
+            0.5117896357616863,
+            0.05800430303839287,
+            1.5083521114418323,
+            0.4208351288435787,
+            0.49058105460419765
+          ],
+          "forces_n": [
+            0.0,
+            0.0,
+            0.0,
+            17.86242709619745
+          ],
+          "contact_active": [
+            false,
+            false,
+            false,
+            true
+          ]
+        },
+        "geometry_rejection_count": 0,
+        "plan_rejection_count": 0,
+        "actual_wrist_translation_m": 0.2511283527318191,
+        "actual_wrist_rotation_rad": 1.4824447338473348,
+        "wrist_tracking_p95_m": 0.0018748205929294292
+      },
+      {
+        "cell": "A-MCC",
+        "seed": 11,
+        "status": "EVALUATED",
+        "stop_reason": "SUSTAINED_DANGEROUS_FORCE",
+        "config": {
+          "seed": 11,
+          "dt_s": 0.002,
+          "acquisition_s": 3.0,
+          "duration_s": 60.0,
+          "coverage_radius_m": 0.025,
+          "contact_threshold_n": 0.2,
+          "mesh_residual_limit_m": 0.005,
+          "normal_alignment_cos": 0.5,
+          "desired_force_n": 2.0,
+          "hard_force_n": 12.0,
+          "hard_force_duration_s": 0.02,
+          "joint_margin_rad": 0.015,
+          "max_joint_command_speed_rad_s": 1.2,
+          "wrist_speed_m_s": 0.012,
+          "wrist_rotation_speed_rad_s": 0.18,
+          "trajectory_joint_speed_rad_s": 0.6,
+          "goal_position_tolerance_m": 0.002,
+          "goal_rotation_tolerance_rad": 0.04,
+          "fingertip_tolerance_m": 0.003,
+          "prefix_s": 0.1,
+          "log_stride": 5
+        },
+        "initial_state": {
+          "initial_contact_count": 4,
+          "initial_forces_n": [
+            2.020748087970783,
+            2.23465503768848,
+            1.8832365805291489,
+            1.9750728297865365
+          ],
+          "acquisition_peak_n": 2.7351048598468117,
+          "acquisition_non_tip_steps": 0,
+          "initial_non_tip_contacts": [],
+          "acquisition_ik": [
+            5.677881928939697e-06,
+            3.784856004750611e-05,
+            0.00030858731365470776
+          ],
+          "state_sha256": "7b3106ee156da1ec56a1cd6f589944bb560d0360356902f4968141d42dee7715"
+        },
+        "requested_post_acquisition_s": 57.0,
+        "executed_post_acquisition_s": 5.772,
+        "measurement_samples": 2887,
+        "full_requested_budget": false,
+        "contact_continuity": 1.0,
+        "mean_contacts": 3.1302390024246622,
+        "four_contact_fraction": 0.3772081745756841,
+        "at_least_three_fraction": 0.7852441981295463,
+        "per_finger_contact_fraction": [
+          0.7852441981295463,
+          0.967786629719432,
+          1.0,
+          0.3772081745756841
+        ],
+        "maximum_all_contact_gap_s": 0.0,
+        "final_covered_area_fraction": 0.04905588572001866,
+        "visited_required_goals": 16,
+        "required_goal_count": 274,
+        "full_surface_complete": false,
+        "force_rmse_n": 1.5947576122132914,
+        "peak_force_n": 16.29584021549299,
+        "dangerous_force_duration_s": 0.082,
+        "non_tip_contact_duration_s": 0.0,
+        "plan_count": 1,
+        "planning_latency_p95_s": 0.04427069998928346,
+        "oracle_latency_p95_s": 0.1023445000173524,
+        "prefix_boundaries": 57,
+        "task_contact_veto_count": 0,
+        "normal_rejected_contact_samples": 0,
+        "wall_duration_s": 11.37821670001722,
+        "trace_sha256": "13bbb78c58313254149aceec9e10ed3d2ca90128232145adb45d9d6b2f6d26df",
+        "terminal_observation": {
+          "time_s": 5.771999999999599,
+          "q_rad": [
+            -0.0376468863319896,
+            -0.07194333761155391,
+            -0.0738821987075154,
+            -1.6204222896274294,
+            0.2371652792437026,
+            1.648103203224798,
+            -0.8218222792888352,
+            0.1732585791612918,
+            0.02244462044193878,
+            0.4924462156727156,
+            0.6115720375759927,
+            0.27690906045213265,
+            0.040747089779935214,
+            0.4474294971499629,
+            0.5640367937629103,
+            0.19186722484739335,
+            -0.08333918894089015,
+            0.40585065012727367,
+            0.5646435990433839,
+            0.01919627140717936,
+            1.4947160986351373,
+            0.39199653621258,
+            0.4636743692223543
+          ],
+          "forces_n": [
+            0.0,
+            0.0,
+            14.864521143707012,
+            0.0
+          ],
+          "contact_active": [
+            false,
+            false,
+            true,
+            false
+          ]
+        },
+        "geometry_rejection_count": 0,
+        "plan_rejection_count": 0,
+        "actual_wrist_translation_m": 0.04707464446042239,
+        "actual_wrist_rotation_rad": 0.281359325513168,
+        "wrist_tracking_p95_m": 0.0021703308883029657
+      },
+      {
+        "cell": "B-MCC",
+        "seed": 11,
+        "status": "EVALUATED",
+        "stop_reason": "SUSTAINED_DANGEROUS_FORCE",
+        "config": {
+          "seed": 11,
+          "dt_s": 0.002,
+          "acquisition_s": 3.0,
+          "duration_s": 60.0,
+          "coverage_radius_m": 0.025,
+          "contact_threshold_n": 0.2,
+          "mesh_residual_limit_m": 0.005,
+          "normal_alignment_cos": 0.5,
+          "desired_force_n": 2.0,
+          "hard_force_n": 12.0,
+          "hard_force_duration_s": 0.02,
+          "joint_margin_rad": 0.015,
+          "max_joint_command_speed_rad_s": 1.2,
+          "wrist_speed_m_s": 0.012,
+          "wrist_rotation_speed_rad_s": 0.18,
+          "trajectory_joint_speed_rad_s": 0.6,
+          "goal_position_tolerance_m": 0.002,
+          "goal_rotation_tolerance_rad": 0.04,
+          "fingertip_tolerance_m": 0.003,
+          "prefix_s": 0.1,
+          "log_stride": 5
+        },
+        "initial_state": {
+          "initial_contact_count": 4,
+          "initial_forces_n": [
+            2.020748087970783,
+            2.23465503768848,
+            1.8832365805291489,
+            1.9750728297865365
+          ],
+          "acquisition_peak_n": 2.7351048598468117,
+          "acquisition_non_tip_steps": 0,
+          "initial_non_tip_contacts": [],
+          "acquisition_ik": [
+            5.677881928939697e-06,
+            3.784856004750611e-05,
+            0.00030858731365470776
+          ],
+          "state_sha256": "7b3106ee156da1ec56a1cd6f589944bb560d0360356902f4968141d42dee7715"
+        },
+        "requested_post_acquisition_s": 57.0,
+        "executed_post_acquisition_s": 34.824,
+        "measurement_samples": 17413,
+        "full_requested_budget": false,
+        "contact_continuity": 0.6692700855682536,
+        "mean_contacts": 1.1177281341526446,
+        "four_contact_fraction": 0.10515132372365474,
+        "at_least_three_fraction": 0.13415264457589157,
+        "per_finger_contact_fraction": [
+          0.13449721472463103,
+          0.11795784758513754,
+          0.5074369723769597,
+          0.35783609946591627
+        ],
+        "maximum_all_contact_gap_s": 6.026,
+        "final_covered_area_fraction": 0.07934619025861474,
+        "visited_required_goals": 23,
+        "required_goal_count": 274,
+        "full_surface_complete": false,
+        "force_rmse_n": 1.1160677887769912,
+        "peak_force_n": 17.486326584734154,
+        "dangerous_force_duration_s": 0.052000000000000005,
+        "non_tip_contact_duration_s": 0.0,
+        "plan_count": 4,
+        "planning_latency_p95_s": 0.05221569499117322,
+        "oracle_latency_p95_s": 0.1847170100212679,
+        "prefix_boundaries": 346,
+        "task_contact_veto_count": 0,
+        "normal_rejected_contact_samples": 1,
+        "wall_duration_s": 63.400825399992755,
+        "trace_sha256": "60838ce78e0d4329ed80c03fc27a13e585c8fdce54589b848385e9eff99d1b59",
+        "terminal_observation": {
+          "time_s": 34.82400000000026,
+          "q_rad": [
+            -0.29082401241528755,
+            -0.33930335508162185,
+            0.47133768230445544,
+            -2.1164804489356452,
+            -0.6005145021577952,
+            2.0054555680759516,
+            -0.3370198535437928,
+            0.24761429573228555,
+            0.13032903359178852,
+            0.5284341884023835,
+            0.5669960715094545,
+            0.28392703291765814,
+            0.048366716350572554,
+            0.5110917275472358,
+            0.5539152613736114,
+            0.08036105804805471,
+            0.16759375104429045,
+            0.5361965748938355,
+            0.5139392894422411,
+            0.051693974796589416,
+            1.5123767223880353,
+            0.4214265460494491,
+            0.503036844791805
+          ],
+          "forces_n": [
+            0.0,
+            0.0,
+            0.0,
+            13.916737901382735
+          ],
+          "contact_active": [
+            false,
+            false,
+            false,
+            true
+          ]
+        },
+        "geometry_rejection_count": 0,
+        "plan_rejection_count": 0,
+        "actual_wrist_translation_m": 0.24752569043474015,
+        "actual_wrist_rotation_rad": 1.4717191514352495,
+        "wrist_tracking_p95_m": 0.0018313692940627574
+      },
+      {
+        "cell": "A-MCC",
+        "seed": 19,
+        "status": "EVALUATED",
+        "stop_reason": "SUSTAINED_DANGEROUS_FORCE",
+        "config": {
+          "seed": 19,
+          "dt_s": 0.002,
+          "acquisition_s": 3.0,
+          "duration_s": 60.0,
+          "coverage_radius_m": 0.025,
+          "contact_threshold_n": 0.2,
+          "mesh_residual_limit_m": 0.005,
+          "normal_alignment_cos": 0.5,
+          "desired_force_n": 2.0,
+          "hard_force_n": 12.0,
+          "hard_force_duration_s": 0.02,
+          "joint_margin_rad": 0.015,
+          "max_joint_command_speed_rad_s": 1.2,
+          "wrist_speed_m_s": 0.012,
+          "wrist_rotation_speed_rad_s": 0.18,
+          "trajectory_joint_speed_rad_s": 0.6,
+          "goal_position_tolerance_m": 0.002,
+          "goal_rotation_tolerance_rad": 0.04,
+          "fingertip_tolerance_m": 0.003,
+          "prefix_s": 0.1,
+          "log_stride": 5
+        },
+        "initial_state": {
+          "initial_contact_count": 4,
+          "initial_forces_n": [
+            1.762351253007067,
+            2.0090248450690646,
+            1.9199473396418352,
+            1.8742536436896864
+          ],
+          "acquisition_peak_n": 2.9562099359681038,
+          "acquisition_non_tip_steps": 0,
+          "initial_non_tip_contacts": [],
+          "acquisition_ik": [
+            5.827753649658541e-06,
+            3.853443789812384e-05,
+            0.0003116685302962343
+          ],
+          "state_sha256": "a9ea5b276c75fc8f42c88592b9e549648e3b0a5708f1704c0b3d2599e0df83f7"
+        },
+        "requested_post_acquisition_s": 57.0,
+        "executed_post_acquisition_s": 5.418,
+        "measurement_samples": 2710,
+        "full_requested_budget": false,
+        "contact_continuity": 1.0,
+        "mean_contacts": 3.302583025830258,
+        "four_contact_fraction": 0.38671586715867157,
+        "at_least_three_fraction": 0.9158671586715867,
+        "per_finger_contact_fraction": [
+          0.9158671586715867,
+          1.0,
+          1.0,
+          0.38671586715867157
+        ],
+        "maximum_all_contact_gap_s": 0.0,
+        "final_covered_area_fraction": 0.04685261061834774,
+        "visited_required_goals": 14,
+        "required_goal_count": 274,
+        "full_surface_complete": false,
+        "force_rmse_n": 1.0531740147066089,
+        "peak_force_n": 14.777196516317867,
+        "dangerous_force_duration_s": 0.026000000000000002,
+        "non_tip_contact_duration_s": 0.0,
+        "plan_count": 1,
+        "planning_latency_p95_s": 0.03359809998073615,
+        "oracle_latency_p95_s": 0.08298569999169558,
+        "prefix_boundaries": 54,
+        "task_contact_veto_count": 0,
+        "normal_rejected_contact_samples": 0,
+        "wall_duration_s": 13.475763800001005,
+        "trace_sha256": "7bf538079e2991da8545d21303a17faf4a06fcab3a5f264e4e713261b848563a",
+        "terminal_observation": {
+          "time_s": 5.417999999999481,
+          "q_rad": [
+            -0.03409197859171457,
+            -0.0648166508423597,
+            -0.06690609286144468,
+            -1.6149678449101006,
+            0.21488360578174565,
+            1.6412216348636819,
+            -0.8189121114016407,
+            0.17233854890320502,
+            0.022708761561742636,
+            0.49413344682412924,
+            0.6116537431795817,
+            0.2972028586745372,
+            0.05110832610623391,
+            0.47931468477130973,
+            0.5941884356063627,
+            0.17606384588927787,
+            -0.08066907230331162,
+            0.41709294801993996,
+            0.5762085834749686,
+            0.02032584886482033,
+            1.4967338941660513,
+            0.39076038961793186,
+            0.4599278016002774
+          ],
+          "forces_n": [
+            0.0,
+            2.1932260739833582,
+            12.679826145286388,
+            0.0
+          ],
+          "contact_active": [
+            false,
+            true,
+            true,
+            false
+          ]
+        },
+        "geometry_rejection_count": 0,
+        "plan_rejection_count": 0,
+        "actual_wrist_translation_m": 0.039299750738308104,
+        "actual_wrist_rotation_rad": 0.2513415475194971,
+        "wrist_tracking_p95_m": 0.0019403790784429248
+      },
+      {
+        "cell": "B-MCC",
+        "seed": 19,
+        "status": "EVALUATED",
+        "stop_reason": "SUSTAINED_DANGEROUS_FORCE",
+        "config": {
+          "seed": 19,
+          "dt_s": 0.002,
+          "acquisition_s": 3.0,
+          "duration_s": 60.0,
+          "coverage_radius_m": 0.025,
+          "contact_threshold_n": 0.2,
+          "mesh_residual_limit_m": 0.005,
+          "normal_alignment_cos": 0.5,
+          "desired_force_n": 2.0,
+          "hard_force_n": 12.0,
+          "hard_force_duration_s": 0.02,
+          "joint_margin_rad": 0.015,
+          "max_joint_command_speed_rad_s": 1.2,
+          "wrist_speed_m_s": 0.012,
+          "wrist_rotation_speed_rad_s": 0.18,
+          "trajectory_joint_speed_rad_s": 0.6,
+          "goal_position_tolerance_m": 0.002,
+          "goal_rotation_tolerance_rad": 0.04,
+          "fingertip_tolerance_m": 0.003,
+          "prefix_s": 0.1,
+          "log_stride": 5
+        },
+        "initial_state": {
+          "initial_contact_count": 4,
+          "initial_forces_n": [
+            1.762351253007067,
+            2.0090248450690646,
+            1.9199473396418352,
+            1.8742536436896864
+          ],
+          "acquisition_peak_n": 2.9562099359681038,
+          "acquisition_non_tip_steps": 0,
+          "initial_non_tip_contacts": [],
+          "acquisition_ik": [
+            5.827753649658541e-06,
+            3.853443789812384e-05,
+            0.0003116685302962343
+          ],
+          "state_sha256": "a9ea5b276c75fc8f42c88592b9e549648e3b0a5708f1704c0b3d2599e0df83f7"
+        },
+        "requested_post_acquisition_s": 57.0,
+        "executed_post_acquisition_s": 14.536,
+        "measurement_samples": 7269,
+        "full_requested_budget": false,
+        "contact_continuity": 0.9987618654560462,
+        "mean_contacts": 1.9675333608474344,
+        "four_contact_fraction": 0.258907690191223,
+        "at_least_three_fraction": 0.317375154766818,
+        "per_finger_contact_fraction": [
+          0.31806300729123677,
+          0.280093547943321,
+          0.9982115834365112,
+          0.3711652221763654
+        ],
+        "maximum_all_contact_gap_s": 0.008,
+        "final_covered_area_fraction": 0.05881742416858274,
+        "visited_required_goals": 16,
+        "required_goal_count": 274,
+        "full_surface_complete": false,
+        "force_rmse_n": 0.8694652785127785,
+        "peak_force_n": 18.827929608662338,
+        "dangerous_force_duration_s": 0.02,
+        "non_tip_contact_duration_s": 0.0,
+        "plan_count": 2,
+        "planning_latency_p95_s": 0.05461991498596035,
+        "oracle_latency_p95_s": 0.14231005001347513,
+        "prefix_boundaries": 145,
+        "task_contact_veto_count": 0,
+        "normal_rejected_contact_samples": 0,
+        "wall_duration_s": 27.013648699998157,
+        "trace_sha256": "3a354f77dc251b4e89a4d3c5e597add93b2f332799e3c7d64b4fc76c014e544e",
+        "terminal_observation": {
+          "time_s": 14.53600000000116,
+          "q_rad": [
+            -0.06457828656344683,
+            -0.15783331887574886,
+            -0.01724899897599064,
+            -1.7305088412127507,
+            0.17447461168533165,
+            1.738562989206626,
+            -0.7790046792165102,
+            0.23832916816680974,
+            0.1372134545558959,
+            0.5337933367997224,
+            0.6024860902400786,
+            0.2800814472629549,
+            0.049729774403045844,
+            0.46619342534708597,
+            0.5566953503782478,
+            0.22187953075898612,
+            -0.08163474760724225,
+            0.5146919648991435,
+            0.6175060117010603,
+            0.11606704593156225,
+            1.3682110894537247,
+            0.42971097651222245,
+            0.41619973671186855
+          ],
+          "forces_n": [
+            0.0,
+            0.0,
+            16.881411176822564,
+            0.0
+          ],
+          "contact_active": [
+            false,
+            false,
+            true,
+            false
+          ]
+        },
+        "geometry_rejection_count": 0,
+        "plan_rejection_count": 0,
+        "actual_wrist_translation_m": 0.09891008476152699,
+        "actual_wrist_rotation_rad": 0.5991779375377546,
+        "wrist_tracking_p95_m": 0.0019127025074669704
+      }
+    ]
+  },
+  "audit": {
+    "status": "VERIFIED",
+    "episode_count": 6,
+    "runtime_source_hashes_match": true,
+    "trace_hashes_match": true,
+    "paired_initial_states_match": true,
+    "all_method_boundaries_match": true,
+    "all_traces_finite": true,
+    "all_ratios_bounded": true,
+    "no_task_contact_veto": true,
+    "complete_surface_claims": 0
+  },
+  "matched_time_diagnostics": [
+    {
+      "seed": 7,
+      "common_duration_s": 5.998,
+      "sampling_s": 0.01,
+      "scope": "Post-hoc diagnostics from saved 10 ms samples; not a new acceptance gate",
+      "cells": {
+        "A-MCC": {
+          "last_sample_s": 5.99,
+          "contact_continuity": 1.0,
+          "mean_contacts": 3.1766666666666667,
+          "four_contact_fraction": 0.3433333333333333,
+          "covered_area_fraction": 0.04722977890445361,
+          "sampled_peak_force_n": 14.571088589202615
+        },
+        "B-MCC": {
+          "last_sample_s": 5.99,
+          "contact_continuity": 1.0,
+          "mean_contacts": 3.34,
+          "four_contact_fraction": 0.605,
+          "covered_area_fraction": 0.05453792954185018,
+          "sampled_peak_force_n": 11.558133993593636
+        }
+      }
+    },
+    {
+      "seed": 11,
+      "common_duration_s": 5.772,
+      "sampling_s": 0.01,
+      "scope": "Post-hoc diagnostics from saved 10 ms samples; not a new acceptance gate",
+      "cells": {
+        "A-MCC": {
+          "last_sample_s": 5.7700000000000005,
+          "contact_continuity": 1.0,
+          "mean_contacts": 3.129757785467128,
+          "four_contact_fraction": 0.3771626297577855,
+          "covered_area_fraction": 0.04905588572001866,
+          "sampled_peak_force_n": 15.967768026666153
+        },
+        "B-MCC": {
+          "last_sample_s": 5.7700000000000005,
+          "contact_continuity": 1.0,
+          "mean_contacts": 3.434256055363322,
+          "four_contact_fraction": 0.6349480968858131,
+          "covered_area_fraction": 0.05476732402130327,
+          "sampled_peak_force_n": 12.013945086120222
+        }
+      }
+    },
+    {
+      "seed": 19,
+      "common_duration_s": 5.418,
+      "sampling_s": 0.01,
+      "scope": "Post-hoc diagnostics from saved 10 ms samples; not a new acceptance gate",
+      "cells": {
+        "A-MCC": {
+          "last_sample_s": 5.41,
+          "contact_continuity": 1.0,
+          "mean_contacts": 3.304428044280443,
+          "four_contact_fraction": 0.3874538745387454,
+          "covered_area_fraction": 0.04685261061834774,
+          "sampled_peak_force_n": 14.39171428683984
+        },
+        "B-MCC": {
+          "last_sample_s": 5.41,
+          "contact_continuity": 1.0,
+          "mean_contacts": 3.547970479704797,
+          "four_contact_fraction": 0.6992619926199262,
+          "covered_area_fraction": 0.0537475493195479,
+          "sampled_peak_force_n": 10.793607908784988
+        }
+      }
+    }
+  ],
+  "aggregate": {
+    "A-MCC": {
+      "contact_continuity": {
+        "mean": 1.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "mean_contacts": {
+        "mean": 3.2030517871960846,
+        "min": 3.1302390024246622,
+        "max": 3.302583025830258
+      },
+      "four_contact_fraction": {
+        "mean": 0.3689746805781186,
+        "min": 0.343,
+        "max": 0.38671586715867157
+      },
+      "final_covered_area_fraction": {
+        "mean": 0.04771275841427334,
+        "min": 0.04685261061834774,
+        "max": 0.04905588572001866
+      },
+      "maximum_all_contact_gap_s": {
+        "mean": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "peak_force_n": {
+        "mean": 15.345392821995096,
+        "min": 14.777196516317867,
+        "max": 16.29584021549299
+      },
+      "executed_post_acquisition_s": {
+        "mean": 5.729333333333333,
+        "min": 5.418,
+        "max": 5.998
+      },
+      "full_budget_episode_count": 0,
+      "episode_count": 3
+    },
+    "B-MCC": {
+      "contact_continuity": {
+        "mean": 0.7897155183989734,
+        "min": 0.6692700855682536,
+        "max": 0.9987618654560462
+      },
+      "mean_contacts": {
+        "mean": 1.4114061132709608,
+        "min": 1.1177281341526446,
+        "max": 1.9675333608474344
+      },
+      "four_contact_fraction": {
+        "mean": 0.1558962074581459,
+        "min": 0.10362960845955987,
+        "max": 0.258907690191223
+      },
+      "final_covered_area_fraction": {
+        "mean": 0.07284400140121346,
+        "min": 0.05881742416858274,
+        "max": 0.0803683897764429
+      },
+      "maximum_all_contact_gap_s": {
+        "mean": 3.7219999999999995,
+        "min": 0.008,
+        "max": 6.026
+      },
+      "peak_force_n": {
+        "mean": 18.058894429864647,
+        "min": 17.486326584734154,
+        "max": 18.827929608662338
+      },
+      "executed_post_acquisition_s": {
+        "mean": 28.116,
+        "min": 14.536,
+        "max": 34.988
+      },
+      "full_budget_episode_count": 0,
+      "episode_count": 3
+    }
+  }
+}
