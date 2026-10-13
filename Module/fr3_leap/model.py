@@ -399,6 +399,20 @@ def _prepare_palm(hand_root: ET.Element) -> ET.Element:
   return palm
 
 
+def compile_model_xml(xml: str) -> mujoco.MjModel:
+  """Load binary assets through VFS, including Windows Unicode workspaces."""
+  root = ET.fromstring(xml)
+  assets: dict[str, bytes] = {}
+  for index, element in enumerate(root.findall("./asset/*[@file]")):
+    source = Path(element.attrib["file"])
+    # Assembly has already resolved all robot and object files absolutely.
+    if source.is_absolute() and source.is_file():
+      name = f"vfs_{index}{source.suffix}"
+      assets[name] = source.read_bytes()
+      element.set("file", name)
+  return mujoco.MjModel.from_xml_string(ET.tostring(root, encoding="unicode"), assets=assets)
+
+
 def _home_palm_position_without_surface(root: ET.Element) -> NDArray[np.float64]:
   """Compile one cheap pass to obtain the exact mounted palm world position."""
 
@@ -406,7 +420,7 @@ def _home_palm_position_without_surface(root: ET.Element) -> NDArray[np.float64]
   keyframe = probe.find("keyframe")
   if keyframe is not None:
     probe.remove(keyframe)
-  model = mujoco.MjModel.from_xml_string(ET.tostring(probe, encoding="unicode"))
+  model = compile_model_xml(ET.tostring(probe, encoding="unicode"))
   data = mujoco.MjData(model)
   data.qpos[:] = MODEL_HOME_QPOS
   mujoco.mj_forward(model, data)
@@ -722,7 +736,7 @@ def build_full_robot(config: FullRobotModelConfig | None = None) -> FullRobotHan
 
   resolved = config or FullRobotModelConfig()
   xml, object_position = _assemble_xml(resolved)
-  model = mujoco.MjModel.from_xml_string(xml)
+  model = compile_model_xml(xml)
   if (model.nq, model.nv, model.nu) != (23, 23, 23):
     raise RuntimeError(
       f"FR3+Leap plant must be 23/23/23, got {model.nq}/{model.nv}/{model.nu}"

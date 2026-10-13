@@ -2,6 +2,16 @@
 
 > 本文件是仓库唯一的项目实施与实验主计划。开始任何模块前必须先检查本文件。
 
+## 2026-10-13 新 I04 MCC-only 实施更新
+
+用户明确授权运行新 I04，随后指定仅运行 MCC、DPRef 延后。
+当前活动模块：`NEW_I04_GEOMETRIC_MCC`，状态 `IN_PROGRESS`。
+有效设计为 `I04_REDESIGN_M06_M12_MIGRATION.md`；冻结运行协议为
+`I04_GEOMETRIC_MCC_PROTOCOL.md`。A-MCC/B-MCC 共用 GT 几何、初始化、规划框架和
+MCC/硬件安全参数。旧 G2/G3 和下方 2026-08-25 Mx 看板只保留为历史 Explicit 证据，
+不阻塞新 I04。只新增功能层 runtime，历史实现和用户文件保留。
+本轮不运行 DP、不训练新模型、不进入 GPIS。
+
 ## 当前状态
 
 | 项目 | 当前值 |

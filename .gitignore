@@ -29,3 +29,8 @@ CLAUDE.md
 # Documentation outputs.
 **/_build/*
 **/generated/*
+
+# Local, isolated Windows handcomp dependencies and experiment caches.
+/.runtime/
+/.runtime_cache/
+/.runtime_tmp/
