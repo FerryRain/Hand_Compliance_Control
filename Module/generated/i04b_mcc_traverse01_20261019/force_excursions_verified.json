@@ -1,0 +1,14 @@
+{
+  "threshold_n": 8.0,
+  "episodes": 10,
+  "observations": 747,
+  "total_s": 1.492,
+  "longest_s": 1.302,
+  "high_force_observations_grant_no_coverage": true,
+  "peak_n": 13.644163772348534,
+  "peak_time_s": 206.55200000025815,
+  "hard_stop_threshold_n": 12.0,
+  "hard_stop_sustained_s": 0.02,
+  "above_hard_threshold_total_s": 0.046,
+  "above_hard_threshold_longest_s": 0.018000000000000002
+}

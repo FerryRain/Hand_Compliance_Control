@@ -1,0 +1,29 @@
+{
+  "reviewed_at_utc": "2026-10-19T16:03:05.736576+00:00",
+  "status": "SAMPLED_VISUAL_REVIEW_PASSED",
+  "scope": "Listed images visually inspected; all 5 encoded videos also passed decoder/frame checks. No browser layout test or claim of manually watching every frame.",
+  "findings": [
+    "Method labels and actual simulation times readable",
+    "Native hand posture and valid-contact markers visible",
+    "Uncovered areas remain grey; no full-coverage claim",
+    "A sparse multi-finger support and long empty intervals remain visible"
+  ],
+  "files": [
+    {
+      "path": "delivery_checks/decoded_i04_a-mcc_complete_12x_00871.png",
+      "sha256": "449e21c2e511829f1e9d4cec89c334cb0f55f5c2e03fd6d2b81c2cc4dcab1c33"
+    },
+    {
+      "path": "coverage_verified.png",
+      "sha256": "525d572d049ec77ad6f5072de27cf745a2d8c646a725cc61084bdd49f7817903"
+    },
+    {
+      "path": "contact_paths_verified.png",
+      "sha256": "4080c1b1c12462abb8ec6668bee9c3c0f32fba8054b44ffec99d303411a0884e"
+    },
+    {
+      "path": "timeline_verified.png",
+      "sha256": "bba2471047d89632e9702a72010b0fe65252227644b6dc11aae93cf14be7c225"
+    }
+  ]
+}

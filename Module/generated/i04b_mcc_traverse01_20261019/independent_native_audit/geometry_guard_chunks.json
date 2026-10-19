@@ -1,0 +1,68 @@
+[
+  {
+    "file": "trace_0000.npz",
+    "sha256": "9fdde6c6f5d478b311a7f64dacb537c1d5307c0c549628b85e3b8e7cbb7e66a3",
+    "commands": 10000,
+    "reference_guards": 10000
+  },
+  {
+    "file": "trace_0001.npz",
+    "sha256": "ccaf256f30020465568ecce21e26cbf7df7b457bb82891a0f78705ceb3f6a0b8",
+    "commands": 10000,
+    "reference_guards": 10000
+  },
+  {
+    "file": "trace_0002.npz",
+    "sha256": "6e0de2eb7908b4e470d4faff7af5dcf579764423781bc0c98dae24305581d4a4",
+    "commands": 10000,
+    "reference_guards": 10000
+  },
+  {
+    "file": "trace_0003.npz",
+    "sha256": "61d1be57ec9563afb0f4659ac5d37a21547e78c453092943e5ce4266f0137c70",
+    "commands": 10000,
+    "reference_guards": 10000
+  },
+  {
+    "file": "trace_0004.npz",
+    "sha256": "dc41848aa81d32d7bd1f3b1b342a8c93bc58356325da78509aaaa4290ff76cdf",
+    "commands": 10000,
+    "reference_guards": 10000
+  },
+  {
+    "file": "trace_0005.npz",
+    "sha256": "3d0f85238027cb0b3e98a71b6a65e9d635d06f002939eac304df82b9245be4b5",
+    "commands": 10000,
+    "reference_guards": 10000
+  },
+  {
+    "file": "trace_0006.npz",
+    "sha256": "0e3617c485316baedb62fa22835e4a530542190a7217532eecac7736ae1f915e",
+    "commands": 10000,
+    "reference_guards": 10000
+  },
+  {
+    "file": "trace_0007.npz",
+    "sha256": "701f7b235edd664bed7552bc43a4abfc3f1ad45817737d843d383411a25ab009",
+    "commands": 10000,
+    "reference_guards": 10000
+  },
+  {
+    "file": "trace_0008.npz",
+    "sha256": "6c3b81e8a231182b42e7bd28299f208d0590c77f283841008ac3c30492184841",
+    "commands": 10000,
+    "reference_guards": 10000
+  },
+  {
+    "file": "trace_0009.npz",
+    "sha256": "c559308f8ccf006f55e9846b3a9c89760357fd72b4e9363f88b23402828b62d0",
+    "commands": 10000,
+    "reference_guards": 10000
+  },
+  {
+    "file": "trace_0010.npz",
+    "sha256": "d6d72486389e2cf597950005cdc5bc4b61f3b0130506a8e233873a89d5b419dd",
+    "commands": 6158,
+    "reference_guards": 6158
+  }
+]

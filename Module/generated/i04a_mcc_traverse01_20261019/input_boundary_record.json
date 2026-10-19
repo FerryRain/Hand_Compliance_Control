@@ -1,0 +1,14 @@
+{
+  "status": "PASSED_RECORDED_INPUT_SCHEMA_CHECK",
+  "method": "A-MCC",
+  "native_states": 391805,
+  "public_wrist_poses": 1701,
+  "normal_sources": [
+    "A_ROBOT_NOMINAL",
+    "MEASURED_BELLY",
+    "MEASURED_RAW"
+  ],
+  "scope": "Recorded schema/provenance plus source boundary tests; private oracle and public method run in the same process",
+  "air_reference_note": "JSONL preserves nominal transfer pose sequences and durations; per-tick public_wrist_pose_world is last surface request during air transfer",
+  "normal_source_field_scope": "Surface MCC selector only; during air moves this is the last surface selector context. Air force relief reads current raw measured normals directly, as in the shared source."
+}

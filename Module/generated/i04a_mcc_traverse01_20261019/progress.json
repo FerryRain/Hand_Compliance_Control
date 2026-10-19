@@ -1,0 +1,25 @@
+{
+  "time_s": 783.6079999952939,
+  "area": 0.1013553453911865,
+  "vertices": 1031,
+  "goals": 42,
+  "routes": 4,
+  "lifts": 41,
+  "phase": "PLANNING_COMPLETION_PATCH",
+  "force_n": [
+    0.0,
+    0.0,
+    0.0,
+    2.981812058590924
+  ],
+  "safe": [
+    false,
+    false,
+    false,
+    true
+  ],
+  "peak_n": 7.923003738199482,
+  "goal": 2926,
+  "candidate": 2793,
+  "options": 0
+}

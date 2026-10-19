@@ -1,0 +1,102 @@
+{
+  "stop_reason": "SUSTAINED_DANGEROUS_FORCE",
+  "executed_s": 212.31600000028567,
+  "full_surface_complete": false,
+  "coverage_fraction": 0.17622003451729273,
+  "visited_vertices": 1950,
+  "total_vertices": 8192,
+  "visited_goals": 71,
+  "total_goals": 388,
+  "native_states": 106159,
+  "routes": 10,
+  "necessary_lifts": 5,
+  "peak_force_n": 13.644163772348534,
+  "force_releases": 115,
+  "force_releases_scope": "Entire fresh trajectory; no continuation",
+  "geometry_backtracks": 577,
+  "coverage_inherited": false,
+  "fresh_single_version": true,
+  "resume": null,
+  "trace_chunks": [
+    {
+      "file": "trace_0000.npz",
+      "states": 10000,
+      "start_s": 0.0,
+      "end_s": 19.997999999999795,
+      "sha256": "9fdde6c6f5d478b311a7f64dacb537c1d5307c0c549628b85e3b8e7cbb7e66a3"
+    },
+    {
+      "file": "trace_0001.npz",
+      "states": 10000,
+      "start_s": 19.999999999999794,
+      "end_s": 39.99800000000292,
+      "sha256": "ccaf256f30020465568ecce21e26cbf7df7b457bb82891a0f78705ceb3f6a0b8"
+    },
+    {
+      "file": "trace_0002.npz",
+      "states": 10000,
+      "start_s": 40.00000000000292,
+      "end_s": 59.99800000002736,
+      "sha256": "6e0de2eb7908b4e470d4faff7af5dcf579764423781bc0c98dae24305581d4a4"
+    },
+    {
+      "file": "trace_0003.npz",
+      "states": 10000,
+      "start_s": 60.00000000002736,
+      "end_s": 79.99799999999496,
+      "sha256": "61d1be57ec9563afb0f4659ac5d37a21547e78c453092943e5ce4266f0137c70"
+    },
+    {
+      "file": "trace_0004.npz",
+      "states": 10000,
+      "start_s": 79.99999999999496,
+      "end_s": 99.99799999994835,
+      "sha256": "dc41848aa81d32d7bd1f3b1b342a8c93bc58356325da78509aaaa4290ff76cdf"
+    },
+    {
+      "file": "trace_0005.npz",
+      "states": 10000,
+      "start_s": 99.99999999994834,
+      "end_s": 119.99799999990174,
+      "sha256": "3d0f85238027cb0b3e98a71b6a65e9d635d06f002939eac304df82b9245be4b5"
+    },
+    {
+      "file": "trace_0006.npz",
+      "states": 10000,
+      "start_s": 119.99999999990173,
+      "end_s": 139.99799999994036,
+      "sha256": "0e3617c485316baedb62fa22835e4a530542190a7217532eecac7736ae1f915e"
+    },
+    {
+      "file": "trace_0007.npz",
+      "states": 10000,
+      "start_s": 139.99999999994037,
+      "end_s": 159.99800000003586,
+      "sha256": "701f7b235edd664bed7552bc43a4abfc3f1ad45817737d843d383411a25ab009"
+    },
+    {
+      "file": "trace_0008.npz",
+      "states": 10000,
+      "start_s": 160.00000000003587,
+      "end_s": 179.99800000013136,
+      "sha256": "6c3b81e8a231182b42e7bd28299f208d0590c77f283841008ac3c30492184841"
+    },
+    {
+      "file": "trace_0009.npz",
+      "states": 10000,
+      "start_s": 180.00000000013137,
+      "end_s": 199.99800000022685,
+      "sha256": "c559308f8ccf006f55e9846b3a9c89760357fd72b4e9363f88b23402828b62d0"
+    },
+    {
+      "file": "trace_0010.npz",
+      "states": 6159,
+      "start_s": 200.00000000022686,
+      "end_s": 212.31600000028567,
+      "sha256": "d6d72486389e2cf597950005cdc5bc4b61f3b0130506a8e233873a89d5b419dd"
+    }
+  ],
+  "completion_cycles": 18,
+  "method": "B-MCC",
+  "wall_elapsed_s": 1228.3515904000378
+}

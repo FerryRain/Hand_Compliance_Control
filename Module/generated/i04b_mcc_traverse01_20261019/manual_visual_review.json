@@ -1,0 +1,37 @@
+{
+  "reviewed_at_utc": "2026-10-19T16:03:05.739030+00:00",
+  "status": "SAMPLED_VISUAL_REVIEW_PASSED",
+  "scope": "Listed images visually inspected; all 5 encoded videos also passed decoder/frame checks. No browser layout test or claim of manually watching every frame.",
+  "findings": [
+    "Method labels and actual simulation times readable",
+    "Native hand posture and valid-contact markers visible",
+    "Uncovered areas remain grey; no full-coverage claim",
+    "B high-force endpoint remains visible and uncredited"
+  ],
+  "files": [
+    {
+      "path": "delivery_checks/decoded_i04_b-mcc_complete_12x_00236.png",
+      "sha256": "0bce47417b21d06915da23c08909942dbe8d1690927b253fcb6deebe430e7048"
+    },
+    {
+      "path": "delivery_checks/decoded_i04_b-mcc_segment_206-212.316s_1x_00127.png",
+      "sha256": "c60ff596cc49fed1710e9aae9121b242fdb47d39511a1272562e1ad88101a3d7"
+    },
+    {
+      "path": "delivery_checks/decoded_i04_b-mcc_segment_60-70s_1x_00199.png",
+      "sha256": "91603a8f2e57091176c51af3d5a13199468ac48fb1030ae48311816648b6af3c"
+    },
+    {
+      "path": "coverage_verified.png",
+      "sha256": "e9052d176b79aa9fb533d079bf00e308422786407b661f3d13f77e36bb1cb916"
+    },
+    {
+      "path": "contact_paths_verified.png",
+      "sha256": "e141e9accf507809a1991ada30594224459f57c74991d4f4497d98f3706ec614"
+    },
+    {
+      "path": "timeline_verified.png",
+      "sha256": "790de798c2305c9c7288276eac4845d5205d95ce216f9d722d418eeb4cb72877"
+    }
+  ]
+}

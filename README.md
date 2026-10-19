@@ -22,7 +22,8 @@ Finger DP 当前定位为多指 nominal trajectory/role generator，而不是高
 
 - 2026-10-19目标更新：[I04A/B新目标与共同条件](Module/I04_AB_WHOLE_HAND_PROTOCOL.md)。
   I04B采用手掌与四指联合规划、主动指腹接触和整瓶遍历；I04A保持wrist-only任务输入。
-  非对照部分统一为同一模型、初态、自然手形约束、MCC、保护/恢复和评价规范；公共代码迁移与新配对评测待完成，DPRef暂缓。
+  新公共MCC入口已完成首轮单种子对照及独立核验：A搜索耗尽，新B高力保护停止，均未完成整瓶。
+  [新对照结果](Module/evidence/2026-10-19_I04_MATCHED_MCC.md) · [如何运行](Module/I04_MATCHED_MCC_RUNBOOK.md)。多种子评测待完成，DPRef暂缓。
 
 - 2026-10-19：Mustard 四指协同整瓶遍历完成，8192/8192顶点、388/388目标覆盖；2,638,518个原生状态连续独立重放通过。
   [运行与下载说明](Module/I04_WHOLE_HAND_RUNBOOK.md) · [更新日志](Module/CHANGELOG.md) ·

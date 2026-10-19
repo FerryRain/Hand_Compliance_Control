@@ -1,0 +1,33 @@
+{
+  "video": "i04_b-mcc_segment_206-212.316s_1x.mp4",
+  "speed": 1.0,
+  "fps": 20,
+  "frames": 128,
+  "full_time_axis": false,
+  "time_range_s": [
+    206.0000000002555,
+    212.31600000028567
+  ],
+  "actual_saved_q_only": true,
+  "no_physics_step": true,
+  "captures": [
+    {
+      "file": "i04_b-mcc_segment_206-212.316s_1x_00000.png",
+      "time_s": 206.0000000002555
+    },
+    {
+      "file": "i04_b-mcc_segment_206-212.316s_1x_00042.png",
+      "time_s": 208.10000000026554
+    },
+    {
+      "file": "i04_b-mcc_segment_206-212.316s_1x_00085.png",
+      "time_s": 210.2500000002758
+    },
+    {
+      "file": "i04_b-mcc_segment_206-212.316s_1x_00127.png",
+      "time_s": 212.31600000028567
+    }
+  ],
+  "video_sha256": "55963c08d6d313304b074e62f010eebc5ed367a29a4cdf1a29f98ea06c76dad5",
+  "source_manifest_sha256": "1fc0a15b9641db2f93ac814f32254d5dd4afbb884e164339698b2804e2bb56ad"
+}
