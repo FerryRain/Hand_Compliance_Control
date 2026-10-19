@@ -4,6 +4,9 @@
 完整发布案例是 `Module/generated/whole_hand_surface_run10_20261019`，约3.06 GB（含运行所需小型支持数据）。
 代码、报告、图片、全部原始2ms轨迹、三段正式视频及原始核验记录一起保存。
 
+本页命令对应已发布的B开发版本。后续 [I04A/B新目标与共同条件](I04_AB_WHOLE_HAND_PROTOCOL.md)
+已定义，公共运行代码迁移及新配对评测尚未完成；本页`run-fresh`不代表已经对齐的新A/B实验入口。
+
 ## 1. 下载代码和完整数据
 
 安装 Git 和 [Git LFS](https://docs.github.com/en/repositories/working-with-files/managing-large-files/installing-git-large-file-storage)，然后执行：

@@ -1,5 +1,10 @@
 # Module：FR3 + LEAP Hand 模块化控制实验
 
+当前目标（2026-10-19）：[I04A/B新目标与共同实验条件](I04_AB_WHOLE_HAND_PROTOCOL.md)。
+I04B正式采用手掌与四指联合规划、自然指腹接触和整瓶遍历；I04A保留wrist-only任务输入。
+A/B统一模型、初态、自然手形约束、MCC、指腹判定、保护/恢复与评价，逐指几何目标和手指参考来源保留为对照项。
+目标与公共规范已确定，公共运行代码迁移及新配对评测待完成；DPRef继续暂缓。
+
 最新工作（2026-10-19）：Mustard 四指协同整瓶遍历完成。按实际安全指腹接触的25mm测地邻域，
 8192/8192顶点、388/388目标全部覆盖，2638518个2ms状态连续独立重放通过。
 腕和四指共同主动贴合/屈伸，优先沿曲面滑动，必要时撤离调姿。最长全手有效接触中断146.156秒，尚未达到无间断滑动。
@@ -63,6 +68,7 @@ traversal 尚未完成，DPRef 分支也未开始。当前结果只能解释为�
 | I03 Bunny viability | `EVALUATED / MET` | Beam/Shadow dead end `3/0`；支持距离中位数 `7.111/101.125 mm` |
 | I04 Oracle next-point traversal | `EXPLICIT DEV IMPLEMENTED / FULL TRAVERSAL INCOMPLETE` | 274 个 required goals；三轮回归最多 7 个，当前阻塞在 two-anchor WRIST optimization |
 | 新I04 Mustard整手表面遍历 | `FULL_MEASURED_BELLY_SURFACE / AUDITED` | 2026-10-19开发接续案：8192/8192、388/388；完整原生核验通过，最长有效断触146.156s |
+| I04A/B整手共同协议 | `GOALS_DEFINED / SHARED_RUNTIME_ALIGNMENT_PENDING` | B采用整手联合规划新目标；A保持wrist-only输入，其余公共条件统一；新配对评测未运行 |
 | G3 | `NO_GO` | I02 未 MET；不进入 GPIS |
 
 E05 的 `EVALUATED` 只表示 evaluator 与 episode 完整有效；策略优劣由连续指标与越界量描述。

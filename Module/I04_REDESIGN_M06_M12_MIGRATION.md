@@ -1,5 +1,10 @@
 # I04 重定义、I01–I03 退役与旧 Mx 能力迁移方案
 
+> 2026-10-19目标更新：后续I04A/B以 [`I04_AB_WHOLE_HAND_PROTOCOL.md`](I04_AB_WHOLE_HAND_PROTOCOL.md) 为当前依据。
+> I04B升级为手掌与四指联合规划、自然指腹接触和连续整瓶遍历；A/B的非对照部分使用同一公共规范。
+> A保留wrist-only信息边界及MCC/DPRef设计，DPRef暂缓。公共运行代码迁移与新配对评测尚未完成。
+> 下文保留历史设计及运行语义，其中Pure Passive MCC、B仅位置目标等旧条款不覆盖上述新目标。
+
 > 日期：`2026-08-25`
 >
 > 状态：`MCC_IMPLEMENTED_AND_EVALUATED / FULL_COVERAGE_INCOMPLETE / DPREF_DEFERRED`

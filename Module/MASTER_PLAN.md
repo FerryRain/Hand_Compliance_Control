@@ -2,6 +2,20 @@
 
 > 本文件是仓库唯一的项目实施与实验主计划。开始任何模块前必须先检查本文件。
 
+## 2026-10-19 I04B新目标与I04A共同条件
+
+用户明确将“手掌与四指联合规划、主动指腹接触、自然屈指、贴面优先换面和整瓶遍历”作为I04B新目标，
+同时要求I04A/B的非对照部分一致。当前目标与共同条件以 `I04_AB_WHOLE_HAND_PROTOCOL.md` 为准。
+I04A保留wrist-only任务输入及MCC/DPRef方法设计；DPRef继续暂缓。I04B增加逐指位置/朝向与联合几何规划。
+两侧统一机器人/物体、初态、自然手形约束、指腹分类、MCC、力保护、传感历史恢复、执行预算、覆盖和核验。
+A不接收B的逐指GT落点、法向、几何种子或完整关节参考。B几何重规划与公共历史恢复分别记录。
+A-MCC与未来A-DPRef使用相同名义腕参考；A/B使用同源外层任务与公共规划框架，允许联合手指目标改变实际路径。
+
+当前状态是 `GOALS_AND_COMMON_CONTRACT_DEFINED / SHARED_RUNTIME_ALIGNMENT_PENDING / NEW_PAIRED_EVALUATION_NOT_RUN`。
+run10及下述原生核验继续作为B新目标的开发先导证据；不把历史A和run10写成已经完成的新公平对照。
+下一实施顺序：新公共配置/执行层 → A/B目标适配器 → 统一推进与恢复窗口 → 信息边界和公共参数核验 →
+局部/换面原生验证 → 冻结新版本、相同预算、seeds 7/11/19从零配对运行。已发布冻结源码和轨迹保留。
+
 ## 2026-10-19 整手协同整瓶遍历（原生全轨迹及审阅交付通过）
 
 最终主案 `generated/whole_hand_surface_run10_20261019` 在5277.036s完成8192/8192原顶点与388/388目标覆盖。
@@ -450,17 +464,18 @@ B-MCC 为 14.536–34.988 s，平均面积覆盖 7.284%，包含全指失联。
 
 | 项目 | 当前值 |
 | --- | --- |
-| 计划版本 | `v4.1` |
-| 最近更新 | `2026-10-18` |
-| 授权状态 | `AUTHORIZED_MCC_ONLY_MUSTARD_CONTINUOUS_SLIDING` |
-| 实施状态 | `WHOLE_HAND_WHOLE_SURFACE_IN_PROGRESS` |
-| 当前活动模块 | `NEW_I04_MUSTARD_WHOLE_HAND_BELLY` |
-| 当前 Gate | `WHOLE_HAND_WHOLE_SURFACE_PENDING / PRIOR_SINGLE_FINGER_WHOLE_COVERAGE_RETAINED / DP_DEFERRED` |
+| 计划版本 | `v4.2` |
+| 最近更新 | `2026-10-19` |
+| 授权状态 | `I04B_GOAL_ADOPTED / AB_COMMON_CONDITIONS_REQUIRED / MCC_ONLY` |
+| 实施状态 | `GOALS_DEFINED / SHARED_RUNTIME_ALIGNMENT_PENDING` |
+| 当前活动模块 | `I04_AB_WHOLE_HAND_ALIGNMENT` |
+| 当前 Gate | `I04B_DEVELOPMENT_COVERAGE_VERIFIED / NEW_PAIRED_EVALUATION_NOT_RUN / DP_DEFERRED` |
 | 固定环境 | `handcomp` |
 | 本轮 Python | `D:\Environment\Anaconda\envs\handcomp\python.exe` |
 
 下文 2026-08 的 Mx、Explicit I04、G2/G3 状态和 Python/Linux 命令保留为历史证据；
-新 I04 的当前范围与本机运行以顶部 2026-10-18 更新、整手协同协议和对应case原始证据为准。
+新 I04 的目标与A/B共同条件以顶部2026-10-19更新及 `I04_AB_WHOLE_HAND_PROTOCOL.md` 为准；
+已有运行的结论仍以其原协议和对应case原始证据为准。
 
 本轮已完成 M0–M3 的 FR3+Leap Hand 扩展、M04 的 MCC 控制链和 central-palm mount 修正。
 FR3+Leap 模型为 `7 arm + 16 finger = 23 DoF`；MCC 初始 hand q 精确取自原 DP 视频
