@@ -1,6 +1,6 @@
 # Mustard 整手遍历：下载、查看和运行
 
-发布版本：2026-10-19；分支 `codex/i04-mustard-full-traversal`。仅 MCC，DP/DPRef 未运行。
+发布版本：2026-10-19；分支 `main`。仅 MCC，DP/DPRef 未运行。
 完整发布案例是 `Module/generated/whole_hand_surface_run10_20261019`，约3.06 GB（含运行所需小型支持数据）。
 代码、报告、图片、全部原始2ms轨迹、三段正式视频及原始核验记录一起保存。
 
@@ -10,7 +10,7 @@
 
 ```powershell
 git lfs install
-git clone --branch codex/i04-mustard-full-traversal https://github.com/FerryRain/Hand_Compliance_Control.git
+git clone --branch main https://github.com/FerryRain/Hand_Compliance_Control.git
 cd Hand_Compliance_Control
 git lfs pull
 ```
