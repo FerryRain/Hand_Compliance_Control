@@ -1,0 +1,4941 @@
+[
+  {
+    "kind": "INITIAL_COOPERATIVE_APPROACH",
+    "time_s": 5.849999999999578,
+    "success": true
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 14.010000000001348,
+    "goal": 6934,
+    "anchor": 1,
+    "length_m": 0.021550125097668783,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 109,
+    "area": 0.031956020921759365
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 24.183999999997475,
+    "goal": 2779,
+    "anchor": 0,
+    "length_m": 0.03689762054878009,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 75,
+    "area": 0.040292739016093176
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 33.72599999999525,
+    "goal": 434,
+    "anchor": 3,
+    "length_m": 0.013462026907367086,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 33,
+    "area": 0.04482789484122667
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 43.60200000000732,
+    "goal": 3323,
+    "anchor": 1,
+    "length_m": 0.03405388972129407,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 131,
+    "area": 0.05394773383390261
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 58.53200000002557,
+    "goal": 7337,
+    "anchor": 2,
+    "length_m": 0.014892720419188692,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 34,
+    "area": 0.05650247578558726
+  },
+  {
+    "kind": "NECESSARY_COOPERATIVE_REORIENTATION",
+    "time_s": 58.53200000002557,
+    "goal": 7337,
+    "duration_s": 19.228769842389585,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "COOPERATIVE_REAPPROACH",
+    "time_s": 83.88999999998589,
+    "goal": 7337,
+    "success": true
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 96.49599999995651,
+    "goal": 7811,
+    "anchor": 1,
+    "length_m": 0.02620432130379739,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 107,
+    "area": 0.08100146102237474
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 101.68399999994442,
+    "goal": 8057,
+    "anchor": 2,
+    "length_m": 0.020681249977397228,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 115,
+    "area": 0.09242753348515845
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 109.30799999992665,
+    "goal": 7638,
+    "anchor": 2,
+    "length_m": 0.028939403507347423,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 148,
+    "area": 0.10807284024508164
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 115.8539999999114,
+    "goal": 7697,
+    "anchor": 2,
+    "length_m": 0.017507858590165563,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 61,
+    "area": 0.11462498910555795
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 123.36999999989388,
+    "goal": 8182,
+    "anchor": 2,
+    "length_m": 0.029902798480013235,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 102,
+    "area": 0.12621311827211207
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 131.57799999990016,
+    "goal": 2116,
+    "anchor": 3,
+    "length_m": 0.02761216892356835,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 130,
+    "area": 0.1420889273551746
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 140.2339999999415,
+    "goal": 2977,
+    "anchor": 3,
+    "length_m": 0.02652373093595098,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 91,
+    "area": 0.15302442924744383
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 153.87800000000664,
+    "goal": 2881,
+    "anchor": 3,
+    "length_m": 0.025221823636726943,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 65,
+    "area": 0.16304031791177212
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 163.58200000005297,
+    "goal": 2830,
+    "anchor": 3,
+    "length_m": 0.02410570385072414,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 57,
+    "area": 0.172076924954901
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 173.3680000000997,
+    "goal": 2490,
+    "anchor": 3,
+    "length_m": 0.02448111415927376,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 62,
+    "area": 0.17943384076265534
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 193.03800000019362,
+    "goal": 2452,
+    "anchor": 3,
+    "length_m": 0.0359988858282032,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 55,
+    "area": 0.1855666109999901
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 201.77200000023532,
+    "goal": 3424,
+    "anchor": 0,
+    "length_m": 0.008387986794373413,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 27,
+    "area": 0.1887026857845926
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 211.80600000028323,
+    "goal": 3234,
+    "anchor": 0,
+    "length_m": 0.010473675435670043,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 12,
+    "area": 0.19078238888113894
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 239.65800000041622,
+    "goal": 3098,
+    "anchor": 0,
+    "length_m": 0.036789255499653326,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 72,
+    "area": 0.2014678006527368
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 253.09400000048038,
+    "goal": 3078,
+    "anchor": 0,
+    "length_m": 0.028764518624754057,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 19,
+    "area": 0.20514646807031622
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 287.9280000006467,
+    "goal": 3656,
+    "anchor": 2,
+    "length_m": 0.04474840533434671,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 112,
+    "area": 0.22067548311430035
+  },
+  {
+    "kind": "NECESSARY_COOPERATIVE_REORIENTATION",
+    "time_s": 287.9280000006467,
+    "goal": 3291,
+    "duration_s": 29.209397036017595,
+    "clearance_m": 0.015,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "COOPERATIVE_REAPPROACH",
+    "time_s": 324.90000000082324,
+    "goal": 3291,
+    "success": true
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 345.9160000009236,
+    "goal": 3248,
+    "anchor": 1,
+    "length_m": 0.026785990881299345,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 77,
+    "area": 0.2367912061566949
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 352.29800000095406,
+    "goal": 3798,
+    "anchor": 2,
+    "length_m": 0.006365231272839467,
+    "success": false,
+    "reason": "COOPERATIVE_RECONTACT_REPLAN",
+    "new_vertices": 10,
+    "area": 0.23792456859962555
+  },
+  {
+    "kind": "NECESSARY_COOPERATIVE_REORIENTATION",
+    "time_s": 352.29800000095406,
+    "goal": 3735,
+    "duration_s": 6.644236238888612,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "COOPERATIVE_REAPPROACH",
+    "time_s": 362.85200000100446,
+    "goal": 3735,
+    "success": true
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 378.20000000107774,
+    "goal": 3827,
+    "anchor": 1,
+    "length_m": 0.03346250777199955,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 102,
+    "area": 0.2565934783083918
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 380.4480000010885,
+    "goal": 3717,
+    "anchor": 2,
+    "length_m": 0.008871051880423031,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 1,
+    "area": 0.2569162574114849
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 385.5380000011128,
+    "goal": 3753,
+    "anchor": 1,
+    "length_m": 0.02023247080360669,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 39,
+    "area": 0.26277354181530566
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 416.71200000126163,
+    "goal": 3600,
+    "anchor": 1,
+    "length_m": 0.039260330481059896,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 84,
+    "area": 0.2751918387545773
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 430.4400000013272,
+    "degrees": -15.0,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET"
+  },
+  {
+    "kind": "NECESSARY_COOPERATIVE_REORIENTATION",
+    "time_s": 430.4400000013272,
+    "goal": 3033,
+    "duration_s": 61.3983250125936,
+    "clearance_m": 0.015,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "COOPERATIVE_REAPPROACH",
+    "time_s": 498.50200000165216,
+    "goal": 3033,
+    "success": true
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 511.8480000017159,
+    "goal": 3838,
+    "anchor": 0,
+    "length_m": 0.025011534165707557,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 32,
+    "area": 0.2914677359308196
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 523.820000001437,
+    "goal": 4074,
+    "anchor": 0,
+    "length_m": 0.029690650470962508,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 110,
+    "area": 0.30385233025284025
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 530.8780000012702,
+    "goal": 3014,
+    "anchor": 1,
+    "length_m": 0.027880123824932566,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 91,
+    "area": 0.3128374100482555
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 538.92000000108,
+    "goal": 3987,
+    "anchor": 0,
+    "length_m": 0.024692782929201646,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 126,
+    "area": 0.322850475832366
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 550.3620000008094,
+    "goal": 3821,
+    "anchor": 0,
+    "length_m": 0.04546704306798313,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 49,
+    "area": 0.3308617327239751
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 556.68000000066,
+    "goal": 2318,
+    "anchor": 3,
+    "length_m": 0.020386240268942715,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 17,
+    "area": 0.33293961213139506
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 564.9100000004654,
+    "goal": 2181,
+    "anchor": 3,
+    "length_m": 0.02614207234381149,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 29,
+    "area": 0.3365310255986937
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 598.6039999996686,
+    "goal": 2229,
+    "anchor": 0,
+    "length_m": 0.12103539666234035,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 137,
+    "area": 0.3540562358050718
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 611.7939999993567,
+    "goal": 2401,
+    "anchor": 0,
+    "length_m": 0.03349268748656078,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 86,
+    "area": 0.36341402115949023
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 624.8679999990476,
+    "goal": 2006,
+    "anchor": 0,
+    "length_m": 0.03778094983541343,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 61,
+    "area": 0.36962996694982364
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 645.1819999985672,
+    "goal": 1938,
+    "anchor": 1,
+    "length_m": 0.022970480083636974,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 34,
+    "area": 0.37398527084426064
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 658.9099999982426,
+    "degrees": 15.0,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET"
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 672.637999997918,
+    "degrees": -15.0,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET"
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 695.091999997387,
+    "degrees": -30.0,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET"
+  },
+  {
+    "kind": "NECESSARY_COOPERATIVE_REORIENTATION",
+    "time_s": 695.091999997387,
+    "goal": 296,
+    "duration_s": 85.5065490456068,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "COOPERATIVE_REAPPROACH",
+    "time_s": 784.365999995276,
+    "goal": 296,
+    "success": true
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 789.9819999951432,
+    "goal": 283,
+    "anchor": 3,
+    "length_m": 0.008932926351702283,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 7,
+    "area": 0.37660935298313014
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 797.4859999949657,
+    "goal": 362,
+    "anchor": 0,
+    "length_m": 0.016768812309323117,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 9,
+    "area": 0.37744168079534507
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 808.2799999947105,
+    "goal": 2325,
+    "anchor": 0,
+    "length_m": 0.01098147635622258,
+    "success": false,
+    "reason": "COOPERATIVE_RECONTACT_REPLAN",
+    "new_vertices": 5,
+    "area": 0.37801058548765804
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 815.9599999945289,
+    "degrees": 15.0,
+    "success": false,
+    "reason": "COOPERATIVE_RECONTACT_REPLAN"
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 825.9239999942932,
+    "degrees": -15.0,
+    "success": false,
+    "reason": "COOPERATIVE_RECONTACT_REPLAN"
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 843.6139999938749,
+    "degrees": -30.0,
+    "success": true,
+    "reason": "ROUTE_FINISHED"
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 857.0459999935573,
+    "goal": 2597,
+    "anchor": 1,
+    "length_m": 0.01264555071403753,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 0,
+    "area": 0.37836811113865215
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 865.009999993369,
+    "degrees": 15.0,
+    "success": true,
+    "reason": "ROUTE_FINISHED"
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 886.7819999928541,
+    "goal": 2597,
+    "anchor": 1,
+    "length_m": 0.02515771541187209,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 11,
+    "area": 0.3802041830567066
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 892.4219999927208,
+    "degrees": -15.0,
+    "success": true,
+    "reason": "ROUTE_FINISHED"
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 904.2079999924421,
+    "goal": 2259,
+    "anchor": 3,
+    "length_m": 0.01792604127993223,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 6,
+    "area": 0.38107405899513097
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 926.8419999919068,
+    "goal": 2397,
+    "anchor": 0,
+    "length_m": 0.05195584143782871,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 2,
+    "area": 0.3813261248267892
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 939.9919999915959,
+    "goal": 2229,
+    "anchor": 0,
+    "length_m": 0.026973523441336095,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 12,
+    "area": 0.38244644701771
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 963.625999991037,
+    "goal": 1826,
+    "anchor": 3,
+    "length_m": 0.07939163119001755,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 35,
+    "area": 0.38579540367722837
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 975.3599999907595,
+    "goal": 6891,
+    "anchor": 2,
+    "length_m": 0.04301884902791621,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 24,
+    "area": 0.3891551362372495
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 982.7279999905853,
+    "goal": 7117,
+    "anchor": 2,
+    "length_m": 0.029206830371449374,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 24,
+    "area": 0.39217249024245104
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 987.2099999904793,
+    "goal": 7001,
+    "anchor": 2,
+    "length_m": 0.010998944026607992,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 13,
+    "area": 0.3939972446641079
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1000.1599999901731,
+    "goal": 7076,
+    "anchor": 2,
+    "length_m": 0.0368831450897316,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 32,
+    "area": 0.3987017612961372
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1008.9559999899651,
+    "goal": 7195,
+    "anchor": 2,
+    "length_m": 0.035002321699133344,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 39,
+    "area": 0.4060302785667338
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1017.5819999897611,
+    "goal": 6916,
+    "anchor": 2,
+    "length_m": 0.025867225310595838,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 25,
+    "area": 0.4105801774157508
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1033.581999989383,
+    "goal": 7182,
+    "anchor": 2,
+    "length_m": 0.026933773971312656,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 23,
+    "area": 0.4143697723402922
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1040.8199999892117,
+    "goal": 7211,
+    "anchor": 2,
+    "length_m": 0.0138118619011562,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 11,
+    "area": 0.4158954504109279
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1048.633999989027,
+    "goal": 8085,
+    "anchor": 1,
+    "length_m": 0.01669948032402331,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 0,
+    "area": 0.4158954504109279
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1052.6379999889323,
+    "goal": 652,
+    "anchor": 0,
+    "length_m": 0.01435376839614356,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 0,
+    "area": 0.4158954504109279
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1055.8879999888554,
+    "goal": 8098,
+    "anchor": 2,
+    "length_m": 0.009025366395093042,
+    "success": false,
+    "reason": "GEOMETRY_REPLAN",
+    "new_vertices": 0,
+    "area": 0.4158954504109279
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 1055.8899999888554,
+    "degrees": 15.0,
+    "success": false,
+    "reason": "GEOMETRY_REPLAN"
+  },
+  {
+    "kind": "NECESSARY_COOPERATIVE_REORIENTATION",
+    "time_s": 1055.8899999888554,
+    "goal": 675,
+    "duration_s": 94.93772499451605,
+    "clearance_m": 0.015,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "COOPERATIVE_REAPPROACH",
+    "time_s": 1157.6219999864497,
+    "goal": 675,
+    "success": true
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1164.671999986283,
+    "goal": 843,
+    "anchor": 0,
+    "length_m": 0.020869129731434746,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 55,
+    "area": 0.43362828746773124
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1181.501999985885,
+    "goal": 835,
+    "anchor": 0,
+    "length_m": 0.028017095663499313,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 22,
+    "area": 0.4385582674250817
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1187.7999999857361,
+    "goal": 651,
+    "anchor": 1,
+    "length_m": 0.02492163178399946,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 38,
+    "area": 0.4435680851827572
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1196.4459999855317,
+    "goal": 578,
+    "anchor": 1,
+    "length_m": 0.03429255627468492,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 49,
+    "area": 0.4530334864994081
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1207.1139999852794,
+    "goal": 760,
+    "anchor": 1,
+    "length_m": 0.019766184419238615,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 40,
+    "area": 0.4588019393928365
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1218.931999985,
+    "goal": 887,
+    "anchor": 0,
+    "length_m": 0.020933546560252102,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 65,
+    "area": 0.4664554141202413
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1233.3599999846588,
+    "goal": 4136,
+    "anchor": 0,
+    "length_m": 0.027987501803093378,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 35,
+    "area": 0.46974553215335835
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1243.4839999844194,
+    "goal": 4203,
+    "anchor": 0,
+    "length_m": 0.02840789372526104,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 29,
+    "area": 0.47369650419388754
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1251.4139999842319,
+    "goal": 4942,
+    "anchor": 0,
+    "length_m": 0.0302311838855149,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 63,
+    "area": 0.48251395505011585
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1254.0979999841684,
+    "goal": 8118,
+    "anchor": 3,
+    "length_m": 0.007926974886006572,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 2,
+    "area": 0.48261228426422426
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1281.811999983513,
+    "goal": 4146,
+    "anchor": 0,
+    "length_m": 0.03406858369418522,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 22,
+    "area": 0.4858117927343205
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 1285.3999999834282,
+    "degrees": 15.0,
+    "success": true,
+    "reason": "ROUTE_FINISHED"
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1313.743999982758,
+    "goal": 4532,
+    "anchor": 0,
+    "length_m": 0.03501457592557922,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 10,
+    "area": 0.4908626858334631
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 1317.0719999826792,
+    "degrees": 15.0,
+    "success": true,
+    "reason": "ROUTE_FINISHED"
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1342.0959999820875,
+    "goal": 4392,
+    "anchor": 0,
+    "length_m": 0.030033768787831278,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 22,
+    "area": 0.496109144087714
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 1355.8239999817629,
+    "degrees": -15.0,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET"
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 1378.277999981232,
+    "degrees": 30.0,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET"
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 1400.731999980701,
+    "degrees": -30.0,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET"
+  },
+  {
+    "kind": "NECESSARY_COOPERATIVE_REORIENTATION",
+    "time_s": 1400.731999980701,
+    "goal": 4392,
+    "duration_s": 15.471085132050534,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "COOPERATIVE_REAPPROACH",
+    "time_s": 1420.2139999802403,
+    "goal": 4392,
+    "success": true
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1431.4519999799745,
+    "goal": 4610,
+    "anchor": 1,
+    "length_m": 0.023848597015302005,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 58,
+    "area": 0.520316710782767
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1444.6599999796622,
+    "goal": 5775,
+    "anchor": 3,
+    "length_m": 0.018484002800510387,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 61,
+    "area": 0.5258065452503671
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1448.1559999795795,
+    "goal": 6719,
+    "anchor": 3,
+    "length_m": 0.007637253324083682,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 9,
+    "area": 0.5270241571803089
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1458.157999979343,
+    "goal": 6136,
+    "anchor": 1,
+    "length_m": 0.00637656454699407,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 12,
+    "area": 0.5282459095241323
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 1470.6039999790487,
+    "degrees": 15.0,
+    "success": true,
+    "reason": "ROUTE_FINISHED"
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1488.4859999786258,
+    "goal": 4668,
+    "anchor": 0,
+    "length_m": 0.019320492740971338,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 32,
+    "area": 0.5333705896206319
+  },
+  {
+    "kind": "NECESSARY_COOPERATIVE_REORIENTATION",
+    "time_s": 1488.4859999786258,
+    "goal": 4410,
+    "duration_s": 5.63679452873852,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "COOPERATIVE_REAPPROACH",
+    "time_s": 1498.7919999783821,
+    "goal": 4410,
+    "success": true
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1509.8399999781209,
+    "goal": 4559,
+    "anchor": 1,
+    "length_m": 0.014803886223001713,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 44,
+    "area": 0.5504882299875423
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1521.3999999778475,
+    "goal": 4288,
+    "anchor": 1,
+    "length_m": 0.009837874097565622,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 4,
+    "area": 0.551050439327888
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 1532.1939999775923,
+    "degrees": 15.0,
+    "success": true,
+    "reason": "ROUTE_FINISHED"
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1557.8939999769846,
+    "goal": 4184,
+    "anchor": 0,
+    "length_m": 0.031049371682041187,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 48,
+    "area": 0.5581175825285045
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 1571.62199997666,
+    "degrees": 15.0,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET"
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 1584.8399999763474,
+    "degrees": -15.0,
+    "success": true,
+    "reason": "ROUTE_FINISHED"
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1602.405999975932,
+    "goal": 4567,
+    "anchor": 0,
+    "length_m": 0.03753257701150876,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 78,
+    "area": 0.5732801523886286
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1611.6599999757132,
+    "goal": 7031,
+    "anchor": 1,
+    "length_m": 0.019290702505547888,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 29,
+    "area": 0.5776890879450586
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1623.0159999754446,
+    "goal": 6839,
+    "anchor": 2,
+    "length_m": 0.026516342716540513,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 32,
+    "area": 0.5829165208966632
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1636.957999975115,
+    "goal": 494,
+    "anchor": 1,
+    "length_m": 0.01681139292822416,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 7,
+    "area": 0.5843098776702423
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1642.4239999749857,
+    "goal": 348,
+    "anchor": 1,
+    "length_m": 0.00781782444488077,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 0,
+    "area": 0.5843098776702423
+  },
+  {
+    "kind": "NECESSARY_COOPERATIVE_REORIENTATION",
+    "time_s": 1642.4239999749857,
+    "goal": 4162,
+    "duration_s": 9.833224597854086,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "COOPERATIVE_REAPPROACH",
+    "time_s": 1659.0419999745927,
+    "goal": 4162,
+    "success": true
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1696.7699999737006,
+    "goal": 479,
+    "anchor": 2,
+    "length_m": 0.06252772744177229,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 24,
+    "area": 0.5914962797507625
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1709.5799999733977,
+    "goal": 35,
+    "anchor": 2,
+    "length_m": 0.03662756682009601,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 39,
+    "area": 0.5957649352355536
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1717.7919999732035,
+    "goal": 219,
+    "anchor": 2,
+    "length_m": 0.02867765746054985,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 23,
+    "area": 0.5987334605570876
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1721.577999973114,
+    "goal": 327,
+    "anchor": 2,
+    "length_m": 0.008379511065540387,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 3,
+    "area": 0.5991040335416895
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1723.8099999730612,
+    "goal": 670,
+    "anchor": 2,
+    "length_m": 0.007024729102036421,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 12,
+    "area": 0.6003740257074511
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1763.5379999721217,
+    "goal": 633,
+    "anchor": 1,
+    "length_m": 0.052383095707872994,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 90,
+    "area": 0.6092832682279947
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1789.3019999715125,
+    "goal": 1133,
+    "anchor": 2,
+    "length_m": 0.031145649671247177,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 11,
+    "area": 0.6105261359716292
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 1801.4659999712248,
+    "degrees": 15.0,
+    "success": true,
+    "reason": "ROUTE_FINISHED"
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1815.749999970887,
+    "goal": 978,
+    "anchor": 2,
+    "length_m": 0.017215206463643176,
+    "success": false,
+    "reason": "COOPERATIVE_RECONTACT_REPLAN",
+    "new_vertices": 1,
+    "area": 0.6111766564810317
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 1824.3199999706844,
+    "degrees": -15.0,
+    "success": true,
+    "reason": "ROUTE_FINISHED"
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1855.1839999699546,
+    "goal": 1188,
+    "anchor": 2,
+    "length_m": 0.05916232098163895,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 57,
+    "area": 0.6213710671470073
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1873.7979999695144,
+    "goal": 1122,
+    "anchor": 1,
+    "length_m": 0.04196891891800446,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 65,
+    "area": 0.633689353767114
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1891.0359999691068,
+    "goal": 1245,
+    "anchor": 2,
+    "length_m": 0.03686522046374648,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 134,
+    "area": 0.6555927967911443
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1917.96599996847,
+    "goal": 991,
+    "anchor": 1,
+    "length_m": 0.05344230975678523,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 102,
+    "area": 0.6689105872898794
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1922.701999968358,
+    "goal": 1189,
+    "anchor": 0,
+    "length_m": 0.015468973246546367,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 17,
+    "area": 0.6717678870949015
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 1926.4059999682704,
+    "degrees": 15.0,
+    "success": true,
+    "reason": "ROUTE_FINISHED"
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1931.289999968155,
+    "goal": 1213,
+    "anchor": 2,
+    "length_m": 0.014904731520733086,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 0,
+    "area": 0.6719475016453957
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1934.9459999680685,
+    "goal": 4510,
+    "anchor": 3,
+    "length_m": 0.010752490225944924,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 10,
+    "area": 0.6732889117417059
+  },
+  {
+    "kind": "NO_COOPERATIVE_TRANSFER",
+    "time_s": 1934.9459999680685,
+    "remaining": 2811
+  },
+  {
+    "kind": "NO_COOPERATIVE_TRANSFER",
+    "time_s": 1934.9479999680684,
+    "remaining": 2811
+  },
+  {
+    "kind": "NO_COOPERATIVE_TRANSFER",
+    "time_s": 1934.9499999680684,
+    "remaining": 2811
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 1990.3099999667593,
+    "goal": 455,
+    "anchor": 3,
+    "length_m": 0.08638608050845284,
+    "success": false,
+    "reason": "COOPERATIVE_RECONTACT_REPLAN",
+    "new_vertices": 125,
+    "area": 0.686247416441862
+  },
+  {
+    "kind": "NO_COOPERATIVE_TRANSFER",
+    "time_s": 1990.3099999667593,
+    "remaining": 2811
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 2001.6319999664915,
+    "goal": 3037,
+    "anchor": 1,
+    "length_m": 0.014169265832254712,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 4,
+    "area": 0.6866917108108438
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 2012.823999966227,
+    "goal": 2615,
+    "anchor": 0,
+    "length_m": 0.013581507484180464,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 3,
+    "area": 0.6870342513298286
+  },
+  {
+    "kind": "NO_COOPERATIVE_TRANSFER",
+    "time_s": 2012.823999966227,
+    "remaining": 2679
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 2021.8179999660142,
+    "goal": 2363,
+    "anchor": 1,
+    "length_m": 0.01155491473336719,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 1,
+    "area": 0.6872643222537824
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 2038.8959999656104,
+    "goal": 2615,
+    "anchor": 3,
+    "length_m": 0.018114833967048355,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 1,
+    "area": 0.6874384928417268
+  },
+  {
+    "kind": "NECESSARY_COOPERATIVE_REORIENTATION",
+    "time_s": 2038.8959999656104,
+    "goal": 2684,
+    "duration_s": 24.43367640217211,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "COOPERATIVE_REAPPROACH",
+    "time_s": 2065.851999964973,
+    "goal": 2684,
+    "success": true
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 2071.8659999648307,
+    "goal": 362,
+    "anchor": 3,
+    "length_m": 0.043643422288624875,
+    "success": false,
+    "reason": "COOPERATIVE_RECONTACT_REPLAN",
+    "new_vertices": 1,
+    "area": 0.694769906216676
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 2085.593999964506,
+    "degrees": 15.0,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET"
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 2091.865999964358,
+    "degrees": -15.0,
+    "success": true,
+    "reason": "ROUTE_FINISHED"
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 2110.455999963918,
+    "goal": 1948,
+    "anchor": 2,
+    "length_m": 0.020382174342450918,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 2,
+    "area": 0.6978105093889748
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 2114.769999963816,
+    "degrees": 15.0,
+    "success": true,
+    "reason": "ROUTE_FINISHED"
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 2137.1259999632875,
+    "goal": 2100,
+    "anchor": 2,
+    "length_m": 0.03140393454013375,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 16,
+    "area": 0.7038423893558559
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 2154.4619999628776,
+    "goal": 2397,
+    "anchor": 1,
+    "length_m": 0.0265183429475551,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 2,
+    "area": 0.7042142958022787
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 2161.207999962718,
+    "goal": 652,
+    "anchor": 0,
+    "length_m": 0.008531546970809345,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 3,
+    "area": 0.7047509563643963
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 2170.6959999624937,
+    "goal": 2778,
+    "anchor": 1,
+    "length_m": 0.009050296822857904,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 0,
+    "area": 0.7047509563643963
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 2181.119999962247,
+    "degrees": -15.0,
+    "success": true,
+    "reason": "ROUTE_FINISHED"
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 2196.0279999618947,
+    "goal": 2629,
+    "anchor": 0,
+    "length_m": 0.036324530713803295,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 1,
+    "area": 0.7052297405060222
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 2208.2159999616065,
+    "degrees": 15.0,
+    "success": false,
+    "reason": "COOPERATIVE_RECONTACT_REPLAN"
+  },
+  {
+    "kind": "NECESSARY_COOPERATIVE_REORIENTATION",
+    "time_s": 2208.2159999616065,
+    "goal": 406,
+    "duration_s": 43.909726794353055,
+    "clearance_m": 0.015,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "EXACT_NATIVE_CONTINUATION",
+    "time_s": 2259.999999960382,
+    "parent_case": "D:\\\u6587\u6863\\Hand_Compliance_Control\\i04_experiment_repo\\Module\\generated\\whole_hand_surface_run04_20261018",
+    "join_time_s": 2259.999999960382,
+    "parent_manifest_sha256": "b40d88f12dc2bf0215c86faaaa1312c2f6ffdf8bba76aab1d3746c8ed058e504",
+    "parent_summary_sha256": "68c0389872168903f2dd44432b1beb2e48568d4b743a32a66ea77e5b415f43dd",
+    "parent_audit_sha256": "c8a4a85ae8d7d7386a9473b049d7cd728e99c8e6dfc0eb439c6040fb14e76b5e",
+    "prefix_native_states": 1130000,
+    "prefix_chunks": 113,
+    "physical_state_reset": false,
+    "independent_trajectories_merged": false,
+    "previous_protocol": "i04-whole-hand-surface.development.v4",
+    "controller_state": "Reinitialized; physical state and command unchanged"
+  },
+  {
+    "kind": "NECESSARY_COOPERATIVE_REORIENTATION",
+    "time_s": 2259.999999960382,
+    "goal": 406,
+    "duration_s": 1.075842060583751,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 2260.299999960375,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.29999999999290594,
+    "force_pause_s": 0.0,
+    "planned_s": 0.3
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 2261.0759999603565,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 0.77599999998165,
+    "force_pause_s": 0.0,
+    "planned_s": 0.7758420605837512
+  },
+  {
+    "kind": "COOPERATIVE_REAPPROACH",
+    "time_s": 2263.799999960292,
+    "goal": 406,
+    "success": true
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 2281.0399999598844,
+    "goal": 362,
+    "anchor": 0,
+    "length_m": 0.025387921689061343,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 10,
+    "area": 0.7100794069686048
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 2296.5059999595187,
+    "goal": 455,
+    "anchor": 1,
+    "length_m": 0.042971820353579035,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 22,
+    "area": 0.7129400908387706
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 2316.3439999590496,
+    "goal": 2615,
+    "anchor": 1,
+    "length_m": 0.022256408889182202,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 34,
+    "area": 0.7172400477457244
+  },
+  {
+    "kind": "NECESSARY_COOPERATIVE_REORIENTATION",
+    "time_s": 2316.3439999590496,
+    "goal": 3037,
+    "duration_s": 11.692727374509198,
+    "clearance_m": 0.015,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 2317.1059999590316,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.7619999999819811,
+    "force_pause_s": 0.0,
+    "planned_s": 0.7619897630126587
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 2331.7459999586854,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 14.63999999965381,
+    "force_pause_s": 3.7079999999998132,
+    "planned_s": 10.93073761149654
+  },
+  {
+    "kind": "COOPERATIVE_REAPPROACH",
+    "time_s": 2337.7499999585434,
+    "goal": 3037,
+    "success": true
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 2365.4779999578877,
+    "goal": 3131,
+    "anchor": 3,
+    "length_m": 0.03408902559524274,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 12,
+    "area": 0.722611035174154
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 2379.205999957563,
+    "degrees": -15.0,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET"
+  },
+  {
+    "kind": "NECESSARY_COOPERATIVE_REORIENTATION",
+    "time_s": 2379.205999957563,
+    "goal": 3131,
+    "duration_s": 0.9453287644037331,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 2379.76199995755,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.5559999999868523,
+    "force_pause_s": 0.0,
+    "planned_s": 0.5542278172510058
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 2380.1539999575407,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 0.39199999999073043,
+    "force_pause_s": 0.0,
+    "planned_s": 0.39110094715272736
+  },
+  {
+    "kind": "COOPERATIVE_REAPPROACH",
+    "time_s": 2384.0059999574496,
+    "goal": 3131,
+    "success": true
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 2401.0059999570476,
+    "goal": 3207,
+    "anchor": 3,
+    "length_m": 0.017997755483164807,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 10,
+    "area": 0.7270116819160256
+  },
+  {
+    "kind": "NECESSARY_COOPERATIVE_REORIENTATION",
+    "time_s": 2401.0059999570476,
+    "goal": 3207,
+    "duration_s": 4.345607602074847,
+    "clearance_m": 0.015,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 2401.7379999570303,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.7319999999826905,
+    "force_pause_s": 0.0,
+    "planned_s": 0.730844806483685
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 2405.353999956945,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 3.615999999914493,
+    "force_pause_s": 0.0,
+    "planned_s": 3.614762795591162
+  },
+  {
+    "kind": "COOPERATIVE_REAPPROACH",
+    "time_s": 2411.6639999567956,
+    "goal": 3207,
+    "success": true
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 2421.0159999565744,
+    "goal": 3281,
+    "anchor": 3,
+    "length_m": 0.026522938523903524,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 16,
+    "area": 0.7310977672206581
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 2445.3819999559983,
+    "goal": 3489,
+    "anchor": 3,
+    "length_m": 0.029046917487597874,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 4,
+    "area": 0.7324723124433009
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 2458.9059999556785,
+    "degrees": -15.0,
+    "success": true,
+    "reason": "ROUTE_FINISHED"
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 2498.2759999547475,
+    "goal": 774,
+    "anchor": 2,
+    "length_m": 0.06558362796554824,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 3,
+    "area": 0.7328784839555967
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 2512.5679999544095,
+    "goal": 774,
+    "anchor": 1,
+    "length_m": 0.06456450589355014,
+    "success": false,
+    "reason": "COOPERATIVE_RECONTACT_REPLAN",
+    "new_vertices": 0,
+    "area": 0.7328784839555967
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 2518.631999954266,
+    "degrees": 15.0,
+    "success": true,
+    "reason": "ROUTE_FINISHED"
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 2577.9979999528623,
+    "goal": 1214,
+    "anchor": 0,
+    "length_m": 0.08154655147936497,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 0,
+    "area": 0.7328784839555967
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 2591.7259999525377,
+    "degrees": 15.0,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET"
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 2598.0879999523872,
+    "degrees": -15.0,
+    "success": true,
+    "reason": "ROUTE_FINISHED"
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 2607.065999952175,
+    "goal": 1338,
+    "anchor": 3,
+    "length_m": 0.023633396726396097,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 3,
+    "area": 0.7334173092782038
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 2641.6339999513575,
+    "goal": 1172,
+    "anchor": 0,
+    "length_m": 0.10826545768443287,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 99,
+    "area": 0.7470738023571336
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 2652.5499999510994,
+    "goal": 1663,
+    "anchor": 1,
+    "length_m": 0.021619835506243492,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 58,
+    "area": 0.7570750234273113
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 2671.7859999506445,
+    "goal": 5987,
+    "anchor": 3,
+    "length_m": 0.03467743865699551,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 36,
+    "area": 0.7642716348268084
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 2679.8719999504533,
+    "goal": 4813,
+    "anchor": 3,
+    "length_m": 0.03057182979342539,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 29,
+    "area": 0.7687363145449975
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 2689.2979999502304,
+    "goal": 4972,
+    "anchor": 3,
+    "length_m": 0.03189804167774469,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 27,
+    "area": 0.7735581707009919
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 2696.4759999500607,
+    "goal": 5130,
+    "anchor": 3,
+    "length_m": 0.027260382645908868,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 30,
+    "area": 0.779798016758713
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 2704.1799999498785,
+    "goal": 6020,
+    "anchor": 3,
+    "length_m": 0.02919966991138247,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 33,
+    "area": 0.7866808688897818
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 2727.585999949325,
+    "goal": 4912,
+    "anchor": 0,
+    "length_m": 0.028781486275242647,
+    "success": false,
+    "reason": "COOPERATIVE_RECONTACT_REPLAN",
+    "new_vertices": 25,
+    "area": 0.7919235650942497
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 2735.2639999491435,
+    "degrees": 15.0,
+    "success": false,
+    "reason": "COOPERATIVE_RECONTACT_REPLAN"
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 2742.0379999489833,
+    "degrees": -15.0,
+    "success": false,
+    "reason": "COOPERATIVE_RECONTACT_REPLAN"
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 2748.0399999488413,
+    "degrees": -30.0,
+    "success": false,
+    "reason": "COOPERATIVE_RECONTACT_REPLAN"
+  },
+  {
+    "kind": "NECESSARY_COOPERATIVE_REORIENTATION",
+    "time_s": 2748.0399999488413,
+    "goal": 4912,
+    "duration_s": 1.5316353422954656,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 2748.777999948824,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.7379999999825486,
+    "force_pause_s": 0.0,
+    "planned_s": 0.7367070093715757
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 2749.573999948805,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 0.7959999999811771,
+    "force_pause_s": 0.0,
+    "planned_s": 0.7949283329238899
+  },
+  {
+    "kind": "COOPERATIVE_REAPPROACH",
+    "time_s": 2752.277999948741,
+    "goal": 4912,
+    "success": true
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 2765.221999948435,
+    "goal": 6353,
+    "anchor": 3,
+    "length_m": 0.02449264246095645,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 47,
+    "area": 0.805630377199759
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 2778.751999948115,
+    "goal": 5801,
+    "anchor": 0,
+    "length_m": 0.02389445376186988,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 72,
+    "area": 0.8131003641850097
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 2800.283999947606,
+    "goal": 5354,
+    "anchor": 1,
+    "length_m": 0.03234048911741743,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 105,
+    "area": 0.8249114582765679
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 2831.315999946872,
+    "goal": 5464,
+    "anchor": 3,
+    "length_m": 0.03904640563824572,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 53,
+    "area": 0.8293900069674531
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 2845.0439999465475,
+    "degrees": 15.0,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET"
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 2858.771999946223,
+    "degrees": -15.0,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET"
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 2881.225999945692,
+    "degrees": 30.0,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET"
+  },
+  {
+    "kind": "NECESSARY_COOPERATIVE_REORIENTATION",
+    "time_s": 2881.225999945692,
+    "goal": 5464,
+    "duration_s": 1.2961260766799891,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 2881.5759999456836,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.3499999999917236,
+    "force_pause_s": 0.0,
+    "planned_s": 0.349108463317988
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 2882.523999945661,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 0.9479999999775828,
+    "force_pause_s": 0.0,
+    "planned_s": 0.9470176133620012
+  },
+  {
+    "kind": "COOPERATIVE_REAPPROACH",
+    "time_s": 2885.699999945586,
+    "goal": 5464,
+    "success": true
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 2898.4099999452856,
+    "goal": 5951,
+    "anchor": 1,
+    "length_m": 0.011562935333389012,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 0,
+    "area": 0.8336713301420633
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 2912.137999944961,
+    "degrees": -15.0,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET"
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 2934.59199994443,
+    "degrees": -30.0,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET"
+  },
+  {
+    "kind": "NECESSARY_COOPERATIVE_REORIENTATION",
+    "time_s": 2934.59199994443,
+    "goal": 6325,
+    "duration_s": 4.606329611512203,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 2935.8479999444003,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 1.2559999999702995,
+    "force_pause_s": 0.6940000000000005,
+    "planned_s": 0.5606258259139438
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 2945.551999944171,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 9.70399999977053,
+    "force_pause_s": 5.657999999999599,
+    "planned_s": 4.045703785598259
+  },
+  {
+    "kind": "COOPERATIVE_REAPPROACH",
+    "time_s": 2950.0039999440655,
+    "goal": 6325,
+    "success": true
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 2957.941999943878,
+    "goal": 6184,
+    "anchor": 1,
+    "length_m": 0.006611352023528997,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 84,
+    "area": 0.8520603999359556
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 2963.943999943736,
+    "goal": 6429,
+    "anchor": 3,
+    "length_m": 0.00637237079320227,
+    "success": false,
+    "reason": "COOPERATIVE_RECONTACT_REPLAN",
+    "new_vertices": 0,
+    "area": 0.8520603999359556
+  },
+  {
+    "kind": "NECESSARY_COOPERATIVE_REORIENTATION",
+    "time_s": 2963.943999943736,
+    "goal": 5182,
+    "duration_s": 4.192498153302015,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 2964.3759999437257,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.43199999998978456,
+    "force_pause_s": 0.0,
+    "planned_s": 0.431039379081686
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 2968.1379999436367,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 3.7619999999110405,
+    "force_pause_s": 0.0,
+    "planned_s": 3.761458774220329
+  },
+  {
+    "kind": "COOPERATIVE_REAPPROACH",
+    "time_s": 2973.529999943509,
+    "goal": 5182,
+    "success": true
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 2984.5179999432494,
+    "goal": 5633,
+    "anchor": 0,
+    "length_m": 0.008980282945381982,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 8,
+    "area": 0.8558423942654102
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 2989.3839999431343,
+    "degrees": 15.0,
+    "success": true,
+    "reason": "ROUTE_FINISHED"
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 3008.4799999426828,
+    "goal": 5902,
+    "anchor": 3,
+    "length_m": 0.02114195001214337,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 0,
+    "area": 0.8558423942654102
+  },
+  {
+    "kind": "NECESSARY_COOPERATIVE_REORIENTATION",
+    "time_s": 3008.4799999426828,
+    "goal": 5440,
+    "duration_s": 2.7864870935690105,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 3008.815999942675,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.33599999999205465,
+    "force_pause_s": 0.0,
+    "planned_s": 0.3358236618760262
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 3011.267999942617,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 2.451999999942018,
+    "force_pause_s": 0.0,
+    "planned_s": 2.450663431692984
+  },
+  {
+    "kind": "COOPERATIVE_REAPPROACH",
+    "time_s": 3013.509999942564,
+    "goal": 5440,
+    "success": true
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 3028.4819999422098,
+    "goal": 4510,
+    "anchor": 2,
+    "length_m": 0.058752593036300094,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 26,
+    "area": 0.8646195485168732
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 3093.9079999406626,
+    "goal": 5838,
+    "anchor": 3,
+    "length_m": 0.09063797046220243,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 5,
+    "area": 0.8653692191812403
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 3097.231999940584,
+    "degrees": 15.0,
+    "success": true,
+    "reason": "ROUTE_FINISHED"
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 3143.3499999394935,
+    "goal": 5747,
+    "anchor": 3,
+    "length_m": 0.06167441523806272,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 6,
+    "area": 0.8662605138505306
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 3150.5499999393232,
+    "degrees": -15.0,
+    "success": true,
+    "reason": "ROUTE_FINISHED"
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 3170.769999938845,
+    "goal": 1598,
+    "anchor": 3,
+    "length_m": 0.07905360368369012,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 69,
+    "area": 0.8749654571034957
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 3183.7839999385374,
+    "goal": 1172,
+    "anchor": 3,
+    "length_m": 0.04166606852408482,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 19,
+    "area": 0.8780308031429375
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 3201.387999938121,
+    "goal": 5747,
+    "anchor": 3,
+    "length_m": 0.05032851526571605,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 5,
+    "area": 0.8790914046876485
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 3205.67199993802,
+    "goal": 4632,
+    "anchor": 2,
+    "length_m": 0.012765588077618744,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 2,
+    "area": 0.8796298636763188
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 3292.567999935965,
+    "goal": 4662,
+    "anchor": 1,
+    "length_m": 0.12284378770201529,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 24,
+    "area": 0.8838557548549126
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 3297.605999935846,
+    "degrees": 15.0,
+    "success": true,
+    "reason": "ROUTE_FINISHED"
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 3315.999999935411,
+    "goal": 6471,
+    "anchor": 1,
+    "length_m": 0.05041566427311252,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 61,
+    "area": 0.8917341664615395
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 3344.195999934744,
+    "goal": 4632,
+    "anchor": 1,
+    "length_m": 0.03479244234582115,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 28,
+    "area": 0.895609453838033
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 3347.5139999346657,
+    "degrees": 15.0,
+    "success": true,
+    "reason": "ROUTE_FINISHED"
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 3359.715999934377,
+    "goal": 6542,
+    "anchor": 2,
+    "length_m": 0.03778201130939605,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 12,
+    "area": 0.897120412414795
+  },
+  {
+    "kind": "NECESSARY_COOPERATIVE_REORIENTATION",
+    "time_s": 3359.715999934377,
+    "goal": 5324,
+    "duration_s": 8.303475503848098,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 3360.899999934349,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 1.1839999999720021,
+    "force_pause_s": 0.0,
+    "planned_s": 1.1827982625378675
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 3368.0219999341807,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 7.121999999831587,
+    "force_pause_s": 0.0,
+    "planned_s": 7.12067724131023
+  },
+  {
+    "kind": "COOPERATIVE_REAPPROACH",
+    "time_s": 3372.6939999340702,
+    "goal": 5324,
+    "success": true
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 3388.305999933701,
+    "goal": 5806,
+    "anchor": 2,
+    "length_m": 0.016964174310603868,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 53,
+    "area": 0.9086806753131139
+  },
+  {
+    "kind": "NECESSARY_COOPERATIVE_REORIENTATION",
+    "time_s": 3388.305999933701,
+    "goal": 6172,
+    "duration_s": 4.245560278151698,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 3388.6699999336925,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.36399999999139254,
+    "force_pause_s": 0.0,
+    "planned_s": 0.3624328746837948
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 3392.5539999336006,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 3.8839999999081556,
+    "force_pause_s": 0.0,
+    "planned_s": 3.883127403467904
+  },
+  {
+    "kind": "COOPERATIVE_REAPPROACH",
+    "time_s": 3395.9359999335206,
+    "goal": 6172,
+    "success": true
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 3405.733999933289,
+    "goal": 6318,
+    "anchor": 1,
+    "length_m": 0.008275221806841851,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 71,
+    "area": 0.921176951819652
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 3412.117999933138,
+    "goal": 6267,
+    "anchor": 2,
+    "length_m": 0.012612689958309673,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 21,
+    "area": 0.9230272698458498
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 3418.2619999329927,
+    "goal": 6373,
+    "anchor": 2,
+    "length_m": 0.009817056678282754,
+    "success": false,
+    "reason": "COOPERATIVE_RECONTACT_REPLAN",
+    "new_vertices": 0,
+    "area": 0.9230272698458498
+  },
+  {
+    "kind": "NECESSARY_COOPERATIVE_REORIENTATION",
+    "time_s": 3418.2619999329927,
+    "goal": 6373,
+    "duration_s": 13.63326707500649,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 3418.6199999329842,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.3579999999915344,
+    "force_pause_s": 0.0,
+    "planned_s": 0.35646936038546095
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 3450.9179999322205,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 32.297999999236254,
+    "force_pause_s": 19.020000000000337,
+    "planned_s": 13.27679771462103
+  },
+  {
+    "kind": "COOPERATIVE_REAPPROACH",
+    "time_s": 3457.373999932068,
+    "goal": 6373,
+    "success": true
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 3467.9219999318184,
+    "goal": 6385,
+    "anchor": 3,
+    "length_m": 0.008321628197474857,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 0,
+    "area": 0.9272914345310797
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 3477.911999931582,
+    "degrees": 15.0,
+    "success": true,
+    "reason": "ROUTE_FINISHED"
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 3492.7719999312308,
+    "goal": 5475,
+    "anchor": 1,
+    "length_m": 0.01478899128025443,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 55,
+    "area": 0.9314230388909407
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 3506.499999930906,
+    "degrees": 15.0,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET"
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 3520.2279999305815,
+    "degrees": -15.0,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET"
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 3542.6819999300506,
+    "degrees": 30.0,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET"
+  },
+  {
+    "kind": "NO_COOPERATIVE_TRANSFER",
+    "time_s": 3542.6819999300506,
+    "remaining": 781
+  },
+  {
+    "kind": "NO_COOPERATIVE_TRANSFER",
+    "time_s": 3543.1839999300387,
+    "remaining": 653
+  },
+  {
+    "kind": "NECESSARY_COOPERATIVE_REORIENTATION",
+    "time_s": 3543.685999930027,
+    "goal": 6429,
+    "duration_s": 6.635826452838148,
+    "clearance_m": 0.015,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 3543.9859999300197,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.29999999999290594,
+    "force_pause_s": 0.0,
+    "planned_s": 0.3
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 3553.2619999298004,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 9.275999999780652,
+    "force_pause_s": 2.939999999999898,
+    "planned_s": 6.335826452838148
+  },
+  {
+    "kind": "COOPERATIVE_REAPPROACH",
+    "time_s": 3566.263999929493,
+    "goal": 6429,
+    "success": false
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 3607.8019999285107,
+    "goal": 6240,
+    "anchor": 0,
+    "length_m": 0.05480459520352865,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 45,
+    "area": 0.9387019042006884
+  },
+  {
+    "kind": "NECESSARY_COOPERATIVE_REORIENTATION",
+    "time_s": 3607.8019999285107,
+    "goal": 6619,
+    "duration_s": 2.5312262757871564,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 3608.4039999284964,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.6019999999857646,
+    "force_pause_s": 0.0,
+    "planned_s": 0.6008925110016928
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 3610.3359999284507,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 1.9319999999543143,
+    "force_pause_s": 0.0,
+    "planned_s": 1.9303337647854635
+  },
+  {
+    "kind": "COOPERATIVE_REAPPROACH",
+    "time_s": 3613.1759999283836,
+    "goal": 6619,
+    "success": true
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 3630.119999927983,
+    "goal": 4824,
+    "anchor": 0,
+    "length_m": 0.038592844579380454,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 0,
+    "area": 0.9387019042006884
+  },
+  {
+    "kind": "NECESSARY_COOPERATIVE_REORIENTATION",
+    "time_s": 3630.119999927983,
+    "goal": 4883,
+    "duration_s": 26.959928454941597,
+    "clearance_m": 0.015,
+    "expected_contacts": [
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 3631.2419999279564,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 1.1219999999734682,
+    "force_pause_s": 0.0,
+    "planned_s": 1.1215846025616116
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 3657.7919999273286,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 26.549999999372176,
+    "force_pause_s": 0.7100000000000005,
+    "planned_s": 25.838343852379985
+  },
+  {
+    "kind": "COOPERATIVE_REAPPROACH",
+    "time_s": 3670.793999927021,
+    "goal": 4883,
+    "success": false
+  },
+  {
+    "kind": "NECESSARY_COOPERATIVE_REORIENTATION",
+    "time_s": 3670.793999927021,
+    "goal": 5052,
+    "duration_s": 5.162547402688744,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 3671.2919999270093,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.49799999998822386,
+    "force_pause_s": 0.0,
+    "planned_s": 0.49745797904295214
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 3676.093999926896,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 4.801999999886448,
+    "force_pause_s": 0.1360000000000001,
+    "planned_s": 4.665089423645791
+  },
+  {
+    "kind": "COOPERATIVE_REAPPROACH",
+    "time_s": 3679.601999926813,
+    "goal": 5052,
+    "success": true
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 3696.3719999264163,
+    "goal": 5801,
+    "anchor": 2,
+    "length_m": 0.017654528066415487,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 6,
+    "area": 0.9489248453195177
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 3702.3739999262743,
+    "degrees": 15.0,
+    "success": false,
+    "reason": "COOPERATIVE_RECONTACT_REPLAN"
+  },
+  {
+    "kind": "NECESSARY_COOPERATIVE_REORIENTATION",
+    "time_s": 3702.3739999262743,
+    "goal": 6429,
+    "duration_s": 5.630328057681618,
+    "clearance_m": 0.015,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 3703.6799999262435,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 1.3059999999691172,
+    "force_pause_s": 0.0,
+    "planned_s": 1.3055179596323812
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 3708.005999926141,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 4.325999999897704,
+    "force_pause_s": 0.0,
+    "planned_s": 4.3248100980492366
+  },
+  {
+    "kind": "COOPERATIVE_REAPPROACH",
+    "time_s": 3718.495999925893,
+    "goal": 6429,
+    "success": true
+  },
+  {
+    "kind": "NECESSARY_COOPERATIVE_REORIENTATION",
+    "time_s": 3718.495999925893,
+    "goal": 1881,
+    "duration_s": 65.31690886435996,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 3719.0739999258794,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.5779999999863321,
+    "force_pause_s": 0.0,
+    "planned_s": 0.5772471376117909
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 3789.1819999242216,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 70.10799999834217,
+    "force_pause_s": 5.367999999999631,
+    "planned_s": 64.73966172674817
+  },
+  {
+    "kind": "COOPERATIVE_REAPPROACH",
+    "time_s": 3793.1679999241273,
+    "goal": 1881,
+    "success": true
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 3808.7599999237586,
+    "goal": 2397,
+    "anchor": 3,
+    "length_m": 0.026936825697450956,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 17,
+    "area": 0.9584842086701577
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 3831.921999923211,
+    "goal": 2259,
+    "anchor": 0,
+    "length_m": 0.07974656220200187,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 13,
+    "area": 0.9601289894808056
+  },
+  {
+    "kind": "NECESSARY_COOPERATIVE_REORIENTATION",
+    "time_s": 3831.921999923211,
+    "goal": 2778,
+    "duration_s": 10.35312081795966,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 3833.1739999231813,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 1.2519999999703941,
+    "force_pause_s": 0.0,
+    "planned_s": 1.250169373553256
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 3842.277999922966,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 9.103999999784719,
+    "force_pause_s": 0.0,
+    "planned_s": 9.102951444406404
+  },
+  {
+    "kind": "COOPERATIVE_REAPPROACH",
+    "time_s": 3845.1879999228972,
+    "goal": 2778,
+    "success": true
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 3851.8079999227407,
+    "goal": 3457,
+    "anchor": 3,
+    "length_m": 0.019996098659785886,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 25,
+    "area": 0.9671166308607408
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 3867.691999922365,
+    "goal": 3574,
+    "anchor": 3,
+    "length_m": 0.02645626792256868,
+    "success": false,
+    "reason": "COOPERATIVE_RECONTACT_REPLAN",
+    "new_vertices": 4,
+    "area": 0.9678728809603979
+  },
+  {
+    "kind": "NECESSARY_COOPERATIVE_REORIENTATION",
+    "time_s": 3867.691999922365,
+    "goal": 3307,
+    "duration_s": 2.4161177267957115,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 3868.0139999223575,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.3219999999923857,
+    "force_pause_s": 0.0,
+    "planned_s": 0.32052820052188696
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 3870.109999922308,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 2.095999999950436,
+    "force_pause_s": 0.0,
+    "planned_s": 2.0955895262738244
+  },
+  {
+    "kind": "COOPERATIVE_REAPPROACH",
+    "time_s": 3882.111999922024,
+    "goal": 3307,
+    "success": false
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 3893.995999921743,
+    "goal": 3322,
+    "anchor": 3,
+    "length_m": 0.020665077933660323,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 6,
+    "area": 0.9708099802361828
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 3910.453999921354,
+    "goal": 2625,
+    "anchor": 3,
+    "length_m": 0.026318988721415543,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 0,
+    "area": 0.9708099802361828
+  },
+  {
+    "kind": "NECESSARY_COOPERATIVE_REORIENTATION",
+    "time_s": 3910.453999921354,
+    "goal": 3247,
+    "duration_s": 15.133177120048753,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 3910.953999921342,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.49999999998817657,
+    "force_pause_s": 0.0,
+    "planned_s": 0.49889047808109194
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 3925.589999920996,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 14.635999999653905,
+    "force_pause_s": 0.0,
+    "planned_s": 14.63428664196766
+  },
+  {
+    "kind": "COOPERATIVE_REAPPROACH",
+    "time_s": 3929.9699999208924,
+    "goal": 3247,
+    "success": true
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 3937.3139999207187,
+    "goal": 3122,
+    "anchor": 2,
+    "length_m": 0.029089690753032214,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 24,
+    "area": 0.9743028839547697
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 3964.75599992007,
+    "goal": 2625,
+    "anchor": 3,
+    "length_m": 0.033662758083428466,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 1,
+    "area": 0.9743757433913395
+  },
+  {
+    "kind": "COOPERATIVE_CONTACT_PIVOT",
+    "time_s": 3968.043999919992,
+    "degrees": -15.0,
+    "success": true,
+    "reason": "ROUTE_FINISHED"
+  },
+  {
+    "kind": "COOPERATIVE_SURFACE_ROUTE",
+    "time_s": 3972.2539999198925,
+    "goal": 2625,
+    "anchor": 0,
+    "length_m": 0.011969881218145195,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 2,
+    "area": 0.9744706549212286
+  },
+  {
+    "kind": "NECESSARY_COOPERATIVE_REORIENTATION",
+    "time_s": 3972.2539999198925,
+    "goal": 5950,
+    "duration_s": 114.85030362648757,
+    "clearance_m": 0.035,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 3974.685999919835,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 2.431999999942491,
+    "force_pause_s": 0.0,
+    "planned_s": 2.4307157778320723
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4087.1059999171766,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 112.41999999734162,
+    "force_pause_s": 0.0,
+    "planned_s": 112.4195878486555
+  },
+  {
+    "kind": "COOPERATIVE_REAPPROACH",
+    "time_s": 4102.419999918274,
+    "goal": 5950,
+    "success": true
+  },
+  {
+    "kind": "NO_COOPERATIVE_TRANSFER",
+    "time_s": 4102.419999918274,
+    "remaining": 205
+  },
+  {
+    "kind": "EXACT_NATIVE_CONTINUATION",
+    "time_s": 4102.919999918376,
+    "parent_case": "D:\\\u6587\u6863\\Hand_Compliance_Control\\i04_experiment_repo\\Module\\generated\\whole_hand_surface_run08_20261018",
+    "join_time_s": 4102.919999918376,
+    "parent_manifest_sha256": "637267018d90e88a193551d66d3758553ee5e4be2eb100bd66eb3871953ae7c8",
+    "parent_summary_sha256": "aa660c127bbc6a786999b94d4635b34984470d62ea2fb10f0571927ea6664b75",
+    "parent_audit_sha256": "9f63510d2d78c7dad55db2eccb341374dfdd7e8e4c8857ad2829cb6e824ffa0a",
+    "prefix_native_states": 2051460,
+    "prefix_chunks": 206,
+    "physical_state_reset": false,
+    "independent_trajectories_merged": false,
+    "previous_protocol": "i04-whole-hand-surface.development.v6",
+    "parent_resume": {
+      "parent_case": "D:\\\u6587\u6863\\Hand_Compliance_Control\\i04_experiment_repo\\Module\\generated\\whole_hand_surface_run04_20261018",
+      "join_time_s": 2259.999999960382,
+      "parent_manifest_sha256": "b40d88f12dc2bf0215c86faaaa1312c2f6ffdf8bba76aab1d3746c8ed058e504",
+      "parent_summary_sha256": "68c0389872168903f2dd44432b1beb2e48568d4b743a32a66ea77e5b415f43dd",
+      "parent_audit_sha256": "c8a4a85ae8d7d7386a9473b049d7cd728e99c8e6dfc0eb439c6040fb14e76b5e",
+      "prefix_native_states": 1130000,
+      "prefix_chunks": 113,
+      "physical_state_reset": false,
+      "independent_trajectories_merged": false,
+      "previous_protocol": "i04-whole-hand-surface.development.v4",
+      "controller_state": "Reinitialized; physical state and command unchanged"
+    },
+    "controller_state": "Reinitialized; physical state and previous command unchanged"
+  },
+  {
+    "kind": "COMPLETION_SEARCH_RETRY",
+    "time_s": 4104.919999918783,
+    "cycle": 1
+  },
+  {
+    "kind": "COMPLETION_COOPERATIVE_REORIENTATION",
+    "time_s": 4104.919999918783,
+    "goal": 6334,
+    "duration_s": 18.608552505751128,
+    "clearance_m": 0.015,
+    "expected_contacts": [
+      true,
+      false,
+      true,
+      false
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4106.363999919077,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 1.4440000002941815,
+    "force_pause_s": 0.7320000000000005,
+    "planned_s": 0.7116539475604786
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4125.96399992307,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 19.600000003993046,
+    "force_pause_s": 1.7020000000000013,
+    "planned_s": 17.89689855819065
+  },
+  {
+    "kind": "COMPLETION_REAPPROACH",
+    "time_s": 4135.617999925037,
+    "goal": 6334,
+    "success": true,
+    "new_vertices": 8
+  },
+  {
+    "kind": "COMPLETION_SURFACE_ROUTE",
+    "time_s": 4140.451999926022,
+    "goal": 5620,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 1,
+    "length_m": 0.009985244902245945
+  },
+  {
+    "kind": "COMPLETION_SURFACE_ROUTE",
+    "time_s": 4166.595999931348,
+    "goal": 5811,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 0,
+    "length_m": 0.03171362310540655
+  },
+  {
+    "kind": "COMPLETION_COOPERATIVE_REORIENTATION",
+    "time_s": 4166.595999931348,
+    "goal": 6082,
+    "duration_s": 19.480021039710426,
+    "clearance_m": 0.015,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4167.571999931547,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.9760000001988374,
+    "force_pause_s": 0.002,
+    "planned_s": 0.9729243775179163
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4188.78999993587,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 21.218000004322676,
+    "force_pause_s": 2.709999999999923,
+    "planned_s": 18.50709666219251
+  },
+  {
+    "kind": "COMPLETION_REAPPROACH",
+    "time_s": 4203.789999938926,
+    "goal": 6082,
+    "success": false,
+    "new_vertices": 1
+  },
+  {
+    "kind": "COMPLETION_SURFACE_ROUTE",
+    "time_s": 4209.791999940148,
+    "goal": 5855,
+    "success": false,
+    "reason": "COOPERATIVE_RECONTACT_REPLAN",
+    "new_vertices": 0,
+    "length_m": 0.00198560820757862
+  },
+  {
+    "kind": "COMPLETION_COOPERATIVE_REORIENTATION",
+    "time_s": 4209.791999940148,
+    "goal": 6082,
+    "duration_s": 0.8052549540174969,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4210.297999940251,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.5060000001030858,
+    "force_pause_s": 0.0,
+    "planned_s": 0.505254954017497
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4210.597999940313,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 0.30000000006111804,
+    "force_pause_s": 0.0,
+    "planned_s": 0.3
+  },
+  {
+    "kind": "COMPLETION_REAPPROACH",
+    "time_s": 4224.597999943165,
+    "goal": 6082,
+    "success": false,
+    "new_vertices": 0
+  },
+  {
+    "kind": "COMPLETION_SURFACE_ROUTE",
+    "time_s": 4230.5999999443875,
+    "goal": 6101,
+    "success": false,
+    "reason": "COOPERATIVE_RECONTACT_REPLAN",
+    "new_vertices": 0,
+    "length_m": 0.003429930831970202
+  },
+  {
+    "kind": "COMPLETION_COOPERATIVE_REORIENTATION",
+    "time_s": 4230.5999999443875,
+    "goal": 6101,
+    "duration_s": 1.198266842048989,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4232.049999944683,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 1.4500000002954039,
+    "force_pause_s": 0.9000000000000007,
+    "planned_s": 0.5485856433976574
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4232.699999944815,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 0.6500000001324224,
+    "force_pause_s": 0.0,
+    "planned_s": 0.6496811986513318
+  },
+  {
+    "kind": "COMPLETION_REAPPROACH",
+    "time_s": 4240.985999946503,
+    "goal": 6101,
+    "success": true,
+    "new_vertices": 16
+  },
+  {
+    "kind": "COMPLETION_SURFACE_ROUTE",
+    "time_s": 4250.519999948446,
+    "goal": 5862,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 18,
+    "length_m": 0.011221340704019742
+  },
+  {
+    "kind": "COMPLETION_SURFACE_ROUTE",
+    "time_s": 4253.87799994913,
+    "goal": 6356,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 2,
+    "length_m": 0.009778384503975054
+  },
+  {
+    "kind": "COMPLETION_SURFACE_ROUTE",
+    "time_s": 4263.047999950998,
+    "goal": 5792,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 3,
+    "length_m": 0.01390278055355175
+  },
+  {
+    "kind": "COMPLETION_SURFACE_ROUTE",
+    "time_s": 4269.049999952221,
+    "goal": 6493,
+    "success": false,
+    "reason": "COOPERATIVE_RECONTACT_REPLAN",
+    "new_vertices": 0,
+    "length_m": 0.00554471847167191
+  },
+  {
+    "kind": "COMPLETION_COOPERATIVE_REORIENTATION",
+    "time_s": 4269.049999952221,
+    "goal": 6500,
+    "duration_s": 3.6163121743030855,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4269.959999952406,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.9100000001853914,
+    "force_pause_s": 0.0,
+    "planned_s": 0.9086113940550641
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4272.667999952958,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 2.708000000551692,
+    "force_pause_s": 0.0,
+    "planned_s": 2.7077007802480213
+  },
+  {
+    "kind": "COMPLETION_REAPPROACH",
+    "time_s": 4280.375999954528,
+    "goal": 6500,
+    "success": true,
+    "new_vertices": 5
+  },
+  {
+    "kind": "COMPLETION_SURFACE_ROUTE",
+    "time_s": 4315.325999961648,
+    "goal": 6069,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 1,
+    "length_m": 0.04492413156119133
+  },
+  {
+    "kind": "COMPLETION_SURFACE_ROUTE",
+    "time_s": 4328.373999964307,
+    "goal": 5793,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 1,
+    "length_m": 0.012069579073535106
+  },
+  {
+    "kind": "COMPLETION_COOPERATIVE_REORIENTATION",
+    "time_s": 4328.373999964307,
+    "goal": 6114,
+    "duration_s": 9.226221984146896,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4329.093999964453,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.7200000001466833,
+    "force_pause_s": 0.0,
+    "planned_s": 0.7199348453022154
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4337.603999966187,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 8.510000001733715,
+    "force_pause_s": 0.002,
+    "planned_s": 8.50628713884468
+  },
+  {
+    "kind": "COMPLETION_REAPPROACH",
+    "time_s": 4343.533999967395,
+    "goal": 6114,
+    "success": true,
+    "new_vertices": 4
+  },
+  {
+    "kind": "COMPLETION_SURFACE_ROUTE",
+    "time_s": 4351.60599996904,
+    "goal": 5657,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 9,
+    "length_m": 0.011610714117169355
+  },
+  {
+    "kind": "COMPLETION_COOPERATIVE_REORIENTATION",
+    "time_s": 4351.60599996904,
+    "goal": 6418,
+    "duration_s": 1.2706123064502235,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4352.163999969153,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.5580000001136796,
+    "force_pause_s": 0.0,
+    "planned_s": 0.5563560950594822
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4352.879999969299,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 0.7160000001458684,
+    "force_pause_s": 0.0,
+    "planned_s": 0.7142562113907412
+  },
+  {
+    "kind": "COMPLETION_REAPPROACH",
+    "time_s": 4358.471999970438,
+    "goal": 6418,
+    "success": true,
+    "new_vertices": 1
+  },
+  {
+    "kind": "COMPLETION_COOPERATIVE_REORIENTATION",
+    "time_s": 4358.471999970438,
+    "goal": 6079,
+    "duration_s": 4.143960447162469,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4359.203999970588,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.732000000149128,
+    "force_pause_s": 0.0,
+    "planned_s": 0.7315799819945039
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4362.617999971283,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 3.4140000006955233,
+    "force_pause_s": 0.0,
+    "planned_s": 3.412380465167965
+  },
+  {
+    "kind": "COMPLETION_REAPPROACH",
+    "time_s": 4368.031999972386,
+    "goal": 6079,
+    "success": true,
+    "new_vertices": 6
+  },
+  {
+    "kind": "COMPLETION_COOPERATIVE_REORIENTATION",
+    "time_s": 4368.031999972386,
+    "goal": 5529,
+    "duration_s": 4.217892823055211,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4369.295999972644,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 1.2640000002575107,
+    "force_pause_s": 0.0,
+    "planned_s": 1.2630189415815671
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4372.355999973267,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 3.060000000623404,
+    "force_pause_s": 0.10400000000000008,
+    "planned_s": 2.954873881473643
+  },
+  {
+    "kind": "COMPLETION_REAPPROACH",
+    "time_s": 4379.323999974687,
+    "goal": 5529,
+    "success": true,
+    "new_vertices": 16
+  },
+  {
+    "kind": "COMPLETION_SURFACE_ROUTE",
+    "time_s": 4382.421999975318,
+    "goal": 5595,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 0,
+    "length_m": 0.0038833036932568628
+  },
+  {
+    "kind": "COMPLETION_COOPERATIVE_REORIENTATION",
+    "time_s": 4382.421999975318,
+    "goal": 5529,
+    "duration_s": 0.8140151796430547,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4382.863999975408,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.44200000009004725,
+    "force_pause_s": 0.0,
+    "planned_s": 0.440710696521321
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4383.237999975484,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 0.37400000007619383,
+    "force_pause_s": 0.0,
+    "planned_s": 0.3733044831217337
+  },
+  {
+    "kind": "COMPLETION_REAPPROACH",
+    "time_s": 4388.921999976642,
+    "goal": 5529,
+    "success": true,
+    "new_vertices": 0
+  },
+  {
+    "kind": "COMPLETION_SURFACE_ROUTE",
+    "time_s": 4397.025999978293,
+    "goal": 5623,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 3,
+    "length_m": 0.01380388990789267
+  },
+  {
+    "kind": "COMPLETION_SURFACE_ROUTE",
+    "time_s": 4399.875999978874,
+    "goal": 5504,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 19,
+    "length_m": 0.002676872550331847
+  },
+  {
+    "kind": "COMPLETION_COOPERATIVE_REORIENTATION",
+    "time_s": 4399.875999978874,
+    "goal": 5490,
+    "duration_s": 2.539814656733977,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4400.551999979011,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.6760000001377193,
+    "force_pause_s": 0.0,
+    "planned_s": 0.6754681764127086
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4402.417999979391,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 1.8660000003801542,
+    "force_pause_s": 0.0,
+    "planned_s": 1.8643464803212684
+  },
+  {
+    "kind": "COMPLETION_REAPPROACH",
+    "time_s": 4416.417999982244,
+    "goal": 5490,
+    "success": false,
+    "new_vertices": 0
+  },
+  {
+    "kind": "COMPLETION_SURFACE_ROUTE",
+    "time_s": 4422.419999983466,
+    "goal": 5586,
+    "success": false,
+    "reason": "COOPERATIVE_RECONTACT_REPLAN",
+    "new_vertices": 0,
+    "length_m": 0.0015900374498813066
+  },
+  {
+    "kind": "COMPLETION_COOPERATIVE_REORIENTATION",
+    "time_s": 4422.419999983466,
+    "goal": 5586,
+    "duration_s": 10.270298590534594,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4423.727999983733,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 1.3080000002664747,
+    "force_pause_s": 0.0,
+    "planned_s": 1.3077542390811707
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4433.471999985718,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 9.744000001985114,
+    "force_pause_s": 0.7800000000000006,
+    "planned_s": 8.962544351453424
+  },
+  {
+    "kind": "COMPLETION_REAPPROACH",
+    "time_s": 4447.47199998857,
+    "goal": 5586,
+    "success": false,
+    "new_vertices": 0
+  },
+  {
+    "kind": "COMPLETION_SURFACE_ROUTE",
+    "time_s": 4453.473999989793,
+    "goal": 5108,
+    "success": false,
+    "reason": "COOPERATIVE_RECONTACT_REPLAN",
+    "new_vertices": 0,
+    "length_m": 0.005334777691347575
+  },
+  {
+    "kind": "COMPLETION_COOPERATIVE_REORIENTATION",
+    "time_s": 4453.473999989793,
+    "goal": 5108,
+    "duration_s": 1.8742362928941372,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4454.19599998994,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.7220000001470908,
+    "force_pause_s": 0.0,
+    "planned_s": 0.7207633584421905
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4455.349999990175,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 1.1540000002351007,
+    "force_pause_s": 0.0,
+    "planned_s": 1.1534729344519465
+  },
+  {
+    "kind": "COMPLETION_REAPPROACH",
+    "time_s": 4469.349999993027,
+    "goal": 5108,
+    "success": false,
+    "new_vertices": 0
+  },
+  {
+    "kind": "COMPLETION_SURFACE_ROUTE",
+    "time_s": 4475.35199999425,
+    "goal": 5885,
+    "success": false,
+    "reason": "COOPERATIVE_RECONTACT_REPLAN",
+    "new_vertices": 0,
+    "length_m": 0.003920027083413394
+  },
+  {
+    "kind": "COMPLETION_COOPERATIVE_REORIENTATION",
+    "time_s": 4475.35199999425,
+    "goal": 5015,
+    "duration_s": 25.905105318333487,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4475.901999994362,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.5500000001120497,
+    "force_pause_s": 0.0,
+    "planned_s": 0.5487621980128619
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4501.259999999528,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 25.358000005166105,
+    "force_pause_s": 0.0,
+    "planned_s": 25.356343120320624
+  },
+  {
+    "kind": "COMPLETION_REAPPROACH",
+    "time_s": 4508.268000000956,
+    "goal": 5015,
+    "success": true,
+    "new_vertices": 2
+  },
+  {
+    "kind": "COMPLETION_COOPERATIVE_REORIENTATION",
+    "time_s": 4508.268000000956,
+    "goal": 5069,
+    "duration_s": 6.25594004160247,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4508.758000001056,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.49000000009982614,
+    "force_pause_s": 0.0,
+    "planned_s": 0.48978717629068136
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4514.526000002231,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 5.768000001175096,
+    "force_pause_s": 0.0,
+    "planned_s": 5.766152865311788
+  },
+  {
+    "kind": "COMPLETION_REAPPROACH",
+    "time_s": 4528.526000005083,
+    "goal": 5069,
+    "success": false,
+    "new_vertices": 0
+  },
+  {
+    "kind": "COMPLETION_SURFACE_ROUTE",
+    "time_s": 4534.528000006306,
+    "goal": 5149,
+    "success": false,
+    "reason": "COOPERATIVE_RECONTACT_REPLAN",
+    "new_vertices": 0,
+    "length_m": 0.00593805430683695
+  },
+  {
+    "kind": "COMPLETION_COOPERATIVE_REORIENTATION",
+    "time_s": 4534.528000006306,
+    "goal": 5865,
+    "duration_s": 2.33221009289047,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4534.962000006394,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.43400000008841744,
+    "force_pause_s": 0.0,
+    "planned_s": 0.4326333731083451
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4536.862000006781,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 1.900000000387081,
+    "force_pause_s": 0.0,
+    "planned_s": 1.899576719782125
+  },
+  {
+    "kind": "COMPLETION_REAPPROACH",
+    "time_s": 4542.602000007951,
+    "goal": 5865,
+    "success": true,
+    "new_vertices": 8
+  },
+  {
+    "kind": "COMPLETION_COOPERATIVE_REORIENTATION",
+    "time_s": 4542.602000007951,
+    "goal": 6051,
+    "duration_s": 5.818108819890591,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4543.510000008136,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.908000000184984,
+    "force_pause_s": 0.0,
+    "planned_s": 0.9060259979726387
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4549.546000009365,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 6.036000001229695,
+    "force_pause_s": 1.1220000000000008,
+    "planned_s": 4.912082821917952
+  },
+  {
+    "kind": "COMPLETION_REAPPROACH",
+    "time_s": 4557.574000011001,
+    "goal": 6051,
+    "success": true,
+    "new_vertices": 4
+  },
+  {
+    "kind": "COMPLETION_SURFACE_ROUTE",
+    "time_s": 4588.682000017338,
+    "goal": 5488,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 1,
+    "length_m": 0.039159819738567046
+  },
+  {
+    "kind": "COMPLETION_COOPERATIVE_REORIENTATION",
+    "time_s": 4588.682000017338,
+    "goal": 5039,
+    "duration_s": 2.312546226821634,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4589.270000017458,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.5880000001197914,
+    "force_pause_s": 0.0,
+    "planned_s": 0.5866282174823695
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4590.99600001781,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 1.7260000003516325,
+    "force_pause_s": 0.0,
+    "planned_s": 1.7259180093392648
+  },
+  {
+    "kind": "COMPLETION_REAPPROACH",
+    "time_s": 4598.514000019341,
+    "goal": 5039,
+    "success": true,
+    "new_vertices": 2
+  },
+  {
+    "kind": "COMPLETION_COOPERATIVE_REORIENTATION",
+    "time_s": 4598.514000019341,
+    "goal": 5048,
+    "duration_s": 2.9032924287155755,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4599.408000019524,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.8940000001821318,
+    "force_pause_s": 0.0,
+    "planned_s": 0.8933938640363015
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4601.418000019933,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 2.010000000409491,
+    "force_pause_s": 0.0,
+    "planned_s": 2.009898564679274
+  },
+  {
+    "kind": "COMPLETION_REAPPROACH",
+    "time_s": 4606.8980000210495,
+    "goal": 5048,
+    "success": true,
+    "new_vertices": 1
+  },
+  {
+    "kind": "COMPLETION_SURFACE_ROUTE",
+    "time_s": 4652.030000030244,
+    "goal": 1706,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 2,
+    "length_m": 0.06416866554024207
+  },
+  {
+    "kind": "COMPLETION_COOPERATIVE_REORIENTATION",
+    "time_s": 4652.030000030244,
+    "goal": 1338,
+    "duration_s": 8.650795270998707,
+    "clearance_m": 0.015,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4653.82800003061,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 1.7980000003663008,
+    "force_pause_s": 0.0,
+    "planned_s": 1.7964669242383824
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4660.684000032007,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 6.856000001396751,
+    "force_pause_s": 0.0,
+    "planned_s": 6.854328346760324
+  },
+  {
+    "kind": "COMPLETION_REAPPROACH",
+    "time_s": 4675.684000035063,
+    "goal": 1338,
+    "success": true,
+    "new_vertices": 7
+  },
+  {
+    "kind": "COMPLETION_COOPERATIVE_REORIENTATION",
+    "time_s": 4675.684000035063,
+    "goal": 1229,
+    "duration_s": 3.310128303447615,
+    "clearance_m": 0.015,
+    "expected_contacts": [
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4676.794000035289,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 1.1100000002261368,
+    "force_pause_s": 0.0,
+    "planned_s": 1.109593773568809
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4678.996000035738,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 2.2020000004486064,
+    "force_pause_s": 0.0,
+    "planned_s": 2.2005345298788064
+  },
+  {
+    "kind": "COMPLETION_REAPPROACH",
+    "time_s": 4693.996000038794,
+    "goal": 1229,
+    "success": false,
+    "new_vertices": 2
+  },
+  {
+    "kind": "COMPLETION_COOPERATIVE_REORIENTATION",
+    "time_s": 4693.996000038794,
+    "goal": 1153,
+    "duration_s": 6.2836953192299365,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4694.56800003891,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.5720000001165317,
+    "force_pause_s": 0.0,
+    "planned_s": 0.5709941213591176
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4700.282000040074,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 5.714000001164095,
+    "force_pause_s": 0.0,
+    "planned_s": 5.712701197870819
+  },
+  {
+    "kind": "COMPLETION_REAPPROACH",
+    "time_s": 4705.642000041166,
+    "goal": 1153,
+    "success": true,
+    "new_vertices": 5
+  },
+  {
+    "kind": "COMPLETION_COOPERATIVE_REORIENTATION",
+    "time_s": 4705.642000041166,
+    "goal": 3578,
+    "duration_s": 12.809961640638292,
+    "clearance_m": 0.015,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4706.830000041408,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 1.1880000002420275,
+    "force_pause_s": 0.0,
+    "planned_s": 1.186304893109191
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4718.454000043776,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 11.62400000236812,
+    "force_pause_s": 0.0,
+    "planned_s": 11.6236567475291
+  },
+  {
+    "kind": "COMPLETION_REAPPROACH",
+    "time_s": 4725.7240000452575,
+    "goal": 3578,
+    "success": true,
+    "new_vertices": 4
+  },
+  {
+    "kind": "COMPLETION_SURFACE_ROUTE",
+    "time_s": 4733.802000046903,
+    "goal": 4015,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 2,
+    "length_m": 0.03165680572096897
+  },
+  {
+    "kind": "COMPLETION_COOPERATIVE_REORIENTATION",
+    "time_s": 4733.802000046903,
+    "goal": 3590,
+    "duration_s": 6.0462017556646,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4734.728000047092,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.926000000188651,
+    "force_pause_s": 0.0,
+    "planned_s": 0.9252739010379198
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4739.850000048135,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 5.122000001043489,
+    "force_pause_s": 0.0,
+    "planned_s": 5.1209278546266805
+  },
+  {
+    "kind": "COMPLETION_REAPPROACH",
+    "time_s": 4744.678000049119,
+    "goal": 3590,
+    "success": true,
+    "new_vertices": 2
+  },
+  {
+    "kind": "COMPLETION_SURFACE_ROUTE",
+    "time_s": 4749.506000050103,
+    "goal": 3586,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 8,
+    "length_m": 0.018351305755199845
+  },
+  {
+    "kind": "COMPLETION_COOPERATIVE_REORIENTATION",
+    "time_s": 4749.506000050103,
+    "goal": 2172,
+    "duration_s": 141.57920003816676,
+    "clearance_m": 0.015,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4750.250000050254,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.7440000001515727,
+    "force_pause_s": 0.0,
+    "planned_s": 0.7430543388171257
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4891.088000078947,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 140.83800002869248,
+    "force_pause_s": 0.0,
+    "planned_s": 140.83614569934963
+  },
+  {
+    "kind": "COMPLETION_REAPPROACH",
+    "time_s": 4899.59800008068,
+    "goal": 2172,
+    "success": true,
+    "new_vertices": 8
+  },
+  {
+    "kind": "COMPLETION_SURFACE_ROUTE",
+    "time_s": 4908.6700000825285,
+    "goal": 1736,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 1,
+    "length_m": 0.021614745737808323
+  },
+  {
+    "kind": "COMPLETION_SURFACE_ROUTE",
+    "time_s": 4950.180000090985,
+    "goal": 2272,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 0,
+    "length_m": 0.0547644813732267
+  },
+  {
+    "kind": "COMPLETION_COOPERATIVE_REORIENTATION",
+    "time_s": 4950.180000090985,
+    "goal": 2272,
+    "duration_s": 1.9901793980898947,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4950.89000009113,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.710000000144646,
+    "force_pause_s": 0.0,
+    "planned_s": 0.7098507277668887
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4952.172000091391,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 1.2820000002611778,
+    "force_pause_s": 0.0,
+    "planned_s": 1.280328670323006
+  },
+  {
+    "kind": "COMPLETION_REAPPROACH",
+    "time_s": 4957.208000092417,
+    "goal": 2272,
+    "success": true,
+    "new_vertices": 1
+  },
+  {
+    "kind": "COMPLETION_COOPERATIVE_REORIENTATION",
+    "time_s": 4957.208000092417,
+    "goal": 2226,
+    "duration_s": 12.654315989453075,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4957.756000092529,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.5480000001116423,
+    "force_pause_s": 0.0,
+    "planned_s": 0.5472818054293461
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 4969.864000094995,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 12.108000002466724,
+    "force_pause_s": 0.0,
+    "planned_s": 12.107034184023728
+  },
+  {
+    "kind": "COMPLETION_REAPPROACH",
+    "time_s": 4981.428000097351,
+    "goal": 2226,
+    "success": true,
+    "new_vertices": 2
+  },
+  {
+    "kind": "COMPLETION_SURFACE_ROUTE",
+    "time_s": 4986.174000098318,
+    "goal": 2321,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 1,
+    "length_m": 0.018979524442381903
+  },
+  {
+    "kind": "COMPLETION_SURFACE_ROUTE",
+    "time_s": 5006.020000102361,
+    "goal": 7912,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 1,
+    "length_m": 0.07892206812832221
+  },
+  {
+    "kind": "COMPLETION_SURFACE_ROUTE",
+    "time_s": 5035.086000108283,
+    "goal": 8106,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 2,
+    "length_m": 0.03858786335939207
+  },
+  {
+    "kind": "COMPLETION_COOPERATIVE_REORIENTATION",
+    "time_s": 5035.086000108283,
+    "goal": 420,
+    "duration_s": 2.2824200445743674,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 5035.484000108364,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.39800000008108327,
+    "force_pause_s": 0.0,
+    "planned_s": 0.39647453954245465
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 5037.370000108748,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 1.8860000003842288,
+    "force_pause_s": 0.0,
+    "planned_s": 1.8859455050319127
+  },
+  {
+    "kind": "COMPLETION_REAPPROACH",
+    "time_s": 5046.11800011053,
+    "goal": 420,
+    "success": true,
+    "new_vertices": 2
+  },
+  {
+    "kind": "COMPLETION_COOPERATIVE_REORIENTATION",
+    "time_s": 5046.11800011053,
+    "goal": 4217,
+    "duration_s": 2.417092824238471,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 5046.604000110629,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.48600000009901123,
+    "force_pause_s": 0.0,
+    "planned_s": 0.4856401520445923
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 5048.536000111023,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 1.9320000003936002,
+    "force_pause_s": 0.0,
+    "planned_s": 1.9314526721938787
+  },
+  {
+    "kind": "COMPLETION_REAPPROACH",
+    "time_s": 5057.940000112939,
+    "goal": 4217,
+    "success": true,
+    "new_vertices": 1
+  },
+  {
+    "kind": "COMPLETION_COOPERATIVE_REORIENTATION",
+    "time_s": 5057.940000112939,
+    "goal": 6735,
+    "duration_s": 6.228750555278717,
+    "clearance_m": 0.015,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 5060.720000113505,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 2.7800000005663605,
+    "force_pause_s": 0.0,
+    "planned_s": 2.7789373905770933
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 5064.170000114208,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 3.4500000007028575,
+    "force_pause_s": 0.0,
+    "planned_s": 3.449813164701624
+  },
+  {
+    "kind": "COMPLETION_REAPPROACH",
+    "time_s": 5079.1140001172525,
+    "goal": 6735,
+    "success": true,
+    "new_vertices": 0
+  },
+  {
+    "kind": "COMPLETION_SURFACE_ROUTE",
+    "time_s": 5087.9640001190555,
+    "goal": 6729,
+    "success": false,
+    "reason": "COOPERATIVE_RECONTACT_REPLAN",
+    "new_vertices": 0,
+    "length_m": 0.006471280916796893
+  },
+  {
+    "kind": "COMPLETION_COOPERATIVE_REORIENTATION",
+    "time_s": 5087.9640001190555,
+    "goal": 6729,
+    "duration_s": 1.4518138087828245,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 5089.002000119267,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 1.0380000002114684,
+    "force_pause_s": 0.0,
+    "planned_s": 1.0361952289133887
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 5089.418000119352,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 0.41600000008475035,
+    "force_pause_s": 0.0,
+    "planned_s": 0.41561857986943584
+  },
+  {
+    "kind": "COMPLETION_REAPPROACH",
+    "time_s": 5098.510000121204,
+    "goal": 6729,
+    "success": true,
+    "new_vertices": 5
+  },
+  {
+    "kind": "COMPLETION_COOPERATIVE_REORIENTATION",
+    "time_s": 5098.510000121204,
+    "goal": 5297,
+    "duration_s": 14.155496354398014,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 5098.928000121289,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.4180000000851578,
+    "force_pause_s": 0.0,
+    "planned_s": 0.41758510557933554
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 5116.304000124829,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 17.376000003539957,
+    "force_pause_s": 3.637999999999821,
+    "planned_s": 13.737911248818678
+  },
+  {
+    "kind": "COMPLETION_REAPPROACH",
+    "time_s": 5130.304000127681,
+    "goal": 5297,
+    "success": false,
+    "new_vertices": 2
+  },
+  {
+    "kind": "COMPLETION_COOPERATIVE_REORIENTATION",
+    "time_s": 5130.304000127681,
+    "goal": 5133,
+    "duration_s": 7.677271857954397,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 5130.9480001278125,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.6440000001312001,
+    "force_pause_s": 0.0,
+    "planned_s": 0.6429483596267204
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 5137.984000129246,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 7.036000001433422,
+    "force_pause_s": 0.0,
+    "planned_s": 7.034323498327677
+  },
+  {
+    "kind": "COMPLETION_REAPPROACH",
+    "time_s": 5144.568000130587,
+    "goal": 5133,
+    "success": true,
+    "new_vertices": 3
+  },
+  {
+    "kind": "COMPLETION_COOPERATIVE_REORIENTATION",
+    "time_s": 5144.568000130587,
+    "goal": 5460,
+    "duration_s": 6.9077511937478935,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      false,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 5145.824000130843,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 1.2560000002558809,
+    "force_pause_s": 0.0,
+    "planned_s": 1.2550783961069762
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 5151.478000131995,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 5.654000001151871,
+    "force_pause_s": 0.0,
+    "planned_s": 5.652672797640918
+  },
+  {
+    "kind": "COMPLETION_REAPPROACH",
+    "time_s": 5158.27800013338,
+    "goal": 5460,
+    "success": true,
+    "new_vertices": 4
+  },
+  {
+    "kind": "COMPLETION_COOPERATIVE_REORIENTATION",
+    "time_s": 5158.27800013338,
+    "goal": 1128,
+    "duration_s": 40.514530620004216,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 5158.808000133488,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.5300000001079752,
+    "force_pause_s": 0.0,
+    "planned_s": 0.5298480289650384
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 5198.794000141635,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 39.98600000814622,
+    "force_pause_s": 0.0,
+    "planned_s": 39.984682591039174
+  },
+  {
+    "kind": "COMPLETION_REAPPROACH",
+    "time_s": 5203.460000142585,
+    "goal": 1128,
+    "success": true,
+    "new_vertices": 5
+  },
+  {
+    "kind": "COMPLETION_SURFACE_ROUTE",
+    "time_s": 5209.3960001437945,
+    "goal": 936,
+    "success": true,
+    "reason": "ROUTE_FINISHED",
+    "new_vertices": 1,
+    "length_m": 0.014055344991093944
+  },
+  {
+    "kind": "COMPLETION_SURFACE_ROUTE",
+    "time_s": 5254.676000153019,
+    "goal": 2590,
+    "success": false,
+    "reason": "ROUTE_TIME_BUDGET",
+    "new_vertices": 0,
+    "length_m": 0.06041973767735995
+  },
+  {
+    "kind": "COMPLETION_COOPERATIVE_REORIENTATION",
+    "time_s": 5254.676000153019,
+    "goal": 3318,
+    "duration_s": 3.0118580639559407,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 5255.230000153132,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.5540000001128647,
+    "force_pause_s": 0.0,
+    "planned_s": 0.5531953845572853
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 5257.690000153633,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 2.460000000501168,
+    "force_pause_s": 0.0,
+    "planned_s": 2.4586626793986555
+  },
+  {
+    "kind": "COMPLETION_REAPPROACH",
+    "time_s": 5262.708000154656,
+    "goal": 3318,
+    "success": true,
+    "new_vertices": 1
+  },
+  {
+    "kind": "COMPLETION_SEARCH_RETRY",
+    "time_s": 5264.708000155063,
+    "cycle": 56
+  },
+  {
+    "kind": "COMPLETION_SEARCH_RETRY",
+    "time_s": 5266.7080001554705,
+    "cycle": 57
+  },
+  {
+    "kind": "COMPLETION_SEARCH_RETRY",
+    "time_s": 5268.708000155878,
+    "cycle": 58
+  },
+  {
+    "kind": "COMPLETION_SEARCH_RETRY",
+    "time_s": 5270.708000156285,
+    "cycle": 59
+  },
+  {
+    "kind": "COMPLETION_SEARCH_RETRY",
+    "time_s": 5272.708000156693,
+    "cycle": 60
+  },
+  {
+    "kind": "EXACT_NATIVE_CONTINUATION",
+    "time_s": 5273.000000156752,
+    "parent_case": "D:\\\u6587\u6863\\Hand_Compliance_Control\\i04_experiment_repo\\Module\\generated\\whole_hand_surface_run09_20261019",
+    "join_time_s": 5273.000000156752,
+    "parent_manifest_sha256": "7bf63982f647bfaa115664a6b3929509e3582ca39fa77eceda150194c678729e",
+    "parent_summary_sha256": "44b5b2b024385752a0bbf670b8a3c8b333ba7a241c35681f92147224dcc4443d",
+    "parent_audit_sha256": "365eabce8744c01526523325e961aa3ff08a0732322b03714b10898f21ac9a5f",
+    "prefix_native_states": 2636500,
+    "prefix_chunks": 265,
+    "physical_state_reset": false,
+    "independent_trajectories_merged": false,
+    "previous_protocol": "i04-whole-hand-surface.development.v7",
+    "parent_resume": {
+      "parent_case": "D:\\\u6587\u6863\\Hand_Compliance_Control\\i04_experiment_repo\\Module\\generated\\whole_hand_surface_run08_20261018",
+      "join_time_s": 4102.919999918376,
+      "parent_manifest_sha256": "637267018d90e88a193551d66d3758553ee5e4be2eb100bd66eb3871953ae7c8",
+      "parent_summary_sha256": "aa660c127bbc6a786999b94d4635b34984470d62ea2fb10f0571927ea6664b75",
+      "parent_audit_sha256": "9f63510d2d78c7dad55db2eccb341374dfdd7e8e4c8857ad2829cb6e824ffa0a",
+      "prefix_native_states": 2051460,
+      "prefix_chunks": 206,
+      "physical_state_reset": false,
+      "independent_trajectories_merged": false,
+      "previous_protocol": "i04-whole-hand-surface.development.v6",
+      "parent_resume": {
+        "parent_case": "D:\\\u6587\u6863\\Hand_Compliance_Control\\i04_experiment_repo\\Module\\generated\\whole_hand_surface_run04_20261018",
+        "join_time_s": 2259.999999960382,
+        "parent_manifest_sha256": "b40d88f12dc2bf0215c86faaaa1312c2f6ffdf8bba76aab1d3746c8ed058e504",
+        "parent_summary_sha256": "68c0389872168903f2dd44432b1beb2e48568d4b743a32a66ea77e5b415f43dd",
+        "parent_audit_sha256": "c8a4a85ae8d7d7386a9473b049d7cd728e99c8e6dfc0eb439c6040fb14e76b5e",
+        "prefix_native_states": 1130000,
+        "prefix_chunks": 113,
+        "physical_state_reset": false,
+        "independent_trajectories_merged": false,
+        "previous_protocol": "i04-whole-hand-surface.development.v4",
+        "controller_state": "Reinitialized; physical state and command unchanged"
+      },
+      "controller_state": "Reinitialized; physical state and previous command unchanged"
+    },
+    "controller_state": "Reinitialized; physical state and previous command unchanged"
+  },
+  {
+    "kind": "COMPLETION_COOPERATIVE_REORIENTATION",
+    "time_s": 5273.000000156752,
+    "goal": 2638,
+    "duration_s": 2.0459721733546123,
+    "clearance_m": 0.006,
+    "expected_contacts": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 5273.486000156851,
+    "phase": "COOPERATIVE_WITHDRAWAL",
+    "elapsed_s": 0.48600000009901123,
+    "force_pause_s": 0.0,
+    "planned_s": 0.4842725567935563
+  },
+  {
+    "kind": "TRANSFER_SEGMENT_FINISHED",
+    "time_s": 5275.04800015717,
+    "phase": "NECESSARY_REORIENTATION",
+    "elapsed_s": 1.5620000003182213,
+    "force_pause_s": 0.0,
+    "planned_s": 1.5616996165610562
+  },
+  {
+    "kind": "COMPLETION_REAPPROACH",
+    "time_s": 5277.036000157575,
+    "goal": 2638,
+    "success": true,
+    "new_vertices": 1
+  }
+]

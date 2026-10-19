@@ -1,0 +1,129 @@
+{
+  "status": "PASSED",
+  "scope": "Continuously replayed development continuation whole-object cooperative MCC, fixed Mustard simulation",
+  "controller_version_boundary": {
+    "parent_case": "D:\\文档\\Hand_Compliance_Control\\i04_experiment_repo\\Module\\generated\\whole_hand_surface_run09_20261019",
+    "join_time_s": 5273.000000156752,
+    "parent_manifest_sha256": "7bf63982f647bfaa115664a6b3929509e3582ca39fa77eceda150194c678729e",
+    "parent_summary_sha256": "44b5b2b024385752a0bbf670b8a3c8b333ba7a241c35681f92147224dcc4443d",
+    "parent_audit_sha256": "365eabce8744c01526523325e961aa3ff08a0732322b03714b10898f21ac9a5f",
+    "prefix_native_states": 2636500,
+    "prefix_chunks": 265,
+    "physical_state_reset": false,
+    "independent_trajectories_merged": false,
+    "previous_protocol": "i04-whole-hand-surface.development.v7",
+    "parent_resume": {
+      "parent_case": "D:\\文档\\Hand_Compliance_Control\\i04_experiment_repo\\Module\\generated\\whole_hand_surface_run08_20261018",
+      "join_time_s": 4102.919999918376,
+      "parent_manifest_sha256": "637267018d90e88a193551d66d3758553ee5e4be2eb100bd66eb3871953ae7c8",
+      "parent_summary_sha256": "aa660c127bbc6a786999b94d4635b34984470d62ea2fb10f0571927ea6664b75",
+      "parent_audit_sha256": "9f63510d2d78c7dad55db2eccb341374dfdd7e8e4c8857ad2829cb6e824ffa0a",
+      "prefix_native_states": 2051460,
+      "prefix_chunks": 206,
+      "physical_state_reset": false,
+      "independent_trajectories_merged": false,
+      "previous_protocol": "i04-whole-hand-surface.development.v6",
+      "parent_resume": {
+        "parent_case": "D:\\文档\\Hand_Compliance_Control\\i04_experiment_repo\\Module\\generated\\whole_hand_surface_run04_20261018",
+        "join_time_s": 2259.999999960382,
+        "parent_manifest_sha256": "b40d88f12dc2bf0215c86faaaa1312c2f6ffdf8bba76aab1d3746c8ed058e504",
+        "parent_summary_sha256": "68c0389872168903f2dd44432b1beb2e48568d4b743a32a66ea77e5b415f43dd",
+        "parent_audit_sha256": "c8a4a85ae8d7d7386a9473b049d7cd728e99c8e6dfc0eb439c6040fb14e76b5e",
+        "prefix_native_states": 1130000,
+        "prefix_chunks": 113,
+        "physical_state_reset": false,
+        "independent_trajectories_merged": false,
+        "previous_protocol": "i04-whole-hand-surface.development.v4",
+        "controller_state": "Reinitialized; physical state and command unchanged"
+      },
+      "controller_state": "Reinitialized; physical state and previous command unchanged"
+    },
+    "controller_state": "Reinitialized; physical state and previous command unchanged"
+  },
+  "native_states": 2638518,
+  "covered_vertices": 8192,
+  "covered_goals": 388,
+  "current_and_frozen_runtime_sources_match": 48,
+  "native_chunks_match": 266,
+  "html_references": [
+    "contact_paths_verified.png",
+    "coverage_verified.json",
+    "coverage_verified.png",
+    "events.json",
+    "independent_native_audit/audit.json",
+    "manifest.json",
+    "summary.json",
+    "timeline_verified.png",
+    "whole_hand_base_clear_1x.mp4",
+    "whole_hand_complete_24x.mp4",
+    "whole_hand_details_1x.mp4",
+    "whole_hand_metrics.json"
+  ],
+  "media": [
+    {
+      "video": "whole_hand_base_clear_1x.mp4",
+      "sha256": "aef802b92114a00969ba1dba73466a5c57ab44c141a090c66c147cb5a3a3dc54",
+      "frames": 79,
+      "fps": 20,
+      "encoded_duration_s": 3.95,
+      "full_time_axis": false,
+      "speed": 1.0,
+      "available_regions": [
+        "瓶底端 +Y"
+      ],
+      "review_frames": [
+        19,
+        39,
+        59,
+        78
+      ]
+    },
+    {
+      "video": "whole_hand_complete_24x.mp4",
+      "sha256": "7be1c4df1d13899f1c355a9df2ab7250e9caad94e1cf6d72fd1f1f775351d59c",
+      "frames": 4399,
+      "fps": 20,
+      "encoded_duration_s": 219.95,
+      "full_time_axis": true,
+      "speed": 24.0,
+      "available_regions": [
+        "宽面 +Z",
+        "侧面 +X",
+        "宽面 −Z",
+        "侧面 −X",
+        "瓶盖／瓶肩端 −Y",
+        "瓶底端 +Y"
+      ],
+      "review_frames": [
+        1099,
+        2199,
+        3299,
+        4398
+      ]
+    },
+    {
+      "video": "whole_hand_details_1x.mp4",
+      "sha256": "372033f42dc7e3a9b23d72389c61d45e2af6259a9c107e36de11ad273d34d202",
+      "frames": 484,
+      "fps": 20,
+      "encoded_duration_s": 24.2,
+      "full_time_axis": false,
+      "speed": 1.0,
+      "available_regions": [
+        "宽面 +Z",
+        "侧面 +X",
+        "宽面 −Z",
+        "侧面 −X",
+        "瓶盖／瓶肩端 −Y",
+        "瓶底端 +Y"
+      ],
+      "review_frames": [
+        121,
+        242,
+        363,
+        483
+      ]
+    }
+  ],
+  "visualization_source_sha256": "3e9dcdcda6b5ca4e8ff5af471c145dce4163fd36aa7a466bb4821e83224cc15f"
+}

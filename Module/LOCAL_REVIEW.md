@@ -5,6 +5,15 @@
 active-planner ablation。M4 的实施顺序与结果解释以
 [`M4_DP_GUIDE.md`](M4_DP_GUIDE.md) 为准。
 
+## 2026-10-19：Mustard 四指协同整瓶遍历
+
+- [完整中文报告与视频](generated/whole_hand_surface_run10_20261019/review.html)
+- [下载、轨迹格式、环境与运行说明](I04_WHOLE_HAND_RUNBOOK.md)
+- [实验记录与限制](evidence/2026-10-19_I04_WHOLE_HAND_SURFACE.md) / [更新日志](CHANGELOG.md)
+
+发布包含全部2ms原始轨迹，MP4/NPZ通过Git LFS下载。完整覆盖采用原25mm测地邻域；
+最长有效断触146.156秒。此开发接续案例不作为冻结单版本从零性能对比。
+
 ## 首要：E05 Exp.1 + Exp.2 统一网页
 
 - 同一网页中的两组指标、优劣分析、dashboard 与全部视频：

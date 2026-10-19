@@ -1,0 +1,47 @@
+{
+  "raw_surface_area_m2": 0.35671841221305994,
+  "exterior_area_m2": 0.35671838966796815,
+  "exterior_volume_m3": 0.013435483603733587,
+  "exterior_vertices": 8192,
+  "exterior_faces": 16380,
+  "excluded_zero_volume_components": [
+    {
+      "vertices": 3,
+      "faces": 2,
+      "area_m2": 2.2545091798656878e-08,
+      "volume_m3": 2.5849394142282115e-26,
+      "bounds": [
+        [
+          0.0121156,
+          -0.26534338,
+          0.10190880000000012
+        ],
+        [
+          0.0127232,
+          -0.26508019000000005,
+          0.10203760000000012
+        ]
+      ]
+    },
+    {
+      "vertices": 3,
+      "faces": 2,
+      "area_m2": 0.0,
+      "volume_m3": 0.0,
+      "bounds": [
+        [
+          0.0124292,
+          -0.267057,
+          0.10190880000000012
+        ],
+        [
+          0.016184,
+          -0.26522301000000004,
+          0.10200400000000012
+        ]
+      ]
+    }
+  ],
+  "removed_area_fraction": 6.320136847204338e-08,
+  "repair_basis": "Two zero-volume duplicate/degenerate triangle components; no physical region is removed"
+}

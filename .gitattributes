@@ -1,0 +1,12 @@
+# Preserve source/evidence bytes used by the independent SHA-256 audit.
+Module/**/*.py -text
+Module/generated/whole_hand_surface_run10_20261019/** -text
+Module/generated/whole_hand_geometry_touch02_20261018/** -text
+Module/generated/mustard_natural_fresh02_20261018/independent_native_audit/** -text
+assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/** -text
+src/mjlab/asset_zoo/robots/** -text
+# Native states and videos are stored in Git LFS without downsampling.
+Module/generated/whole_hand_surface_run10_20261019/**/*.npz filter=lfs diff=lfs merge=lfs -text
+Module/generated/whole_hand_surface_run10_20261019/*.npz filter=lfs diff=lfs merge=lfs -text
+Module/generated/whole_hand_surface_run10_20261019/*.mp4 filter=lfs diff=lfs merge=lfs -text
+Module/generated/mustard_natural_fresh02_20261018/independent_native_audit/*.npz filter=lfs diff=lfs merge=lfs -text

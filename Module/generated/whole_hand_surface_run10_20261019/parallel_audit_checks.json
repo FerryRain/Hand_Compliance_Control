@@ -1,0 +1,9 @@
+{
+  "status": "PASSED",
+  "full_surface_complete": true,
+  "native_states": 2638518,
+  "geometry_guard_chunks": 266,
+  "measured_and_previous_reference_guards": 5277036,
+  "audit_sha256": "356308eec715b8d1ca2deac72174362eab1b69d2f783e1bcdda34ffe7f26bb88",
+  "checker_sha256": "349758d0e7f625b41a5ad4610c531ed8c7c62e5a4a89c4f4fe18093fa3de42f7"
+}

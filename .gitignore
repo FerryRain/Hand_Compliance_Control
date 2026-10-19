@@ -13,8 +13,8 @@ artifacts/
 .venv/
 render_robots.py
 benchmark_results/
-# Third-party mesh datasets are downloaded locally and tracked through
-# source/license manifests, not committed as repository payloads.
+# Full third-party datasets stay local. The explicitly published I04 Mustard
+# fixture is tracked with its source/license manifest for reproducible runs.
 assets_external/
 finger_compliance_control/data/
 palm_compliance_control/data/

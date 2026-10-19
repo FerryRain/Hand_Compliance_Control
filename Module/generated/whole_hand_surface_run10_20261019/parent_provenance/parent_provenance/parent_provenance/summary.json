@@ -1,0 +1,814 @@
+{
+  "stop_reason": "STALLED_TRANSFER_CHECKPOINT_PREFIX_SEALED",
+  "executed_s": 2259.999999960382,
+  "full_surface_complete": false,
+  "coverage_fraction": 0.7066761802955634,
+  "visited_vertices": 5625,
+  "total_vertices": 8192,
+  "visited_goals": 275,
+  "total_goals": 388,
+  "native_states": 1130000,
+  "routes": 138,
+  "necessary_lifts": 11,
+  "peak_force_n": 5.797820179649282,
+  "geometry_backtracks": 1431,
+  "coverage_inherited": false,
+  "fresh_single_version": true,
+  "resume": null,
+  "trace_chunks": [
+    {
+      "file": "trace_0000.npz",
+      "states": 10000,
+      "start_s": 0.0,
+      "end_s": 19.997999999999795,
+      "sha256": "0d8d6b017d5809ee93d9d032f6f46bf7f8d303011717e3293fbc52a149b7788d"
+    },
+    {
+      "file": "trace_0001.npz",
+      "states": 10000,
+      "start_s": 19.999999999999794,
+      "end_s": 39.99800000000292,
+      "sha256": "f12f2e451fdf7e6b1717a211149c765c0467501b71736f30aee9fd1d589c74e0"
+    },
+    {
+      "file": "trace_0002.npz",
+      "states": 10000,
+      "start_s": 40.00000000000292,
+      "end_s": 59.99800000002736,
+      "sha256": "2ec232090ad5db63307b4b7cf5b8d654055a861a47065844501456f721deabfd"
+    },
+    {
+      "file": "trace_0003.npz",
+      "states": 10000,
+      "start_s": 60.00000000002736,
+      "end_s": 79.99799999999496,
+      "sha256": "95ec75ba3d0ac5dfad833fe783071e1d12c5c87985b822116e35be72e6e8bc43"
+    },
+    {
+      "file": "trace_0004.npz",
+      "states": 10000,
+      "start_s": 79.99999999999496,
+      "end_s": 99.99799999994835,
+      "sha256": "b3e150138c77f055e6f7f32fea135696b69e61a2a69cd9ac917c61cf49059d62"
+    },
+    {
+      "file": "trace_0005.npz",
+      "states": 10000,
+      "start_s": 99.99999999994834,
+      "end_s": 119.99799999990174,
+      "sha256": "631a87ab2e01cb7cd6b8029fd5adc86887ffdff265c0b1302ac96f487d28eb14"
+    },
+    {
+      "file": "trace_0006.npz",
+      "states": 10000,
+      "start_s": 119.99999999990173,
+      "end_s": 139.99799999994036,
+      "sha256": "2c89db74e80de595d3a39aa4c9eff114e33d9a2bf2d406b13eb7a65d2fbfac09"
+    },
+    {
+      "file": "trace_0007.npz",
+      "states": 10000,
+      "start_s": 139.99999999994037,
+      "end_s": 159.99800000003586,
+      "sha256": "053812e677ae932f9a082cb9e78151c10d425abe8a3ce4236fbc9c310b4accb1"
+    },
+    {
+      "file": "trace_0008.npz",
+      "states": 10000,
+      "start_s": 160.00000000003587,
+      "end_s": 179.99800000013136,
+      "sha256": "178898c3e811730d5b7a7dff4f4e29f4cbc23c5cf081191806ad6e915699eae5"
+    },
+    {
+      "file": "trace_0009.npz",
+      "states": 10000,
+      "start_s": 180.00000000013137,
+      "end_s": 199.99800000022685,
+      "sha256": "b2c402312c9f9c3c16ebaffe6513b05feef101123ddc250d96c5dda68dcc5a17"
+    },
+    {
+      "file": "trace_0010.npz",
+      "states": 10000,
+      "start_s": 200.00000000022686,
+      "end_s": 219.99800000032235,
+      "sha256": "9a6e48cd22b6d311f3572357917de2fe2c1c1a83b9f44b710212a63df3632d41"
+    },
+    {
+      "file": "trace_0011.npz",
+      "states": 10000,
+      "start_s": 220.00000000032236,
+      "end_s": 239.99800000041785,
+      "sha256": "1fbc22446d0d255fb2f9454452eb16cc47ae2f8129473b86e2582de6d6a331eb"
+    },
+    {
+      "file": "trace_0012.npz",
+      "states": 10000,
+      "start_s": 240.00000000041786,
+      "end_s": 259.99800000051334,
+      "sha256": "a73122c98fe8fc54b75bbc103f77b7f6ccc11d7cec830a2f1bd63c5d752da3b3"
+    },
+    {
+      "file": "trace_0013.npz",
+      "states": 10000,
+      "start_s": 260.00000000051335,
+      "end_s": 279.99800000060884,
+      "sha256": "f386b7d914e61c603d489a8f4d1de61d7fe3a9ad5f4d2f856209016886304c2e"
+    },
+    {
+      "file": "trace_0014.npz",
+      "states": 10000,
+      "start_s": 280.00000000060885,
+      "end_s": 299.99800000070434,
+      "sha256": "3105b13007f48ab7e8597c5b63c57788ec65f37fe43b3c9e7e855d69537e7f48"
+    },
+    {
+      "file": "trace_0015.npz",
+      "states": 10000,
+      "start_s": 300.00000000070435,
+      "end_s": 319.99800000079983,
+      "sha256": "d62e38d742e9ea7b06389054c844485aafa2a3bd6ffad83a677920d2f3fb3fdb"
+    },
+    {
+      "file": "trace_0016.npz",
+      "states": 10000,
+      "start_s": 320.00000000079984,
+      "end_s": 339.99800000089533,
+      "sha256": "d7775c4372dc1c743e757dbf5b6091ec1328ce711ea51eb18f2a96cbb3215984"
+    },
+    {
+      "file": "trace_0017.npz",
+      "states": 10000,
+      "start_s": 340.00000000089534,
+      "end_s": 359.9980000009908,
+      "sha256": "238ba38d04214d01aab07abbefc2dc4c9736dbee2b14a4819b1c40ab82196587"
+    },
+    {
+      "file": "trace_0018.npz",
+      "states": 10000,
+      "start_s": 360.00000000099084,
+      "end_s": 379.9980000010863,
+      "sha256": "bca119bcdf36f86a0fbde648061e5bfe35c9182a2e3930b7913ee03aaa2c77d4"
+    },
+    {
+      "file": "trace_0019.npz",
+      "states": 10000,
+      "start_s": 380.00000000108633,
+      "end_s": 399.9980000011818,
+      "sha256": "353cecfa911b3d33b41a62955189203e53d644366c171b530d7b7237aaffbbd8"
+    },
+    {
+      "file": "trace_0020.npz",
+      "states": 10000,
+      "start_s": 400.00000000118183,
+      "end_s": 419.9980000012773,
+      "sha256": "8dae4c71f11eb316b2650ad34b66474d23622c66d4d40426703ee81442e921fc"
+    },
+    {
+      "file": "trace_0021.npz",
+      "states": 10000,
+      "start_s": 420.00000000127733,
+      "end_s": 439.9980000013728,
+      "sha256": "e20710aefedee71d3df57e222f63201fad02c2bac1bf134033233ac7a8a097d5"
+    },
+    {
+      "file": "trace_0022.npz",
+      "states": 10000,
+      "start_s": 440.0000000013728,
+      "end_s": 459.9980000014683,
+      "sha256": "da373e5fec91f9d85c76639feb65b2c111522c3bab98afc1e1f8a524f80843a3"
+    },
+    {
+      "file": "trace_0023.npz",
+      "states": 10000,
+      "start_s": 460.0000000014683,
+      "end_s": 479.9980000015638,
+      "sha256": "a4f98961d1e98dd2845110845b3a6cc9107fbbcfc7fa97afc10b8451cf7244bc"
+    },
+    {
+      "file": "trace_0024.npz",
+      "states": 10000,
+      "start_s": 480.0000000015638,
+      "end_s": 499.9980000016593,
+      "sha256": "61dc6543b92c77abe615d9f01c0a69c62d282da48dd888f2b6f95c9ef79a95cb"
+    },
+    {
+      "file": "trace_0025.npz",
+      "states": 10000,
+      "start_s": 500.0000000016593,
+      "end_s": 519.9980000015274,
+      "sha256": "3431f8e4b50ff2fa5dabb98670a0e8fcc461f628d8ebb1a02216c441709e76cb"
+    },
+    {
+      "file": "trace_0026.npz",
+      "states": 10000,
+      "start_s": 520.0000000015274,
+      "end_s": 539.9980000010545,
+      "sha256": "283440b7f69759b19e6c1eea7945de786a0eedb1cc013c4b984380de521fc468"
+    },
+    {
+      "file": "trace_0027.npz",
+      "states": 10000,
+      "start_s": 540.0000000010544,
+      "end_s": 559.9980000005816,
+      "sha256": "b3a797d01dfd3dd9e6dea7ec096432c3e02e06ea7a38391ee001767e18fd3b3b"
+    },
+    {
+      "file": "trace_0028.npz",
+      "states": 10000,
+      "start_s": 560.0000000005815,
+      "end_s": 579.9980000001086,
+      "sha256": "b82963830b47e666efcad14e679c67bbe328464bd7c0bf8542ed9eef4fe8a969"
+    },
+    {
+      "file": "trace_0029.npz",
+      "states": 10000,
+      "start_s": 580.0000000001086,
+      "end_s": 599.9979999996357,
+      "sha256": "7fab8a87e63945863a1d098e8e721dc87e1d94085ea647e16bd83c69962a4df1"
+    },
+    {
+      "file": "trace_0030.npz",
+      "states": 10000,
+      "start_s": 599.9999999996356,
+      "end_s": 619.9979999991627,
+      "sha256": "802a73f7c61105e20c8adc652a72c5a8d54726ecf956f1a32811a5527e485a6e"
+    },
+    {
+      "file": "trace_0031.npz",
+      "states": 10000,
+      "start_s": 619.9999999991627,
+      "end_s": 639.9979999986898,
+      "sha256": "468a8bc8a9d8506908eb535169aab284bbce0abf8571f1329c1937f242c9f9f2"
+    },
+    {
+      "file": "trace_0032.npz",
+      "states": 10000,
+      "start_s": 639.9999999986898,
+      "end_s": 659.9979999982169,
+      "sha256": "ce2d2f58cd8a717df14541f1f38f8a5dee77eb82688e1e3461c0c4de19fee176"
+    },
+    {
+      "file": "trace_0033.npz",
+      "states": 10000,
+      "start_s": 659.9999999982168,
+      "end_s": 679.9979999977439,
+      "sha256": "149d04886a017b048c1a2287f3dc14d69a744544e1523f586396fe1783820279"
+    },
+    {
+      "file": "trace_0034.npz",
+      "states": 10000,
+      "start_s": 679.9999999977439,
+      "end_s": 699.997999997271,
+      "sha256": "c9cbee89e4fe7005ac50f2eae7af5de94d25f4511bd27bacd876afce337bf1b7"
+    },
+    {
+      "file": "trace_0035.npz",
+      "states": 10000,
+      "start_s": 699.999999997271,
+      "end_s": 719.9979999967981,
+      "sha256": "f4ea4ad38db9ae5167ab9e4d503cbac2be6ff6cfc5b3e168a585c4911cc23f4d"
+    },
+    {
+      "file": "trace_0036.npz",
+      "states": 10000,
+      "start_s": 719.999999996798,
+      "end_s": 739.9979999963251,
+      "sha256": "99d05ef5f35270f67dbd985173f3940a4878888e05d4629a85eed23a3be9b730"
+    },
+    {
+      "file": "trace_0037.npz",
+      "states": 10000,
+      "start_s": 739.9999999963251,
+      "end_s": 759.9979999958522,
+      "sha256": "304f45a8117397c7e9eda2930462931a974cf6ae35b3a4f36c86f33465c0c0e0"
+    },
+    {
+      "file": "trace_0038.npz",
+      "states": 10000,
+      "start_s": 759.9999999958521,
+      "end_s": 779.9979999953792,
+      "sha256": "0b887e4bd1ea55905830783da214f013fc162a24fa67d784c7b24432caaaf2da"
+    },
+    {
+      "file": "trace_0039.npz",
+      "states": 10000,
+      "start_s": 779.9999999953792,
+      "end_s": 799.9979999949063,
+      "sha256": "398b097e9c2827cc64f15f1fea0a7b13635333aeac6f15b35f2d80c289b1b490"
+    },
+    {
+      "file": "trace_0040.npz",
+      "states": 10000,
+      "start_s": 799.9999999949063,
+      "end_s": 819.9979999944334,
+      "sha256": "e962e537245f782bb273261ac478b06d168854606365d742d38deb11406ccdb2"
+    },
+    {
+      "file": "trace_0041.npz",
+      "states": 10000,
+      "start_s": 819.9999999944333,
+      "end_s": 839.9979999939604,
+      "sha256": "edbb6b39ef366b368fcb88bf9e50a58b6084af3728bf49990143af3089b336dd"
+    },
+    {
+      "file": "trace_0042.npz",
+      "states": 10000,
+      "start_s": 839.9999999939604,
+      "end_s": 859.9979999934875,
+      "sha256": "12047f18348277f2634b62fbd7db6e9bb85b672a58e2c5573b28a8fd478ee2bf"
+    },
+    {
+      "file": "trace_0043.npz",
+      "states": 10000,
+      "start_s": 859.9999999934874,
+      "end_s": 879.9979999930146,
+      "sha256": "d4868e1143de023d846a60e01a43259dd943bf728634b3cbc8ef512a7877f895"
+    },
+    {
+      "file": "trace_0044.npz",
+      "states": 10000,
+      "start_s": 879.9999999930145,
+      "end_s": 899.9979999925416,
+      "sha256": "7a812b149c56895840c5184983efe77573490f1ba943235c341d6e071f04724c"
+    },
+    {
+      "file": "trace_0045.npz",
+      "states": 10000,
+      "start_s": 899.9999999925416,
+      "end_s": 919.9979999920687,
+      "sha256": "983595d3dd9863380ca402e8599ff5b7d305a42a9c95070eb8c91f84778a4fa7"
+    },
+    {
+      "file": "trace_0046.npz",
+      "states": 10000,
+      "start_s": 919.9999999920686,
+      "end_s": 939.9979999915957,
+      "sha256": "fa2f5acd6c2a87175bd40556ff6376346765ee675da668935539404b2ca95599"
+    },
+    {
+      "file": "trace_0047.npz",
+      "states": 10000,
+      "start_s": 939.9999999915957,
+      "end_s": 959.9979999911228,
+      "sha256": "60dc79e511730fab87000d52aaab0dba5d1148be91712bffbee2f4d2fcb96b4a"
+    },
+    {
+      "file": "trace_0048.npz",
+      "states": 10000,
+      "start_s": 959.9999999911228,
+      "end_s": 979.9979999906499,
+      "sha256": "179d0a7acc8c94fa72a8345338511ac32957f10b4ad3e7ddcc58fa96f5b2cf89"
+    },
+    {
+      "file": "trace_0049.npz",
+      "states": 10000,
+      "start_s": 979.9999999906498,
+      "end_s": 999.9979999901769,
+      "sha256": "002e2e00c1e46eb1ce029779b133afc137cde3529d1875c63742367b73573d55"
+    },
+    {
+      "file": "trace_0050.npz",
+      "states": 10000,
+      "start_s": 999.9999999901769,
+      "end_s": 1019.997999989704,
+      "sha256": "c06411e64d7b4df9495b1b602ef01028b60df531c999973feef3fd8227e3a892"
+    },
+    {
+      "file": "trace_0051.npz",
+      "states": 10000,
+      "start_s": 1019.999999989704,
+      "end_s": 1039.9979999892312,
+      "sha256": "36dcf43c39da28987cc6e1f734b5540934a6bebf310890c159f5e8606fcdf7a9"
+    },
+    {
+      "file": "trace_0052.npz",
+      "states": 10000,
+      "start_s": 1039.9999999892311,
+      "end_s": 1059.9979999887582,
+      "sha256": "c4aff1833f15550d53ad26f6b5a45f9f827773dc1398fd2e2f31b7fe8b9e05ed"
+    },
+    {
+      "file": "trace_0053.npz",
+      "states": 10000,
+      "start_s": 1059.9999999887582,
+      "end_s": 1079.9979999882853,
+      "sha256": "7d905960436d69144907bc73ce55b62fd6bd700166b200e59e81a5e890d026a8"
+    },
+    {
+      "file": "trace_0054.npz",
+      "states": 10000,
+      "start_s": 1079.9999999882853,
+      "end_s": 1099.9979999878124,
+      "sha256": "c81d75a3a32286b90083b4eb3d04cfbb6d8c5259669c4945f2270696f69cf74c"
+    },
+    {
+      "file": "trace_0055.npz",
+      "states": 10000,
+      "start_s": 1099.9999999878123,
+      "end_s": 1119.9979999873394,
+      "sha256": "84739ea2f1533150ddb972df0fb780ed76944dbdc36cff8acb7e1bb5467d3a02"
+    },
+    {
+      "file": "trace_0056.npz",
+      "states": 10000,
+      "start_s": 1119.9999999873394,
+      "end_s": 1139.9979999868665,
+      "sha256": "c0df3a797c0a238c9119cbfe97c4c79d70e905db071742281269e49debb13bcc"
+    },
+    {
+      "file": "trace_0057.npz",
+      "states": 10000,
+      "start_s": 1139.9999999868664,
+      "end_s": 1159.9979999863936,
+      "sha256": "1c27d9f32205ee67ee44890232216112a7b9b7a357087a4d41dd6c24a15d7d36"
+    },
+    {
+      "file": "trace_0058.npz",
+      "states": 10000,
+      "start_s": 1159.9999999863935,
+      "end_s": 1179.9979999859206,
+      "sha256": "f755c20d8f2fa11bf587621b3d5d6be441d68f5673a6d4a7650bf99585caed1f"
+    },
+    {
+      "file": "trace_0059.npz",
+      "states": 10000,
+      "start_s": 1179.9999999859206,
+      "end_s": 1199.9979999854477,
+      "sha256": "4f971abf22ae41acf79963826a8d288532031949d3f66c09430ecc18720504ab"
+    },
+    {
+      "file": "trace_0060.npz",
+      "states": 10000,
+      "start_s": 1199.9999999854476,
+      "end_s": 1219.9979999849747,
+      "sha256": "26ee7acb582952618ae696450ebd1bf4610e7d84df258e83e44cc0acbd5af820"
+    },
+    {
+      "file": "trace_0061.npz",
+      "states": 10000,
+      "start_s": 1219.9999999849747,
+      "end_s": 1239.9979999845018,
+      "sha256": "aab67ae1c219b02a98f1580a8bea8f865204d71c76bc39fb9e94d87a059fb252"
+    },
+    {
+      "file": "trace_0062.npz",
+      "states": 10000,
+      "start_s": 1239.9999999845018,
+      "end_s": 1259.9979999840289,
+      "sha256": "0376f04618d68a643faa20780d65bfde555e378bfedf0d3548bbb463241e5c33"
+    },
+    {
+      "file": "trace_0063.npz",
+      "states": 10000,
+      "start_s": 1259.9999999840288,
+      "end_s": 1279.997999983556,
+      "sha256": "32e49beffae79f4841dc78c4b42620c440895d0756d3bcfa7d756b1fa58e604f"
+    },
+    {
+      "file": "trace_0064.npz",
+      "states": 10000,
+      "start_s": 1279.9999999835559,
+      "end_s": 1299.997999983083,
+      "sha256": "8d717feb7200d62b27032ce87db0cae4ea6c9ac8466391bb9810420ea96b0143"
+    },
+    {
+      "file": "trace_0065.npz",
+      "states": 10000,
+      "start_s": 1299.999999983083,
+      "end_s": 1319.99799998261,
+      "sha256": "39ed3decc57bd510cd1826c7e89916bbc0b602ef3c26e54bb94873d25eb2e5b0"
+    },
+    {
+      "file": "trace_0066.npz",
+      "states": 10000,
+      "start_s": 1319.99999998261,
+      "end_s": 1339.9979999821371,
+      "sha256": "e83737024e1c9492d92bf3b7c66ff6f7977cb32490a81377f273aba885045fdc"
+    },
+    {
+      "file": "trace_0067.npz",
+      "states": 10000,
+      "start_s": 1339.999999982137,
+      "end_s": 1359.9979999816642,
+      "sha256": "8381e1a01b05d606a1ab5819b16f8b733252a13167f6514c857ee43393a730d0"
+    },
+    {
+      "file": "trace_0068.npz",
+      "states": 10000,
+      "start_s": 1359.9999999816641,
+      "end_s": 1379.9979999811912,
+      "sha256": "5a85685d459f250ba8ea1933fa64a333e58ae00378f8541e47d0a3d9b38355ba"
+    },
+    {
+      "file": "trace_0069.npz",
+      "states": 10000,
+      "start_s": 1379.9999999811912,
+      "end_s": 1399.9979999807183,
+      "sha256": "07832867da33980add2361797f1b26ac7b049a6a00b35902755c2b5f8be8ce82"
+    },
+    {
+      "file": "trace_0070.npz",
+      "states": 10000,
+      "start_s": 1399.9999999807183,
+      "end_s": 1419.9979999802454,
+      "sha256": "d305d27e47122a208430c38143ab786280dd4010bdf6e117d8d38983820ec4ae"
+    },
+    {
+      "file": "trace_0071.npz",
+      "states": 10000,
+      "start_s": 1419.9999999802453,
+      "end_s": 1439.9979999797724,
+      "sha256": "259df80949bf11d50e788e5e54c206f05ae82e2c413b04bb3eea55c9aaadd574"
+    },
+    {
+      "file": "trace_0072.npz",
+      "states": 10000,
+      "start_s": 1439.9999999797724,
+      "end_s": 1459.9979999792995,
+      "sha256": "e4b53cb05cd9c7515b5d63d838ab3169f1345cde75dce2db326b8e3d362fc3de"
+    },
+    {
+      "file": "trace_0073.npz",
+      "states": 10000,
+      "start_s": 1459.9999999792994,
+      "end_s": 1479.9979999788266,
+      "sha256": "b42392096786fa152e3b00c138dff75face66a60003dc75f294f5926cc8b4cd9"
+    },
+    {
+      "file": "trace_0074.npz",
+      "states": 10000,
+      "start_s": 1479.9999999788265,
+      "end_s": 1499.9979999783536,
+      "sha256": "7d86c3a0be76fc92cb1ea9c08b1153aa470d783e4d47aa61db5b8dbeaf7b8950"
+    },
+    {
+      "file": "trace_0075.npz",
+      "states": 10000,
+      "start_s": 1499.9999999783536,
+      "end_s": 1519.9979999778807,
+      "sha256": "55f169bbe7c56f23d669d574d3c9b8add3068e34a1813a207304123133edb25c"
+    },
+    {
+      "file": "trace_0076.npz",
+      "states": 10000,
+      "start_s": 1519.9999999778806,
+      "end_s": 1539.9979999774077,
+      "sha256": "9653d1ba1e9fc37aa17fd54a9cd635f853204d04fade30ab259adaeef789fa50"
+    },
+    {
+      "file": "trace_0077.npz",
+      "states": 10000,
+      "start_s": 1539.9999999774077,
+      "end_s": 1559.9979999769348,
+      "sha256": "8e895daae43816592a55ba9e15ceb7b145fe49cc434c6ad4916b918ef631d010"
+    },
+    {
+      "file": "trace_0078.npz",
+      "states": 10000,
+      "start_s": 1559.9999999769348,
+      "end_s": 1579.9979999764619,
+      "sha256": "2735c3c283521a3c0b912971fa2413ebe32c364ce8014257ac194641cd1bd895"
+    },
+    {
+      "file": "trace_0079.npz",
+      "states": 10000,
+      "start_s": 1579.9999999764618,
+      "end_s": 1599.997999975989,
+      "sha256": "b4fafd91ea85a41306c82720788059d8ccbc7bdfdf9db7b5e883d8b7a73437bc"
+    },
+    {
+      "file": "trace_0080.npz",
+      "states": 10000,
+      "start_s": 1599.9999999759889,
+      "end_s": 1619.997999975516,
+      "sha256": "a041ab15da808bbcc988dbafa4105ab08d74353076845ceaa24d712dc13d8890"
+    },
+    {
+      "file": "trace_0081.npz",
+      "states": 10000,
+      "start_s": 1619.999999975516,
+      "end_s": 1639.997999975043,
+      "sha256": "1361db4010919e2872475c04390a157c1aedd5c170f250d3b71d774264559cff"
+    },
+    {
+      "file": "trace_0082.npz",
+      "states": 10000,
+      "start_s": 1639.999999975043,
+      "end_s": 1659.9979999745701,
+      "sha256": "23bcc26cb4a9e461da51d6b756e0e1e3c8e44bcd3fb78e44bf6bb38eea208fc4"
+    },
+    {
+      "file": "trace_0083.npz",
+      "states": 10000,
+      "start_s": 1659.99999997457,
+      "end_s": 1679.9979999740972,
+      "sha256": "99ec8b396137fbf892c6f0a0c02b0b747cf0cc3e8bcaf9d07f3bdb039190f075"
+    },
+    {
+      "file": "trace_0084.npz",
+      "states": 10000,
+      "start_s": 1679.9999999740971,
+      "end_s": 1699.9979999736242,
+      "sha256": "73b4c3ff82bf827d3f8773208b8654bf73736a75e82e85cede94e55b11c15714"
+    },
+    {
+      "file": "trace_0085.npz",
+      "states": 10000,
+      "start_s": 1699.9999999736242,
+      "end_s": 1719.9979999731513,
+      "sha256": "46264f07b28bb074e391f6b29a74b0720bfc50ffe9014fb728a9ebb29e2f93b8"
+    },
+    {
+      "file": "trace_0086.npz",
+      "states": 10000,
+      "start_s": 1719.9999999731513,
+      "end_s": 1739.9979999726784,
+      "sha256": "97d0b3bf216aebc3f6dcae30a862687e1707533c85064a1a887f283681c1a22f"
+    },
+    {
+      "file": "trace_0087.npz",
+      "states": 10000,
+      "start_s": 1739.9999999726783,
+      "end_s": 1759.9979999722054,
+      "sha256": "a2fffbc839f729a3a7e69a4bde62eb4e2badad0ae82bf7842a4073d5771a528b"
+    },
+    {
+      "file": "trace_0088.npz",
+      "states": 10000,
+      "start_s": 1759.9999999722054,
+      "end_s": 1779.9979999717325,
+      "sha256": "7de16d328a1bb20bae951ac38827710ad991e1b37d046466b28a439aaee12ee0"
+    },
+    {
+      "file": "trace_0089.npz",
+      "states": 10000,
+      "start_s": 1779.9999999717324,
+      "end_s": 1799.9979999712596,
+      "sha256": "6b2bc2fbf0985d24d0cfa68f69e6af9202525bcb70e74821949b9bbefa3d568a"
+    },
+    {
+      "file": "trace_0090.npz",
+      "states": 10000,
+      "start_s": 1799.9999999712595,
+      "end_s": 1819.9979999707866,
+      "sha256": "d5a368120496771eca054c531f191402bac4ca0db9ab0669cf87d1c875f6b68d"
+    },
+    {
+      "file": "trace_0091.npz",
+      "states": 10000,
+      "start_s": 1819.9999999707866,
+      "end_s": 1839.9979999703137,
+      "sha256": "78e17b2ef8ed9c11ea943f0592738d30455d71a82719129f4001f8461e2873e3"
+    },
+    {
+      "file": "trace_0092.npz",
+      "states": 10000,
+      "start_s": 1839.9999999703136,
+      "end_s": 1859.9979999698407,
+      "sha256": "a3aad40a04e339cbb57898a5bc7bda689e0ba281f815a3fedc88af1eb202c0da"
+    },
+    {
+      "file": "trace_0093.npz",
+      "states": 10000,
+      "start_s": 1859.9999999698407,
+      "end_s": 1879.9979999693678,
+      "sha256": "e03fd14bc7949e073fcd4532dfc63cb6aecd701684d8b672f22a70ecaf1438c1"
+    },
+    {
+      "file": "trace_0094.npz",
+      "states": 10000,
+      "start_s": 1879.9999999693678,
+      "end_s": 1899.9979999688949,
+      "sha256": "dcd5d0f3fc45377fab95e23c92fd43ac8efa6b90747cbec9c05dd9d2787b06ae"
+    },
+    {
+      "file": "trace_0095.npz",
+      "states": 10000,
+      "start_s": 1899.9999999688948,
+      "end_s": 1919.997999968422,
+      "sha256": "7c316a3db5e2ea4cc8eb6c4b5261809cebdb23eb9125ea56eec2e109c08075f3"
+    },
+    {
+      "file": "trace_0096.npz",
+      "states": 10000,
+      "start_s": 1919.999999968422,
+      "end_s": 1939.997999967949,
+      "sha256": "55b59f2c81d2b4b27be2c21c171100f9cefabb836cbecf9cb905b0b038352f98"
+    },
+    {
+      "file": "trace_0097.npz",
+      "states": 10000,
+      "start_s": 1939.999999967949,
+      "end_s": 1959.997999967476,
+      "sha256": "e3b33a733c8fb4993565e4d84e04f7fc26884f97f35239075368ad239094491e"
+    },
+    {
+      "file": "trace_0098.npz",
+      "states": 10000,
+      "start_s": 1959.999999967476,
+      "end_s": 1979.9979999670031,
+      "sha256": "b87c574dc1ca72e054a7b03b94ba8fb759cdd7700117bd0bceeacc51c41f30bb"
+    },
+    {
+      "file": "trace_0099.npz",
+      "states": 10000,
+      "start_s": 1979.999999967003,
+      "end_s": 1999.9979999665302,
+      "sha256": "d7b688afec28f85250748973759f1219dae9892ffeab546ac08718a4e3cabc9f"
+    },
+    {
+      "file": "trace_0100.npz",
+      "states": 10000,
+      "start_s": 1999.9999999665301,
+      "end_s": 2019.9979999660573,
+      "sha256": "7b20196d61e2a33c5173afb6dc407fb2ac37184878183737237d0e553c4fae60"
+    },
+    {
+      "file": "trace_0101.npz",
+      "states": 10000,
+      "start_s": 2019.9999999660572,
+      "end_s": 2039.9979999655843,
+      "sha256": "234103efa91a75ac88f29ab2f39a0e9ae05e7c0b339e077fce95ea6c837bdee9"
+    },
+    {
+      "file": "trace_0102.npz",
+      "states": 10000,
+      "start_s": 2039.9999999655843,
+      "end_s": 2059.9979999651114,
+      "sha256": "353aba1b01735715ac1ca254b9ec6d791e57d18afcff9f0b6b4caf4674ba24fc"
+    },
+    {
+      "file": "trace_0103.npz",
+      "states": 10000,
+      "start_s": 2059.9999999651113,
+      "end_s": 2079.9979999646384,
+      "sha256": "a0fd9c918a32418052cfd71d83abf74f0b9250682671084e176019d785dd6825"
+    },
+    {
+      "file": "trace_0104.npz",
+      "states": 10000,
+      "start_s": 2079.9999999646384,
+      "end_s": 2099.9979999641655,
+      "sha256": "455b3f6b6b5149e65b312f35bc3904d1b672f8af9ed27194b1030e04a3e4ed07"
+    },
+    {
+      "file": "trace_0105.npz",
+      "states": 10000,
+      "start_s": 2099.9999999641655,
+      "end_s": 2119.9979999636926,
+      "sha256": "d35cb239073996bd83c5bd12dbe1590da2cb60a085b1c5f18b345d59f7ccfb8a"
+    },
+    {
+      "file": "trace_0106.npz",
+      "states": 10000,
+      "start_s": 2119.9999999636925,
+      "end_s": 2139.9979999632196,
+      "sha256": "250213e66a92d5d0ca11ba66f6e82d9e194dbf3abee3fe33442642a47c4d8317"
+    },
+    {
+      "file": "trace_0107.npz",
+      "states": 10000,
+      "start_s": 2139.9999999632196,
+      "end_s": 2159.9979999627467,
+      "sha256": "7827d652345310dd5798bbcac3b915b57203ce873d8bd9447f9e8592ccbdf1d6"
+    },
+    {
+      "file": "trace_0108.npz",
+      "states": 10000,
+      "start_s": 2159.9999999627466,
+      "end_s": 2179.9979999622738,
+      "sha256": "d059c79807d03a729833aea0393c071fd82a09ab752cd96f35d7d514baff09b6"
+    },
+    {
+      "file": "trace_0109.npz",
+      "states": 10000,
+      "start_s": 2179.9999999622737,
+      "end_s": 2199.997999961801,
+      "sha256": "8f48ae3f849ebed4b0cb5055c6d903876f537939cf89967fc087bc3788fc8cb4"
+    },
+    {
+      "file": "trace_0110.npz",
+      "states": 10000,
+      "start_s": 2199.9999999618008,
+      "end_s": 2219.997999961328,
+      "sha256": "a6ffade2b567b94ed16ae321eb45be0e82cafddbccefa59db9f28ca5af150540"
+    },
+    {
+      "file": "trace_0111.npz",
+      "states": 10000,
+      "start_s": 2219.999999961328,
+      "end_s": 2239.997999960855,
+      "sha256": "2c57c1234ecab0b32d51077c8c16f07a8ff3a5292f5c805d25c6ce592fa8aab8"
+    },
+    {
+      "file": "trace_0112.npz",
+      "states": 10000,
+      "start_s": 2239.999999960855,
+      "end_s": 2259.997999960382,
+      "sha256": "6bc8570057d1d4aa53c352710395b2d5ea09859d75d3e9ef9a0c5e2968e32ce8"
+    }
+  ],
+  "scope": "Interrupted native run: only the complete immutable checkpoint prefix is retained",
+  "unflushed_tail_excluded": true,
+  "force_release_counter_available": false
+}

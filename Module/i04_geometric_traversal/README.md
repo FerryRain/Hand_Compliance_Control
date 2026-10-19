@@ -1,5 +1,16 @@
 # 新 I04：mustard 几何轨迹＋MCC＋接触恢复
 
+2026-10-19最新版本为四指协同整瓶遍历：8192/8192顶点、388/388目标覆盖，完整原生重放通过。
+源码、报告、视频和完整轨迹一起发布；大文件使用Git LFS。
+
+- [运行和下载](../I04_WHOLE_HAND_RUNBOOK.md)
+- [更新日志](../CHANGELOG.md) / [结果与限制](../evidence/2026-10-19_I04_WHOLE_HAND_SURFACE.md)
+- [当前协议](../I04_WHOLE_HAND_SURFACE_PROTOCOL.md)
+
+可迁移入口：`python -m Module.i04_geometric_traversal.published_whole_hand --help`。
+`verify`检查下载，`smoke`检查短段原生重放，`audit`重放整条轨迹，`run-fresh`启动零覆盖的新实验。
+原始run10为开发接续结果；最长有效断触146.156秒仍需优化。以下为2026-10-13基线说明。
+
 入口：`python -m Module.i04_geometric_traversal.benchmark --profile formal --output <fresh_directory>`。
 当前冻结协议：[`../I04_MUSTARD_RECOVERY_PROTOCOL.md`](../I04_MUSTARD_RECOVERY_PROTOCOL.md)。
 旧 Bunny v1 的协议和首轮证据保留，以旧 commit 复现。

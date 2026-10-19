@@ -1,0 +1,41 @@
+{
+  "status": "PASSED_SAMPLED_VISUAL_REVIEW",
+  "method": "Codex inspected rendered region stills, decoded video frames and figures using local view_image; not a frame-by-frame viewing of all videos or a browser layout test.",
+  "images_inspected": [
+    "whole_hand_regions_0001.png",
+    "whole_hand_regions_0002.png",
+    "whole_hand_regions_0003.png",
+    "whole_hand_regions_0004.png",
+    "whole_hand_regions_0005.png",
+    "whole_hand_regions_0006.png",
+    "whole_hand_complete_24x_encoded_01099.png",
+    "whole_hand_complete_24x_encoded_02199.png",
+    "whole_hand_complete_24x_encoded_03299.png",
+    "whole_hand_complete_24x_encoded_04398.png",
+    "whole_hand_details_1x_encoded_00121.png",
+    "whole_hand_details_1x_encoded_00242.png",
+    "whole_hand_details_1x_encoded_00363.png",
+    "whole_hand_details_1x_encoded_00483.png",
+    "coverage_verified.png",
+    "contact_paths_verified.png",
+    "timeline_verified.png",
+    "whole_hand_base_clear_1x_0039.png",
+    "whole_hand_base_clear_1x_encoded_00019.png",
+    "whole_hand_base_clear_1x_encoded_00039.png",
+    "whole_hand_base_clear_1x_encoded_00059.png",
+    "whole_hand_base_clear_1x_encoded_00078.png"
+  ],
+  "observations": [
+    "Six directional examples contain measured palmar finger-belly contact; final full-video sample shows four qualified contacts.",
+    "Original base close-up is partly occluded by the arm. A separate 1x supplemental view hides the arm and floor only in close-up cameras and retains the original overview on the left. Its decoded frames make the long fingers visible.",
+    "Joint values, qualified-contact markers, phase labels, playback speed, excerpt time jumps and development continuation labels are readable in the inspected frames.",
+    "Coverage and actual contact-point plots include both broad faces, both side faces, cap/shoulder and base. Coverage definition remains the 25 mm mesh-edge geodesic neighborhood, not pressure footprint.",
+    "The complete timeline and review page retain force excursions, contact gaps and the 146.156 s maximum whole-hand safe-contact interruption. The result does not claim uninterrupted sliding.",
+    "No original simulation model, runtime source, saved motion, contact ledger or coverage evidence was changed for the supplemental visualization."
+  ],
+  "media_sha256": {
+    "whole_hand_complete_24x.mp4": "7be1c4df1d13899f1c355a9df2ab7250e9caad94e1cf6d72fd1f1f775351d59c",
+    "whole_hand_details_1x.mp4": "372033f42dc7e3a9b23d72389c61d45e2af6259a9c107e36de11ad273d34d202",
+    "whole_hand_base_clear_1x.mp4": "aef802b92114a00969ba1dba73466a5c57ab44c141a090c66c147cb5a3a3dc54"
+  }
+}

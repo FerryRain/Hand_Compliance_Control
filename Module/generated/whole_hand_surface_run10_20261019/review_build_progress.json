@@ -1,0 +1,7 @@
+{
+  "stage": "COMPLETE",
+  "delivery_checks": "PASSED",
+  "sampled_visual_review": "PASSED",
+  "review": "review.html",
+  "remaining_motion_limitation": "Longest whole-hand safe-contact interruption is 146.156 s; uninterrupted sliding is not achieved."
+}

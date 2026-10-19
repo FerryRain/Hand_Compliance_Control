@@ -1,0 +1,37 @@
+{
+  "status": "PASSED",
+  "scope": "Last continuation segment only; full t0 replay remains required",
+  "parent_audit_sha256": "365eabce8744c01526523325e961aa3ff08a0732322b03714b10898f21ac9a5f",
+  "states": 2018,
+  "maximum_errors": {
+    "q_rad": 0.0,
+    "qvel_rad_s": 0.0,
+    "sensor_command_rad": 0.0,
+    "qacc_warmstart": 0.0,
+    "time_s": 0.0,
+    "forces_n": 0.0,
+    "belly_forces_n": 0.0,
+    "belly_contact_positions": 0.0,
+    "belly_normals": 2.220446049250313e-16,
+    "coverage": 0.0,
+    "final_qpos": 0.0,
+    "final_qvel": 0.0,
+    "final_ctrl": 0.0,
+    "final_qacc_warmstart": 0.0,
+    "final_time": 0.0
+  },
+  "physical_jump": false,
+  "covered_vertices": 8192,
+  "covered_goals": 388,
+  "first_full_time_s": 5275.922000157348,
+  "first_full_safe_fingers": [
+    false,
+    false,
+    false,
+    true
+  ],
+  "final_hold_s": 0.5100000000000003,
+  "start_time_s": 5273.000000156752,
+  "end_time_s": 5277.036000157575,
+  "checker_sha256": "20d9575f4f2aa302018a1cb89e411a28ec4f6424486bc1420318f0d25f132474"
+}

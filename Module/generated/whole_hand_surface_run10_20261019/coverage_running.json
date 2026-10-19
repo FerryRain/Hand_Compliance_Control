@@ -1,0 +1,46 @@
+{
+  "file": "coverage_running.png",
+  "vertices": 8192,
+  "covered_vertices": 8192,
+  "area_fraction": 1.0000000000000002,
+  "regions": [
+    {
+      "region": "宽面 +Z",
+      "vertices": 2637,
+      "covered": 2637,
+      "area_fraction": 1.0
+    },
+    {
+      "region": "侧面 +X",
+      "vertices": 1128,
+      "covered": 1128,
+      "area_fraction": 1.0000000000000002
+    },
+    {
+      "region": "宽面 −Z",
+      "vertices": 2005,
+      "covered": 2005,
+      "area_fraction": 1.0
+    },
+    {
+      "region": "侧面 −X",
+      "vertices": 1093,
+      "covered": 1093,
+      "area_fraction": 1.0000000000000002
+    },
+    {
+      "region": "瓶盖/瓶肩端 −Y",
+      "vertices": 630,
+      "covered": 630,
+      "area_fraction": 0.9999999999999999
+    },
+    {
+      "region": "瓶底端 +Y",
+      "vertices": 699,
+      "covered": 699,
+      "area_fraction": 0.9999999999999998
+    }
+  ],
+  "scope": "Dominant-normal regions are reporting partitions only; no original surface is removed.",
+  "time_s": 5277.036000157575
+}

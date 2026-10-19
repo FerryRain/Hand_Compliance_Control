@@ -1,6 +1,18 @@
 # Module：FR3 + LEAP Hand 模块化控制实验
 
-最新工作：按用户要求从 mustard 开始，允许短暂失联，并实现共享的实测历史接触恢复层。
+最新工作（2026-10-19）：Mustard 四指协同整瓶遍历完成。按实际安全指腹接触的25mm测地邻域，
+8192/8192顶点、388/388目标全部覆盖，2638518个2ms状态连续独立重放通过。
+腕和四指共同主动贴合/屈伸，优先沿曲面滑动，必要时撤离调姿。最长全手有效接触中断146.156秒，尚未达到无间断滑动。
+这是保留完整原生来源的开发接续案例，仅MCC、固定Mustard、零重力；DPRef继续延后。
+
+- [下载、看视频和运行](I04_WHOLE_HAND_RUNBOOK.md)
+- [更新日志](CHANGELOG.md) / [本次证据](evidence/2026-10-19_I04_WHOLE_HAND_SURFACE.md)
+- [完整报告与三段视频](generated/whole_hand_surface_run10_20261019/review.html) / [原始轨迹清单](generated/whole_hand_surface_run10_20261019/trace_chunks.json)
+- [整手表面遍历协议](I04_WHOLE_HAND_SURFACE_PROTOCOL.md)
+
+视频和全部原始轨迹已纳入Git LFS，克隆后执行 `git lfs pull`。发布前424项I04回归通过。
+
+2026-10-13历史记录：按用户要求从 mustard 开始，允许短暂失联，并实现共享的实测历史接触恢复层。
 18 次 MCC-only 运行全部达到预算；hold 恢复层开/关为 3/3、0/3 次稳定恢复，完整覆盖未完成。
 状态 `EVALUATED / FULL_COVERAGE_INCOMPLETE`，协议见 [`I04_MUSTARD_RECOVERY_PROTOCOL.md`](I04_MUSTARD_RECOVERY_PROTOCOL.md)。
 证据：[`evidence/2026-10-13_NEW_I04_MUSTARD_RECOVERY.md`](evidence/2026-10-13_NEW_I04_MUSTARD_RECOVERY.md)。
@@ -50,6 +62,7 @@ traversal 尚未完成，DPRef 分支也未开始。当前结果只能解释为�
 | I02 Bunny prefix | `EVALUATED / NOT_MET` | LONG/SHORT 均 3/3 pass；误差 `1.476/1.467 mm`，未达冻结改善阈值 |
 | I03 Bunny viability | `EVALUATED / MET` | Beam/Shadow dead end `3/0`；支持距离中位数 `7.111/101.125 mm` |
 | I04 Oracle next-point traversal | `EXPLICIT DEV IMPLEMENTED / FULL TRAVERSAL INCOMPLETE` | 274 个 required goals；三轮回归最多 7 个，当前阻塞在 two-anchor WRIST optimization |
+| 新I04 Mustard整手表面遍历 | `FULL_MEASURED_BELLY_SURFACE / AUDITED` | 2026-10-19开发接续案：8192/8192、388/388；完整原生核验通过，最长有效断触146.156s |
 | G3 | `NO_GO` | I02 未 MET；不进入 GPIS |
 
 E05 的 `EVALUATED` 只表示 evaluator 与 episode 完整有效；策略优劣由连续指标与越界量描述。

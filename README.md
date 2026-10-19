@@ -20,7 +20,13 @@ Finger DP 当前定位为多指 nominal trajectory/role generator，而不是高
 
 ## 当前实验状态
 
-- 新 I04 已完成 mustard 的 18 次 MCC + 共享接触恢复运行：允许短暂失联，恢复后继续探索；DPRef 延后。
+- 2026-10-19：Mustard 四指协同整瓶遍历完成，8192/8192顶点、388/388目标覆盖；2,638,518个原生状态连续独立重放通过。
+  [运行与下载说明](Module/I04_WHOLE_HAND_RUNBOOK.md) · [更新日志](Module/CHANGELOG.md) ·
+  [中文报告](Module/generated/whole_hand_surface_run10_20261019/review.html) ·
+  [实验记录](Module/evidence/2026-10-19_I04_WHOLE_HAND_SURFACE.md)。报告、视频和完整轨迹随分支发布，大文件请用 `git lfs pull` 下载。
+  本轮是v4→v6→v7→v8连续开发接续，仅MCC、固定Mustard、零重力；最长全手有效接触中断146.156秒，换面连续性仍需优化。
+
+- 2026-10-13历史记录：新 I04 已完成 mustard 的 18 次 MCC + 共享接触恢复运行：允许短暂失联，恢复后继续探索；DPRef 延后。
   hold 撤离对照恢复开/关为 3/3、0/3，完整表面覆盖未完成。
   见 [mustard 报告](Module/generated/new_i04_mustard_recovery_review_20261013/index.html) 和
   [冻结协议](Module/I04_MUSTARD_RECOVERY_PROTOCOL.md)。旧 Bunny 首轮数字另存历史证据。

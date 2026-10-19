@@ -1,0 +1,92 @@
+{
+  "actual_saved_q_only": true,
+  "no_physics_step": true,
+  "full_time_axis": false,
+  "speed": 1.0,
+  "fps": 20,
+  "frames": 79,
+  "stills": [
+    {
+      "file": "whole_hand_base_clear_1x_0000.png",
+      "time_s": 4931.900000087261
+    },
+    {
+      "file": "whole_hand_base_clear_1x_0039.png",
+      "time_s": 4933.850000087658
+    },
+    {
+      "file": "whole_hand_base_clear_1x_0078.png",
+      "time_s": 4935.800000088056
+    }
+  ],
+  "segments": [
+    {
+      "region": "瓶底端 +Y",
+      "start_s": 4931.900000087261,
+      "end_s": 4935.800000088056
+    }
+  ],
+  "regions": [
+    {
+      "region": "瓶底端 +Y",
+      "available": true,
+      "index": 98677,
+      "time_s": 4933.850000087658,
+      "selected_minimum_simultaneous_contacts": 3
+    }
+  ],
+  "source_manifest_sha256": "0f1cb7b896108163a5fdde7a892709204762dca231b8628a83909c7da5e94618",
+  "whole_object_complete": true,
+  "video": "whole_hand_base_clear_1x.mp4",
+  "video_sha256": "aef802b92114a00969ba1dba73466a5c57ab44c141a090c66c147cb5a3a3dc54",
+  "visualization_source": "visualization_source/render_whole_hand_base_clear_20261019.py",
+  "visualization_source_sha256": "aa19f4c369af172b66ce9534550336a428fa8c375287676fcc6b0dc3ddec0d8e",
+  "visual_only_changes": {
+    "closeup_hidden_plane_geoms": [
+      {
+        "id": 0,
+        "name": "floor"
+      }
+    ],
+    "closeup_hidden_arm_geoms": [
+      {
+        "id": 1,
+        "name": "fr3v2_link0_collision"
+      },
+      {
+        "id": 2,
+        "name": "fr3v2_link1_collision"
+      },
+      {
+        "id": 3,
+        "name": "fr3v2_link2_collision"
+      },
+      {
+        "id": 4,
+        "name": "fr3v2_link3_collision"
+      },
+      {
+        "id": 5,
+        "name": "fr3v2_link4_collision"
+      },
+      {
+        "id": 6,
+        "name": "fr3v2_link5_collision"
+      },
+      {
+        "id": 7,
+        "name": "fr3v2_link6_collision"
+      },
+      {
+        "id": 8,
+        "name": "fr3v2_link7_collision"
+      },
+      {
+        "id": 9,
+        "name": "fr3_leap_mount_adapter"
+      }
+    ],
+    "mustard_alpha": 0.12,
+    "physical_model_changed": false
+  }
+}
