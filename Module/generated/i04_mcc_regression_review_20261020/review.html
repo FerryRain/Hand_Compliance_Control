@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>I04 MCC：B 行为回归检查与 A/B 正常速度全程视频</title>
+<style>
+body{margin:0;background:#edf2f6;color:#17283b;font:17px/1.75 system-ui,"Microsoft YaHei",sans-serif}
+main{max-width:1440px;margin:auto;padding:32px}section{background:white;padding:24px;border-radius:14px;margin:22px 0}
+h1{font-size:30px;line-height:1.4}h2{font-size:23px}video{width:100%;background:#122238;border-radius:8px}
+table{width:100%;border-collapse:collapse}th,td{padding:10px;text-align:left;border-bottom:1px solid #dbe3ec}
+.notice{border-left:6px solid #c15a28}.note{font-size:15px;color:#526779}a{color:#1768a8}
+@media(max-width:700px){main{padding:12px}section{padding:16px}table{font-size:14px}}
+</style><main>
+<h1>I04 MCC：B 行为回归检查与 A/B 全程视频</h1>
+<p>2026-10-20 · Mustard · MCC only · 原始失败数据与此前完整遍历数据均保留。</p>
+<section class="notice"><h2>结论：新对照入口确实改变了 B 的行为</h2>
+<p>旧 B 的 100% 覆盖记录有效：同一条物理轨迹在 5277.036 秒完成整瓶遍历。新 B 在 212.316 秒触发持续高力停止，覆盖 17.6220%。
+底层 MCC、接触计分和保护阈值没有变化，但新入口覆盖了起步、推进和目标更新方法，因此不等于保留了旧 B 的执行效果。</p>
+<p>在相同的前 212.316 秒，旧 B 覆盖约 19.08%，新 B 为 17.62%。后续差距的主要来源是新 B 提前停止。
+旧成功记录包含 v4→v6→v7→v8 的连续开发接续；它不能直接当作新单版本从零试验的成功结果。</p></section>
+<section><h2>定位到的具体改动</h2>
+<table><thead><tr><th>位置</th><th>旧行为</th><th>新入口行为及影响</th></tr></thead><tbody>
+<tr><td>起步接触</td><td>旧成功轨迹要求四指参与的稳定窗口；5.850 秒交接</td><td>任意两指满足 300ms / 80% 即交接；3.620 秒交接</td></tr>
+<tr><td>滑动推进</td><td>依路线要求两或三指，且路径锚指接触；按逐指表面法向转角限速</td><td>统一任意两指、去掉锚指要求、改按手腕转角限速</td></tr>
+<tr><td>接触目标</td><td>沿用当前接触目标，仅在明确的恢复流程中重置</td><td>每轮目标排序前重新投影四指，能产生没有平滑过渡的目标跳变</td></tr>
+<tr><td>路径锚指状态</td><td>approach / slide 更新当前锚指，供撤离规划使用</td><td>更新遗漏；全程记录固定为中指 1，撤离规划仍读取这个状态</td></tr>
+</tbody></table>
+<p class="note">模型（忽略资产绝对路径）、完整初态和 48 份原控制源码均一致。覆盖仍是实际合格指腹接触的 25mm 测地邻域；高力阈值也相同。以上门槛、限速和锚指差异尚未逐一完成全程消融。</p></section>
+<section><h2>直接复现了停止前的目标跳变</h2>
+<p>212.210 秒，新 B 切到下一条路线时，食指／中指／无名指／拇指目标分别跳了 3.028／2.099／2.411／2.515mm。
+拇指已处于卸力状态，偏移达到 −4mm 限幅；其力从 2.583N 在 2ms 后升到 5.393N、6ms 后升到 9.758N。
+这段路线的推进距离一直是零，最终仍触发了连续高力保护。</p>
+<table><thead><tr><th>同一 212.210 秒初态的局部测试</th><th>峰值力</th><th>结果</th></tr></thead><tbody>
+<tr><td>原样使用重投影目标</td><td>12.376N</td><td>在原来的 212.316 秒停止；54 个状态的力最大误差 1.54×10<sup>−11</sup>N</td></tr>
+<tr><td>只保留上一组接触点</td><td>11.374N</td><td>完成 1 秒诊断，无持续高力停止</td></tr>
+<tr><td>只把接触点改为 0.5 秒平滑过渡</td><td>11.346N</td><td>完成 1 秒诊断，无持续高力停止</td></tr>
+</tbody></table>
+<p class="note">三组的法向、名义关节、MCC、几何守护和阈值相同，只改变接触点输入。两种局部替代仍超过 8N 的覆盖排除阈值，说明它们只能用于确认原因，尚未证明安全的完整遍历修复。
+新 B 全程 13.644N 的最大峰发生在更早的 206.552 秒；它与最终触发停止的连续高力段分别记录。</p>
+<p><a href="regression_audit.json">机器可读检查结果</a> · <a href="causal_probe_verified/probe.json">局部复现实验</a> ·
+<a href="../../evidence/2026-10-20_I04_MCC_REGRESSION.md">详细记录与复现命令</a></p></section>
+<section><h2>A-MCC：正常速度完整视频 · 13 分 03.65 秒</h2>
+<video controls preload="metadata" poster="videos_a/i04_a-mcc_complete_1x_00000.png" src="videos_a/i04_a-mcc_complete_1x.mp4"></video>
+<p>仿真 0–783.610 秒，完整保留离面、调姿、恢复与最终搜索耗尽。覆盖 10.1355%。</p>
+<p><a download href="videos_a/i04_a-mcc_complete_1x.mp4">下载 A 正常速度全程视频</a> ·
+<a href="../i04a_mcc_traverse01_20261019/i04_a-mcc_complete_12x.mp4">12 倍速全程版</a> ·
+<a href="../i04a_mcc_traverse01_20261019/review.html">原始 A 报告</a></p></section>
+<section><h2>新 B-MCC：正常速度完整视频 · 3 分 32.40 秒</h2>
+<video controls preload="metadata" poster="videos_b/i04_b-mcc_complete_1x_00000.png" src="videos_b/i04_b-mcc_complete_1x.mp4"></video>
+<p>仿真 0–212.316 秒，完整保留高力停止终点。覆盖 17.6220%。视频短是因为实验实际提前停止。</p>
+<p><a download href="videos_b/i04_b-mcc_complete_1x.mp4">下载 B 正常速度全程视频</a> ·
+<a href="../i04b_mcc_traverse01_20261019/i04_b-mcc_complete_12x.mp4">12 倍速全程版</a> ·
+<a href="../i04b_mcc_traverse01_20261019/review.html">原始 B 报告</a></p></section>
+<section><h2>此前完成 100% 的 B · 24 倍速完整视频</h2>
+<video controls preload="metadata" src="../whole_hand_surface_run10_20261019/whole_hand_complete_24x.mp4"></video>
+<p>覆盖全部 5277.036 秒仿真时间，播放约 3 分 40 秒。
+<a href="../whole_hand_surface_run10_20261019/review.html">旧 B 完整报告</a></p></section>
+<p class="note">正常速度视频按实际保存的关节状态以 20fps 重新渲染，没有对加速视频简单放慢。
+“完整”指从启动到实际终止的全部物理时间轴；离线规划时暂停仿真计时，电脑求解等待的墙钟时间不包括在内。
+A 最后一个保存的步前状态为 783.608 秒，末条命令执行到 783.610 秒；B 包含未再执行命令的终止观测。
+<a href="delivery_checks.json">视频解码与哈希核验</a></p>
+</main></html>

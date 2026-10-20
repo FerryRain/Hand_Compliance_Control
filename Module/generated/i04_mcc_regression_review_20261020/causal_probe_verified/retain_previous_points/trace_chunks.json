@@ -1,0 +1,9 @@
+[
+  {
+    "file": "trace_0000.npz",
+    "states": 500,
+    "start_s": 212.21000000028516,
+    "end_s": 213.20800000028993,
+    "sha256": "b813177c2cd3d0f1ce344bf08b0b951669e6b9bfe58da209b1fad68bfd2eb722"
+  }
+]

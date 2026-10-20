@@ -1,0 +1,29 @@
+{
+  "mode": "blend_points_0p5s",
+  "start_s": 212.21000000028516,
+  "final_observation_s": 213.20800000028993,
+  "observations": 500,
+  "stop_reason": "LOCAL_PROBE_1S_LIMIT",
+  "initial_force_error_n": 0.0,
+  "peak_force_n": 11.346109451197268,
+  "comparison_overlap_states": 54,
+  "common_106ms_peak_force_n": 11.346109451197268,
+  "final_forces_n": [
+    0.40475738550232543,
+    0.4292499021579055,
+    0.0,
+    0.0
+  ],
+  "observations_at_or_above_8n": 18,
+  "archived_overlap_max_errors": {
+    "q_rad": 0.017545566062498456,
+    "qvel_rad_s": 0.41246326501619396,
+    "command_rad": 0.01946446431974891,
+    "forces_n": 4.795634609514318,
+    "mcc_offset_m": 0.0012459001373890215,
+    "target_normals_world": 0.006741697317783214
+  },
+  "scope": "Local state-restored diagnostic; not a full traversal or a paired A/B result",
+  "only_changed_input": "Per-finger nominal contact points; normals, nominal joints, MCC, guards and thresholds unchanged",
+  "source_trace_sha256": "d6d72486389e2cf597950005cdc5bc4b61f3b0130506a8e233873a89d5b419dd"
+}

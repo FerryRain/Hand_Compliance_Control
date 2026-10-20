@@ -1,0 +1,29 @@
+{
+  "mode": "archived_reprojection",
+  "start_s": 212.21000000028516,
+  "final_observation_s": 212.31600000028567,
+  "observations": 54,
+  "stop_reason": "SUSTAINED_DANGEROUS_FORCE",
+  "initial_force_error_n": 0.0,
+  "peak_force_n": 12.375635555422633,
+  "comparison_overlap_states": 54,
+  "common_106ms_peak_force_n": 12.375635555422633,
+  "final_forces_n": [
+    0.0,
+    0.0,
+    0.0,
+    12.233585555490134
+  ],
+  "observations_at_or_above_8n": 31,
+  "archived_overlap_max_errors": {
+    "q_rad": 1.1102230246251565e-15,
+    "qvel_rad_s": 1.770250612764812e-13,
+    "command_rad": 1.7763568394002505e-15,
+    "forces_n": 1.538502658604557e-11,
+    "mcc_offset_m": 0.0,
+    "target_normals_world": 9.965986369486757e-16
+  },
+  "scope": "Local state-restored diagnostic; not a full traversal or a paired A/B result",
+  "only_changed_input": "Per-finger nominal contact points; normals, nominal joints, MCC, guards and thresholds unchanged",
+  "source_trace_sha256": "d6d72486389e2cf597950005cdc5bc4b61f3b0130506a8e233873a89d5b419dd"
+}

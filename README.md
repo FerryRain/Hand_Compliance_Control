@@ -20,6 +20,10 @@ Finger DP 当前定位为多指 nominal trajectory/role generator，而不是高
 
 ## 当前实验状态
 
+- 2026-10-20复查确认新MCC对照入口改变了B的执行行为，目标重投影跳变已局部重现高力停止。
+  原100%遍历数据保留；修复后的完整配对实验尚未完成。
+  [诊断记录](Module/evidence/2026-10-20_I04_MCC_REGRESSION.md) · [A/B正常速度全程视频](Module/generated/i04_mcc_regression_review_20261020/review.html)。
+
 - 2026-10-19目标更新：[I04A/B新目标与共同条件](Module/I04_AB_WHOLE_HAND_PROTOCOL.md)。
   I04B采用手掌与四指联合规划、主动指腹接触和整瓶遍历；I04A保持wrist-only任务输入。
   新公共MCC入口已完成首轮单种子对照及独立核验：A搜索耗尽，新B高力保护停止，均未完成整瓶。

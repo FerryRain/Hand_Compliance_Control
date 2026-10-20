@@ -2,6 +2,9 @@
 
 协议：`i04.ab.whole_hand.v2.mcc.1`。本入口用于2026-10-19开始的新MCC对照运行。
 原run10和旧`benchmark`保留原来的协议；DP/DPRef继续暂缓。
+2026-10-20复查：此新入口存在已确认的B行为回归，不能视为保留旧B成功行为的基线。
+起步/滑动门槛、目标重投影及锚指维护的变化详见[回归诊断](evidence/2026-10-20_I04_MCC_REGRESSION.md)；
+[A/B正常速度完整视频](generated/i04_mcc_regression_review_20261020/review.html)已另附，原失败数据保留。
 实验目标与共同约束见 [I04_AB_WHOLE_HAND_PROTOCOL.md](I04_AB_WHOLE_HAND_PROTOCOL.md)。
 
 ## 1. 这次比较什么

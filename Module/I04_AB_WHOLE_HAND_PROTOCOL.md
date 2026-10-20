@@ -6,7 +6,10 @@
 I04A与I04B的非对照部分保持一致。本文件是后续I04A/B目标、信息边界和公平性约束的当前依据；
 `I04_REDESIGN_M06_M12_MIGRATION.md`及各历史运行协议继续用于解释原来的实验。
 
-当前状态：`SHARED_MCC_RUNTIME_IMPLEMENTED / FIRST_SINGLE_SEED_TRIAL_AUDITED / FULL_COVERAGE_INCOMPLETE / MULTISEED_PENDING`。
+当前状态：`SHARED_MCC_RUNTIME_IMPLEMENTED / FIRST_SINGLE_SEED_TRIAL_AUDITED / B_BASELINE_BEHAVIOR_REGRESSION_CONFIRMED / FULL_COVERAGE_INCOMPLETE / MULTISEED_PENDING`。
+2026-10-20复查确认新入口改变了B的起步/推进门槛、限速、目标重投影和锚指状态维护；目标跳变已局部重现最终高力停止。
+本轮数据不能代表“旧成功B行为已保留”的对照，详见[回归检查与正常速度完整视频](evidence/2026-10-20_I04_MCC_REGRESSION.md)。
+旧100%覆盖记录保持有效；本轮仅完成诊断，完整遍历修复和重新配对运行尚未完成。
 新入口`matched_mcc`已执行同初态、同公共源码/参数的首轮MCC对照。A在783.610s搜索耗尽，覆盖10.1355%；
 新B在212.316s触发持续高力保护，覆盖17.6220%。两案记录均通过独立重放，但都未完成整瓶任务。
 共同前212.316s的覆盖为A 5.5667%、B 17.6220%，不能只看覆盖而忽略B的高力停止。

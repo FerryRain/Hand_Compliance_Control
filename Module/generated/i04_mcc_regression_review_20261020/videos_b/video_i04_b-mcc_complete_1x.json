@@ -1,0 +1,36 @@
+{
+  "video": "i04_b-mcc_complete_1x.mp4",
+  "speed": 1.0,
+  "fps": 20,
+  "frames": 4248,
+  "full_time_axis": true,
+  "time_range_s": [
+    0.0,
+    212.31600000028567
+  ],
+  "actual_saved_q_only": true,
+  "no_physics_step": true,
+  "captures": [
+    {
+      "file": "i04_b-mcc_complete_1x_00000.png",
+      "time_s": 0.0
+    },
+    {
+      "file": "i04_b-mcc_complete_1x_01416.png",
+      "time_s": 70.8000000000164
+    },
+    {
+      "file": "i04_b-mcc_complete_1x_02832.png",
+      "time_s": 141.64999999994825
+    },
+    {
+      "file": "i04_b-mcc_complete_1x_04247.png",
+      "time_s": 212.31600000028567
+    }
+  ],
+  "video_sha256": "764a737dcda7fb7800c864310f736e093788c3047cb69f0ffd85c4eaa753c7b4",
+  "source_manifest_sha256": "1fc0a15b9641db2f93ac814f32254d5dd4afbb884e164339698b2804e2bb56ad",
+  "source_case": "D:\\\u6587\u6863\\Hand_Compliance_Control\\i04_experiment_repo\\Module\\generated\\i04b_mcc_traverse01_20261019",
+  "renderer_original_sha256": "57c74b3875360f1cf17350785f4af91700048339642a529a16290775f385ab0f",
+  "transformation": "Only output file locations; same 20fps renderer, native state selection, cameras and labels"
+}
