@@ -1,0 +1,25 @@
+{
+  "status": "PASSED_RELOCATED_B_NATIVE_SMOKE",
+  "states": 500,
+  "assets": {
+    "model_assets": 290,
+    "case_assets": 257,
+    "case_assets_relocated": 257,
+    "model_sha256": "5e03ac464cf2a00c58adb615f18173eb9a95c9237dcf3a38b8b8097ccd50fa00",
+    "all_assets_resolved": true
+  },
+  "errors": {
+    "qpos": 0.0,
+    "qvel": 0.0,
+    "previous_command": 0.0
+  },
+  "geometry_guard": {
+    "file": "trace_0000.npz",
+    "sha256": "9fcf4dec9a2c532d5c10cd1615d5b052e5bffd02a0c7e030564f207adb7c8a47",
+    "commands": 500,
+    "reference_guards": 500
+  },
+  "full_trajectory_reaudited": false,
+  "source_case": "20-second startup fixture relocated to another directory on the same Windows host",
+  "scope": "Asset relocation and first 500 native steps; separate from the full main trajectory audit"
+}

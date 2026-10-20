@@ -24,3 +24,8 @@ Module/generated/i04b_mcc_traverse01_20261019/*.mp4 filter=lfs diff=lfs merge=lf
 Module/generated/i04_mcc_regression_review_20261020/** -text
 Module/generated/i04_mcc_regression_review_20261020/**/*.npz filter=lfs diff=lfs merge=lfs -text
 Module/generated/i04_mcc_regression_review_20261020/**/*.mp4 filter=lfs diff=lfs merge=lfs -text
+# Fresh full B: preserve the frozen simulation and complete video evidence.
+Module/generated/i04b_full_force_grace01_20261020/** -text
+Module/generated/i04b_full_force_grace01_20261020/*.npz filter=lfs diff=lfs merge=lfs -text
+Module/generated/i04b_full_force_grace01_20261020/**/*.npz filter=lfs diff=lfs merge=lfs -text
+Module/generated/i04b_full_force_grace01_20261020/**/*.mp4 filter=lfs diff=lfs merge=lfs -text

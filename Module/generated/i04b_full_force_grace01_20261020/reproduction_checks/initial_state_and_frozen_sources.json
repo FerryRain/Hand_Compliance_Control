@@ -1,0 +1,27 @@
+{
+  "status": "PASSED_COMMON_INITIAL_MODEL_AND_FROZEN_SOURCE_CHECK",
+  "baseline": "Module/generated/i04a_mcc_traverse01_20261019",
+  "initial_maximum_errors": {
+    "qpos": 0.0,
+    "qvel": 0.0,
+    "ctrl": 0.0,
+    "qacc_warmstart": 0.0,
+    "time": 0.0
+  },
+  "model_equal_after_asset_hash_normalization": true,
+  "controller_sources_unchanged": 50,
+  "assets": {
+    "model_assets": 290,
+    "case_assets": 257,
+    "case_assets_relocated": 0,
+    "model_sha256": "cd38e9fc24455133a42466735470885d9da68fd99e248c2ddab5e84b4e4e8aa5",
+    "all_assets_resolved": true
+  },
+  "environment": {
+    "python": "3.10.0",
+    "numpy": "1.26.4",
+    "mujoco": "3.6.0",
+    "platform": "Windows-10-10.0.26200-SP0"
+  },
+  "scope": "Initial conditions and physical model only; execution/force policy differ from historical A"
+}

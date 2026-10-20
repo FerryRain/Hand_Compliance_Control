@@ -1,0 +1,47 @@
+{
+  "scope": "Cooperative example locations in the complete 1x video; full trajectory is retained",
+  "regions": [
+    {
+      "region": "宽面 +Z",
+      "available": true,
+      "index": 4694,
+      "time_s": 234.70000000039255,
+      "selected_minimum_simultaneous_contacts": 3
+    },
+    {
+      "region": "侧面 +X",
+      "available": true,
+      "index": 82582,
+      "time_s": 4129.099999923709,
+      "selected_minimum_simultaneous_contacts": 3
+    },
+    {
+      "region": "宽面 −Z",
+      "available": true,
+      "index": 50489,
+      "time_s": 2524.4499999541285,
+      "selected_minimum_simultaneous_contacts": 3
+    },
+    {
+      "region": "侧面 −X",
+      "available": true,
+      "index": 4338,
+      "time_s": 216.90000000030756,
+      "selected_minimum_simultaneous_contacts": 3
+    },
+    {
+      "region": "瓶盖／瓶肩端 −Y",
+      "available": true,
+      "index": 73449,
+      "time_s": 3672.449999926982,
+      "selected_minimum_simultaneous_contacts": 3
+    },
+    {
+      "region": "瓶底端 +Y",
+      "available": true,
+      "index": 89771,
+      "time_s": 4488.549999996939,
+      "selected_minimum_simultaneous_contacts": 3
+    }
+  ]
+}

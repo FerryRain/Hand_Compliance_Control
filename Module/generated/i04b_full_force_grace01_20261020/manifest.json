@@ -1,0 +1,277 @@
+{
+  "protocol": "i04.b.full-mcc.force-grace.v1",
+  "cell": "B-MCC",
+  "scope": "WHOLE_OBJECT_COOPERATIVE",
+  "dp": "DEFERRED_BY_USER",
+  "source_hashes": {
+    "Module/i04_geometric_traversal/b_full_mcc.py": "05db4d088d15d408b024f2b3b947d666c1648490897326c76bf3b3388f7b0262",
+    "Module/common/contracts.py": "2a02f71c7a7b19844cbadd718cbe2a02cb9e52118530b7f514d58efc0ff6d46a",
+    "Module/common/__init__.py": "9a795b80a7fbce3ae5bda993b6aa1aab55b6f72389e86e8df9b3d34c458822a8",
+    "Module/__init__.py": "251835697bbf71fea584c70a7a2dbc7bc842d21af1faf50a1dcd6e11166aaae5",
+    "Module/i04_geometric_traversal/__init__.py": "1025f2f3300175bd514acab3b178133a6f5faff7dd2dfa98286c3e433a6b8269",
+    "Module/e05_physics/extreme_surface.py": "a1c0e6215d5fb8f55d5309fb29b245fcf6207726ce79c3723085403067a4750a",
+    "Module/e05_physics/__init__.py": "ba9e6beece98f1c7ac0ff39bacbf9fefe5cebb532d8fcdd727d376f4a5ccf8ee",
+    "Module/e05_physics/scene.py": "8eccf945737fbc1ce3d1eafb22e0b6f7c028a191a22da702ae4e1ea93a4a24a2",
+    "Module/fr3_leap/model.py": "59d41cecf86ec1c3514376eefdf7d0260d9d7b77daaeff301e5bbb2267f85c5e",
+    "Module/fr3_leap/__init__.py": "e026651e5832f2006b2950ac634e4056507cfb8e10c5333fb1578512f5d57a54",
+    "Module/module_2_fingertip_mcc/controller.py": "2ed071dbc1ff5fec030d394f862097af206eae3a75e84772ab713e0c95182230",
+    "Module/module_2_fingertip_mcc/full_robot.py": "bd5ba51fe038409a703f3b9d2003de434a6cbd4e9c508afed94e95ccf3eb5500",
+    "Module/module_2_fingertip_mcc/__init__.py": "7766f79f09dedf555c60bcac76bd5d3d24071f0508704e2acbe929759edbb53c",
+    "Module/i04_geometric_traversal/physics.py": "8b9e58162c8b373025252d7f7bbe62de96a57f921c0fb423e3356a334b8ad3e6",
+    "Module/i04_geometric_traversal/published_whole_hand.py": "07e9337df7e44d5de889ed56e1743f849cc3de1ff4add75f79957400055b10b2",
+    "Module/i04_geometric_traversal/contracts.py": "11ac1e85245b7227f9687568cabc97d7500904dabcea833304a4c52c8a61aeff",
+    "Module/i04_oracle_next_point/surface_graph.py": "b22ee23a4e8a20283ff222c157e44544e68c7aa23a266b592e47824e5ef3fae9",
+    "Module/i04_oracle_next_point/__init__.py": "fa99985ce1fac673f3f1219f53e9e317c35fdcb706216bcb5c640f7bdd8fa8d1",
+    "Module/i04_geometric_traversal/fixtures.py": "d6f02dae41f651f71749de64018ccea7e39ee0639630ea9cd08bb731fdf807f4",
+    "Module/module_1_oracle_surface_model/geometry.py": "40b9ad1600c4358f764ad2f930368901ecb11c068b4f43f7d3447b732b538d2c",
+    "Module/module_1_oracle_surface_model/mesh_surface.py": "328ccdfe4fa2a2e7be712db746434089260638eacfc2cb72a8f8883b217291ae",
+    "Module/module_1_oracle_surface_model/surface_model.py": "352238004a8f971d89115ca90d9d98c2650f6bf0813b0cd03aedbce39d3506ff",
+    "Module/module_1_oracle_surface_model/robot_geometry.py": "a420106f8791aec73087cb01792698a0e062ef91e0dd0db06cd0e5603adb585d",
+    "Module/module_1_oracle_surface_model/__init__.py": "ac42ea8ee63d23d9d99b51599bc35986496ff50ddf6ebac0c54362fac41c3f35",
+    "Module/module_1_oracle_surface_model/mesh_demo.py": "a6be85857fc1c37fc11a8d300df8fb193cb9736e2e8d3c8e07a648455b6ae698",
+    "Module/i01_bunny_physics/surface.py": "6f2626f9c58fc126e259c6886a75a2046428bf11286a0f4c408b989e3df913f7",
+    "Module/i01_bunny_physics/__init__.py": "378f709fdfae0a433c2ace653d62b0d6afe7e9dff87fbbd69d340eaae9e3804b",
+    "Module/i04_geometric_traversal/oracle.py": "49a0387bf2367248472c200d5525d925db805699dcca0222c692a7f5c96d29ae",
+    "Module/i04_geometric_traversal/planning.py": "d5ca1832ad3ecd43561b3931b9444535919b8c19f08ab0fb1dad9d4eb3942c23",
+    "Module/i04_geometric_traversal/recovery.py": "cf7e4422e9ce2d4c12440777e129386433dc1e1ad6c290e902d0068559f4fc16",
+    "Module/i04_geometric_traversal/full_surface.py": "655a45c252d4c59409b011d65eb3a203edda8d9a4465fd72235c108fd170aac8",
+    "Module/i04_geometric_traversal/sliding_safety.py": "e58738b57dafabcc3b8b0cdc60fffd1ab2c8390398e55e97e59131b3796dd56a",
+    "Module/i04_geometric_traversal/finger_reconfiguration_planner.py": "d8424f67783ff0d78927fec7dd15b01e95dcf2bc42ec3847670f3ce8f387b890",
+    "Module/i04_geometric_traversal/belly_contact.py": "650970579a4ae362ca555353cfc73ea9079d143a7e34035fae788e0985a14de0",
+    "Module/i04_geometric_traversal/belly_bounded_step.py": "15f7562f436253bab977033b35eb05330b6ed3c4007f3738aa419096b1ccdc45",
+    "Module/i04_geometric_traversal/natural_belly_traversal.py": "a3fc47182bcbb272e3e4ea641558e2744ecc0ce185f97e68b8c684b62d6de85e",
+    "Module/i04_geometric_traversal/whole_hand_belly.py": "9e8a1eb58656b22664178273e783dcc630741e5b942cc6f9856059c58c60a8f2",
+    "Module/i04_geometric_traversal/whole_hand_kinematics.py": "5a4164c811542bc1cdfa6a50ccc342928e577c860aae99491d6e201680028f52",
+    "Module/i04_geometric_traversal/whole_hand_surface_planner.py": "00b683e0a9f5f9eec061fe7bed98c8641724b479dcfd3f1eb5f79d6ca5e96aa4",
+    "Module/i04_geometric_traversal/whole_hand_finite_surface.py": "592a0001979903215e70262ac13613009b09f24f72ae9e5f0552a571cb251130",
+    "Module/i04_geometric_traversal/whole_hand_belly_probe.py": "7ce2d9042bba039c4b0b6f9cb327c07931cb14c4a9ab17e4a89e45d561fa0f37",
+    "Module/i04_geometric_traversal/whole_hand_step_solver.py": "11773b2b525330bf4ecb387afacaac239b014749c280d05e03bd318d04768f06",
+    "Module/i04_geometric_traversal/whole_hand_surface_traversal.py": "f771adea644ced08bdf769f461653ffebb5d27dcfa91bee97821a432e78fc28a",
+    "Module/i04_geometric_traversal/whole_hand_geometry_cache.py": "5f5cfa1f71109640b513d87537ffc13c15134c718550f48c902d34fd6a6838c6",
+    "Module/i04_geometric_traversal/whole_hand_finite_traversal.py": "301021883a7e98377f94424880234d94c74f57c0b66b7bb165b734e04d2e3570",
+    "Module/i04_geometric_traversal/whole_hand_continuity.py": "5fbfb49b52c80cf65d6269585692d95e3b251387bcf1a53409a986e5b49bb95b",
+    "Module/i04_geometric_traversal/whole_hand_recovery.py": "3f02a96e635d5e2b06bc9219ed247db7389e92abc884235dea24addda8c63b26",
+    "Module/i04_geometric_traversal/whole_hand_lineage.py": "38f3d743a3e03120ba4961ac9360b6c6a0589aa88d37d7fcd4b9f663c2b65645",
+    "Module/i04_geometric_traversal/whole_hand_completion.py": "9cb09fffc513e8cf4eab7afe3670724db805f58e5e459087db457a520f1692f7",
+    "Module/i04_geometric_traversal/whole_hand_adaptive_completion.py": "9b12a5ebaa6fadfca8d7f7d402c0f7cc55ae6f8b16f8291bbeee263851a96039"
+  },
+  "geometry_quality": {
+    "raw_surface_area_m2": 0.35671841221305994,
+    "exterior_area_m2": 0.35671838966796815,
+    "exterior_volume_m3": 0.013435483603733587,
+    "exterior_vertices": 8192,
+    "exterior_faces": 16380,
+    "excluded_zero_volume_components": [
+      {
+        "vertices": 3,
+        "faces": 2,
+        "area_m2": 2.2545091798656878e-08,
+        "volume_m3": 2.5849394142282115e-26,
+        "bounds": [
+          [
+            0.0121156,
+            -0.26534338,
+            0.10190880000000012
+          ],
+          [
+            0.0127232,
+            -0.26508019000000005,
+            0.10203760000000012
+          ]
+        ]
+      },
+      {
+        "vertices": 3,
+        "faces": 2,
+        "area_m2": 0.0,
+        "volume_m3": 0.0,
+        "bounds": [
+          [
+            0.0124292,
+            -0.267057,
+            0.10190880000000012
+          ],
+          [
+            0.016184,
+            -0.26522301000000004,
+            0.10200400000000012
+          ]
+        ]
+      }
+    ],
+    "removed_area_fraction": 6.320136847204338e-08,
+    "repair_basis": "Two zero-volume duplicate/degenerate triangle components; no physical region is removed"
+  },
+  "belly_contact": {
+    "maximum_alignment_angle_deg": 30.0,
+    "maximum_patch_radius": 0.8,
+    "surface_tolerance_m": 0.0001
+  },
+  "coverage_radius_m": 0.025,
+  "required_vertices": 8192,
+  "required_goals": 388,
+  "posture_lower_rad": [
+    -2.7287,
+    -1.7687000000000002,
+    -2.8857,
+    -3.0271,
+    -2.7915,
+    0.5595,
+    -3.0008999999999997,
+    -0.18,
+    -0.12,
+    0.1,
+    0.07,
+    -0.18,
+    -0.12,
+    0.1,
+    0.07,
+    -0.18,
+    -0.12,
+    0.1,
+    0.07,
+    -0.28,
+    -0.3,
+    0.0,
+    0.0
+  ],
+  "posture_upper_rad": [
+    2.7287,
+    1.7687000000000002,
+    2.8857,
+    -0.1668,
+    2.7915,
+    4.5019,
+    3.0008999999999997,
+    0.18,
+    0.85,
+    0.95,
+    0.75,
+    0.18,
+    0.85,
+    0.95,
+    0.75,
+    0.18,
+    0.85,
+    0.95,
+    0.75,
+    0.4,
+    1.8,
+    1.0,
+    1.0
+  ],
+  "initial_state": "One declared cooperative-hand 6mm hover; zero inherited coverage",
+  "initial_plan": {
+    "accepted": true,
+    "collision_reason": null,
+    "fingers": [
+      {
+        "finger": 0,
+        "normal_error_m": -0.00024632922709626583,
+        "angle_deg": 0.4186886030461475,
+        "qualified_patch": true
+      },
+      {
+        "finger": 1,
+        "normal_error_m": -6.510408907603709e-05,
+        "angle_deg": 0.05896669168191618,
+        "qualified_patch": true
+      },
+      {
+        "finger": 2,
+        "normal_error_m": 2.5612520125155346e-05,
+        "angle_deg": 1.0423569996595337,
+        "qualified_patch": true
+      },
+      {
+        "finger": 3,
+        "normal_error_m": -0.0002742703850564292,
+        "angle_deg": 0.23797204789173693,
+        "qualified_patch": true
+      }
+    ],
+    "evaluations": 40,
+    "hand_deg": [
+      [
+        9.08929154029051,
+        -5.792636917306053,
+        41.80976218042652,
+        31.37557865239826
+      ],
+      [
+        8.885476042005115,
+        4.363504164243551,
+        37.21301778236737,
+        26.122701701033986
+      ],
+      [
+        10.313240312354816,
+        15.813324108851575,
+        29.737454772723822,
+        19.56298833589283
+      ],
+      [
+        22.91831180523293,
+        -2.450122615708728,
+        1.0673315726545071e-38,
+        4.299801539361877
+      ]
+    ]
+  },
+  "coverage_inherited": false,
+  "resume": null,
+  "original_collision_geometry": true,
+  "dt_s": 0.002,
+  "command_geometry_guard_every_native_tick": true,
+  "command_reference_guard_every_native_tick": true,
+  "proactive_release_n": 2.5,
+  "release_resume_n": 1.2,
+  "force_relief_n": 8.0,
+  "hard_force_n": 40.0,
+  "hard_force_duration_s": 0.2,
+  "requested_duration_s": 9000.0,
+  "controlled_fingers": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "desired_force_per_finger_n": 1.0,
+  "all_four_contact_tasks_at_every_surface_tick": true,
+  "leader_finger_field_is_routing_anchor_only": true,
+  "shared_nominal_wrist_route": true,
+  "sliding_speed_m_s": 0.004,
+  "final_stable_dwell_s": 0.15,
+  "bounded_solver": "Warm active set; original objective/box and KKT checked, original BVLS fallback",
+  "initial_handoff": "300ms: >=3 for90%, each finger60%, current4",
+  "subsequent_handoff": "300ms: geometry-supported quorum2or3 for80%; four tasks stay active",
+  "seed_case": "D:\\\u6587\u6863\\Hand_Compliance_Control\\i04_experiment_repo\\Module\\generated\\mustard_natural_fresh02_20261018",
+  "seed_use": "Published geometry-only IK pose seeds; no physical state, command history or coverage inherited",
+  "geometry_source_sha256": "b73e2ddb7cb6b0f13aba9ac52398892a07b5bacaec1dcdf0091ab477c188a389",
+  "finite_surface_support_required": true,
+  "contact_count_precedes_arm_distance": true,
+  "command_query_cache": "Exact q bytes; unchanged original pairwise guard; independent original guard at audit",
+  "current_wrist_continuation_before_global_seeds": true,
+  "pivot_uses_finite_surface_targets": true,
+  "pause_aware_transfer": true,
+  "transfer_force_pause_budget_s": 40.0,
+  "transfer_failure_refreshes_current_surface": true,
+  "coverage_inheritance_scope": null,
+  "method": "B-MCC",
+  "cooperative_seed_source": "D:\\\u6587\u6863\\Hand_Compliance_Control\\i04_experiment_repo\\Module\\generated\\whole_hand_surface_run10_20261019",
+  "fresh_single_version": true,
+  "force_stop_policy": {
+    "warning_n": 12.0,
+    "stop_n": 40.0,
+    "consecutive_samples": 100,
+    "duration_s": 0.2,
+    "scope": "Simulation only; explicitly authorized force tolerance"
+  },
+  "force_warning_only_n": 12.0,
+  "coverage_force_exclusion_n": 8.0,
+  "coverage_and_contact_predicates_unchanged": true,
+  "inherited_execution": "Original approach, slide, anchor bookkeeping, surface-normal speed cap, and recovery",
+  "reference_continuity": "Target ranking reads existing contact references without reprojecting them",
+  "scheduler": "Surface sweep until 97% or search exhaustion, then adaptive residual completion",
+  "source_trial": "Fresh single fixed version from the common 6mm hover"
+}

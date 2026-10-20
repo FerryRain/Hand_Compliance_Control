@@ -1,0 +1,28 @@
+[
+  {
+    "case": ".runtime_tmp/b_full_review_smoke",
+    "raw_peak_n": 2.9531026505975113,
+    "strict_area_fraction": 0.036871787473064264,
+    "area_fraction": 0.036871787473064264,
+    "covered_vertices": 341,
+    "covered_goals": 15,
+    "added_vertices": 0,
+    "central_belly_high_force_observations": 0,
+    "mesh_qualified_high_force_contacts": 0,
+    "scope": "Secondary force-tolerant coverage only; original geometry, normals, 25mm radius and full denominator retained",
+    "does_not_change_strict_completion": true
+  },
+  {
+    "case": "Module/generated/i04b_mcc_traverse01_20261019",
+    "raw_peak_n": 13.644163772348534,
+    "strict_area_fraction": 0.17622003451729273,
+    "area_fraction": 0.17622003451729273,
+    "covered_vertices": 1950,
+    "covered_goals": 71,
+    "added_vertices": 0,
+    "central_belly_high_force_observations": 37,
+    "mesh_qualified_high_force_contacts": 58,
+    "scope": "Secondary force-tolerant coverage only; original geometry, normals, 25mm radius and full denominator retained",
+    "does_not_change_strict_completion": true
+  }
+]

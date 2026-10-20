@@ -1,0 +1,11 @@
+{
+  "strict_area_fraction": 1.0000000000000002,
+  "area_fraction": 1.0000000000000002,
+  "covered_vertices": 8192,
+  "covered_goals": 388,
+  "added_vertices": 0,
+  "central_belly_high_force_observations": 0,
+  "mesh_qualified_high_force_contacts": 0,
+  "scope": "Secondary force-tolerant coverage only; original geometry, normals, 25mm radius and full denominator retained",
+  "does_not_change_strict_completion": true
+}

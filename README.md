@@ -20,6 +20,13 @@ Finger DP 当前定位为多指 nominal trajectory/role generator，而不是高
 
 ## 当前实验状态
 
+- 2026-10-20最新：恢复后的B以单一冻结版本从零完成整瓶遍历，4859.048秒达到100%，
+  8192/8192顶点、388/388目标全部覆盖，2,429,524个原生状态连续独立重放通过。
+  仿真高力停止放宽至40N/200ms，原严格覆盖保持；本次力峰9.0952N，最长全手断触62.808秒。
+  [完整报告与视频](Module/generated/i04b_full_force_grace01_20261020/review.html)：正常速度80分59秒、12倍速6分45秒。
+  [B运行说明](Module/I04_B_FULL_RUNBOOK.md) · [本次记录](Module/evidence/2026-10-20_I04_B_FULL.md)。
+  采用修复后相同执行条件的新A尚未重跑。
+
 - 2026-10-20复查确认新MCC对照入口改变了B的执行行为，目标重投影跳变已局部重现高力停止。
   原100%遍历数据保留；修复后的完整配对实验尚未完成。
   [诊断记录](Module/evidence/2026-10-20_I04_MCC_REGRESSION.md) · [A/B正常速度全程视频](Module/generated/i04_mcc_regression_review_20261020/review.html)。
