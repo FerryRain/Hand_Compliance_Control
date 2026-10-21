@@ -1,0 +1,87 @@
+{
+  "status": "PASSED_PNG_VISUAL_REVIEW_AND_VIDEO_SAMPLE_DECODE",
+  "samples": [
+    {
+      "video": "a_complete_1x.mp4",
+      "frame": 0,
+      "shape": [
+        700,
+        2400,
+        3
+      ],
+      "file": "video_samples/a_complete_1x_0.png",
+      "sha256": "9da86c76c361948a411facba30666f2430e9844326ba32bf187389fd8be71e52",
+      "visually_reviewed": true
+    },
+    {
+      "video": "a_complete_1x.mp4",
+      "frame": 20253,
+      "shape": [
+        700,
+        2400,
+        3
+      ],
+      "file": "video_samples/a_complete_1x_20253.png",
+      "sha256": "5a2debe57ab52d9cf3022aa39c809889aba55d0e6380e0756609fddd46e0abbf",
+      "visually_reviewed": true
+    },
+    {
+      "video": "a_complete_1x.mp4",
+      "frame": 40505,
+      "shape": [
+        700,
+        2400,
+        3
+      ],
+      "file": "video_samples/a_complete_1x_40505.png",
+      "sha256": "8d6afe2acfa74f855ef1585578c608f0bdb61ea1ac6553c34f7fd947371ead18",
+      "visually_reviewed": false
+    },
+    {
+      "video": "a_complete_12x.mp4",
+      "frame": 0,
+      "shape": [
+        700,
+        2400,
+        3
+      ],
+      "file": "video_samples/a_complete_12x_0.png",
+      "sha256": "5e185d4afe1e4564b8d938b865cce20de075dd208f7e57135104bc99aec5bec4",
+      "visually_reviewed": false
+    },
+    {
+      "video": "a_complete_12x.mp4",
+      "frame": 1688,
+      "shape": [
+        700,
+        2400,
+        3
+      ],
+      "file": "video_samples/a_complete_12x_1688.png",
+      "sha256": "1653819cd5cf65305d3fecdf635d4c821fe3be17d2fd22b368c140767c6d2079",
+      "visually_reviewed": false
+    },
+    {
+      "video": "a_complete_12x.mp4",
+      "frame": 3376,
+      "shape": [
+        700,
+        2400,
+        3
+      ],
+      "file": "video_samples/a_complete_12x_3376.png",
+      "sha256": "568d9d878bd480a1a94ee6dd4e513e6145028297cb880ad2a47f24be96bf83f0",
+      "visually_reviewed": true
+    }
+  ],
+  "reviewed_charts": {
+    "a_coverage.png": "1e193cf9a2b9f36be636e7c6823d2a216c41bcca4cdf4f031203c298b7423f1f",
+    "a_contact_paths.png": "87645367b4b812b482fe4e26f7a1e6058673338ce0090db6bf7c839ba707f107",
+    "coverage_contact_comparison.png": "81c2bb54f2a6c1160ab55c3b90b638e7dc727c5e7972cf1d8d3c9a6ef545c36e",
+    "a_online_planning.png": "85ed712e527334603313564d52684fb80903a7f2300769ede038dd88e56ce40a",
+    "paired_planning_cost_time.png": "90c3362931a4a7b00086191ca730de09101a68d76143d9ffe35ec393c9658f2a",
+    "b_original_selected_costs.png": "4cf265a749663a83095291f12619aa598d800c4ca5db41e1ca639bf6b053ecf3"
+  },
+  "browser_click_test": false,
+  "scope": "Six decoded video samples; inspected A first/middle/final samples and all six report charts. Full stream decode is recorded in video verification.json."
+}

@@ -1,0 +1,36 @@
+{
+  "A": {
+    "recorded_segments": 63,
+    "recorded_elapsed_s": 1494.2799999772255,
+    "recorded_force_pause_s": 1094.3280000000789,
+    "recorded_pause_fraction": 0.7323446743694338,
+    "completed_segments": 35,
+    "replan_segments": 28,
+    "force_pause_s": {
+      "n": 63,
+      "median": 1.424000000000001,
+      "mean": 17.37028571428696,
+      "p95": 40.00000000000292,
+      "maximum": 40.00000000000292,
+      "total": 1094.3280000000786
+    },
+    "scope": "Logged completed or replan transfer segments only; excludes approach/recontact and any terminal segment without a result event"
+  },
+  "B": {
+    "recorded_segments": 172,
+    "recorded_elapsed_s": 841.6500000252388,
+    "recorded_force_pause_s": 66.01399999999799,
+    "recorded_pause_fraction": 0.0784340283942475,
+    "completed_segments": 171,
+    "replan_segments": 1,
+    "force_pause_s": {
+      "n": 172,
+      "median": 0.0,
+      "mean": 0.3838023255813838,
+      "p95": 1.998799999999999,
+      "maximum": 19.921999999999837,
+      "total": 66.013999999998
+    },
+    "scope": "Logged completed or replan transfer segments only; excludes approach/recontact and any terminal segment without a result event"
+  }
+}

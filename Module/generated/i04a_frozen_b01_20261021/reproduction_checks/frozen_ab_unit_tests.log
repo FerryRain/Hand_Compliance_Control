@@ -1,0 +1,16 @@
+test_A_approach_preserves_B_gate_anchor_clearance_and_strict_initial_gate (Module.tests.test_i04_frozen_b_a.FrozenABoundaryTests) ... ok
+test_private_pad_targets_never_become_A_control_targets (Module.tests.test_i04_frozen_b_a.FrozenABoundaryTests) ... ok
+test_scheduler_and_safety_inheritance_does_not_use_failed_matched_overrides (Module.tests.test_i04_frozen_b_a.FrozenABoundaryTests) ... ok
+unittest.case.FunctionTestCase (test_a_adapter_never_reads_private_finger_points_or_normals) ... ok
+unittest.case.FunctionTestCase (test_a_wrist_solver_freezes_its_own_hand_and_rejects_whole_hand_targets) ... ok
+unittest.case.FunctionTestCase (test_measured_quorum_tolerates_short_losses_but_requires_current_support) ... ok
+unittest.case.FunctionTestCase (test_initial_state_digest_covers_all_physics_state_not_only_qpos) ... ok
+unittest.case.FunctionTestCase (test_a_cache_key_ignores_private_geometry_changes) ... ok
+test_40n_counter_resets_and_terminal_observation_is_not_applied (Module.tests.test_i04_b_full_mcc.ForceGraceTests) ... ok
+test_sustained_15n_is_recorded_without_old_20ms_stop (Module.tests.test_i04_b_full_mcc.ForceGraceTests) ... ok
+test_unsafe_collision_still_stops_on_first_observation (Module.tests.test_i04_b_full_mcc.ForceGraceTests) ... ok
+
+----------------------------------------------------------------------
+Ran 11 tests in 0.029s
+
+OK

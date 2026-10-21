@@ -1,0 +1,144 @@
+{
+  "metadata": {
+    "status": "COMPLETED_RETROSPECTIVE_STATIC_IK_BENCHMARK",
+    "plans": 364,
+    "source_case": "D:\\文档\\Hand_Compliance_Control\\i04_experiment_repo\\Module\\generated\\i04b_full_force_grace01_20261020",
+    "source_summary_sha256": "cd346f931454d9b7e18174073335c92d4c21934977c8cb161388224a1e88416a",
+    "source_events_sha256": "61ac890dc226d73753e58e19e794332dd4e2338b2b6b332d94415907682677e9",
+    "original_B_compute_times_available": false,
+    "input_caveat": "Saved command root and endpoint, saved control points and filtered normals; original candidate sets and nominal waypoint targets were not saved",
+    "scope": "One paired static IK request per recorded plan; not historical replanning latency or complete route search cost",
+    "fairness": "Same saved arm root and source reference problem on B-state distribution; A uses the common initial nominal hand, B keeps the saved source hand seed. Same host, sequential solvers, alternating order; A receives endpoint palm pose only",
+    "native_dynamics_steps": 0,
+    "original_case_modified": false,
+    "optimizer_cost_comparability": "Own least-squares objectives differ; compare common four-pad position metric separately",
+    "execution_environment": {
+      "python": "3.10.0 | packaged by conda-forge | (default, Nov 20 2021, 02:18:13) [MSC v.1916 64 bit (AMD64)]",
+      "platform": "Windows-10-10.0.26200-SP0",
+      "processor": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+      "logical_cpus": 24,
+      "numpy": "1.26.4",
+      "scipy": "1.15.3",
+      "mujoco": "3.6.0",
+      "threads": {
+        "OPENBLAS_NUM_THREADS": "1",
+        "OMP_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1"
+      },
+      "timing_design": "One solve per method/event, alternating order; no repeated timing trials or CPU pinning; residual OS load is uncontrolled"
+    },
+    "source_sha256": "b02387a1244d6965adb8197465ffd0188086dd3119546220554acf5b05839b41"
+  },
+  "methods": {
+    "A": {
+      "wall_s": {
+        "n": 364,
+        "median": 0.0023603499867022038,
+        "mean": 0.0030604392855561207,
+        "p95": 0.006784435024019329,
+        "maximum": 0.029900999972596765,
+        "total": 1.1139998999424279
+      },
+      "cpu_s": {
+        "n": 364,
+        "median": 0.0,
+        "mean": 0.0030048076923076925,
+        "p95": 0.015625,
+        "maximum": 0.03125,
+        "total": 1.09375
+      },
+      "common_four_pad_position_rmse_m": {
+        "n": 364,
+        "median": 0.04009513134872378,
+        "mean": 0.042118651511354105,
+        "p95": 0.06767241020920307,
+        "maximum": 0.31114592851873374,
+        "total": 15.331189150132893
+      },
+      "common_four_pad_angle_mean_deg": {
+        "n": 364,
+        "median": 36.59695278442588,
+        "mean": 36.772062147942314,
+        "p95": 64.26053095338352,
+        "maximum": 81.89797260452977,
+        "total": 13385.030621851001
+      },
+      "wrist_position_error_m": {
+        "n": 364,
+        "median": 4.73452496526405e-12,
+        "mean": 0.0002447343066391165,
+        "p95": 0.00034060541316740687,
+        "maximum": 0.047100012681057644,
+        "total": 0.08908328761663839
+      },
+      "own_acceptance_failures": 4,
+      "last_own_optimizer_cost": {
+        "n": 364,
+        "median": 3.2205415988557884e-23,
+        "mean": 2.1173602900183505e-05,
+        "p95": 2.8683757368749565e-07,
+        "maximum": 0.005647163136280159,
+        "total": 0.0077071914556667955
+      }
+    },
+    "B": {
+      "wall_s": {
+        "n": 364,
+        "median": 0.03633804997662082,
+        "mean": 0.04114809175978855,
+        "p95": 0.07670566500746645,
+        "maximum": 0.08687530003953725,
+        "total": 14.977905400563031
+      },
+      "cpu_s": {
+        "n": 364,
+        "median": 0.03125,
+        "mean": 0.039749313186813184,
+        "p95": 0.078125,
+        "maximum": 0.09375,
+        "total": 14.46875
+      },
+      "common_four_pad_position_rmse_m": {
+        "n": 364,
+        "median": 0.001927617081283313,
+        "mean": 0.0032235529195220277,
+        "p95": 0.006457610898633401,
+        "maximum": 0.07373848555724746,
+        "total": 1.173373262706018
+      },
+      "common_four_pad_angle_mean_deg": {
+        "n": 364,
+        "median": 1.7071449682617306,
+        "mean": 3.411825123282431,
+        "p95": 9.977878774809431,
+        "maximum": 91.61965784964926,
+        "total": 1241.9043448748048
+      },
+      "wrist_position_error_m": {
+        "n": 364,
+        "median": 0.002803226988561957,
+        "mean": 0.007259835430834771,
+        "p95": 0.012709518837099212,
+        "maximum": 0.3126658369471921,
+        "total": 2.6425800968238566
+      },
+      "own_acceptance_failures": 65,
+      "last_own_optimizer_cost": {
+        "n": 364,
+        "median": 1.3230871132951497e-05,
+        "mean": 0.00010809472992631337,
+        "p95": 0.00014910437003114443,
+        "maximum": 0.013710668542159025,
+        "total": 0.039346481693178066
+      }
+    }
+  },
+  "B_over_A_paired_wall_ratio": {
+    "n": 364,
+    "median": 14.349914400167167,
+    "mean": 15.901694472425813,
+    "p95": 29.268461173512936,
+    "maximum": 64.00532101182016,
+    "total": 5788.216787962996
+  }
+}

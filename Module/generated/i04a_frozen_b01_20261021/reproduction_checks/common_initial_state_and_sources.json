@@ -1,0 +1,42 @@
+{
+  "status": "PASSED_FROZEN_B_COMMON_CONDITIONS",
+  "fields": [
+    "geometry_quality",
+    "belly_contact",
+    "coverage_radius_m",
+    "required_vertices",
+    "required_goals",
+    "posture_lower_rad",
+    "posture_upper_rad",
+    "dt_s",
+    "proactive_release_n",
+    "release_resume_n",
+    "force_relief_n",
+    "hard_force_n",
+    "hard_force_duration_s",
+    "requested_duration_s",
+    "desired_force_per_finger_n",
+    "controlled_fingers",
+    "sliding_speed_m_s",
+    "final_stable_dwell_s",
+    "initial_handoff",
+    "subsequent_handoff",
+    "scheduler",
+    "force_stop_policy",
+    "coverage_force_exclusion_n"
+  ],
+  "initial_errors": {
+    "qpos": 0.0,
+    "qvel": 0.0,
+    "ctrl": 0.0,
+    "qacc_warmstart": 0.0,
+    "time": 0.0
+  },
+  "common_frozen_sources": 50,
+  "normalized_model_xml_identical": true,
+  "user_selected_supervisor_metadata": true,
+  "strict_prediction_free_legacy_A": false,
+  "same_realized_wrist_path": false,
+  "same_supervisor_algorithms": true,
+  "contrast": "B surface finger targets and joint nominal planning versus A robot-FK targets and fixed nominal hand; shared native MCC can move all fingers"
+}

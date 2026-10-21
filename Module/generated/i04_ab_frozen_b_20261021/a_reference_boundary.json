@@ -1,0 +1,12 @@
+{
+  "status": "PASSED_A_RECORDED_REFERENCE_BOUNDARY",
+  "wrist_poses": 1831,
+  "normal_sources": [
+    "A_ROBOT_NOMINAL",
+    "MEASURED_BELLY",
+    "MEASURED_RAW"
+  ],
+  "supervisor_prediction_metadata_is_explicitly_allowed": true,
+  "scope": "Reference-constructor schema and native fields; same-process source boundary, not OS isolation",
+  "air_normal_note": "Native source tag is last surface-selector context during air motion; shared air force relief reads current measured normals"
+}

@@ -29,3 +29,14 @@ Module/generated/i04b_full_force_grace01_20261020/** -text
 Module/generated/i04b_full_force_grace01_20261020/*.npz filter=lfs diff=lfs merge=lfs -text
 Module/generated/i04b_full_force_grace01_20261020/**/*.npz filter=lfs diff=lfs merge=lfs -text
 Module/generated/i04b_full_force_grace01_20261020/**/*.mp4 filter=lfs diff=lfs merge=lfs -text
+
+# Frozen-B supervisor comparison: preserve new A evidence without changing B.
+Module/generated/i04a_frozen_b01_20261021/** -text
+Module/generated/i04a_frozen_b01_20261021/*.npz filter=lfs diff=lfs merge=lfs -text
+Module/generated/i04a_frozen_b01_20261021/**/*.npz filter=lfs diff=lfs merge=lfs -text
+Module/generated/i04a_frozen_b01_20261021/**/*.mp4 filter=lfs diff=lfs merge=lfs -text
+Module/generated/i04_ab_frozen_b_20261021/** -text
+Module/generated/i04_ab_frozen_b_20261021/**/*.npz filter=lfs diff=lfs merge=lfs -text
+Module/generated/i04_ab_frozen_b_20261021/**/*.mp4 filter=lfs diff=lfs merge=lfs -text
+Module/generated/i04a_frozen_b01_20261021/planning_calls.jsonl filter=lfs diff=lfs merge=lfs -text
+Module/generated/i04_ab_frozen_b_20261021/a_all_planning_calls.csv filter=lfs diff=lfs merge=lfs -text
