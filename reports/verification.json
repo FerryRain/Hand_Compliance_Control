@@ -1,0 +1,23 @@
+{
+  "source_sha_check_222": "passed",
+  "frozen_split_check": "passed",
+  "cpu_model_inference": {
+    "flat24k": "passed [16,16] finite"
+  },
+  "cuda_training_smoke": {
+    "architecture": "flat",
+    "steps": 1,
+    "batch_size": 2,
+    "passed": true
+  },
+  "cuda_deployment_smoke": {
+    "model": "flat24k",
+    "episode": 48,
+    "frames": 120,
+    "completed": 120,
+    "passed": true
+  },
+  "scope": "Dependency/interface smoke tests; not long-horizon success or clean-machine installer certification",
+  "layout_version": 2,
+  "fr3_included": false
+}

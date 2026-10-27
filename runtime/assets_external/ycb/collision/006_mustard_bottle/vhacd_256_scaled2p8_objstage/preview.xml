@@ -1,0 +1,525 @@
+<mujoco model="convex_collision_preview">
+  <compiler angle="radian" autolimits="true"/>
+  <option gravity="0 0 0"/>
+  <asset>
+    <mesh name="visual" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/visual_scaled.obj"/>
+    <mesh name="collision_000" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_000.obj" maxhullvert="64"/>
+    <mesh name="collision_001" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_001.obj" maxhullvert="64"/>
+    <mesh name="collision_002" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_002.obj" maxhullvert="64"/>
+    <mesh name="collision_003" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_003.obj" maxhullvert="64"/>
+    <mesh name="collision_004" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_004.obj" maxhullvert="64"/>
+    <mesh name="collision_005" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_005.obj" maxhullvert="64"/>
+    <mesh name="collision_006" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_006.obj" maxhullvert="64"/>
+    <mesh name="collision_007" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_007.obj" maxhullvert="64"/>
+    <mesh name="collision_008" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_008.obj" maxhullvert="64"/>
+    <mesh name="collision_009" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_009.obj" maxhullvert="64"/>
+    <mesh name="collision_010" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_010.obj" maxhullvert="64"/>
+    <mesh name="collision_011" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_011.obj" maxhullvert="64"/>
+    <mesh name="collision_012" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_012.obj" maxhullvert="64"/>
+    <mesh name="collision_013" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_013.obj" maxhullvert="64"/>
+    <mesh name="collision_014" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_014.obj" maxhullvert="64"/>
+    <mesh name="collision_015" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_015.obj" maxhullvert="64"/>
+    <mesh name="collision_016" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_016.obj" maxhullvert="64"/>
+    <mesh name="collision_017" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_017.obj" maxhullvert="64"/>
+    <mesh name="collision_018" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_018.obj" maxhullvert="64"/>
+    <mesh name="collision_019" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_019.obj" maxhullvert="64"/>
+    <mesh name="collision_020" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_020.obj" maxhullvert="64"/>
+    <mesh name="collision_021" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_021.obj" maxhullvert="64"/>
+    <mesh name="collision_022" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_022.obj" maxhullvert="64"/>
+    <mesh name="collision_023" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_023.obj" maxhullvert="64"/>
+    <mesh name="collision_024" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_024.obj" maxhullvert="64"/>
+    <mesh name="collision_025" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_025.obj" maxhullvert="64"/>
+    <mesh name="collision_026" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_026.obj" maxhullvert="64"/>
+    <mesh name="collision_027" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_027.obj" maxhullvert="64"/>
+    <mesh name="collision_028" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_028.obj" maxhullvert="64"/>
+    <mesh name="collision_029" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_029.obj" maxhullvert="64"/>
+    <mesh name="collision_030" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_030.obj" maxhullvert="64"/>
+    <mesh name="collision_031" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_031.obj" maxhullvert="64"/>
+    <mesh name="collision_032" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_032.obj" maxhullvert="64"/>
+    <mesh name="collision_033" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_033.obj" maxhullvert="64"/>
+    <mesh name="collision_034" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_034.obj" maxhullvert="64"/>
+    <mesh name="collision_035" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_035.obj" maxhullvert="64"/>
+    <mesh name="collision_036" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_036.obj" maxhullvert="64"/>
+    <mesh name="collision_037" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_037.obj" maxhullvert="64"/>
+    <mesh name="collision_038" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_038.obj" maxhullvert="64"/>
+    <mesh name="collision_039" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_039.obj" maxhullvert="64"/>
+    <mesh name="collision_040" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_040.obj" maxhullvert="64"/>
+    <mesh name="collision_041" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_041.obj" maxhullvert="64"/>
+    <mesh name="collision_042" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_042.obj" maxhullvert="64"/>
+    <mesh name="collision_043" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_043.obj" maxhullvert="64"/>
+    <mesh name="collision_044" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_044.obj" maxhullvert="64"/>
+    <mesh name="collision_045" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_045.obj" maxhullvert="64"/>
+    <mesh name="collision_046" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_046.obj" maxhullvert="64"/>
+    <mesh name="collision_047" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_047.obj" maxhullvert="64"/>
+    <mesh name="collision_048" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_048.obj" maxhullvert="64"/>
+    <mesh name="collision_049" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_049.obj" maxhullvert="64"/>
+    <mesh name="collision_050" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_050.obj" maxhullvert="64"/>
+    <mesh name="collision_051" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_051.obj" maxhullvert="64"/>
+    <mesh name="collision_052" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_052.obj" maxhullvert="64"/>
+    <mesh name="collision_053" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_053.obj" maxhullvert="64"/>
+    <mesh name="collision_054" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_054.obj" maxhullvert="64"/>
+    <mesh name="collision_055" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_055.obj" maxhullvert="64"/>
+    <mesh name="collision_056" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_056.obj" maxhullvert="64"/>
+    <mesh name="collision_057" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_057.obj" maxhullvert="64"/>
+    <mesh name="collision_058" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_058.obj" maxhullvert="64"/>
+    <mesh name="collision_059" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_059.obj" maxhullvert="64"/>
+    <mesh name="collision_060" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_060.obj" maxhullvert="64"/>
+    <mesh name="collision_061" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_061.obj" maxhullvert="64"/>
+    <mesh name="collision_062" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_062.obj" maxhullvert="64"/>
+    <mesh name="collision_063" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_063.obj" maxhullvert="64"/>
+    <mesh name="collision_064" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_064.obj" maxhullvert="64"/>
+    <mesh name="collision_065" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_065.obj" maxhullvert="64"/>
+    <mesh name="collision_066" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_066.obj" maxhullvert="64"/>
+    <mesh name="collision_067" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_067.obj" maxhullvert="64"/>
+    <mesh name="collision_068" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_068.obj" maxhullvert="64"/>
+    <mesh name="collision_069" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_069.obj" maxhullvert="64"/>
+    <mesh name="collision_070" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_070.obj" maxhullvert="64"/>
+    <mesh name="collision_071" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_071.obj" maxhullvert="64"/>
+    <mesh name="collision_072" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_072.obj" maxhullvert="64"/>
+    <mesh name="collision_073" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_073.obj" maxhullvert="64"/>
+    <mesh name="collision_074" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_074.obj" maxhullvert="64"/>
+    <mesh name="collision_075" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_075.obj" maxhullvert="64"/>
+    <mesh name="collision_076" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_076.obj" maxhullvert="64"/>
+    <mesh name="collision_077" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_077.obj" maxhullvert="64"/>
+    <mesh name="collision_078" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_078.obj" maxhullvert="64"/>
+    <mesh name="collision_079" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_079.obj" maxhullvert="64"/>
+    <mesh name="collision_080" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_080.obj" maxhullvert="64"/>
+    <mesh name="collision_081" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_081.obj" maxhullvert="64"/>
+    <mesh name="collision_082" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_082.obj" maxhullvert="64"/>
+    <mesh name="collision_083" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_083.obj" maxhullvert="64"/>
+    <mesh name="collision_084" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_084.obj" maxhullvert="64"/>
+    <mesh name="collision_085" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_085.obj" maxhullvert="64"/>
+    <mesh name="collision_086" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_086.obj" maxhullvert="64"/>
+    <mesh name="collision_087" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_087.obj" maxhullvert="64"/>
+    <mesh name="collision_088" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_088.obj" maxhullvert="64"/>
+    <mesh name="collision_089" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_089.obj" maxhullvert="64"/>
+    <mesh name="collision_090" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_090.obj" maxhullvert="64"/>
+    <mesh name="collision_091" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_091.obj" maxhullvert="64"/>
+    <mesh name="collision_092" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_092.obj" maxhullvert="64"/>
+    <mesh name="collision_093" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_093.obj" maxhullvert="64"/>
+    <mesh name="collision_094" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_094.obj" maxhullvert="64"/>
+    <mesh name="collision_095" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_095.obj" maxhullvert="64"/>
+    <mesh name="collision_096" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_096.obj" maxhullvert="64"/>
+    <mesh name="collision_097" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_097.obj" maxhullvert="64"/>
+    <mesh name="collision_098" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_098.obj" maxhullvert="64"/>
+    <mesh name="collision_099" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_099.obj" maxhullvert="64"/>
+    <mesh name="collision_100" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_100.obj" maxhullvert="64"/>
+    <mesh name="collision_101" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_101.obj" maxhullvert="64"/>
+    <mesh name="collision_102" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_102.obj" maxhullvert="64"/>
+    <mesh name="collision_103" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_103.obj" maxhullvert="64"/>
+    <mesh name="collision_104" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_104.obj" maxhullvert="64"/>
+    <mesh name="collision_105" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_105.obj" maxhullvert="64"/>
+    <mesh name="collision_106" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_106.obj" maxhullvert="64"/>
+    <mesh name="collision_107" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_107.obj" maxhullvert="64"/>
+    <mesh name="collision_108" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_108.obj" maxhullvert="64"/>
+    <mesh name="collision_109" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_109.obj" maxhullvert="64"/>
+    <mesh name="collision_110" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_110.obj" maxhullvert="64"/>
+    <mesh name="collision_111" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_111.obj" maxhullvert="64"/>
+    <mesh name="collision_112" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_112.obj" maxhullvert="64"/>
+    <mesh name="collision_113" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_113.obj" maxhullvert="64"/>
+    <mesh name="collision_114" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_114.obj" maxhullvert="64"/>
+    <mesh name="collision_115" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_115.obj" maxhullvert="64"/>
+    <mesh name="collision_116" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_116.obj" maxhullvert="64"/>
+    <mesh name="collision_117" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_117.obj" maxhullvert="64"/>
+    <mesh name="collision_118" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_118.obj" maxhullvert="64"/>
+    <mesh name="collision_119" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_119.obj" maxhullvert="64"/>
+    <mesh name="collision_120" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_120.obj" maxhullvert="64"/>
+    <mesh name="collision_121" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_121.obj" maxhullvert="64"/>
+    <mesh name="collision_122" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_122.obj" maxhullvert="64"/>
+    <mesh name="collision_123" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_123.obj" maxhullvert="64"/>
+    <mesh name="collision_124" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_124.obj" maxhullvert="64"/>
+    <mesh name="collision_125" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_125.obj" maxhullvert="64"/>
+    <mesh name="collision_126" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_126.obj" maxhullvert="64"/>
+    <mesh name="collision_127" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_127.obj" maxhullvert="64"/>
+    <mesh name="collision_128" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_128.obj" maxhullvert="64"/>
+    <mesh name="collision_129" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_129.obj" maxhullvert="64"/>
+    <mesh name="collision_130" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_130.obj" maxhullvert="64"/>
+    <mesh name="collision_131" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_131.obj" maxhullvert="64"/>
+    <mesh name="collision_132" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_132.obj" maxhullvert="64"/>
+    <mesh name="collision_133" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_133.obj" maxhullvert="64"/>
+    <mesh name="collision_134" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_134.obj" maxhullvert="64"/>
+    <mesh name="collision_135" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_135.obj" maxhullvert="64"/>
+    <mesh name="collision_136" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_136.obj" maxhullvert="64"/>
+    <mesh name="collision_137" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_137.obj" maxhullvert="64"/>
+    <mesh name="collision_138" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_138.obj" maxhullvert="64"/>
+    <mesh name="collision_139" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_139.obj" maxhullvert="64"/>
+    <mesh name="collision_140" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_140.obj" maxhullvert="64"/>
+    <mesh name="collision_141" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_141.obj" maxhullvert="64"/>
+    <mesh name="collision_142" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_142.obj" maxhullvert="64"/>
+    <mesh name="collision_143" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_143.obj" maxhullvert="64"/>
+    <mesh name="collision_144" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_144.obj" maxhullvert="64"/>
+    <mesh name="collision_145" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_145.obj" maxhullvert="64"/>
+    <mesh name="collision_146" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_146.obj" maxhullvert="64"/>
+    <mesh name="collision_147" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_147.obj" maxhullvert="64"/>
+    <mesh name="collision_148" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_148.obj" maxhullvert="64"/>
+    <mesh name="collision_149" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_149.obj" maxhullvert="64"/>
+    <mesh name="collision_150" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_150.obj" maxhullvert="64"/>
+    <mesh name="collision_151" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_151.obj" maxhullvert="64"/>
+    <mesh name="collision_152" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_152.obj" maxhullvert="64"/>
+    <mesh name="collision_153" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_153.obj" maxhullvert="64"/>
+    <mesh name="collision_154" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_154.obj" maxhullvert="64"/>
+    <mesh name="collision_155" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_155.obj" maxhullvert="64"/>
+    <mesh name="collision_156" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_156.obj" maxhullvert="64"/>
+    <mesh name="collision_157" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_157.obj" maxhullvert="64"/>
+    <mesh name="collision_158" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_158.obj" maxhullvert="64"/>
+    <mesh name="collision_159" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_159.obj" maxhullvert="64"/>
+    <mesh name="collision_160" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_160.obj" maxhullvert="64"/>
+    <mesh name="collision_161" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_161.obj" maxhullvert="64"/>
+    <mesh name="collision_162" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_162.obj" maxhullvert="64"/>
+    <mesh name="collision_163" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_163.obj" maxhullvert="64"/>
+    <mesh name="collision_164" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_164.obj" maxhullvert="64"/>
+    <mesh name="collision_165" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_165.obj" maxhullvert="64"/>
+    <mesh name="collision_166" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_166.obj" maxhullvert="64"/>
+    <mesh name="collision_167" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_167.obj" maxhullvert="64"/>
+    <mesh name="collision_168" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_168.obj" maxhullvert="64"/>
+    <mesh name="collision_169" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_169.obj" maxhullvert="64"/>
+    <mesh name="collision_170" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_170.obj" maxhullvert="64"/>
+    <mesh name="collision_171" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_171.obj" maxhullvert="64"/>
+    <mesh name="collision_172" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_172.obj" maxhullvert="64"/>
+    <mesh name="collision_173" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_173.obj" maxhullvert="64"/>
+    <mesh name="collision_174" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_174.obj" maxhullvert="64"/>
+    <mesh name="collision_175" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_175.obj" maxhullvert="64"/>
+    <mesh name="collision_176" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_176.obj" maxhullvert="64"/>
+    <mesh name="collision_177" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_177.obj" maxhullvert="64"/>
+    <mesh name="collision_178" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_178.obj" maxhullvert="64"/>
+    <mesh name="collision_179" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_179.obj" maxhullvert="64"/>
+    <mesh name="collision_180" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_180.obj" maxhullvert="64"/>
+    <mesh name="collision_181" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_181.obj" maxhullvert="64"/>
+    <mesh name="collision_182" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_182.obj" maxhullvert="64"/>
+    <mesh name="collision_183" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_183.obj" maxhullvert="64"/>
+    <mesh name="collision_184" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_184.obj" maxhullvert="64"/>
+    <mesh name="collision_185" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_185.obj" maxhullvert="64"/>
+    <mesh name="collision_186" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_186.obj" maxhullvert="64"/>
+    <mesh name="collision_187" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_187.obj" maxhullvert="64"/>
+    <mesh name="collision_188" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_188.obj" maxhullvert="64"/>
+    <mesh name="collision_189" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_189.obj" maxhullvert="64"/>
+    <mesh name="collision_190" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_190.obj" maxhullvert="64"/>
+    <mesh name="collision_191" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_191.obj" maxhullvert="64"/>
+    <mesh name="collision_192" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_192.obj" maxhullvert="64"/>
+    <mesh name="collision_193" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_193.obj" maxhullvert="64"/>
+    <mesh name="collision_194" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_194.obj" maxhullvert="64"/>
+    <mesh name="collision_195" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_195.obj" maxhullvert="64"/>
+    <mesh name="collision_196" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_196.obj" maxhullvert="64"/>
+    <mesh name="collision_197" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_197.obj" maxhullvert="64"/>
+    <mesh name="collision_198" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_198.obj" maxhullvert="64"/>
+    <mesh name="collision_199" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_199.obj" maxhullvert="64"/>
+    <mesh name="collision_200" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_200.obj" maxhullvert="64"/>
+    <mesh name="collision_201" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_201.obj" maxhullvert="64"/>
+    <mesh name="collision_202" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_202.obj" maxhullvert="64"/>
+    <mesh name="collision_203" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_203.obj" maxhullvert="64"/>
+    <mesh name="collision_204" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_204.obj" maxhullvert="64"/>
+    <mesh name="collision_205" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_205.obj" maxhullvert="64"/>
+    <mesh name="collision_206" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_206.obj" maxhullvert="64"/>
+    <mesh name="collision_207" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_207.obj" maxhullvert="64"/>
+    <mesh name="collision_208" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_208.obj" maxhullvert="64"/>
+    <mesh name="collision_209" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_209.obj" maxhullvert="64"/>
+    <mesh name="collision_210" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_210.obj" maxhullvert="64"/>
+    <mesh name="collision_211" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_211.obj" maxhullvert="64"/>
+    <mesh name="collision_212" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_212.obj" maxhullvert="64"/>
+    <mesh name="collision_213" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_213.obj" maxhullvert="64"/>
+    <mesh name="collision_214" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_214.obj" maxhullvert="64"/>
+    <mesh name="collision_215" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_215.obj" maxhullvert="64"/>
+    <mesh name="collision_216" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_216.obj" maxhullvert="64"/>
+    <mesh name="collision_217" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_217.obj" maxhullvert="64"/>
+    <mesh name="collision_218" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_218.obj" maxhullvert="64"/>
+    <mesh name="collision_219" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_219.obj" maxhullvert="64"/>
+    <mesh name="collision_220" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_220.obj" maxhullvert="64"/>
+    <mesh name="collision_221" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_221.obj" maxhullvert="64"/>
+    <mesh name="collision_222" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_222.obj" maxhullvert="64"/>
+    <mesh name="collision_223" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_223.obj" maxhullvert="64"/>
+    <mesh name="collision_224" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_224.obj" maxhullvert="64"/>
+    <mesh name="collision_225" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_225.obj" maxhullvert="64"/>
+    <mesh name="collision_226" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_226.obj" maxhullvert="64"/>
+    <mesh name="collision_227" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_227.obj" maxhullvert="64"/>
+    <mesh name="collision_228" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_228.obj" maxhullvert="64"/>
+    <mesh name="collision_229" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_229.obj" maxhullvert="64"/>
+    <mesh name="collision_230" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_230.obj" maxhullvert="64"/>
+    <mesh name="collision_231" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_231.obj" maxhullvert="64"/>
+    <mesh name="collision_232" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_232.obj" maxhullvert="64"/>
+    <mesh name="collision_233" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_233.obj" maxhullvert="64"/>
+    <mesh name="collision_234" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_234.obj" maxhullvert="64"/>
+    <mesh name="collision_235" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_235.obj" maxhullvert="64"/>
+    <mesh name="collision_236" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_236.obj" maxhullvert="64"/>
+    <mesh name="collision_237" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_237.obj" maxhullvert="64"/>
+    <mesh name="collision_238" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_238.obj" maxhullvert="64"/>
+    <mesh name="collision_239" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_239.obj" maxhullvert="64"/>
+    <mesh name="collision_240" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_240.obj" maxhullvert="64"/>
+    <mesh name="collision_241" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_241.obj" maxhullvert="64"/>
+    <mesh name="collision_242" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_242.obj" maxhullvert="64"/>
+    <mesh name="collision_243" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_243.obj" maxhullvert="64"/>
+    <mesh name="collision_244" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_244.obj" maxhullvert="64"/>
+    <mesh name="collision_245" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_245.obj" maxhullvert="64"/>
+    <mesh name="collision_246" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_246.obj" maxhullvert="64"/>
+    <mesh name="collision_247" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_247.obj" maxhullvert="64"/>
+    <mesh name="collision_248" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_248.obj" maxhullvert="64"/>
+    <mesh name="collision_249" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_249.obj" maxhullvert="64"/>
+    <mesh name="collision_250" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_250.obj" maxhullvert="64"/>
+    <mesh name="collision_251" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_251.obj" maxhullvert="64"/>
+    <mesh name="collision_252" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_252.obj" maxhullvert="64"/>
+    <mesh name="collision_253" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_253.obj" maxhullvert="64"/>
+    <mesh name="collision_254" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_254.obj" maxhullvert="64"/>
+    <mesh name="collision_255" file="/home/rimlab/Code/Hand_Compliance_Control/assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/collision_part_255.obj" maxhullvert="64"/>
+  </asset>
+  <worldbody>
+    <light pos="0 0 1" dir="0 0 -1"/>
+    <body name="object">
+      <geom name="visual" type="mesh" mesh="visual" contype="0" conaffinity="0" density="0" rgba="0.65 0.7 0.8 0.35"/>
+      <geom name="collision_000" type="mesh" mesh="collision_000" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_001" type="mesh" mesh="collision_001" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_002" type="mesh" mesh="collision_002" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_003" type="mesh" mesh="collision_003" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_004" type="mesh" mesh="collision_004" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_005" type="mesh" mesh="collision_005" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_006" type="mesh" mesh="collision_006" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_007" type="mesh" mesh="collision_007" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_008" type="mesh" mesh="collision_008" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_009" type="mesh" mesh="collision_009" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_010" type="mesh" mesh="collision_010" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_011" type="mesh" mesh="collision_011" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_012" type="mesh" mesh="collision_012" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_013" type="mesh" mesh="collision_013" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_014" type="mesh" mesh="collision_014" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_015" type="mesh" mesh="collision_015" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_016" type="mesh" mesh="collision_016" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_017" type="mesh" mesh="collision_017" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_018" type="mesh" mesh="collision_018" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_019" type="mesh" mesh="collision_019" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_020" type="mesh" mesh="collision_020" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_021" type="mesh" mesh="collision_021" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_022" type="mesh" mesh="collision_022" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_023" type="mesh" mesh="collision_023" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_024" type="mesh" mesh="collision_024" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_025" type="mesh" mesh="collision_025" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_026" type="mesh" mesh="collision_026" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_027" type="mesh" mesh="collision_027" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_028" type="mesh" mesh="collision_028" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_029" type="mesh" mesh="collision_029" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_030" type="mesh" mesh="collision_030" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_031" type="mesh" mesh="collision_031" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_032" type="mesh" mesh="collision_032" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_033" type="mesh" mesh="collision_033" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_034" type="mesh" mesh="collision_034" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_035" type="mesh" mesh="collision_035" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_036" type="mesh" mesh="collision_036" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_037" type="mesh" mesh="collision_037" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_038" type="mesh" mesh="collision_038" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_039" type="mesh" mesh="collision_039" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_040" type="mesh" mesh="collision_040" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_041" type="mesh" mesh="collision_041" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_042" type="mesh" mesh="collision_042" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_043" type="mesh" mesh="collision_043" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_044" type="mesh" mesh="collision_044" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_045" type="mesh" mesh="collision_045" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_046" type="mesh" mesh="collision_046" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_047" type="mesh" mesh="collision_047" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_048" type="mesh" mesh="collision_048" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_049" type="mesh" mesh="collision_049" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_050" type="mesh" mesh="collision_050" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_051" type="mesh" mesh="collision_051" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_052" type="mesh" mesh="collision_052" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_053" type="mesh" mesh="collision_053" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_054" type="mesh" mesh="collision_054" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_055" type="mesh" mesh="collision_055" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_056" type="mesh" mesh="collision_056" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_057" type="mesh" mesh="collision_057" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_058" type="mesh" mesh="collision_058" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_059" type="mesh" mesh="collision_059" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_060" type="mesh" mesh="collision_060" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_061" type="mesh" mesh="collision_061" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_062" type="mesh" mesh="collision_062" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_063" type="mesh" mesh="collision_063" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_064" type="mesh" mesh="collision_064" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_065" type="mesh" mesh="collision_065" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_066" type="mesh" mesh="collision_066" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_067" type="mesh" mesh="collision_067" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_068" type="mesh" mesh="collision_068" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_069" type="mesh" mesh="collision_069" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_070" type="mesh" mesh="collision_070" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_071" type="mesh" mesh="collision_071" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_072" type="mesh" mesh="collision_072" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_073" type="mesh" mesh="collision_073" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_074" type="mesh" mesh="collision_074" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_075" type="mesh" mesh="collision_075" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_076" type="mesh" mesh="collision_076" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_077" type="mesh" mesh="collision_077" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_078" type="mesh" mesh="collision_078" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_079" type="mesh" mesh="collision_079" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_080" type="mesh" mesh="collision_080" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_081" type="mesh" mesh="collision_081" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_082" type="mesh" mesh="collision_082" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_083" type="mesh" mesh="collision_083" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_084" type="mesh" mesh="collision_084" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_085" type="mesh" mesh="collision_085" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_086" type="mesh" mesh="collision_086" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_087" type="mesh" mesh="collision_087" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_088" type="mesh" mesh="collision_088" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_089" type="mesh" mesh="collision_089" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_090" type="mesh" mesh="collision_090" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_091" type="mesh" mesh="collision_091" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_092" type="mesh" mesh="collision_092" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_093" type="mesh" mesh="collision_093" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_094" type="mesh" mesh="collision_094" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_095" type="mesh" mesh="collision_095" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_096" type="mesh" mesh="collision_096" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_097" type="mesh" mesh="collision_097" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_098" type="mesh" mesh="collision_098" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_099" type="mesh" mesh="collision_099" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_100" type="mesh" mesh="collision_100" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_101" type="mesh" mesh="collision_101" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_102" type="mesh" mesh="collision_102" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_103" type="mesh" mesh="collision_103" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_104" type="mesh" mesh="collision_104" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_105" type="mesh" mesh="collision_105" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_106" type="mesh" mesh="collision_106" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_107" type="mesh" mesh="collision_107" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_108" type="mesh" mesh="collision_108" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_109" type="mesh" mesh="collision_109" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_110" type="mesh" mesh="collision_110" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_111" type="mesh" mesh="collision_111" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_112" type="mesh" mesh="collision_112" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_113" type="mesh" mesh="collision_113" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_114" type="mesh" mesh="collision_114" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_115" type="mesh" mesh="collision_115" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_116" type="mesh" mesh="collision_116" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_117" type="mesh" mesh="collision_117" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_118" type="mesh" mesh="collision_118" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_119" type="mesh" mesh="collision_119" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_120" type="mesh" mesh="collision_120" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_121" type="mesh" mesh="collision_121" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_122" type="mesh" mesh="collision_122" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_123" type="mesh" mesh="collision_123" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_124" type="mesh" mesh="collision_124" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_125" type="mesh" mesh="collision_125" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_126" type="mesh" mesh="collision_126" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_127" type="mesh" mesh="collision_127" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_128" type="mesh" mesh="collision_128" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_129" type="mesh" mesh="collision_129" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_130" type="mesh" mesh="collision_130" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_131" type="mesh" mesh="collision_131" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_132" type="mesh" mesh="collision_132" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_133" type="mesh" mesh="collision_133" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_134" type="mesh" mesh="collision_134" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_135" type="mesh" mesh="collision_135" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_136" type="mesh" mesh="collision_136" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_137" type="mesh" mesh="collision_137" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_138" type="mesh" mesh="collision_138" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_139" type="mesh" mesh="collision_139" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_140" type="mesh" mesh="collision_140" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_141" type="mesh" mesh="collision_141" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_142" type="mesh" mesh="collision_142" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_143" type="mesh" mesh="collision_143" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_144" type="mesh" mesh="collision_144" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_145" type="mesh" mesh="collision_145" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_146" type="mesh" mesh="collision_146" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_147" type="mesh" mesh="collision_147" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_148" type="mesh" mesh="collision_148" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_149" type="mesh" mesh="collision_149" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_150" type="mesh" mesh="collision_150" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_151" type="mesh" mesh="collision_151" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_152" type="mesh" mesh="collision_152" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_153" type="mesh" mesh="collision_153" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_154" type="mesh" mesh="collision_154" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_155" type="mesh" mesh="collision_155" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_156" type="mesh" mesh="collision_156" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_157" type="mesh" mesh="collision_157" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_158" type="mesh" mesh="collision_158" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_159" type="mesh" mesh="collision_159" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_160" type="mesh" mesh="collision_160" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_161" type="mesh" mesh="collision_161" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_162" type="mesh" mesh="collision_162" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_163" type="mesh" mesh="collision_163" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_164" type="mesh" mesh="collision_164" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_165" type="mesh" mesh="collision_165" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_166" type="mesh" mesh="collision_166" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_167" type="mesh" mesh="collision_167" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_168" type="mesh" mesh="collision_168" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_169" type="mesh" mesh="collision_169" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_170" type="mesh" mesh="collision_170" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_171" type="mesh" mesh="collision_171" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_172" type="mesh" mesh="collision_172" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_173" type="mesh" mesh="collision_173" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_174" type="mesh" mesh="collision_174" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_175" type="mesh" mesh="collision_175" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_176" type="mesh" mesh="collision_176" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_177" type="mesh" mesh="collision_177" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_178" type="mesh" mesh="collision_178" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_179" type="mesh" mesh="collision_179" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_180" type="mesh" mesh="collision_180" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_181" type="mesh" mesh="collision_181" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_182" type="mesh" mesh="collision_182" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_183" type="mesh" mesh="collision_183" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_184" type="mesh" mesh="collision_184" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_185" type="mesh" mesh="collision_185" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_186" type="mesh" mesh="collision_186" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_187" type="mesh" mesh="collision_187" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_188" type="mesh" mesh="collision_188" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_189" type="mesh" mesh="collision_189" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_190" type="mesh" mesh="collision_190" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_191" type="mesh" mesh="collision_191" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_192" type="mesh" mesh="collision_192" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_193" type="mesh" mesh="collision_193" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_194" type="mesh" mesh="collision_194" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_195" type="mesh" mesh="collision_195" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_196" type="mesh" mesh="collision_196" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_197" type="mesh" mesh="collision_197" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_198" type="mesh" mesh="collision_198" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_199" type="mesh" mesh="collision_199" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_200" type="mesh" mesh="collision_200" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_201" type="mesh" mesh="collision_201" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_202" type="mesh" mesh="collision_202" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_203" type="mesh" mesh="collision_203" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_204" type="mesh" mesh="collision_204" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_205" type="mesh" mesh="collision_205" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_206" type="mesh" mesh="collision_206" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_207" type="mesh" mesh="collision_207" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_208" type="mesh" mesh="collision_208" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_209" type="mesh" mesh="collision_209" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_210" type="mesh" mesh="collision_210" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_211" type="mesh" mesh="collision_211" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_212" type="mesh" mesh="collision_212" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_213" type="mesh" mesh="collision_213" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_214" type="mesh" mesh="collision_214" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_215" type="mesh" mesh="collision_215" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_216" type="mesh" mesh="collision_216" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_217" type="mesh" mesh="collision_217" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_218" type="mesh" mesh="collision_218" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_219" type="mesh" mesh="collision_219" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_220" type="mesh" mesh="collision_220" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_221" type="mesh" mesh="collision_221" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_222" type="mesh" mesh="collision_222" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_223" type="mesh" mesh="collision_223" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_224" type="mesh" mesh="collision_224" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_225" type="mesh" mesh="collision_225" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_226" type="mesh" mesh="collision_226" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_227" type="mesh" mesh="collision_227" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_228" type="mesh" mesh="collision_228" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_229" type="mesh" mesh="collision_229" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_230" type="mesh" mesh="collision_230" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_231" type="mesh" mesh="collision_231" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_232" type="mesh" mesh="collision_232" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_233" type="mesh" mesh="collision_233" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_234" type="mesh" mesh="collision_234" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_235" type="mesh" mesh="collision_235" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_236" type="mesh" mesh="collision_236" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_237" type="mesh" mesh="collision_237" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_238" type="mesh" mesh="collision_238" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_239" type="mesh" mesh="collision_239" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_240" type="mesh" mesh="collision_240" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_241" type="mesh" mesh="collision_241" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_242" type="mesh" mesh="collision_242" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_243" type="mesh" mesh="collision_243" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_244" type="mesh" mesh="collision_244" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_245" type="mesh" mesh="collision_245" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_246" type="mesh" mesh="collision_246" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_247" type="mesh" mesh="collision_247" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_248" type="mesh" mesh="collision_248" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_249" type="mesh" mesh="collision_249" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_250" type="mesh" mesh="collision_250" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_251" type="mesh" mesh="collision_251" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_252" type="mesh" mesh="collision_252" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_253" type="mesh" mesh="collision_253" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_254" type="mesh" mesh="collision_254" density="0" rgba="0.95 0.25 0.1 0.16"/>
+      <geom name="collision_255" type="mesh" mesh="collision_255" density="0" rgba="0.95 0.25 0.1 0.16"/>
+    </body>
+  </worldbody>
+</mujoco>

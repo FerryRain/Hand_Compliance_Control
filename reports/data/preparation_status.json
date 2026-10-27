@@ -1,0 +1,53 @@
+{
+  "state": "completed",
+  "episodes": 222,
+  "frames": 333344,
+  "split": {
+    "val": 20,
+    "test": 33,
+    "train": 169
+  },
+  "parent_groups": {
+    "val": 10,
+    "test": 16,
+    "train": 88
+  },
+  "families_by_split": {
+    "val": {
+      "oblique_orbit": 13,
+      "spatial_spiral": 3,
+      "meridian_arc": 2,
+      "direction_sweep": 2
+    },
+    "test": {
+      "spatial_spiral": 5,
+      "oblique_orbit": 10,
+      "direction_sweep": 14,
+      "meridian_arc": 4
+    },
+    "train": {
+      "direction_sweep": 66,
+      "oblique_orbit": 71,
+      "spatial_spiral": 7,
+      "meridian_arc": 25
+    }
+  },
+  "tube_episodes": 175,
+  "clean_episodes": 47,
+  "measured_q_preserved": true,
+  "true_tip_labels_preserved": true,
+  "episode_boundaries_preserved": true,
+  "parent_group_leakage": false,
+  "preissued_command_max_abs_error": 0.0,
+  "commanded_palm_statistics": {
+    "episodes": 222,
+    "frames": 333344,
+    "delta_position_mean_m": 0.00113876408431679,
+    "delta_position_p95_m": 0.0021061343140900135,
+    "delta_rotation_vector_mean_rad": 0.0017702592303976417,
+    "delta_rotation_vector_p95_rad": 0.0032345789950340986
+  },
+  "dp": "mcc_finger_compliance_control/data/dp_stratified_222_20261022/teachers_commanded_palm.h5",
+  "inverted": "mcc_finger_compliance_control/data/dp_stratified_222_20261022/teachers_inverted.h5",
+  "split_file": "mcc_finger_compliance_control/data/dp_stratified_222_20261022/episode_split.json"
+}

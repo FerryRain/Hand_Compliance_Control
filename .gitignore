@@ -1,38 +1,5 @@
-wandb/
-logs/
-onnx/
-videos/
-__pycache__/
-MUJOCO_LOG.TXT
-debug.py
-.vscode/
-*.ipynb_checkpoints/
-motions/
-*_rerun*
-artifacts/
-.venv/
-render_robots.py
-benchmark_results/
-# Full third-party datasets stay local. The explicitly published I04 Mustard
-# fixture is tracked with its source/license manifest for reproducible runs.
-assets_external/
-finger_compliance_control/data/
-palm_compliance_control/data/
-mcc_finger_compliance_control/data/
-recovery_standalone/data/
-CLAUDE.md
-/.idea/
-/screenshots/
-/data/collected/
-/data/hand_only_compliance/
-
-# Documentation outputs.
-**/_build/*
-**/generated/*
-
-# Local, isolated Windows handcomp dependencies and experiment caches.
-/.runtime/
-/.runtime_cache/
-/.runtime_tmp/
-/.runtime_debug/
-/.runtime_tmpdebug/
+data/
+checkpoints/
+outputs/
+**/__pycache__/
+*.pyc

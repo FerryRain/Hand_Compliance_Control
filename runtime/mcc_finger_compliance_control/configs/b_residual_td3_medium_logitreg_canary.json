@@ -1,0 +1,33 @@
+{
+  "device": "cuda:0",
+  "seed": 20261005,
+  "smoke": false,
+  "smoke_episodes": [
+    9,
+    176
+  ],
+  "num_envs": 256,
+  "frames": 2500,
+  "total_transitions": 500000,
+  "amplitude_scale": 1,
+  "hidden": 256,
+  "learning_rate": 0.0003,
+  "gamma": 0.997,
+  "tau": 0.005,
+  "policy_delay": 2,
+  "target_noise_std": 0.2,
+  "target_noise_clip": 0.5,
+  "warmup_noise_std": 0.25,
+  "exploration_noise_std": 0.1,
+  "learning_starts": 10000,
+  "batch_size": 256,
+  "replay_capacity": 500000,
+  "updates_per_decision": 4,
+  "checkpoint_every_rollouts": 1,
+  "evaluation_every_rollouts": 0,
+  "residual_envelope_file": "mcc_finger_compliance_control/data/residual_rl/large_envelope_reward_v1/selected_envelope.json",
+  "exact_transition_budget": true,
+  "updates_per_transition": 0.015625,
+  "actor_logit_penalty_weight": 0.001,
+  "actor_logit_soft_margin": 2.0
+}

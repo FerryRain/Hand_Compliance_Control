@@ -1,0 +1,1196 @@
+[
+  {
+    "episode_id": 0,
+    "reference": "data/collection_references/ep0000.h5",
+    "frames": 1561,
+    "tube": true
+  },
+  {
+    "episode_id": 1,
+    "reference": "data/collection_references/ep0001.h5",
+    "frames": 1405,
+    "tube": true
+  },
+  {
+    "episode_id": 3,
+    "reference": "data/collection_references/ep0003.h5",
+    "frames": 1506,
+    "tube": true
+  },
+  {
+    "episode_id": 4,
+    "reference": "data/collection_references/ep0004.h5",
+    "frames": 1358,
+    "tube": true
+  },
+  {
+    "episode_id": 5,
+    "reference": "data/collection_references/ep0005.h5",
+    "frames": 1357,
+    "tube": true
+  },
+  {
+    "episode_id": 7,
+    "reference": "data/collection_references/ep0007.h5",
+    "frames": 1733,
+    "tube": true
+  },
+  {
+    "episode_id": 8,
+    "reference": "data/collection_references/ep0008.h5",
+    "frames": 1532,
+    "tube": true
+  },
+  {
+    "episode_id": 9,
+    "reference": "data/collection_references/ep0009.h5",
+    "frames": 1531,
+    "tube": true
+  },
+  {
+    "episode_id": 10,
+    "reference": "data/collection_references/ep0010.h5",
+    "frames": 1379,
+    "tube": true
+  },
+  {
+    "episode_id": 11,
+    "reference": "data/collection_references/ep0011.h5",
+    "frames": 1515,
+    "tube": true
+  },
+  {
+    "episode_id": 12,
+    "reference": "data/collection_references/ep0012.h5",
+    "frames": 1515,
+    "tube": true
+  },
+  {
+    "episode_id": 13,
+    "reference": "data/collection_references/ep0013.h5",
+    "frames": 1642,
+    "tube": false
+  },
+  {
+    "episode_id": 17,
+    "reference": "data/collection_references/ep0017.h5",
+    "frames": 1432,
+    "tube": true
+  },
+  {
+    "episode_id": 18,
+    "reference": "data/collection_references/ep0018.h5",
+    "frames": 1431,
+    "tube": true
+  },
+  {
+    "episode_id": 19,
+    "reference": "data/collection_references/ep0019.h5",
+    "frames": 1874,
+    "tube": true
+  },
+  {
+    "episode_id": 20,
+    "reference": "data/collection_references/ep0020.h5",
+    "frames": 1687,
+    "tube": true
+  },
+  {
+    "episode_id": 21,
+    "reference": "data/collection_references/ep0021.h5",
+    "frames": 5131,
+    "tube": false
+  },
+  {
+    "episode_id": 28,
+    "reference": "data/collection_references/ep0028.h5",
+    "frames": 1600,
+    "tube": false
+  },
+  {
+    "episode_id": 29,
+    "reference": "data/collection_references/ep0029.h5",
+    "frames": 1600,
+    "tube": false
+  },
+  {
+    "episode_id": 30,
+    "reference": "data/collection_references/ep0030.h5",
+    "frames": 1600,
+    "tube": false
+  },
+  {
+    "episode_id": 31,
+    "reference": "data/collection_references/ep0031.h5",
+    "frames": 1424,
+    "tube": true
+  },
+  {
+    "episode_id": 32,
+    "reference": "data/collection_references/ep0032.h5",
+    "frames": 1423,
+    "tube": true
+  },
+  {
+    "episode_id": 33,
+    "reference": "data/collection_references/ep0033.h5",
+    "frames": 1456,
+    "tube": true
+  },
+  {
+    "episode_id": 35,
+    "reference": "data/collection_references/ep0035.h5",
+    "frames": 1603,
+    "tube": true
+  },
+  {
+    "episode_id": 36,
+    "reference": "data/collection_references/ep0036.h5",
+    "frames": 1560,
+    "tube": true
+  },
+  {
+    "episode_id": 37,
+    "reference": "data/collection_references/ep0037.h5",
+    "frames": 1404,
+    "tube": true
+  },
+  {
+    "episode_id": 38,
+    "reference": "data/collection_references/ep0038.h5",
+    "frames": 1404,
+    "tube": true
+  },
+  {
+    "episode_id": 39,
+    "reference": "data/collection_references/ep0039.h5",
+    "frames": 1431,
+    "tube": true
+  },
+  {
+    "episode_id": 40,
+    "reference": "data/collection_references/ep0040.h5",
+    "frames": 1431,
+    "tube": true
+  },
+  {
+    "episode_id": 41,
+    "reference": "data/collection_references/ep0041.h5",
+    "frames": 1700,
+    "tube": false
+  },
+  {
+    "episode_id": 44,
+    "reference": "data/collection_references/ep0044.h5",
+    "frames": 1506,
+    "tube": true
+  },
+  {
+    "episode_id": 45,
+    "reference": "data/collection_references/ep0045.h5",
+    "frames": 1990,
+    "tube": true
+  },
+  {
+    "episode_id": 46,
+    "reference": "data/collection_references/ep0046.h5",
+    "frames": 1990,
+    "tube": true
+  },
+  {
+    "episode_id": 47,
+    "reference": "data/collection_references/ep0047.h5",
+    "frames": 1415,
+    "tube": false
+  },
+  {
+    "episode_id": 48,
+    "reference": "data/collection_references/ep0048.h5",
+    "frames": 1414,
+    "tube": false
+  },
+  {
+    "episode_id": 49,
+    "reference": "data/collection_references/ep0049.h5",
+    "frames": 1773,
+    "tube": true
+  },
+  {
+    "episode_id": 52,
+    "reference": "data/collection_references/ep0052.h5",
+    "frames": 1347,
+    "tube": true
+  },
+  {
+    "episode_id": 53,
+    "reference": "data/collection_references/ep0053.h5",
+    "frames": 1346,
+    "tube": true
+  },
+  {
+    "episode_id": 54,
+    "reference": "data/collection_references/ep0054.h5",
+    "frames": 1212,
+    "tube": true
+  },
+  {
+    "episode_id": 56,
+    "reference": "data/collection_references/ep0056.h5",
+    "frames": 1007,
+    "tube": true
+  },
+  {
+    "episode_id": 57,
+    "reference": "data/collection_references/ep0057.h5",
+    "frames": 1354,
+    "tube": false
+  },
+  {
+    "episode_id": 58,
+    "reference": "data/collection_references/ep0058.h5",
+    "frames": 1466,
+    "tube": false
+  },
+  {
+    "episode_id": 59,
+    "reference": "data/collection_references/ep0059.h5",
+    "frames": 1426,
+    "tube": false
+  },
+  {
+    "episode_id": 60,
+    "reference": "data/collection_references/ep0060.h5",
+    "frames": 1284,
+    "tube": false
+  },
+  {
+    "episode_id": 61,
+    "reference": "data/collection_references/ep0061.h5",
+    "frames": 1918,
+    "tube": true
+  },
+  {
+    "episode_id": 62,
+    "reference": "data/collection_references/ep0062.h5",
+    "frames": 1831,
+    "tube": false
+  },
+  {
+    "episode_id": 65,
+    "reference": "data/collection_references/ep0065.h5",
+    "frames": 1938,
+    "tube": false
+  },
+  {
+    "episode_id": 66,
+    "reference": "data/collection_references/ep0066.h5",
+    "frames": 1402,
+    "tube": true
+  },
+  {
+    "episode_id": 67,
+    "reference": "data/collection_references/ep0067.h5",
+    "frames": 1262,
+    "tube": true
+  },
+  {
+    "episode_id": 68,
+    "reference": "data/collection_references/ep0068.h5",
+    "frames": 1709,
+    "tube": true
+  },
+  {
+    "episode_id": 69,
+    "reference": "data/collection_references/ep0069.h5",
+    "frames": 1708,
+    "tube": true
+  },
+  {
+    "episode_id": 70,
+    "reference": "data/collection_references/ep0070.h5",
+    "frames": 1538,
+    "tube": true
+  },
+  {
+    "episode_id": 72,
+    "reference": "data/collection_references/ep0072.h5",
+    "frames": 1688,
+    "tube": true
+  },
+  {
+    "episode_id": 73,
+    "reference": "data/collection_references/ep0073.h5",
+    "frames": 1832,
+    "tube": true
+  },
+  {
+    "episode_id": 74,
+    "reference": "data/collection_references/ep0074.h5",
+    "frames": 1471,
+    "tube": true
+  },
+  {
+    "episode_id": 75,
+    "reference": "data/collection_references/ep0075.h5",
+    "frames": 1324,
+    "tube": true
+  },
+  {
+    "episode_id": 76,
+    "reference": "data/collection_references/ep0076.h5",
+    "frames": 2000,
+    "tube": true
+  },
+  {
+    "episode_id": 77,
+    "reference": "data/collection_references/ep0077.h5",
+    "frames": 1200,
+    "tube": true
+  },
+  {
+    "episode_id": 78,
+    "reference": "data/collection_references/ep0078.h5",
+    "frames": 1764,
+    "tube": false
+  },
+  {
+    "episode_id": 79,
+    "reference": "data/collection_references/ep0079.h5",
+    "frames": 1764,
+    "tube": false
+  },
+  {
+    "episode_id": 80,
+    "reference": "data/collection_references/ep0080.h5",
+    "frames": 1587,
+    "tube": false
+  },
+  {
+    "episode_id": 81,
+    "reference": "data/collection_references/ep0081.h5",
+    "frames": 1099,
+    "tube": true
+  },
+  {
+    "episode_id": 84,
+    "reference": "data/collection_references/ep0084.h5",
+    "frames": 1782,
+    "tube": true
+  },
+  {
+    "episode_id": 85,
+    "reference": "data/collection_references/ep0085.h5",
+    "frames": 1604,
+    "tube": true
+  },
+  {
+    "episode_id": 86,
+    "reference": "data/collection_references/ep0086.h5",
+    "frames": 1388,
+    "tube": true
+  },
+  {
+    "episode_id": 88,
+    "reference": "data/collection_references/ep0088.h5",
+    "frames": 1969,
+    "tube": true
+  },
+  {
+    "episode_id": 89,
+    "reference": "data/collection_references/ep0089.h5",
+    "frames": 1182,
+    "tube": true
+  },
+  {
+    "episode_id": 90,
+    "reference": "data/collection_references/ep0090.h5",
+    "frames": 1483,
+    "tube": false
+  },
+  {
+    "episode_id": 91,
+    "reference": "data/collection_references/ep0091.h5",
+    "frames": 1670,
+    "tube": false
+  },
+  {
+    "episode_id": 92,
+    "reference": "data/collection_references/ep0092.h5",
+    "frames": 1670,
+    "tube": false
+  },
+  {
+    "episode_id": 93,
+    "reference": "data/collection_references/ep0093.h5",
+    "frames": 1503,
+    "tube": false
+  },
+  {
+    "episode_id": 94,
+    "reference": "data/collection_references/ep0094.h5",
+    "frames": 1612,
+    "tube": true
+  },
+  {
+    "episode_id": 95,
+    "reference": "data/collection_references/ep0095.h5",
+    "frames": 1611,
+    "tube": true
+  },
+  {
+    "episode_id": 96,
+    "reference": "data/collection_references/ep0096.h5",
+    "frames": 1469,
+    "tube": true
+  },
+  {
+    "episode_id": 97,
+    "reference": "data/collection_references/ep0097.h5",
+    "frames": 1659,
+    "tube": true
+  },
+  {
+    "episode_id": 98,
+    "reference": "data/collection_references/ep0098.h5",
+    "frames": 1493,
+    "tube": true
+  },
+  {
+    "episode_id": 99,
+    "reference": "data/collection_references/ep0099.h5",
+    "frames": 2897,
+    "tube": false
+  },
+  {
+    "episode_id": 100,
+    "reference": "data/collection_references/ep0100.h5",
+    "frames": 1739,
+    "tube": false
+  },
+  {
+    "episode_id": 101,
+    "reference": "data/collection_references/ep0101.h5",
+    "frames": 1597,
+    "tube": true
+  },
+  {
+    "episode_id": 102,
+    "reference": "data/collection_references/ep0102.h5",
+    "frames": 1437,
+    "tube": true
+  },
+  {
+    "episode_id": 103,
+    "reference": "data/collection_references/ep0103.h5",
+    "frames": 1574,
+    "tube": true
+  },
+  {
+    "episode_id": 104,
+    "reference": "data/collection_references/ep0104.h5",
+    "frames": 1533,
+    "tube": true
+  },
+  {
+    "episode_id": 105,
+    "reference": "data/collection_references/ep0105.h5",
+    "frames": 1683,
+    "tube": true
+  },
+  {
+    "episode_id": 106,
+    "reference": "data/collection_references/ep0106.h5",
+    "frames": 1515,
+    "tube": true
+  },
+  {
+    "episode_id": 107,
+    "reference": "data/collection_references/ep0107.h5",
+    "frames": 1387,
+    "tube": true
+  },
+  {
+    "episode_id": 108,
+    "reference": "data/collection_references/ep0108.h5",
+    "frames": 1386,
+    "tube": true
+  },
+  {
+    "episode_id": 109,
+    "reference": "data/collection_references/ep0109.h5",
+    "frames": 1507,
+    "tube": true
+  },
+  {
+    "episode_id": 110,
+    "reference": "data/collection_references/ep0110.h5",
+    "frames": 1963,
+    "tube": false
+  },
+  {
+    "episode_id": 111,
+    "reference": "data/collection_references/ep0111.h5",
+    "frames": 1404,
+    "tube": true
+  },
+  {
+    "episode_id": 112,
+    "reference": "data/collection_references/ep0112.h5",
+    "frames": 1666,
+    "tube": false
+  },
+  {
+    "episode_id": 113,
+    "reference": "data/collection_references/ep0113.h5",
+    "frames": 1500,
+    "tube": false
+  },
+  {
+    "episode_id": 114,
+    "reference": "data/collection_references/ep0114.h5",
+    "frames": 1177,
+    "tube": false
+  },
+  {
+    "episode_id": 115,
+    "reference": "data/collection_references/ep0115.h5",
+    "frames": 1458,
+    "tube": false
+  },
+  {
+    "episode_id": 116,
+    "reference": "data/collection_references/ep0116.h5",
+    "frames": 1357,
+    "tube": true
+  },
+  {
+    "episode_id": 117,
+    "reference": "data/collection_references/ep0117.h5",
+    "frames": 1356,
+    "tube": true
+  },
+  {
+    "episode_id": 118,
+    "reference": "data/collection_references/ep0118.h5",
+    "frames": 1222,
+    "tube": true
+  },
+  {
+    "episode_id": 119,
+    "reference": "data/collection_references/ep0119.h5",
+    "frames": 1221,
+    "tube": true
+  },
+  {
+    "episode_id": 120,
+    "reference": "data/collection_references/ep0120.h5",
+    "frames": 1050,
+    "tube": true
+  },
+  {
+    "episode_id": 121,
+    "reference": "data/collection_references/ep0121.h5",
+    "frames": 811,
+    "tube": true
+  },
+  {
+    "episode_id": 122,
+    "reference": "data/collection_references/ep0122.h5",
+    "frames": 802,
+    "tube": true
+  },
+  {
+    "episode_id": 123,
+    "reference": "data/collection_references/ep0123.h5",
+    "frames": 2455,
+    "tube": false
+  },
+  {
+    "episode_id": 124,
+    "reference": "data/collection_references/ep0124.h5",
+    "frames": 800,
+    "tube": false
+  },
+  {
+    "episode_id": 125,
+    "reference": "data/collection_references/ep0125.h5",
+    "frames": 1019,
+    "tube": true
+  },
+  {
+    "episode_id": 126,
+    "reference": "data/collection_references/ep0126.h5",
+    "frames": 1311,
+    "tube": true
+  },
+  {
+    "episode_id": 127,
+    "reference": "data/collection_references/ep0127.h5",
+    "frames": 3566,
+    "tube": true
+  },
+  {
+    "episode_id": 128,
+    "reference": "data/collection_references/ep0128.h5",
+    "frames": 1189,
+    "tube": true
+  },
+  {
+    "episode_id": 129,
+    "reference": "data/collection_references/ep0129.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 130,
+    "reference": "data/collection_references/ep0130.h5",
+    "frames": 2193,
+    "tube": false
+  },
+  {
+    "episode_id": 131,
+    "reference": "data/collection_references/ep0131.h5",
+    "frames": 1836,
+    "tube": true
+  },
+  {
+    "episode_id": 132,
+    "reference": "data/collection_references/ep0132.h5",
+    "frames": 4557,
+    "tube": true
+  },
+  {
+    "episode_id": 133,
+    "reference": "data/collection_references/ep0133.h5",
+    "frames": 1162,
+    "tube": true
+  },
+  {
+    "episode_id": 134,
+    "reference": "data/collection_references/ep0134.h5",
+    "frames": 1324,
+    "tube": false
+  },
+  {
+    "episode_id": 135,
+    "reference": "data/collection_references/ep0135.h5",
+    "frames": 1728,
+    "tube": false
+  },
+  {
+    "episode_id": 136,
+    "reference": "data/collection_references/ep0136.h5",
+    "frames": 1418,
+    "tube": true
+  },
+  {
+    "episode_id": 137,
+    "reference": "data/collection_references/ep0137.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 138,
+    "reference": "data/collection_references/ep0138.h5",
+    "frames": 1500,
+    "tube": true
+  },
+  {
+    "episode_id": 139,
+    "reference": "data/collection_references/ep0139.h5",
+    "frames": 1500,
+    "tube": true
+  },
+  {
+    "episode_id": 140,
+    "reference": "data/collection_references/ep0140.h5",
+    "frames": 800,
+    "tube": false
+  },
+  {
+    "episode_id": 141,
+    "reference": "data/collection_references/ep0141.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 142,
+    "reference": "data/collection_references/ep0142.h5",
+    "frames": 1500,
+    "tube": true
+  },
+  {
+    "episode_id": 143,
+    "reference": "data/collection_references/ep0143.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 144,
+    "reference": "data/collection_references/ep0144.h5",
+    "frames": 1500,
+    "tube": true
+  },
+  {
+    "episode_id": 145,
+    "reference": "data/collection_references/ep0145.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 146,
+    "reference": "data/collection_references/ep0146.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 147,
+    "reference": "data/collection_references/ep0147.h5",
+    "frames": 800,
+    "tube": false
+  },
+  {
+    "episode_id": 148,
+    "reference": "data/collection_references/ep0148.h5",
+    "frames": 1500,
+    "tube": true
+  },
+  {
+    "episode_id": 149,
+    "reference": "data/collection_references/ep0149.h5",
+    "frames": 1500,
+    "tube": true
+  },
+  {
+    "episode_id": 150,
+    "reference": "data/collection_references/ep0150.h5",
+    "frames": 1500,
+    "tube": false
+  },
+  {
+    "episode_id": 151,
+    "reference": "data/collection_references/ep0151.h5",
+    "frames": 1500,
+    "tube": true
+  },
+  {
+    "episode_id": 152,
+    "reference": "data/collection_references/ep0152.h5",
+    "frames": 1500,
+    "tube": true
+  },
+  {
+    "episode_id": 153,
+    "reference": "data/collection_references/ep0153.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 154,
+    "reference": "data/collection_references/ep0154.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 155,
+    "reference": "data/collection_references/ep0155.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 156,
+    "reference": "data/collection_references/ep0156.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 157,
+    "reference": "data/collection_references/ep0157.h5",
+    "frames": 800,
+    "tube": false
+  },
+  {
+    "episode_id": 158,
+    "reference": "data/collection_references/ep0158.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 159,
+    "reference": "data/collection_references/ep0159.h5",
+    "frames": 800,
+    "tube": false
+  },
+  {
+    "episode_id": 160,
+    "reference": "data/collection_references/ep0160.h5",
+    "frames": 3000,
+    "tube": true
+  },
+  {
+    "episode_id": 161,
+    "reference": "data/collection_references/ep0161.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 162,
+    "reference": "data/collection_references/ep0162.h5",
+    "frames": 1500,
+    "tube": true
+  },
+  {
+    "episode_id": 163,
+    "reference": "data/collection_references/ep0163.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 164,
+    "reference": "data/collection_references/ep0164.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 165,
+    "reference": "data/collection_references/ep0165.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 166,
+    "reference": "data/collection_references/ep0166.h5",
+    "frames": 1863,
+    "tube": true
+  },
+  {
+    "episode_id": 167,
+    "reference": "data/collection_references/ep0167.h5",
+    "frames": 800,
+    "tube": false
+  },
+  {
+    "episode_id": 168,
+    "reference": "data/collection_references/ep0168.h5",
+    "frames": 800,
+    "tube": false
+  },
+  {
+    "episode_id": 169,
+    "reference": "data/collection_references/ep0169.h5",
+    "frames": 1500,
+    "tube": true
+  },
+  {
+    "episode_id": 170,
+    "reference": "data/collection_references/ep0170.h5",
+    "frames": 1500,
+    "tube": true
+  },
+  {
+    "episode_id": 171,
+    "reference": "data/collection_references/ep0171.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 172,
+    "reference": "data/collection_references/ep0172.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 173,
+    "reference": "data/collection_references/ep0173.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 174,
+    "reference": "data/collection_references/ep0174.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 175,
+    "reference": "data/collection_references/ep0175.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 176,
+    "reference": "data/collection_references/ep0176.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 177,
+    "reference": "data/collection_references/ep0177.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 178,
+    "reference": "data/collection_references/ep0178.h5",
+    "frames": 1500,
+    "tube": true
+  },
+  {
+    "episode_id": 179,
+    "reference": "data/collection_references/ep0179.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 180,
+    "reference": "data/collection_references/ep0180.h5",
+    "frames": 1500,
+    "tube": false
+  },
+  {
+    "episode_id": 181,
+    "reference": "data/collection_references/ep0181.h5",
+    "frames": 3000,
+    "tube": true
+  },
+  {
+    "episode_id": 182,
+    "reference": "data/collection_references/ep0182.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 183,
+    "reference": "data/collection_references/ep0183.h5",
+    "frames": 1500,
+    "tube": true
+  },
+  {
+    "episode_id": 184,
+    "reference": "data/collection_references/ep0184.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 185,
+    "reference": "data/collection_references/ep0185.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 186,
+    "reference": "data/collection_references/ep0186.h5",
+    "frames": 2000,
+    "tube": false
+  },
+  {
+    "episode_id": 187,
+    "reference": "data/collection_references/ep0187.h5",
+    "frames": 1500,
+    "tube": true
+  },
+  {
+    "episode_id": 188,
+    "reference": "data/collection_references/ep0188.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 189,
+    "reference": "data/collection_references/ep0189.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 190,
+    "reference": "data/collection_references/ep0190.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 191,
+    "reference": "data/collection_references/ep0191.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 192,
+    "reference": "data/collection_references/ep0192.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 193,
+    "reference": "data/collection_references/ep0193.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 194,
+    "reference": "data/collection_references/ep0194.h5",
+    "frames": 1500,
+    "tube": true
+  },
+  {
+    "episode_id": 195,
+    "reference": "data/collection_references/ep0195.h5",
+    "frames": 1500,
+    "tube": true
+  },
+  {
+    "episode_id": 196,
+    "reference": "data/collection_references/ep0196.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 197,
+    "reference": "data/collection_references/ep0197.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 198,
+    "reference": "data/collection_references/ep0198.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 199,
+    "reference": "data/collection_references/ep0199.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 200,
+    "reference": "data/collection_references/ep0200.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 201,
+    "reference": "data/collection_references/ep0201.h5",
+    "frames": 1500,
+    "tube": true
+  },
+  {
+    "episode_id": 202,
+    "reference": "data/collection_references/ep0202.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 203,
+    "reference": "data/collection_references/ep0203.h5",
+    "frames": 2000,
+    "tube": true
+  },
+  {
+    "episode_id": 204,
+    "reference": "data/collection_references/ep0204.h5",
+    "frames": 1500,
+    "tube": true
+  },
+  {
+    "episode_id": 205,
+    "reference": "data/collection_references/ep0205.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 206,
+    "reference": "data/collection_references/ep0206.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 207,
+    "reference": "data/collection_references/ep0207.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 208,
+    "reference": "data/collection_references/ep0208.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 209,
+    "reference": "data/collection_references/ep0209.h5",
+    "frames": 1500,
+    "tube": true
+  },
+  {
+    "episode_id": 210,
+    "reference": "data/collection_references/ep0210.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 211,
+    "reference": "data/collection_references/ep0211.h5",
+    "frames": 1862,
+    "tube": true
+  },
+  {
+    "episode_id": 212,
+    "reference": "data/collection_references/ep0212.h5",
+    "frames": 1500,
+    "tube": true
+  },
+  {
+    "episode_id": 213,
+    "reference": "data/collection_references/ep0213.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 214,
+    "reference": "data/collection_references/ep0214.h5",
+    "frames": 800,
+    "tube": false
+  },
+  {
+    "episode_id": 215,
+    "reference": "data/collection_references/ep0215.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 216,
+    "reference": "data/collection_references/ep0216.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 217,
+    "reference": "data/collection_references/ep0217.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 218,
+    "reference": "data/collection_references/ep0218.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 219,
+    "reference": "data/collection_references/ep0219.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 220,
+    "reference": "data/collection_references/ep0220.h5",
+    "frames": 800,
+    "tube": true
+  },
+  {
+    "episode_id": 221,
+    "reference": "data/collection_references/ep0221.h5",
+    "frames": 800,
+    "tube": true
+  }
+]

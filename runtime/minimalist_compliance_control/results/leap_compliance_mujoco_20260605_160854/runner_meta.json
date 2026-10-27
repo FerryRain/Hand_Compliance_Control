@@ -1,0 +1,6 @@
+{
+  "robot": "leap",
+  "policy": "compliance",
+  "sim": "mujoco",
+  "num_steps": 5915
+}

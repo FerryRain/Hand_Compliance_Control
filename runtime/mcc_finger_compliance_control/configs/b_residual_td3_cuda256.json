@@ -1,0 +1,28 @@
+{
+  "device": "cuda:0",
+  "seed": 20261001,
+  "smoke": false,
+  "smoke_episodes": [
+    9,
+    176
+  ],
+  "num_envs": 256,
+  "frames": 2500,
+  "total_transitions": 10000000,
+  "amplitude_scale": 4,
+  "hidden": 256,
+  "learning_rate": 0.0003,
+  "gamma": 0.997,
+  "tau": 0.005,
+  "policy_delay": 2,
+  "target_noise_std": 0.2,
+  "target_noise_clip": 0.5,
+  "warmup_noise_std": 0.25,
+  "exploration_noise_std": 0.1,
+  "learning_starts": 10000,
+  "batch_size": 256,
+  "replay_capacity": 500000,
+  "updates_per_decision": 4,
+  "checkpoint_every_rollouts": 1,
+  "evaluation_every_rollouts": 10
+}

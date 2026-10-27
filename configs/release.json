@@ -1,0 +1,24 @@
+{
+  "version": "mustard-dp-222-20261027",
+  "scope": "Mustard222 only; NO new surface data",
+  "episodes": 222,
+  "splits": {
+    "val": 20,
+    "test": 33,
+    "train": 169
+  },
+  "tube_episodes": 175,
+  "frames": 333344,
+  "min_frames": 800,
+  "max_frames": 6022,
+  "new_surfaces_used_for_training": false,
+  "checkpoints": {
+    "flat24k": "checkpoints/flat24k.pt"
+  },
+  "source_base_commit": "38231b6017be546be792ede02d4aa682990c6aee",
+  "source_contains_uncommitted_working_tree_changes": true,
+  "available_collection_references": 199,
+  "deployment": "hand only; no FR3 deployment entrypoint",
+  "layout_version": 2,
+  "policy_scope": "flat24k only"
+}

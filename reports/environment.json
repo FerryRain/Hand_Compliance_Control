@@ -1,0 +1,24 @@
+{
+  "python": "3.10.20 (main, Mar 11 2026, 17:46:40) [GCC 14.3.0]",
+  "platform": "Linux-6.8.0-138-generic-x86_64-with-glibc2.35",
+  "qp_solvers": [
+    "daqp"
+  ],
+  "packages": {
+    "torch": "2.10.0",
+    "lerobot": "0.4.4",
+    "diffusers": "0.35.2",
+    "mujoco": "3.9.0",
+    "mujoco-warp": "3.8.1",
+    "warp-lang": "1.12.0",
+    "mink": "1.1.1",
+    "numpy": "2.2.6",
+    "h5py": "3.16.0",
+    "scipy": "1.15.3",
+    "qpsolvers": "4.12.0",
+    "trimesh": "4.11.4",
+    "PyYAML": "6.0.3",
+    "tensordict": "0.11.0",
+    "rsl-rl-lib": "5.0.1"
+  }
+}

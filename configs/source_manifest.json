@@ -1,0 +1,2224 @@
+{
+  "episodes": [
+    {
+      "episode_id": 0,
+      "source": "data/raw_selected/ep0000.h5",
+      "sha256": "3b75823e01a2c3581acad282bfdb4ce834fe98da7a4891f5a0bcb811523e3374",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0001",
+      "split": "val",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1561
+    },
+    {
+      "episode_id": 1,
+      "source": "data/raw_selected/ep0001.h5",
+      "sha256": "071ff6315ac4f0ddc7fff461c5cf605721d0bcc8e363625d6637be35e0ad9307",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0001",
+      "split": "val",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1405
+    },
+    {
+      "episode_id": 2,
+      "source": "data/raw_selected/ep0002.h5",
+      "sha256": "4b0fe746bade22db668d78778cc9ba84344f64682e797e96fbea3c2de2e28f0c",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0002",
+      "split": "test",
+      "family": "spatial_spiral",
+      "tube": true,
+      "frames": 1159
+    },
+    {
+      "episode_id": 3,
+      "source": "data/raw_selected/ep0003.h5",
+      "sha256": "cdf561ee0b36e0b29e98c53a81dca595379a46bd4be83fcbe74989f7385d757a",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0003",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1506
+    },
+    {
+      "episode_id": 4,
+      "source": "data/raw_selected/ep0004.h5",
+      "sha256": "94d73006a29df5407f291a918c4157754df7d9e6a05dde6cd1c358c7e4927f67",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0005",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1358
+    },
+    {
+      "episode_id": 5,
+      "source": "data/raw_selected/ep0005.h5",
+      "sha256": "a96ff626edfd471cb1874350dfc19bcdb759831e1b196eb0a706d086ed889aea",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0005",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1357
+    },
+    {
+      "episode_id": 6,
+      "source": "data/raw_selected/ep0006.h5",
+      "sha256": "d314e347b9aa978b01da76d2cb2be7f2e1f4bbd379aca202bec566f8f9640d8f",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0005",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": false,
+      "frames": 2444
+    },
+    {
+      "episode_id": 7,
+      "source": "data/raw_selected/ep0007.h5",
+      "sha256": "7be5278229f55f55a9a8793bd6847df9267060f08d0a829641494e1f6bd4cf17",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0006",
+      "split": "train",
+      "family": "spatial_spiral",
+      "tube": true,
+      "frames": 1733
+    },
+    {
+      "episode_id": 8,
+      "source": "data/raw_selected/ep0008.h5",
+      "sha256": "107731a4f0b9d8eda1e0abcd750448af8efd2ed8698e2d3936dd74a5d3241488",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0013",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1532
+    },
+    {
+      "episode_id": 9,
+      "source": "data/raw_selected/ep0009.h5",
+      "sha256": "20809d4a620de5508e36ab8b50bb111430e83b560c285d3b96b87b9bb9782ac6",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0013",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1531
+    },
+    {
+      "episode_id": 10,
+      "source": "data/raw_selected/ep0010.h5",
+      "sha256": "ee3334d434886772e90d341cfc08b4bc9dbe6d51fdaaf881371ccacb42ca1d83",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0013",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1379
+    },
+    {
+      "episode_id": 11,
+      "source": "data/raw_selected/ep0011.h5",
+      "sha256": "f5b98c5b263b5399981b28b70ef340bb8797c6e5f9b715b71486330d5b15ecd6",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0014",
+      "split": "val",
+      "family": "spatial_spiral",
+      "tube": true,
+      "frames": 1515
+    },
+    {
+      "episode_id": 12,
+      "source": "data/raw_selected/ep0012.h5",
+      "sha256": "7e20459594bce4660119a33afc7b790a1af05044883450ef795dc9c294a6b585",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0014",
+      "split": "val",
+      "family": "spatial_spiral",
+      "tube": true,
+      "frames": 1515
+    },
+    {
+      "episode_id": 13,
+      "source": "data/raw_selected/ep0013.h5",
+      "sha256": "b8cf46072564486c95ee29cbc634352e5a4b8d9e50f3aa09adacdc46534b4d55",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0016",
+      "split": "train",
+      "family": "meridian_arc",
+      "tube": false,
+      "frames": 1642
+    },
+    {
+      "episode_id": 14,
+      "source": "data/raw_selected/ep0014.h5",
+      "sha256": "8062e2a60b2717a59bae25effde1dacf93ecc78a1f7ae0dbeaec11283b4c493f",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0017",
+      "split": "test",
+      "family": "oblique_orbit",
+      "tube": false,
+      "frames": 939
+    },
+    {
+      "episode_id": 15,
+      "source": "data/raw_selected/ep0015.h5",
+      "sha256": "a7081cec2affb6a09cbdb853be89b9269c1ef762b6a8715d98ac09c995f5a433",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0017",
+      "split": "test",
+      "family": "oblique_orbit",
+      "tube": false,
+      "frames": 1910
+    },
+    {
+      "episode_id": 16,
+      "source": "data/raw_selected/ep0016.h5",
+      "sha256": "7dc9568b9995ff501e73226e623ecfc82b40cc3f93cb3b755c1e0d0c4f8dc22e",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0017",
+      "split": "test",
+      "family": "oblique_orbit",
+      "tube": false,
+      "frames": 1910
+    },
+    {
+      "episode_id": 17,
+      "source": "data/raw_selected/ep0017.h5",
+      "sha256": "ede22aabb439470c2b1b2f2579b5109336d3b6ba95fb5e712d689955c4a0b346",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0017",
+      "split": "test",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1432
+    },
+    {
+      "episode_id": 18,
+      "source": "data/raw_selected/ep0018.h5",
+      "sha256": "c971b16c1ea46328b807ddb9c1739fb6da4c749e7a7723116da32c17cb7f6d15",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0017",
+      "split": "test",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1431
+    },
+    {
+      "episode_id": 19,
+      "source": "data/raw_selected/ep0019.h5",
+      "sha256": "c254f54671b3c02f6b0af106133bfa66aa5a4833a3f15be658ecb3c744d971e2",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0019",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1874
+    },
+    {
+      "episode_id": 20,
+      "source": "data/raw_selected/ep0020.h5",
+      "sha256": "b3af23614b7c2675a2d3934ef08deeadc5ddb50407b06d1734826e7327ee4a01",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0019",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1687
+    },
+    {
+      "episode_id": 21,
+      "source": "data/raw_selected/ep0021.h5",
+      "sha256": "701be9da92fb9caa82b871c4c573d6ee514da734eae5dbe911a6aee9b2083c5a",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0021",
+      "split": "val",
+      "family": "oblique_orbit",
+      "tube": false,
+      "frames": 5131
+    },
+    {
+      "episode_id": 22,
+      "source": "data/raw_selected/ep0022.h5",
+      "sha256": "01f14e723233cf566dca61d3828c604dfa3abd027ceb4b9dccaaa1a5f27a9f35",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0021",
+      "split": "val",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 3079
+    },
+    {
+      "episode_id": 23,
+      "source": "data/raw_selected/ep0023.h5",
+      "sha256": "16ebb7f44332b40b936a8c07471a3101344b023b15d876f189609f29656004f5",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0023",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1480
+    },
+    {
+      "episode_id": 24,
+      "source": "data/raw_selected/ep0024.h5",
+      "sha256": "5cde628ddb1da92f9bb063d3475e7720729b973f97110f54bcb64fc9a9d937ee",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0023",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1479
+    },
+    {
+      "episode_id": 25,
+      "source": "data/raw_selected/ep0025.h5",
+      "sha256": "c5e41f1a775e0e4294855e33e3df786567baeb95ece228276fbbe0d275cd5a8f",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0023",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1333
+    },
+    {
+      "episode_id": 26,
+      "source": "data/raw_selected/ep0026.h5",
+      "sha256": "4d227c9e0d62145b0b5eb9adb8c448f6ae57facdd2b21a54d0578fc27fcc146f",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0025",
+      "split": "test",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 4669
+    },
+    {
+      "episode_id": 27,
+      "source": "data/raw_selected/ep0027.h5",
+      "sha256": "65687e58006ddf4f62cb0b4f4da792cfca55c275e35cfc95bd84414172a4b0ba",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0025",
+      "split": "test",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 2802
+    },
+    {
+      "episode_id": 28,
+      "source": "data/raw_selected/ep0028.h5",
+      "sha256": "9c9a64b4360528431156a8ce0e4efaa7b030148996841a9c3ce27d3d9ad6e1fd",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0031",
+      "split": "test",
+      "family": "direction_sweep",
+      "tube": false,
+      "frames": 1600
+    },
+    {
+      "episode_id": 29,
+      "source": "data/raw_selected/ep0029.h5",
+      "sha256": "2bcbf257fc33e902f5d70936f36a7c6a3a89f1163f4ac52d35cd52b8216713c2",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0031",
+      "split": "test",
+      "family": "direction_sweep",
+      "tube": false,
+      "frames": 1600
+    },
+    {
+      "episode_id": 30,
+      "source": "data/raw_selected/ep0030.h5",
+      "sha256": "f9ab60dbe23a6485a932281ea6ffb5e01f39e8207481a3445852b5a570646153",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0031",
+      "split": "test",
+      "family": "direction_sweep",
+      "tube": false,
+      "frames": 1600
+    },
+    {
+      "episode_id": 31,
+      "source": "data/raw_selected/ep0031.h5",
+      "sha256": "002181c7e6ae679db79b5ba8e9013c04f656ae804ee3e970a602fb8c501a939b",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0033",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1424
+    },
+    {
+      "episode_id": 32,
+      "source": "data/raw_selected/ep0032.h5",
+      "sha256": "762a9418b17b30f080c77766aca696c0d5da02055b1508a9a6b2a92558983639",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0033",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1423
+    },
+    {
+      "episode_id": 33,
+      "source": "data/raw_selected/ep0033.h5",
+      "sha256": "21f500f0cdb777389a7269944e3e1d15495ca083105f5c47a02e56939cf44e36",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0034",
+      "split": "train",
+      "family": "spatial_spiral",
+      "tube": true,
+      "frames": 1456
+    },
+    {
+      "episode_id": 34,
+      "source": "data/raw_selected/ep0034.h5",
+      "sha256": "79a4acfbd2fec9713bcf238580624e58adea89ad887fa8ffff007355014c2e72",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0035",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 5345
+    },
+    {
+      "episode_id": 35,
+      "source": "data/raw_selected/ep0035.h5",
+      "sha256": "dabafd2dac00b7fbb712d3159eb9764af1da0196931f963abfbdbfc75cfacf1e",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0035",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1603
+    },
+    {
+      "episode_id": 36,
+      "source": "data/raw_selected/ep0036.h5",
+      "sha256": "fcf6278acc8bf3250742f05f7c46093659a34007afc743e455cdfd7df73ab72c",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0037",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1560
+    },
+    {
+      "episode_id": 37,
+      "source": "data/raw_selected/ep0037.h5",
+      "sha256": "9145d8e1d0fa3b07337806638d39b479d7dc2e01921575549a8df83ad76c5dbc",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0037",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1404
+    },
+    {
+      "episode_id": 38,
+      "source": "data/raw_selected/ep0038.h5",
+      "sha256": "b1272f0cba6d04af0d19494496406c6105ab23629aca157926ae98bb95d53563",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0037",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1404
+    },
+    {
+      "episode_id": 39,
+      "source": "data/raw_selected/ep0039.h5",
+      "sha256": "d6ef98f963f897280497e45269d75cd705a0497fa8b8a1e6245099a5a4498788",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0038",
+      "split": "train",
+      "family": "spatial_spiral",
+      "tube": true,
+      "frames": 1431
+    },
+    {
+      "episode_id": 40,
+      "source": "data/raw_selected/ep0040.h5",
+      "sha256": "d3cafed4c325bbcb8457724d18b3318b5bcd23b2d02fff6f17ad5fc7815d4112",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0038",
+      "split": "train",
+      "family": "spatial_spiral",
+      "tube": true,
+      "frames": 1431
+    },
+    {
+      "episode_id": 41,
+      "source": "data/raw_selected/ep0041.h5",
+      "sha256": "e24980cd98aee6ee06d681b63a89f71ff762c0f9491737675b46362bb7789923",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0039",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": false,
+      "frames": 1700
+    },
+    {
+      "episode_id": 42,
+      "source": "data/raw_selected/ep0042.h5",
+      "sha256": "b75aed35f2c4d35d4ee4fa132117f4a30a6df9fdcc343c59270d89588954585e",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0040",
+      "split": "train",
+      "family": "meridian_arc",
+      "tube": true,
+      "frames": 1480
+    },
+    {
+      "episode_id": 43,
+      "source": "data/raw_selected/ep0043.h5",
+      "sha256": "36e9492a2d9091de5ee1a6cdb3d4495e920b22aebb5e65405042eb3b01c1c4b4",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0040",
+      "split": "train",
+      "family": "meridian_arc",
+      "tube": true,
+      "frames": 912
+    },
+    {
+      "episode_id": 44,
+      "source": "data/raw_selected/ep0044.h5",
+      "sha256": "a06887fe58365b6939d2992238bf1238cf50f7ea804725b377c96cfc327b0bf8",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0041",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1506
+    },
+    {
+      "episode_id": 45,
+      "source": "data/raw_selected/ep0045.h5",
+      "sha256": "60cfe26b2236778b56827d8e80e0bdd6bc5a806a29cb4f1be338dad94f712739",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0043",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1990
+    },
+    {
+      "episode_id": 46,
+      "source": "data/raw_selected/ep0046.h5",
+      "sha256": "9ed9f34ce26123e82890d1250930d5e3119535286bfa7704bf743f2e3b7446e9",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0043",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1990
+    },
+    {
+      "episode_id": 47,
+      "source": "data/raw_selected/ep0047.h5",
+      "sha256": "798a5f33b1050df8b5f38e95312fec5e6d001242b53c24a9377696f52f3a53fc",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0049",
+      "split": "val",
+      "family": "oblique_orbit",
+      "tube": false,
+      "frames": 1415
+    },
+    {
+      "episode_id": 48,
+      "source": "data/raw_selected/ep0048.h5",
+      "sha256": "06415388fd3688d3bca25ce97f0b7902c96e2b70304fd4b43619b7aaa3259dc3",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0049",
+      "split": "val",
+      "family": "oblique_orbit",
+      "tube": false,
+      "frames": 1414
+    },
+    {
+      "episode_id": 49,
+      "source": "data/raw_selected/ep0049.h5",
+      "sha256": "6184927d0682a6db53ba9eba86d58cb7dfa7f21a51797f4c13dbb4fbcbd7ad68",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0050",
+      "split": "train",
+      "family": "spatial_spiral",
+      "tube": true,
+      "frames": 1773
+    },
+    {
+      "episode_id": 50,
+      "source": "data/raw_selected/ep0050.h5",
+      "sha256": "b625f2aa6e318f01722c8d288e4c3750484b68356621f8430fc3feb0d23de5e9",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0052",
+      "split": "test",
+      "family": "meridian_arc",
+      "tube": true,
+      "frames": 1272
+    },
+    {
+      "episode_id": 51,
+      "source": "data/raw_selected/ep0051.h5",
+      "sha256": "b0856257474bf6e17120a88d51e5f2dbc33e09ec9b1e8c86f5580d83a74139c9",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0052",
+      "split": "test",
+      "family": "meridian_arc",
+      "tube": true,
+      "frames": 1737
+    },
+    {
+      "episode_id": 52,
+      "source": "data/raw_selected/ep0052.h5",
+      "sha256": "b5342189cd73af3a16c778cdc5206aad07716686c090f38c090738cb3c30b8c1",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0053",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1347
+    },
+    {
+      "episode_id": 53,
+      "source": "data/raw_selected/ep0053.h5",
+      "sha256": "dc39011a2673e9cbc5547567916773f3dc42950d483d0c6f92986868c94d913b",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0053",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1346
+    },
+    {
+      "episode_id": 54,
+      "source": "data/raw_selected/ep0054.h5",
+      "sha256": "ec0936db5517326c9e6c53882d957383a84d71fc59b01ea73998d778ce3e6b3c",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0053",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1212
+    },
+    {
+      "episode_id": 55,
+      "source": "data/raw_selected/ep0055.h5",
+      "sha256": "a37c5e280242b604af199bd4d24724081d0b26abac975740158c28d4908e33ac",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0056",
+      "split": "train",
+      "family": "meridian_arc",
+      "tube": true,
+      "frames": 3357
+    },
+    {
+      "episode_id": 56,
+      "source": "data/raw_selected/ep0056.h5",
+      "sha256": "7c233c2df19e9cd0df43e397f219c7eab29258cf8ca9a0de0ddd6503695ae14e",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0056",
+      "split": "train",
+      "family": "meridian_arc",
+      "tube": true,
+      "frames": 1007
+    },
+    {
+      "episode_id": 57,
+      "source": "data/raw_selected/ep0057.h5",
+      "sha256": "e1f830a0cb49ae494add154b4fc55bfb2a990dbe782082869cbe00409326ccfb",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0057",
+      "split": "test",
+      "family": "oblique_orbit",
+      "tube": false,
+      "frames": 1354
+    },
+    {
+      "episode_id": 58,
+      "source": "data/raw_selected/ep0058.h5",
+      "sha256": "8b0325584ad2bc2f9d039b5039f3e2fa54968287f69535a516adf11b29cfa9a3",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0060",
+      "split": "train",
+      "family": "meridian_arc",
+      "tube": false,
+      "frames": 1466
+    },
+    {
+      "episode_id": 59,
+      "source": "data/raw_selected/ep0059.h5",
+      "sha256": "4ba8d434888a6f03e7a4a3aed40484dea10fe9c2f225353fb9ce07645779ef75",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0061",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": false,
+      "frames": 1426
+    },
+    {
+      "episode_id": 60,
+      "source": "data/raw_selected/ep0060.h5",
+      "sha256": "d2942d644cddb472711ee44c0d993609f60b452a12cd7f8058f6cc7056ff8e45",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0061",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": false,
+      "frames": 1284
+    },
+    {
+      "episode_id": 61,
+      "source": "data/raw_selected/ep0061.h5",
+      "sha256": "e0dda7389a86975dbf327a06e828a2cf3026f0b330c35c49b43f3085166c3883",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0062",
+      "split": "test",
+      "family": "spatial_spiral",
+      "tube": true,
+      "frames": 1918
+    },
+    {
+      "episode_id": 62,
+      "source": "data/raw_selected/ep0062.h5",
+      "sha256": "c2504ef1a6b5bac45b3fa806801c6579e474c604d9a77387d341928f7cdd3d5b",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0063",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": false,
+      "frames": 1831
+    },
+    {
+      "episode_id": 63,
+      "source": "data/raw_selected/ep0063.h5",
+      "sha256": "15626ad7d655670d3de7aeda0de40bada8648540a589b3853448d499ad790ea0",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0065",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 4027
+    },
+    {
+      "episode_id": 64,
+      "source": "data/raw_selected/ep0064.h5",
+      "sha256": "f88e3ab0e6310ed8184027157ec2b9e525359a1a76739c28b66964efad1811b7",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0065",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 2417
+    },
+    {
+      "episode_id": 65,
+      "source": "data/raw_selected/ep0065.h5",
+      "sha256": "944859ce10a01b9dfe98498f34560531df5012c8ef97a2ba3ba48ff7981f4fc5",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0067",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": false,
+      "frames": 1938
+    },
+    {
+      "episode_id": 66,
+      "source": "data/raw_selected/ep0066.h5",
+      "sha256": "419c738847122a67d3d278b298c26eb3706a3911743acce484a67611608bb3eb",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0069",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1402
+    },
+    {
+      "episode_id": 67,
+      "source": "data/raw_selected/ep0067.h5",
+      "sha256": "6375c7d778fdfccd0cf1cab3be4196440660540949b207a218f007e60452511f",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0069",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1262
+    },
+    {
+      "episode_id": 68,
+      "source": "data/raw_selected/ep0068.h5",
+      "sha256": "f909b5b00a639f9e6bfb7fac88e540d9fcceb47db590344adbf1c793b5fd3f33",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0071",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1709
+    },
+    {
+      "episode_id": 69,
+      "source": "data/raw_selected/ep0069.h5",
+      "sha256": "ddaa78529aaab94d616a9e77ab93bc26b746337375f05fa79e63046f9b7b1381",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0071",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1708
+    },
+    {
+      "episode_id": 70,
+      "source": "data/raw_selected/ep0070.h5",
+      "sha256": "83d57e2270c038350cbb91ed92f076fafd0d772ebb35e243e5d33c7133947bbc",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0071",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1538
+    },
+    {
+      "episode_id": 71,
+      "source": "data/raw_selected/ep0071.h5",
+      "sha256": "3caa03f0a0708ed674cac9280bf578959e4f5ac971dbeab61ed62e862b66cce8",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0072",
+      "split": "val",
+      "family": "meridian_arc",
+      "tube": true,
+      "frames": 2812
+    },
+    {
+      "episode_id": 72,
+      "source": "data/raw_selected/ep0072.h5",
+      "sha256": "82b776dac1521245291e0fd6d02a413ebe002d9d811a8f4c8660027e31c0b642",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0072",
+      "split": "val",
+      "family": "meridian_arc",
+      "tube": true,
+      "frames": 1688
+    },
+    {
+      "episode_id": 73,
+      "source": "data/raw_selected/ep0073.h5",
+      "sha256": "f43295083db3306ecd98ca89f99ad472326ade07e45594a4dd42e8fd789029e8",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0075",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1832
+    },
+    {
+      "episode_id": 74,
+      "source": "data/raw_selected/ep0074.h5",
+      "sha256": "215c8d6ad94071dbd33367b61002b36f59fdf1b02db1368f1399946a33a6bec2",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0077",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1471
+    },
+    {
+      "episode_id": 75,
+      "source": "data/raw_selected/ep0075.h5",
+      "sha256": "0e72a6673513b42397ea1afa6f7c7eb26a3f70f07868af4eb11b814e94569cf2",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0077",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1324
+    },
+    {
+      "episode_id": 76,
+      "source": "data/raw_selected/ep0076.h5",
+      "sha256": "772cb77958bbc35a583d93f913f2ccd23148ed4cf3efa6f324e64e0aaae1af58",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0081",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 2000
+    },
+    {
+      "episode_id": 77,
+      "source": "data/raw_selected/ep0077.h5",
+      "sha256": "698da114dacff617e1899cebb8e9ea1e3df545ec6668d9a96754240712b082a0",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0081",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1200
+    },
+    {
+      "episode_id": 78,
+      "source": "data/raw_selected/ep0078.h5",
+      "sha256": "469cb16688be1dd447d8b05003f826c422b1cb145647aaca861ee2e61583e0a6",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0087",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": false,
+      "frames": 1764
+    },
+    {
+      "episode_id": 79,
+      "source": "data/raw_selected/ep0079.h5",
+      "sha256": "fb08a59929b3b2031461d11bfd103d9e03432f978fafb3be153c902bc88dddd7",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0087",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": false,
+      "frames": 1764
+    },
+    {
+      "episode_id": 80,
+      "source": "data/raw_selected/ep0080.h5",
+      "sha256": "cc36a46fe1bd5ea5d0fbaaa773dd73357ce37e3ddb0e8e5d5ef37e613c35fc23",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0087",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": false,
+      "frames": 1587
+    },
+    {
+      "episode_id": 81,
+      "source": "data/raw_selected/ep0081.h5",
+      "sha256": "b5789082ab023740cf2827cf23099879b3fc3172d66f41b94e6693cc8158b2b8",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0088",
+      "split": "train",
+      "family": "meridian_arc",
+      "tube": true,
+      "frames": 1099
+    },
+    {
+      "episode_id": 82,
+      "source": "data/raw_selected/ep0082.h5",
+      "sha256": "fe099dc81c1158ff7a182ebd072ae4d202885a7eb00df68d167d8f26c6608b53",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0089",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 4343
+    },
+    {
+      "episode_id": 83,
+      "source": "data/raw_selected/ep0083.h5",
+      "sha256": "54b2f4a0fa25fda8ad3f5d7d2656e05ad89d199754075e34abe55f4195a01713",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0089",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 2606
+    },
+    {
+      "episode_id": 84,
+      "source": "data/raw_selected/ep0084.h5",
+      "sha256": "ff081ab8884d80d1d98e9579d3d2a89b875759f20c92e92d321f9c1cdfd1da83",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0091",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1782
+    },
+    {
+      "episode_id": 85,
+      "source": "data/raw_selected/ep0085.h5",
+      "sha256": "b96718ecb255fa5d62ad34b0359a3eb3f485ceb4be728b20e13a1d72789cc180",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0091",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1604
+    },
+    {
+      "episode_id": 86,
+      "source": "data/raw_selected/ep0086.h5",
+      "sha256": "ee68f20bd971eaa34c2c4883b21ad8b8cbd66984a5ccf84e13e02bf40234114e",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0093",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1388
+    },
+    {
+      "episode_id": 87,
+      "source": "data/raw_selected/ep0087.h5",
+      "sha256": "a74a91aa36596095fbbb198d77905caf365127a290f3815257dbb71451f3d251",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0095",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 6022
+    },
+    {
+      "episode_id": 88,
+      "source": "data/raw_selected/ep0088.h5",
+      "sha256": "30ff547f3b226a0ae8d53879926c8088589c5344938bf196bc47da5d4fb7cbf0",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0097",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1969
+    },
+    {
+      "episode_id": 89,
+      "source": "data/raw_selected/ep0089.h5",
+      "sha256": "38ae30e3a7b961cdb90e579186039333c882290af63b75d3237c00d9dc28d004",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0097",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1182
+    },
+    {
+      "episode_id": 90,
+      "source": "data/raw_selected/ep0090.h5",
+      "sha256": "65d6550c06c90f5186d8fbdb4b0bfbc07c7851c4055a2f4c0944cc4f2a16f299",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0100",
+      "split": "train",
+      "family": "meridian_arc",
+      "tube": false,
+      "frames": 1483
+    },
+    {
+      "episode_id": 91,
+      "source": "data/raw_selected/ep0091.h5",
+      "sha256": "5a6b519b6696887994db8d5292cea3eee6a65ee3f9ae81dbdd968178b2dba5a9",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0101",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": false,
+      "frames": 1670
+    },
+    {
+      "episode_id": 92,
+      "source": "data/raw_selected/ep0092.h5",
+      "sha256": "6f27055d4129d5539a1401857f11b879724f9093301feeee1bb3fc377746baec",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0101",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": false,
+      "frames": 1670
+    },
+    {
+      "episode_id": 93,
+      "source": "data/raw_selected/ep0093.h5",
+      "sha256": "b49d3361d951e666229c65d411c934ef5f3f442cfac583d9641315dc3f85394e",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0101",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": false,
+      "frames": 1503
+    },
+    {
+      "episode_id": 94,
+      "source": "data/raw_selected/ep0094.h5",
+      "sha256": "a4b614bd13953162540658035ba95ab56fa3f0277fae279d613cd0fb5347d443",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0102",
+      "split": "test",
+      "family": "spatial_spiral",
+      "tube": true,
+      "frames": 1612
+    },
+    {
+      "episode_id": 95,
+      "source": "data/raw_selected/ep0095.h5",
+      "sha256": "2ae46f24a919e9b463120906b65878202f26ed63686891c83d3ff04c0bcad031",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0102",
+      "split": "test",
+      "family": "spatial_spiral",
+      "tube": true,
+      "frames": 1611
+    },
+    {
+      "episode_id": 96,
+      "source": "data/raw_selected/ep0096.h5",
+      "sha256": "d7ccd2304eeb7d46fbd527b4f641a6e6a307e175d37199eb7bd367b170ff421b",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0104",
+      "split": "train",
+      "family": "meridian_arc",
+      "tube": true,
+      "frames": 1469
+    },
+    {
+      "episode_id": 97,
+      "source": "data/raw_selected/ep0097.h5",
+      "sha256": "e2cf6243d3225cc34f0e6efc850137b604ea4e638e43035c897d772d6dbbfa4e",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0107",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1659
+    },
+    {
+      "episode_id": 98,
+      "source": "data/raw_selected/ep0098.h5",
+      "sha256": "b59dd72921763154cb146638732fd1e5cda66c5a2f13dfde0f6c041110de6168",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0107",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1493
+    },
+    {
+      "episode_id": 99,
+      "source": "data/raw_selected/ep0099.h5",
+      "sha256": "6aaeceff0dfed130eda8d79addfc9909d5800ba298cbd557a9bb84faec115828",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0108",
+      "split": "test",
+      "family": "meridian_arc",
+      "tube": false,
+      "frames": 2897
+    },
+    {
+      "episode_id": 100,
+      "source": "data/raw_selected/ep0100.h5",
+      "sha256": "7720626dafac89f16dfdb311d44f7a9aba3a20df51df4033d525eae803f7a84e",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0108",
+      "split": "test",
+      "family": "meridian_arc",
+      "tube": false,
+      "frames": 1739
+    },
+    {
+      "episode_id": 101,
+      "source": "data/raw_selected/ep0101.h5",
+      "sha256": "7c8a1d4f51540ab0731d86bc207aaf38c97ccce4477e9361720e9b32d8fbdd4c",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0111",
+      "split": "test",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1597
+    },
+    {
+      "episode_id": 102,
+      "source": "data/raw_selected/ep0102.h5",
+      "sha256": "9a07a56619d80e03c1d5ce4dc55885a55f65a04be2227672ebd174dbfe4b2d20",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0111",
+      "split": "test",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1437
+    },
+    {
+      "episode_id": 103,
+      "source": "data/raw_selected/ep0103.h5",
+      "sha256": "9bdaaff09c4f071665606005f17d5388d153e122112b501e15062f8fc35e5660",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0113",
+      "split": "val",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1574
+    },
+    {
+      "episode_id": 104,
+      "source": "data/raw_selected/ep0104.h5",
+      "sha256": "e11740dcfdb5b72070bbbb66440db150ef3e072539842b0a42f30061bf5a3032",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0115",
+      "split": "test",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1533
+    },
+    {
+      "episode_id": 105,
+      "source": "data/raw_selected/ep0105.h5",
+      "sha256": "ba133750637dd84906bdc072428dfc576d5362452e68be346430ae214008edab",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0119",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1683
+    },
+    {
+      "episode_id": 106,
+      "source": "data/raw_selected/ep0106.h5",
+      "sha256": "75ce0dfed6dd95e4ccd7bd87adf1a483b09b95718f5db13badd177c83b512372",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0119",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1515
+    },
+    {
+      "episode_id": 107,
+      "source": "data/raw_selected/ep0107.h5",
+      "sha256": "2c916dd62f166aa827bb1978b382c9b16f7908e0f06ed97563a88352cc935c18",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0121",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1387
+    },
+    {
+      "episode_id": 108,
+      "source": "data/raw_selected/ep0108.h5",
+      "sha256": "cb68ad5341b1c7df46e726e8216f47b378ee17c4f4d3342eafd95b75844749eb",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0121",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1386
+    },
+    {
+      "episode_id": 109,
+      "source": "data/raw_selected/ep0109.h5",
+      "sha256": "f8b2e64f76e96acfff0d0404ca39357dec0452d51b0b93fd734e0a337d600075",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0123",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1507
+    },
+    {
+      "episode_id": 110,
+      "source": "data/raw_selected/ep0110.h5",
+      "sha256": "7eea5565d3b40a218600f2750c94fd1ce4fde71878cc9aa2412c19153afd9925",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0127",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": false,
+      "frames": 1963
+    },
+    {
+      "episode_id": 111,
+      "source": "data/raw_selected/ep0111.h5",
+      "sha256": "719df9fdd9a48ad508333769535cefdd82deca7b9b93f8b52f8134b7271d8836",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0129",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1404
+    },
+    {
+      "episode_id": 112,
+      "source": "data/raw_selected/ep0112.h5",
+      "sha256": "3832297525f6f187cf1f442157569bc4bb9e92bb7b628fe285924ad068516f06",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0131",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": false,
+      "frames": 1666
+    },
+    {
+      "episode_id": 113,
+      "source": "data/raw_selected/ep0113.h5",
+      "sha256": "137653732a99d1cd76562a68c26c0fd46b50b668651519807915e8c4a3898310",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0131",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": false,
+      "frames": 1500
+    },
+    {
+      "episode_id": 114,
+      "source": "data/raw_selected/ep0114.h5",
+      "sha256": "1eb8de4f10af82904d11ac29d1776a2007fe4c499574468aa0d0e310cb656fa9",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0133",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": false,
+      "frames": 1177
+    },
+    {
+      "episode_id": 115,
+      "source": "data/raw_selected/ep0115.h5",
+      "sha256": "4c335a452892c07f3d748505ce42c0aa1e03135e6d081cdfb3d2ebf714a070ab",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0135",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": false,
+      "frames": 1458
+    },
+    {
+      "episode_id": 116,
+      "source": "data/raw_selected/ep0116.h5",
+      "sha256": "a780d27db6eaa777f575ac2743cb36b16751e4ed92b7fa6e2b3f3d30e4eae07b",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0137",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1357
+    },
+    {
+      "episode_id": 117,
+      "source": "data/raw_selected/ep0117.h5",
+      "sha256": "8e0a5bb6906a0db8ff477075f173999a0879f4d70b4371056997fbfe4fdce5c6",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0137",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1356
+    },
+    {
+      "episode_id": 118,
+      "source": "data/raw_selected/ep0118.h5",
+      "sha256": "15e305496619d4995f57ac3a705f9cb57f42454468d9e3099f6a5354ca1935d5",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0137",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1222
+    },
+    {
+      "episode_id": 119,
+      "source": "data/raw_selected/ep0119.h5",
+      "sha256": "9ad7353c1eba431c6e6ea6a1dded6bbbe76cb38b3bad78aaa91b9992f478e721",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0137",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1221
+    },
+    {
+      "episode_id": 120,
+      "source": "data/raw_selected/ep0120.h5",
+      "sha256": "673f4077c7b0fe901dc2e8a495265f847533dca571fa5a15a49190fff258abc7",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5060",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1050
+    },
+    {
+      "episode_id": 121,
+      "source": "data/raw_selected/ep0121.h5",
+      "sha256": "7fc3bbfafac5ec2099bdad9fe18bb361f4aa174ab4f415ed475b16ee59493703",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5155",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 811
+    },
+    {
+      "episode_id": 122,
+      "source": "data/raw_selected/ep0122.h5",
+      "sha256": "3a81e7fd5ea56025576c982e13f0190701edd231b4eda26ed6f312f42d85f938",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5199",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 802
+    },
+    {
+      "episode_id": 123,
+      "source": "data/raw_selected/ep0123.h5",
+      "sha256": "5dd1744b74f19711160868949b2b4202734805f20e0c1ef45501c1cf9893ef65",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5220",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": false,
+      "frames": 2455
+    },
+    {
+      "episode_id": 124,
+      "source": "data/raw_selected/ep0124.h5",
+      "sha256": "9133bdd2728979f6b9bdc7501a7060fa98781195389ce1db52068db6fa5a8755",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5233",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": false,
+      "frames": 800
+    },
+    {
+      "episode_id": 125,
+      "source": "data/raw_selected/ep0125.h5",
+      "sha256": "c189cd6d5502652cfa5ab91f385069f221255a9e6a5f2eb791cb7c1ed95fc13d",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5245",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1019
+    },
+    {
+      "episode_id": 126,
+      "source": "data/raw_selected/ep0126.h5",
+      "sha256": "7ada53aff1506c2db74e334f0b92b94865ce7bc9af4538f4a10fec75c7aa66e2",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5248",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1311
+    },
+    {
+      "episode_id": 127,
+      "source": "data/raw_selected/ep0127.h5",
+      "sha256": "48cedca811f545a7ac2f2846aa19b3572d40a7e13cff1842cbe0ba17e6a18168",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5255",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 3566
+    },
+    {
+      "episode_id": 128,
+      "source": "data/raw_selected/ep0128.h5",
+      "sha256": "5add6f4be2b2f6ed37f220f40267fd5df2d286f49b9ca69162c96d4fc5323cb1",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5300",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1189
+    },
+    {
+      "episode_id": 129,
+      "source": "data/raw_selected/ep0129.h5",
+      "sha256": "ff4b0900ae60f742606c3101fadbff95ee5c183a17cfeb7c78cfc78b283b2b6f",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5301",
+      "split": "test",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 130,
+      "source": "data/raw_selected/ep0130.h5",
+      "sha256": "5c2f5f52c98fc8adc817899670830825793e5e5c6a151698366260ba758709f5",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5323",
+      "split": "test",
+      "family": "direction_sweep",
+      "tube": false,
+      "frames": 2193
+    },
+    {
+      "episode_id": 131,
+      "source": "data/raw_selected/ep0131.h5",
+      "sha256": "e07dad475a6a45eb3e7825f9c502aed52d57ac390c40cc761675e02feee5c357",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5342",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1836
+    },
+    {
+      "episode_id": 132,
+      "source": "data/raw_selected/ep0132.h5",
+      "sha256": "0ccb40ed6467e1b0553ebcb8795cf4aafab116c30ade49e46d5c080f07974daa",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5344",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 4557
+    },
+    {
+      "episode_id": 133,
+      "source": "data/raw_selected/ep0133.h5",
+      "sha256": "5805d7e69bd53ce1a64dfcd6d5f999b92dfd132cb7231045c33827c276197b51",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5351",
+      "split": "val",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1162
+    },
+    {
+      "episode_id": 134,
+      "source": "data/raw_selected/ep0134.h5",
+      "sha256": "7c9ad9c1b7ff9dbabae4e5e5a56595b427dfdf9e5f8f39cf718a0eeb695fb800",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5370",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": false,
+      "frames": 1324
+    },
+    {
+      "episode_id": 135,
+      "source": "data/raw_selected/ep0135.h5",
+      "sha256": "6885dd97155d65d9d5a2aea31c86f58a23c76bd22bb5c1128d7940084716681f",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5391",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": false,
+      "frames": 1728
+    },
+    {
+      "episode_id": 136,
+      "source": "data/raw_selected/ep0136.h5",
+      "sha256": "c6edeb376b04d43c055f3b80a00d096725186fae08cc107342a67d293f7ace2c",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5395",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1418
+    },
+    {
+      "episode_id": 137,
+      "source": "data/raw_selected/ep0137.h5",
+      "sha256": "173beaf9cde4f12f79b20ec3b2d07fea9aedb3ba8542168d5575275284313228",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0096",
+      "split": "train",
+      "family": "meridian_arc",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 138,
+      "source": "data/raw_selected/ep0138.h5",
+      "sha256": "5d60922909e9dc15a38a6510b60fbc4b5dcea28e88cce9882b54a424a93ee1d1",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5340",
+      "split": "train",
+      "family": "meridian_arc",
+      "tube": true,
+      "frames": 1500
+    },
+    {
+      "episode_id": 139,
+      "source": "data/raw_selected/ep0139.h5",
+      "sha256": "6e37b0c3fe3b967c4051b3433b18385d3349fd6c08b9bfbfdaebac139e888d47",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5330",
+      "split": "val",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1500
+    },
+    {
+      "episode_id": 140,
+      "source": "data/raw_selected/ep0140.h5",
+      "sha256": "a82bdc32daa5fc977f65a3f35ab29803548b39cbfdb92cc18be1223893d062d9",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0061",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": false,
+      "frames": 800
+    },
+    {
+      "episode_id": 141,
+      "source": "data/raw_selected/ep0141.h5",
+      "sha256": "6f5e6dd5ca1490c0a75d1b0abe6323d876e458ba2f17518e2375c47aeb28da5a",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0040",
+      "split": "train",
+      "family": "meridian_arc",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 142,
+      "source": "data/raw_selected/ep0142.h5",
+      "sha256": "534a5893f2fcae343aeb9c22f92db4472d154a2c0e35ce3ae26d49504a35f4e6",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0055",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1500
+    },
+    {
+      "episode_id": 143,
+      "source": "data/raw_selected/ep0143.h5",
+      "sha256": "70fd51ef1cc3bc76a5b5021e90c7c3d634fbdc19341c67a271ff484510b1b646",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0002",
+      "split": "test",
+      "family": "spatial_spiral",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 144,
+      "source": "data/raw_selected/ep0144.h5",
+      "sha256": "56322e789ae768bc0046f6ea977f1526feb02b736a66c1733cec3ac188bcb645",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5341",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1500
+    },
+    {
+      "episode_id": 145,
+      "source": "data/raw_selected/ep0145.h5",
+      "sha256": "5529a579118b37353ecdbb0c0ebe8eb5d439e9ca8fbf900ed3b56f9f091b0004",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0137",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 146,
+      "source": "data/raw_selected/ep0146.h5",
+      "sha256": "a0f87e3bb739257cb33a9c775ae178923eb6edf1378f7030e6133587bdaaa1d4",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5329",
+      "split": "train",
+      "family": "meridian_arc",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 147,
+      "source": "data/raw_selected/ep0147.h5",
+      "sha256": "ecf004b71d335c4857652a25d871248a1bb8b941499bd6de0c1de8a2ab5b9a4e",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0101",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": false,
+      "frames": 800
+    },
+    {
+      "episode_id": 148,
+      "source": "data/raw_selected/ep0148.h5",
+      "sha256": "6c3a1b694e50f290fcafdfeb28267b39f7e042d38cefee8819e2fa5e801b6f52",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5330",
+      "split": "val",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1500
+    },
+    {
+      "episode_id": 149,
+      "source": "data/raw_selected/ep0149.h5",
+      "sha256": "4dd3873d2e1fff405ef4fdc8f7267045ab1fdcccf39af205c44b00eca2d63211",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5341",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1500
+    },
+    {
+      "episode_id": 150,
+      "source": "data/raw_selected/ep0150.h5",
+      "sha256": "f548d79bb78c9cb8e35862455cf1de588ab6255a73311c9d416bd47ce8fe0f60",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0131",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": false,
+      "frames": 1500
+    },
+    {
+      "episode_id": 151,
+      "source": "data/raw_selected/ep0151.h5",
+      "sha256": "2227d34f5b6abb33a7f6602677fe6050b2bea6c13ce256738724340457d471bb",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5342",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1500
+    },
+    {
+      "episode_id": 152,
+      "source": "data/raw_selected/ep0152.h5",
+      "sha256": "485c395f29f45df4788c9e9dc23f953dfdd484723c95c6da3a14f1c16a34295a",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5329",
+      "split": "train",
+      "family": "meridian_arc",
+      "tube": true,
+      "frames": 1500
+    },
+    {
+      "episode_id": 153,
+      "source": "data/raw_selected/ep0153.h5",
+      "sha256": "c1407a3dfdd7f9390895237427461885e76b803e46413cd45295c3c40b7fab3f",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5343",
+      "split": "val",
+      "family": "spatial_spiral",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 154,
+      "source": "data/raw_selected/ep0154.h5",
+      "sha256": "e303dc242716e4ae6b5b67b847a128f9a4e21aaa7e1c91916aa5d5719988a59b",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0020",
+      "split": "train",
+      "family": "meridian_arc",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 155,
+      "source": "data/raw_selected/ep0155.h5",
+      "sha256": "6f77e38343b48d5c7b17b906d41c4e587b83aca99b42585c0b40f4d0daae7690",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0040",
+      "split": "train",
+      "family": "meridian_arc",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 156,
+      "source": "data/raw_selected/ep0156.h5",
+      "sha256": "8fcd67adbf4776b1d344ff81dfc7731b06aa8f50dbb81be1a0d6fcc3cfa4e5ff",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0096",
+      "split": "train",
+      "family": "meridian_arc",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 157,
+      "source": "data/raw_selected/ep0157.h5",
+      "sha256": "15fe8ffeb83ad8caf7aa6d4b642e2d20f29089c1d36a0be4d33dbcf007cfe2ae",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0060",
+      "split": "train",
+      "family": "meridian_arc",
+      "tube": false,
+      "frames": 800
+    },
+    {
+      "episode_id": 158,
+      "source": "data/raw_selected/ep0158.h5",
+      "sha256": "42c7a2efd84b4850c9fdb51b6677b682c9417d95c92fe753a9f904e0ffb31dcf",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5077",
+      "split": "train",
+      "family": "meridian_arc",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 159,
+      "source": "data/raw_selected/ep0159.h5",
+      "sha256": "7c193d24f1504e71f8abd8046fdc6c46584f7b63c383a17933320fbb2cfd1c69",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0100",
+      "split": "train",
+      "family": "meridian_arc",
+      "tube": false,
+      "frames": 800
+    },
+    {
+      "episode_id": 160,
+      "source": "data/raw_selected/ep0160.h5",
+      "sha256": "2d0d95cf4bdbec82d68904e025a89a2e086a8a36ff2dfeabe3124c219f4ff453",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5330",
+      "split": "val",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 3000
+    },
+    {
+      "episode_id": 161,
+      "source": "data/raw_selected/ep0161.h5",
+      "sha256": "8b86b73e445d8f52386e6a8a665b36c8a0d046bd9dd7ce853697b68d063c9770",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0091",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 162,
+      "source": "data/raw_selected/ep0162.h5",
+      "sha256": "ae5d4f330aaa6bf03bebe65fe089e405b3e2e85892f370577ac86a07489dc8d2",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0083",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1500
+    },
+    {
+      "episode_id": 163,
+      "source": "data/raw_selected/ep0163.h5",
+      "sha256": "3a3500d5c80f4091cc6e1613f0a050e211a70e49efd91ddeec9cda965a6adb27",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0125",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 164,
+      "source": "data/raw_selected/ep0164.h5",
+      "sha256": "28ed833929a50e951cd20a67b035a6a8681ea0cdcb3df53aee267d5ba5cc9dfc",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0104",
+      "split": "train",
+      "family": "meridian_arc",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 165,
+      "source": "data/raw_selected/ep0165.h5",
+      "sha256": "4b0c12fe80e6fd9bf3111676bf75e9c15ea2f9622efd60220cf8214c9fa5815b",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0103",
+      "split": "test",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 166,
+      "source": "data/raw_selected/ep0166.h5",
+      "sha256": "fe503be15d3de5841aee2903a00075daf4531522a7c397e0259cf499f41d38ee",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0139",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1863
+    },
+    {
+      "episode_id": 167,
+      "source": "data/raw_selected/ep0167.h5",
+      "sha256": "ca67adac999fa98b5cb0c9d4a660348daf33f23ffd6feb7f052353b81fdfeb74",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0100",
+      "split": "train",
+      "family": "meridian_arc",
+      "tube": false,
+      "frames": 800
+    },
+    {
+      "episode_id": 168,
+      "source": "data/raw_selected/ep0168.h5",
+      "sha256": "8d17a55bf7dbe960b5a437c55e0d74d8c1f2c70e4f8e332155980799a89997ec",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0031",
+      "split": "test",
+      "family": "direction_sweep",
+      "tube": false,
+      "frames": 800
+    },
+    {
+      "episode_id": 169,
+      "source": "data/raw_selected/ep0169.h5",
+      "sha256": "0a6decb011fcf3e99cd8575952534386a5816bd64eaf5ba1a1bc6352c4ed3e24",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0055",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1500
+    },
+    {
+      "episode_id": 170,
+      "source": "data/raw_selected/ep0170.h5",
+      "sha256": "d01184da032e0138ce50d5b3531c6592fdef49ad1649fc840206bb36b1529e98",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0103",
+      "split": "test",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1500
+    },
+    {
+      "episode_id": 171,
+      "source": "data/raw_selected/ep0171.h5",
+      "sha256": "afed97ffb75cd6a124aaf931c2189c19890ddd50da1c45328449c4e2814c9ae8",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0055",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 172,
+      "source": "data/raw_selected/ep0172.h5",
+      "sha256": "d845e97d1a04417eca962e266e02424d1f56379775408754e3c8a5b8a8c25172",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0115",
+      "split": "test",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 173,
+      "source": "data/raw_selected/ep0173.h5",
+      "sha256": "a0973423078eabc62afed0063a47291d6778f5009097cf5240639dcd6198c25f",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0059",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 174,
+      "source": "data/raw_selected/ep0174.h5",
+      "sha256": "453c1e0837b5d1f249df4c1d8848d4815483d755fa8873ad71816cdb1d9363c8",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0020",
+      "split": "train",
+      "family": "meridian_arc",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 175,
+      "source": "data/raw_selected/ep0175.h5",
+      "sha256": "da8bfbc74bbdb7f616f078701768aeeb69a12f16e1348619b7ad5737d6f08b34",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0121",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 176,
+      "source": "data/raw_selected/ep0176.h5",
+      "sha256": "ef59eb535e81d7565d752932ec4f647c32771a56e4b0eda0583c90438c775a67",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0066",
+      "split": "train",
+      "family": "spatial_spiral",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 177,
+      "source": "data/raw_selected/ep0177.h5",
+      "sha256": "9e0bfe1dc855131905cf49e7364563c16a27caa116c4cd6636cccb085ca1aabc",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0034",
+      "split": "train",
+      "family": "spatial_spiral",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 178,
+      "source": "data/raw_selected/ep0178.h5",
+      "sha256": "a59614ffa9a18319773ddc9ad3d8c0809d8ae8fc0f5564160ddd15743627fef8",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0051",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1500
+    },
+    {
+      "episode_id": 179,
+      "source": "data/raw_selected/ep0179.h5",
+      "sha256": "5129387fbf3734d26d4ddfaa600f1c72019fd9a14ff0ba14ef4d56083a514796",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0096",
+      "split": "train",
+      "family": "meridian_arc",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 180,
+      "source": "data/raw_selected/ep0180.h5",
+      "sha256": "9010550777b53a1271938fd39c778ddf6ff2a40ec631fb5e94f7c2d029e3cb1b",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0117",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": false,
+      "frames": 1500
+    },
+    {
+      "episode_id": 181,
+      "source": "data/raw_selected/ep0181.h5",
+      "sha256": "0a5e1dd122bf2a4b591310149cda878157d26a3754b0c724ac66339ac67ee111",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5322",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 3000
+    },
+    {
+      "episode_id": 182,
+      "source": "data/raw_selected/ep0182.h5",
+      "sha256": "205717d2c7ee434f934e24632610bb91ac46af9c932f4518b145aaaf431bbf35",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0093",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 183,
+      "source": "data/raw_selected/ep0183.h5",
+      "sha256": "51e787e1468a4a0255f60f67b405adcc33f415e1f95ca7e798d06c911ec5cc40",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0119",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1500
+    },
+    {
+      "episode_id": 184,
+      "source": "data/raw_selected/ep0184.h5",
+      "sha256": "409c5e0199bafdbe32af444945a6b7ea271e833bfc94ce8036461a4ae7a642a1",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0079",
+      "split": "val",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 185,
+      "source": "data/raw_selected/ep0185.h5",
+      "sha256": "b4d6fb06119e78b7d0b2d146183acd3d19b6a2a2c1d827cf6e38ff2fbf67436c",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0059",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 186,
+      "source": "data/raw_selected/ep0186.h5",
+      "sha256": "4eeba53ecc649c57994d6d3b85d97b33261bf83a3bbcc787ce0dc1c71e10168d",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0031",
+      "split": "test",
+      "family": "direction_sweep",
+      "tube": false,
+      "frames": 2000
+    },
+    {
+      "episode_id": 187,
+      "source": "data/raw_selected/ep0187.h5",
+      "sha256": "8467aad5d386deba549d925987cdd387fcc2972b2bb43e3a9ba49d694005ab23",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0075",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1500
+    },
+    {
+      "episode_id": 188,
+      "source": "data/raw_selected/ep0188.h5",
+      "sha256": "998b1dd41c1cd06026f02e1df6cd688bc4b612722d065936af6a72b345b7beb1",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0029",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 189,
+      "source": "data/raw_selected/ep0189.h5",
+      "sha256": "05b90be86bac2eef5b8c4e8cc12e64c667045bb94ac63aeabdaa5240cdab03a9",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5077",
+      "split": "train",
+      "family": "meridian_arc",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 190,
+      "source": "data/raw_selected/ep0190.h5",
+      "sha256": "9161fe1ad685baf6cee945713733612259cc39a1e58ee82e64713bdfb50e0f12",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0093",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 191,
+      "source": "data/raw_selected/ep0191.h5",
+      "sha256": "4c37f94bf2b19520c98d2ca5ec6540dde6c7fe2479f27a8d24a4c8e80c7822b5",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0041",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 192,
+      "source": "data/raw_selected/ep0192.h5",
+      "sha256": "49e68446e52627428d0fdc884a91fb26ce5539b40c815c828a1b83d24256998c",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0007",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 193,
+      "source": "data/raw_selected/ep0193.h5",
+      "sha256": "1bbd7da032fb6f8918e123d585195dee74b8fdd4dba2f3843f6873b0f9ba8cac",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5312",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 194,
+      "source": "data/raw_selected/ep0194.h5",
+      "sha256": "1a84b75087326668d256e4948e81bbf085b3b24209ec113e0dfd56de224a0b6d",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5362",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1500
+    },
+    {
+      "episode_id": 195,
+      "source": "data/raw_selected/ep0195.h5",
+      "sha256": "080794110efd7a4ee55c51857bc1e7d05322a529275aaef9b6b18da4513d9e91",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0029",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1500
+    },
+    {
+      "episode_id": 196,
+      "source": "data/raw_selected/ep0196.h5",
+      "sha256": "a2a7c654b73cab9acbd9a30c34efe58e5f0701fd6f2c45236c07e1f9338b1dbf",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0097",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 197,
+      "source": "data/raw_selected/ep0197.h5",
+      "sha256": "5507b3dce2a69a0109d08fc45c2043b6643c38be599932ef695a251f775680eb",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5218",
+      "split": "test",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 198,
+      "source": "data/raw_selected/ep0198.h5",
+      "sha256": "34b79a44abc6ae5e080cc0f1cbe3d684be330705941a995a02d704c0addb46e1",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0007",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 199,
+      "source": "data/raw_selected/ep0199.h5",
+      "sha256": "f70d9b6541191f593b2b88e43eea57fca505234337fde74e201ea0b98982291f",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0079",
+      "split": "val",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 200,
+      "source": "data/raw_selected/ep0200.h5",
+      "sha256": "51c795c9f44e1819593a50bca53aa7f807ff812575e1e2c9df4c838e26562080",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5373",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 201,
+      "source": "data/raw_selected/ep0201.h5",
+      "sha256": "c09d788c344e575bec63c204e89702cb62be13155d9c3f0cc70e86c1ffa35ccf",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0139",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1500
+    },
+    {
+      "episode_id": 202,
+      "source": "data/raw_selected/ep0202.h5",
+      "sha256": "ca28969909afc8afd781de4a7c4170baf36d1058f177633638d856f2892bb4e7",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0121",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 203,
+      "source": "data/raw_selected/ep0203.h5",
+      "sha256": "0ada55fba65143b54e590f9ab380314543a8bccca6eca07cd3d1ff6700129c19",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0081",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 2000
+    },
+    {
+      "episode_id": 204,
+      "source": "data/raw_selected/ep0204.h5",
+      "sha256": "63657e1e34fe7516ad753cffd6d0beafcf662d55a4a45e5915ace0a983c21ede",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0075",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1500
+    },
+    {
+      "episode_id": 205,
+      "source": "data/raw_selected/ep0205.h5",
+      "sha256": "d52bb2cb9a5b9952f8d52e00af35dbb805bde56ce9b5a9b4abb824f3016c3844",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0019",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 206,
+      "source": "data/raw_selected/ep0206.h5",
+      "sha256": "f2d6ad90127cf51c2e84d022cc1c5aa0a66195f937b8cb94b76eb778294683d1",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0125",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 207,
+      "source": "data/raw_selected/ep0207.h5",
+      "sha256": "f4981e2c8d05d02173f1398087506d0114d6ac08fd3b7c1556134129860b3d0c",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0083",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 208,
+      "source": "data/raw_selected/ep0208.h5",
+      "sha256": "dd7afa34771fea74865b89e314b5954ff4a4952d13e6b81ffb9197a218248315",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5351",
+      "split": "val",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 209,
+      "source": "data/raw_selected/ep0209.h5",
+      "sha256": "479443600aaa9d9d877c9b76ad9f84f0c3ed6d9f90995f2da6bb6c992445b09d",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0055",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1500
+    },
+    {
+      "episode_id": 210,
+      "source": "data/raw_selected/ep0210.h5",
+      "sha256": "fd92e6b0959c807aa4d6fec6b101bbe5d9544207c307d456fc74e2055dc50832",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0069",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 211,
+      "source": "data/raw_selected/ep0211.h5",
+      "sha256": "3db3543727b62d5f54c24ba505f5448dcd47a59561ce6de944a7c35e151878a3",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0139",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 1862
+    },
+    {
+      "episode_id": 212,
+      "source": "data/raw_selected/ep0212.h5",
+      "sha256": "777171185c0f7afc7c1b98c653800485f33fc3d420d61fead56d5cd8896afca3",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry0113",
+      "split": "val",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 1500
+    },
+    {
+      "episode_id": 213,
+      "source": "data/raw_selected/ep0213.h5",
+      "sha256": "c71c740179255109d6bce032bf909087912d1b64f8cd78ab43847cdb09a8f5f4",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5183",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 214,
+      "source": "data/raw_selected/ep0214.h5",
+      "sha256": "cae00721562aab67c31d46ac1e4dfb450f6d2e25c04cf37c56eab868ebc0a3ee",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5084",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": false,
+      "frames": 800
+    },
+    {
+      "episode_id": 215,
+      "source": "data/raw_selected/ep0215.h5",
+      "sha256": "2512641fe3423a4aeb33d66dd994ded03d366e931fc4fe2a937cc86874ad48b6",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5218",
+      "split": "test",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 216,
+      "source": "data/raw_selected/ep0216.h5",
+      "sha256": "cf81cc9cb30bf54bcec896474e5732797f20c8b89a50fa6822e6d6700d18039d",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5267",
+      "split": "test",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 217,
+      "source": "data/raw_selected/ep0217.h5",
+      "sha256": "4a0e78b444aca57d68b633a17eaef330b9966d5b46692e1be0603f668155d272",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5245",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 218,
+      "source": "data/raw_selected/ep0218.h5",
+      "sha256": "7bc01a27b7db2a78c36eb4e65582163d9dc592656dd14f809cddf0f0d6c1d1bb",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5281",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 219,
+      "source": "data/raw_selected/ep0219.h5",
+      "sha256": "3d9050f7474f00efa3ec83a25cd16a29eb75b3ea74b4980177547974750c3233",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5051",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 220,
+      "source": "data/raw_selected/ep0220.h5",
+      "sha256": "da2a99f91217dde1dbe809011800e30bc42ecc061d90a52eab24c5e64588bb00",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5190",
+      "split": "train",
+      "family": "oblique_orbit",
+      "tube": true,
+      "frames": 800
+    },
+    {
+      "episode_id": 221,
+      "source": "data/raw_selected/ep0221.h5",
+      "sha256": "cf686f95279c5483184c9094f71efdc49f6ed6e7c5105667432f9e5a82892857",
+      "related_plan_group_id": "mustard_exploration_seed20261015_geometry5312",
+      "split": "train",
+      "family": "direction_sweep",
+      "tube": true,
+      "frames": 800
+    }
+  ]
+}

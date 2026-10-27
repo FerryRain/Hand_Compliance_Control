@@ -1,0 +1,57 @@
+{
+  "source": "mcc_finger_compliance_control/data/dp_stratified_222_20261022/teachers_commanded_palm.h5",
+  "input_frame": "palm",
+  "state_schema": "contact_geometry_planner_motion",
+  "input_profile": "B2",
+  "active_input_fields": [
+    "q_hand",
+    "fingertip_contact_pos_palm",
+    "fingertip_contact_normal_palm",
+    "fingertip_contact_mask",
+    "q_velocity",
+    "fingertip_contact_point_velocity_palm",
+    "fingertip_contact_normal_angular_rate_palm",
+    "palm_relative_twist_palm",
+    "planner_palm_delta_pose_palm"
+  ],
+  "contact_normal_polarity": "primary_fingertip_to_object",
+  "action_representation": "anchored_delta_q",
+  "architecture": "LeRobot DiffusionPolicy / conditional 1-D U-Net",
+  "input": {
+    "observation.state": {
+      "q_hand": 16,
+      "fingertip_contact_pos_palm": 12,
+      "fingertip_contact_normal_palm": 12,
+      "fingertip_contact_mask": 4,
+      "q_velocity": 16,
+      "fingertip_contact_point_velocity_palm": 12,
+      "fingertip_contact_normal_angular_rate_palm": 12
+    },
+    "observation.environment_state": {
+      "palm_relative_twist_palm": 6,
+      "planner_palm_delta_pose_palm": 6
+    },
+    "total_dim": 96
+  },
+  "output": {
+    "future_q_hand_delta": [
+      16,
+      16
+    ]
+  },
+  "train_episodes": 169,
+  "val_episodes": 20,
+  "train_windows": 44109,
+  "val_windows": 6378,
+  "planner": {
+    "waypoints": 1,
+    "step_frames": 20,
+    "horizon_frames": 20,
+    "waypoint_dt": 0.2,
+    "horizon_seconds": 0.2
+  },
+  "motion": {
+    "step_frames": 5,
+    "feature_dt": 0.05
+  }
+}

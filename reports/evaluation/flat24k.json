@@ -1,0 +1,5147 @@
+{
+  "scope": "Existing evaluation results retained for flat24k and its oracle reference only",
+  "arms": {
+    "flat24k": {
+      "lanes": [
+        {
+          "episode_id": 153,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry5343",
+          "family": "spatial_spiral",
+          "frames": 800,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.97375,
+            "found_four_rate": 0.98,
+            "strict_healthy_per_finger": [
+              0.98875,
+              1.0,
+              1.0,
+              0.985
+            ],
+            "found_per_finger": [
+              0.995,
+              1.0,
+              1.0,
+              0.985
+            ],
+            "longest_four_loss_frames": 5,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 51.70375442504883,
+            "p95_force_n": 23.902843475341797,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 51.70375442504883,
+              "connector": 13.234273910522461,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.9709944751381215,
+            "found_four_rate": 0.9779005524861878,
+            "strict_healthy_per_finger": [
+              0.9875690607734806,
+              1.0,
+              1.0,
+              0.9834254143646409
+            ],
+            "found_per_finger": [
+              0.994475138121547,
+              1.0,
+              1.0,
+              0.9834254143646409
+            ],
+            "longest_four_loss_frames": 5,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 51.70375442504883,
+            "p95_force_n": 24.925073623657227,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 51.70375442504883,
+              "connector": 13.234273910522461,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 153,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry5343",
+          "family": "spatial_spiral",
+          "frames": 800,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.82375,
+            "found_four_rate": 0.94625,
+            "strict_healthy_per_finger": [
+              0.95875,
+              0.99625,
+              0.88375,
+              0.96625
+            ],
+            "found_per_finger": [
+              0.9925,
+              0.99625,
+              0.98125,
+              0.96625
+            ],
+            "longest_four_loss_frames": 85,
+            "first_loss_over5_frame": 267,
+            "peak_force_n": 49.80818557739258,
+            "p95_force_n": 26.67984962463379,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 49.80818557739258,
+              "connector": 27.612939834594727,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.8052486187845304,
+            "found_four_rate": 0.9406077348066298,
+            "strict_healthy_per_finger": [
+              0.9544198895027625,
+              0.9958563535911602,
+              0.8715469613259669,
+              0.962707182320442
+            ],
+            "found_per_finger": [
+              0.9917127071823204,
+              0.9958563535911602,
+              0.9792817679558011,
+              0.962707182320442
+            ],
+            "longest_four_loss_frames": 85,
+            "first_loss_over5_frame": 191,
+            "peak_force_n": 49.80818557739258,
+            "p95_force_n": 27.009624481201172,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 49.80818557739258,
+              "connector": 27.612939834594727,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 184,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry0079",
+          "family": "direction_sweep",
+          "frames": 800,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.9875,
+            "found_four_rate": 0.98875,
+            "strict_healthy_per_finger": [
+              0.99875,
+              1.0,
+              1.0,
+              0.98875
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.98875
+            ],
+            "longest_four_loss_frames": 1,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 36.15756607055664,
+            "p95_force_n": 27.689743041992188,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 36.15756607055664,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.9875690607734806,
+            "found_four_rate": 0.988950276243094,
+            "strict_healthy_per_finger": [
+              0.9986187845303868,
+              1.0,
+              1.0,
+              0.988950276243094
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.988950276243094
+            ],
+            "longest_four_loss_frames": 1,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 36.15756607055664,
+            "p95_force_n": 27.840396881103516,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 36.15756607055664,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 184,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry0079",
+          "family": "direction_sweep",
+          "frames": 800,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.98875,
+            "found_four_rate": 0.98875,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.98875
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.98875
+            ],
+            "longest_four_loss_frames": 1,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 32.54593276977539,
+            "p95_force_n": 23.938819885253906,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 32.54593276977539,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.9875690607734806,
+            "found_four_rate": 0.9875690607734806,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.9875690607734806
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.9875690607734806
+            ],
+            "longest_four_loss_frames": 1,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 32.54593276977539,
+            "p95_force_n": 24.353687286376953,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 32.54593276977539,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 199,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry0079",
+          "family": "direction_sweep",
+          "frames": 800,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.4275,
+            "found_four_rate": 0.58375,
+            "strict_healthy_per_finger": [
+              0.92375,
+              0.6675,
+              0.64875,
+              0.76375
+            ],
+            "found_per_finger": [
+              0.97125,
+              0.8075,
+              0.75,
+              0.86
+            ],
+            "longest_four_loss_frames": 343,
+            "first_loss_over5_frame": 35,
+            "peak_force_n": 10170.826171875,
+            "p95_force_n": 5633.197265625,
+            "over100N_frames": 422,
+            "force_peak_by_part_n": {
+              "true_fingertip": 3691.195068359375,
+              "connector": 10170.826171875,
+              "other_link": 9803.7138671875,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.39226519337016574,
+            "found_four_rate": 0.5649171270718232,
+            "strict_healthy_per_finger": [
+              0.9157458563535912,
+              0.6325966850828729,
+              0.611878453038674,
+              0.7638121546961326
+            ],
+            "found_per_finger": [
+              0.9682320441988951,
+              0.787292817679558,
+              0.7237569060773481,
+              0.8701657458563536
+            ],
+            "longest_four_loss_frames": 343,
+            "first_loss_over5_frame": 151,
+            "peak_force_n": 10170.826171875,
+            "p95_force_n": 5769.70849609375,
+            "over100N_frames": 422,
+            "force_peak_by_part_n": {
+              "true_fingertip": 3691.195068359375,
+              "connector": 10170.826171875,
+              "other_link": 9803.7138671875,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 199,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry0079",
+          "family": "direction_sweep",
+          "frames": 800,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.925,
+            "found_four_rate": 0.94375,
+            "strict_healthy_per_finger": [
+              0.99125,
+              0.98875,
+              0.97375,
+              0.9625
+            ],
+            "found_per_finger": [
+              1.0,
+              0.98875,
+              0.9775,
+              0.9725
+            ],
+            "longest_four_loss_frames": 8,
+            "first_loss_over5_frame": 130,
+            "peak_force_n": 64.0914077758789,
+            "p95_force_n": 39.29323959350586,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 64.0914077758789,
+              "connector": 20.127777099609375,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.9171270718232044,
+            "found_four_rate": 0.9378453038674033,
+            "strict_healthy_per_finger": [
+              0.9903314917127072,
+              0.9875690607734806,
+              0.9709944751381215,
+              0.9585635359116023
+            ],
+            "found_per_finger": [
+              1.0,
+              0.9875690607734806,
+              0.9751381215469613,
+              0.9696132596685083
+            ],
+            "longest_four_loss_frames": 8,
+            "first_loss_over5_frame": 54,
+            "peak_force_n": 64.0914077758789,
+            "p95_force_n": 39.22841262817383,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 64.0914077758789,
+              "connector": 20.127777099609375,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 208,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry5351",
+          "family": "oblique_orbit",
+          "frames": 800,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.41375,
+            "found_four_rate": 0.92875,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.41375
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.92875
+            ],
+            "longest_four_loss_frames": 411,
+            "first_loss_over5_frame": 387,
+            "peak_force_n": 45.73917770385742,
+            "p95_force_n": 30.154417037963867,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 38.014869689941406,
+              "connector": 45.73917770385742,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.35220994475138123,
+            "found_four_rate": 0.9212707182320442,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.35220994475138123
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.9212707182320442
+            ],
+            "longest_four_loss_frames": 411,
+            "first_loss_over5_frame": 311,
+            "peak_force_n": 45.73917770385742,
+            "p95_force_n": 30.6517333984375,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 38.014869689941406,
+              "connector": 45.73917770385742,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 208,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry5351",
+          "family": "oblique_orbit",
+          "frames": 800,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.40125,
+            "found_four_rate": 0.9475,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              0.99625,
+              0.40125
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              0.99625,
+              0.95125
+            ],
+            "longest_four_loss_frames": 440,
+            "first_loss_over5_frame": 360,
+            "peak_force_n": 53.415992736816406,
+            "p95_force_n": 38.43183517456055,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 41.40827941894531,
+              "connector": 53.415992736816406,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.3383977900552486,
+            "found_four_rate": 0.9419889502762431,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              0.9958563535911602,
+              0.3383977900552486
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              0.9958563535911602,
+              0.9461325966850829
+            ],
+            "longest_four_loss_frames": 440,
+            "first_loss_over5_frame": 284,
+            "peak_force_n": 53.415992736816406,
+            "p95_force_n": 38.780982971191406,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 41.40827941894531,
+              "connector": 53.415992736816406,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 133,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry5351",
+          "family": "oblique_orbit",
+          "frames": 1162,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.5636833046471601,
+            "found_four_rate": 0.8984509466437177,
+            "strict_healthy_per_finger": [
+              0.8528399311531841,
+              0.8795180722891566,
+              0.7495697074010327,
+              0.7736660929432013
+            ],
+            "found_per_finger": [
+              0.9965576592082617,
+              1.0,
+              0.9647160068846816,
+              0.9302925989672978
+            ],
+            "longest_four_loss_frames": 342,
+            "first_loss_over5_frame": 318,
+            "peak_force_n": 118.6615982055664,
+            "p95_force_n": 71.46412658691406,
+            "over100N_frames": 12,
+            "force_peak_by_part_n": {
+              "true_fingertip": 89.876708984375,
+              "connector": 118.6615982055664,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.5368324125230203,
+            "found_four_rate": 0.8950276243093923,
+            "strict_healthy_per_finger": [
+              0.8425414364640884,
+              0.8710865561694291,
+              0.7348066298342542,
+              0.7587476979742173
+            ],
+            "found_per_finger": [
+              0.996316758747698,
+              1.0,
+              0.9650092081031307,
+              0.9263351749539595
+            ],
+            "longest_four_loss_frames": 342,
+            "first_loss_over5_frame": 242,
+            "peak_force_n": 118.6615982055664,
+            "p95_force_n": 72.8614501953125,
+            "over100N_frames": 12,
+            "force_peak_by_part_n": {
+              "true_fingertip": 89.876708984375,
+              "connector": 118.6615982055664,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 133,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry5351",
+          "family": "oblique_orbit",
+          "frames": 1162,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.6703958691910499,
+            "found_four_rate": 0.7839931153184165,
+            "strict_healthy_per_finger": [
+              0.8330464716006885,
+              0.8450946643717728,
+              0.774526678141136,
+              0.7874354561101549
+            ],
+            "found_per_finger": [
+              0.9776247848537005,
+              0.9905335628227194,
+              0.9414802065404475,
+              0.8373493975903614
+            ],
+            "longest_four_loss_frames": 169,
+            "first_loss_over5_frame": 78,
+            "peak_force_n": 379.5489501953125,
+            "p95_force_n": 108.51097106933594,
+            "over100N_frames": 66,
+            "force_peak_by_part_n": {
+              "true_fingertip": 379.5489501953125,
+              "connector": 341.301025390625,
+              "other_link": 93.00032043457031,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.6500920810313076,
+            "found_four_rate": 0.7716390423572744,
+            "strict_healthy_per_finger": [
+              0.8213627992633518,
+              0.8360957642725598,
+              0.7605893186003683,
+              0.7725598526703499
+            ],
+            "found_per_finger": [
+              0.9760589318600368,
+              0.9917127071823204,
+              0.9392265193370166,
+              0.8259668508287292
+            ],
+            "longest_four_loss_frames": 169,
+            "first_loss_over5_frame": 2,
+            "peak_force_n": 379.5489501953125,
+            "p95_force_n": 114.06803894042969,
+            "over100N_frames": 66,
+            "force_peak_by_part_n": {
+              "true_fingertip": 379.5489501953125,
+              "connector": 341.301025390625,
+              "other_link": 93.00032043457031,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 1,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry0001",
+          "family": "oblique_orbit",
+          "frames": 1405,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.5886120996441281,
+            "found_four_rate": 0.9074733096085409,
+            "strict_healthy_per_finger": [
+              0.7701067615658364,
+              0.9558718861209965,
+              0.9096085409252669,
+              0.8163701067615659
+            ],
+            "found_per_finger": [
+              0.9451957295373665,
+              0.9829181494661922,
+              0.9879003558718861,
+              0.9793594306049822
+            ],
+            "longest_four_loss_frames": 134,
+            "first_loss_over5_frame": 138,
+            "peak_force_n": 419.8265686035156,
+            "p95_force_n": 128.484619140625,
+            "over100N_frames": 141,
+            "force_peak_by_part_n": {
+              "true_fingertip": 182.9987335205078,
+              "connector": 419.8265686035156,
+              "other_link": 307.19012451171875,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.5650865312264861,
+            "found_four_rate": 0.9021820917983446,
+            "strict_healthy_per_finger": [
+              0.7569601203912716,
+              0.9533483822422875,
+              0.9044394281414597,
+              0.8058690744920993
+            ],
+            "found_per_finger": [
+              0.9420617005267118,
+              0.981941309255079,
+              0.9872084273890143,
+              0.9781790820165538
+            ],
+            "longest_four_loss_frames": 134,
+            "first_loss_over5_frame": 62,
+            "peak_force_n": 419.8265686035156,
+            "p95_force_n": 128.99066162109375,
+            "over100N_frames": 141,
+            "force_peak_by_part_n": {
+              "true_fingertip": 182.9987335205078,
+              "connector": 419.8265686035156,
+              "other_link": 307.19012451171875,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 1,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry0001",
+          "family": "oblique_orbit",
+          "frames": 1405,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.8441281138790035,
+            "found_four_rate": 0.9558718861209965,
+            "strict_healthy_per_finger": [
+              0.9843416370106761,
+              0.9971530249110321,
+              0.8711743772241993,
+              0.9807829181494662
+            ],
+            "found_per_finger": [
+              0.9850533807829182,
+              0.9971530249110321,
+              0.9921708185053381,
+              0.9814946619217082
+            ],
+            "longest_four_loss_frames": 133,
+            "first_loss_over5_frame": 217,
+            "peak_force_n": 162.44598388671875,
+            "p95_force_n": 46.26494216918945,
+            "over100N_frames": 5,
+            "force_peak_by_part_n": {
+              "true_fingertip": 162.44598388671875,
+              "connector": 92.40353393554688,
+              "other_link": 28.618236541748047,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.835214446952596,
+            "found_four_rate": 0.9533483822422875,
+            "strict_healthy_per_finger": [
+              0.9834462001504891,
+              0.9969902182091799,
+              0.8638073739653875,
+              0.9796839729119639
+            ],
+            "found_per_finger": [
+              0.9841986455981941,
+              0.9969902182091799,
+              0.9917231000752446,
+              0.9804364183596689
+            ],
+            "longest_four_loss_frames": 133,
+            "first_loss_over5_frame": 141,
+            "peak_force_n": 162.44598388671875,
+            "p95_force_n": 46.33525848388672,
+            "over100N_frames": 5,
+            "force_peak_by_part_n": {
+              "true_fingertip": 162.44598388671875,
+              "connector": 92.40353393554688,
+              "other_link": 28.618236541748047,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 48,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry0049",
+          "family": "oblique_orbit",
+          "frames": 1414,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.7340876944837341,
+            "found_four_rate": 0.9080622347949081,
+            "strict_healthy_per_finger": [
+              0.9377652050919377,
+              0.8125884016973126,
+              1.0,
+              0.8557284299858557
+            ],
+            "found_per_finger": [
+              1.0,
+              0.9108910891089109,
+              1.0,
+              0.9971711456859972
+            ],
+            "longest_four_loss_frames": 202,
+            "first_loss_over5_frame": 583,
+            "peak_force_n": 585.6243286132812,
+            "p95_force_n": 93.3282241821289,
+            "over100N_frames": 61,
+            "force_peak_by_part_n": {
+              "true_fingertip": 78.17232513427734,
+              "connector": 53.538639068603516,
+              "other_link": 585.6243286132812,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.71898355754858,
+            "found_four_rate": 0.9028400597907325,
+            "strict_healthy_per_finger": [
+              0.9342301943198804,
+              0.8019431988041853,
+              1.0,
+              0.8475336322869955
+            ],
+            "found_per_finger": [
+              1.0,
+              0.905829596412556,
+              1.0,
+              0.9970104633781763
+            ],
+            "longest_four_loss_frames": 202,
+            "first_loss_over5_frame": 507,
+            "peak_force_n": 585.6243286132812,
+            "p95_force_n": 96.90770721435547,
+            "over100N_frames": 61,
+            "force_peak_by_part_n": {
+              "true_fingertip": 78.17232513427734,
+              "connector": 53.538639068603516,
+              "other_link": 585.6243286132812,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 48,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry0049",
+          "family": "oblique_orbit",
+          "frames": 1414,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.751060820367751,
+            "found_four_rate": 0.8705799151343706,
+            "strict_healthy_per_finger": [
+              0.8543140028288543,
+              0.8656294200848657,
+              0.9738330975954739,
+              0.9144271570014144
+            ],
+            "found_per_finger": [
+              0.9335219236209336,
+              0.8995756718528995,
+              0.9971711456859972,
+              0.9144271570014144
+            ],
+            "longest_four_loss_frames": 181,
+            "first_loss_over5_frame": 589,
+            "peak_force_n": 6976.966796875,
+            "p95_force_n": 3847.301025390625,
+            "over100N_frames": 155,
+            "force_peak_by_part_n": {
+              "true_fingertip": 2448.133056640625,
+              "connector": 4692.8896484375,
+              "other_link": 6976.966796875,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.7369207772795217,
+            "found_four_rate": 0.8632286995515696,
+            "strict_healthy_per_finger": [
+              0.8460388639760837,
+              0.8579970104633782,
+              0.9723467862481315,
+              0.9095665171898356
+            ],
+            "found_per_finger": [
+              0.929745889387145,
+              0.8938714499252616,
+              0.9970104633781763,
+              0.9095665171898356
+            ],
+            "longest_four_loss_frames": 181,
+            "first_loss_over5_frame": 513,
+            "peak_force_n": 6976.966796875,
+            "p95_force_n": 3945.920166015625,
+            "over100N_frames": 155,
+            "force_peak_by_part_n": {
+              "true_fingertip": 2448.133056640625,
+              "connector": 4692.8896484375,
+              "other_link": 6976.966796875,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 47,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry0049",
+          "family": "oblique_orbit",
+          "frames": 1415,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.896113074204947,
+            "found_four_rate": 0.9992932862190813,
+            "strict_healthy_per_finger": [
+              0.901060070671378,
+              0.9575971731448764,
+              0.9985865724381625,
+              1.0
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              0.9992932862190813,
+              1.0
+            ],
+            "longest_four_loss_frames": 139,
+            "first_loss_over5_frame": 1239,
+            "peak_force_n": 57.829193115234375,
+            "p95_force_n": 30.435588836669922,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 57.829193115234375,
+              "connector": 39.26081085205078,
+              "other_link": 4.320258617401123,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.8902165795369679,
+            "found_four_rate": 0.9992531740104555,
+            "strict_healthy_per_finger": [
+              0.8954443614637789,
+              0.9551904406273338,
+              0.9985063480209111,
+              1.0
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              0.9992531740104555,
+              1.0
+            ],
+            "longest_four_loss_frames": 139,
+            "first_loss_over5_frame": 1163,
+            "peak_force_n": 57.829193115234375,
+            "p95_force_n": 30.662593841552734,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 57.829193115234375,
+              "connector": 39.26081085205078,
+              "other_link": 4.320258617401123,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 47,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry0049",
+          "family": "oblique_orbit",
+          "frames": 1415,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.8812720848056537,
+            "found_four_rate": 0.9936395759717315,
+            "strict_healthy_per_finger": [
+              0.8918727915194347,
+              0.9590106007067137,
+              0.9985865724381625,
+              1.0
+            ],
+            "found_per_finger": [
+              0.9957597173144876,
+              0.9964664310954063,
+              0.9985865724381625,
+              1.0
+            ],
+            "longest_four_loss_frames": 142,
+            "first_loss_over5_frame": 1245,
+            "peak_force_n": 65.11044311523438,
+            "p95_force_n": 26.505504608154297,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 65.11044311523438,
+              "connector": 40.48946762084961,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.8745332337565347,
+            "found_four_rate": 0.9932785660941,
+            "strict_healthy_per_finger": [
+              0.8857356235997013,
+              0.9566840926064227,
+              0.9985063480209111,
+              1.0
+            ],
+            "found_per_finger": [
+              0.9955190440627334,
+              0.9962658700522778,
+              0.9985063480209111,
+              1.0
+            ],
+            "longest_four_loss_frames": 142,
+            "first_loss_over5_frame": 1169,
+            "peak_force_n": 65.11044311523438,
+            "p95_force_n": 26.784244537353516,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 65.11044311523438,
+              "connector": 40.48946762084961,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 139,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry5330",
+          "family": "oblique_orbit",
+          "frames": 1500,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.8573333333333333,
+            "found_four_rate": 0.992,
+            "strict_healthy_per_finger": [
+              0.9993333333333333,
+              0.9986666666666667,
+              1.0,
+              0.8593333333333333
+            ],
+            "found_per_finger": [
+              1.0,
+              0.9986666666666667,
+              1.0,
+              0.9933333333333333
+            ],
+            "longest_four_loss_frames": 180,
+            "first_loss_over5_frame": 1179,
+            "peak_force_n": 57.6384391784668,
+            "p95_force_n": 22.902921676635742,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 57.6384391784668,
+              "connector": 54.06462478637695,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.8504213483146067,
+            "found_four_rate": 0.9922752808988764,
+            "strict_healthy_per_finger": [
+              0.9992977528089888,
+              0.9992977528089888,
+              1.0,
+              0.8518258426966292
+            ],
+            "found_per_finger": [
+              1.0,
+              0.9992977528089888,
+              1.0,
+              0.9929775280898876
+            ],
+            "longest_four_loss_frames": 180,
+            "first_loss_over5_frame": 1103,
+            "peak_force_n": 57.6384391784668,
+            "p95_force_n": 23.48554229736328,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 57.6384391784668,
+              "connector": 54.06462478637695,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 139,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry5330",
+          "family": "oblique_orbit",
+          "frames": 1500,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.8786666666666667,
+            "found_four_rate": 0.9893333333333333,
+            "strict_healthy_per_finger": [
+              1.0,
+              0.9993333333333333,
+              1.0,
+              0.8793333333333333
+            ],
+            "found_per_finger": [
+              1.0,
+              0.9993333333333333,
+              1.0,
+              0.99
+            ],
+            "longest_four_loss_frames": 125,
+            "first_loss_over5_frame": 1167,
+            "peak_force_n": 63.30028533935547,
+            "p95_force_n": 19.877212524414062,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 63.30028533935547,
+              "connector": 30.1872615814209,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.8728932584269663,
+            "found_four_rate": 0.9894662921348315,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.8728932584269663
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.9894662921348315
+            ],
+            "longest_four_loss_frames": 125,
+            "first_loss_over5_frame": 1091,
+            "peak_force_n": 63.30028533935547,
+            "p95_force_n": 20.455322265625,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 63.30028533935547,
+              "connector": 30.1872615814209,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 148,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry5330",
+          "family": "oblique_orbit",
+          "frames": 1500,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.546,
+            "found_four_rate": 0.6426666666666667,
+            "strict_healthy_per_finger": [
+              0.9933333333333333,
+              0.8506666666666667,
+              0.7366666666666667,
+              0.906
+            ],
+            "found_per_finger": [
+              0.9966666666666667,
+              0.8566666666666667,
+              0.75,
+              0.988
+            ],
+            "longest_four_loss_frames": 155,
+            "first_loss_over5_frame": 446,
+            "peak_force_n": 59.82020568847656,
+            "p95_force_n": 29.470544815063477,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 47.17557144165039,
+              "connector": 38.26799011230469,
+              "other_link": 59.82020568847656,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.5217696629213483,
+            "found_four_rate": 0.6235955056179775,
+            "strict_healthy_per_finger": [
+              0.9929775280898876,
+              0.8426966292134831,
+              0.7226123595505618,
+              0.9009831460674157
+            ],
+            "found_per_finger": [
+              0.9964887640449438,
+              0.8490168539325843,
+              0.7366573033707865,
+              0.9873595505617978
+            ],
+            "longest_four_loss_frames": 155,
+            "first_loss_over5_frame": 370,
+            "peak_force_n": 59.82020568847656,
+            "p95_force_n": 30.02030372619629,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 47.17557144165039,
+              "connector": 38.26799011230469,
+              "other_link": 59.82020568847656,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 148,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry5330",
+          "family": "oblique_orbit",
+          "frames": 1500,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.518,
+            "found_four_rate": 0.6273333333333333,
+            "strict_healthy_per_finger": [
+              0.964,
+              0.844,
+              0.688,
+              0.8786666666666667
+            ],
+            "found_per_finger": [
+              0.984,
+              0.852,
+              0.6993333333333334,
+              0.9793333333333333
+            ],
+            "longest_four_loss_frames": 175,
+            "first_loss_over5_frame": 445,
+            "peak_force_n": 54.51848602294922,
+            "p95_force_n": 36.471248626708984,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 43.5017204284668,
+              "connector": 35.81197738647461,
+              "other_link": 54.51848602294922,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.4922752808988764,
+            "found_four_rate": 0.6074438202247191,
+            "strict_healthy_per_finger": [
+              0.9620786516853933,
+              0.8356741573033708,
+              0.6713483146067416,
+              0.8721910112359551
+            ],
+            "found_per_finger": [
+              0.9831460674157303,
+              0.8441011235955056,
+              0.6832865168539326,
+              0.9782303370786517
+            ],
+            "longest_four_loss_frames": 175,
+            "first_loss_over5_frame": 369,
+            "peak_force_n": 54.51848602294922,
+            "p95_force_n": 36.510921478271484,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 43.5017204284668,
+              "connector": 35.81197738647461,
+              "other_link": 54.51848602294922,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 212,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry0113",
+          "family": "oblique_orbit",
+          "frames": 1500,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.554,
+            "found_four_rate": 0.6266666666666667,
+            "strict_healthy_per_finger": [
+              0.6246666666666667,
+              0.9893333333333333,
+              0.8826666666666667,
+              0.83
+            ],
+            "found_per_finger": [
+              0.698,
+              0.9906666666666667,
+              0.89,
+              0.9533333333333334
+            ],
+            "longest_four_loss_frames": 498,
+            "first_loss_over5_frame": 418,
+            "peak_force_n": 402.68890380859375,
+            "p95_force_n": 342.6095275878906,
+            "over100N_frames": 166,
+            "force_peak_by_part_n": {
+              "true_fingertip": 402.68890380859375,
+              "connector": 120.44268035888672,
+              "other_link": 297.2041931152344,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.5301966292134831,
+            "found_four_rate": 0.6067415730337079,
+            "strict_healthy_per_finger": [
+              0.6046348314606742,
+              0.9887640449438202,
+              0.8764044943820225,
+              0.8209269662921348
+            ],
+            "found_per_finger": [
+              0.6818820224719101,
+              0.9901685393258427,
+              0.8841292134831461,
+              0.9508426966292135
+            ],
+            "longest_four_loss_frames": 498,
+            "first_loss_over5_frame": 342,
+            "peak_force_n": 402.68890380859375,
+            "p95_force_n": 344.53106689453125,
+            "over100N_frames": 166,
+            "force_peak_by_part_n": {
+              "true_fingertip": 402.68890380859375,
+              "connector": 120.44268035888672,
+              "other_link": 297.2041931152344,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 212,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry0113",
+          "family": "oblique_orbit",
+          "frames": 1500,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.5073333333333333,
+            "found_four_rate": 0.804,
+            "strict_healthy_per_finger": [
+              0.9946666666666667,
+              0.7593333333333333,
+              0.7713333333333333,
+              0.734
+            ],
+            "found_per_finger": [
+              0.9953333333333333,
+              0.992,
+              0.8133333333333334,
+              1.0
+            ],
+            "longest_four_loss_frames": 279,
+            "first_loss_over5_frame": 439,
+            "peak_force_n": 378.790771484375,
+            "p95_force_n": 150.25970458984375,
+            "over100N_frames": 117,
+            "force_peak_by_part_n": {
+              "true_fingertip": 378.790771484375,
+              "connector": 256.2786560058594,
+              "other_link": 195.03929138183594,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.48103932584269665,
+            "found_four_rate": 0.7935393258426966,
+            "strict_healthy_per_finger": [
+              0.9943820224719101,
+              0.7464887640449438,
+              0.7591292134831461,
+              0.7198033707865169
+            ],
+            "found_per_finger": [
+              0.9950842696629213,
+              0.9915730337078652,
+              0.8033707865168539,
+              1.0
+            ],
+            "longest_four_loss_frames": 279,
+            "first_loss_over5_frame": 363,
+            "peak_force_n": 378.790771484375,
+            "p95_force_n": 159.6410369873047,
+            "over100N_frames": 117,
+            "force_peak_by_part_n": {
+              "true_fingertip": 378.790771484375,
+              "connector": 256.2786560058594,
+              "other_link": 195.03929138183594,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 11,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry0014",
+          "family": "spatial_spiral",
+          "frames": 1515,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.5168316831683168,
+            "found_four_rate": 0.5511551155115512,
+            "strict_healthy_per_finger": [
+              0.9438943894389439,
+              0.9181518151815181,
+              0.8270627062706271,
+              0.6178217821782178
+            ],
+            "found_per_finger": [
+              0.9524752475247524,
+              0.998019801980198,
+              0.8514851485148515,
+              0.6303630363036303
+            ],
+            "longest_four_loss_frames": 238,
+            "first_loss_over5_frame": 163,
+            "peak_force_n": 766.0452880859375,
+            "p95_force_n": 171.9977264404297,
+            "over100N_frames": 115,
+            "force_peak_by_part_n": {
+              "true_fingertip": 712.1651000976562,
+              "connector": 766.0452880859375,
+              "other_link": 622.7601318359375,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.49131341209173035,
+            "found_four_rate": 0.527449617790132,
+            "strict_healthy_per_finger": [
+              0.9409312022237665,
+              0.9138290479499652,
+              0.8179291174426685,
+              0.5976372480889507
+            ],
+            "found_per_finger": [
+              0.9499652536483669,
+              0.9979152189020153,
+              0.8436414176511466,
+              0.6108408617095205
+            ],
+            "longest_four_loss_frames": 238,
+            "first_loss_over5_frame": 87,
+            "peak_force_n": 766.0452880859375,
+            "p95_force_n": 187.0057373046875,
+            "over100N_frames": 115,
+            "force_peak_by_part_n": {
+              "true_fingertip": 712.1651000976562,
+              "connector": 766.0452880859375,
+              "other_link": 622.7601318359375,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 11,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry0014",
+          "family": "spatial_spiral",
+          "frames": 1515,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.5663366336633663,
+            "found_four_rate": 0.9392739273927393,
+            "strict_healthy_per_finger": [
+              1.0,
+              0.998019801980198,
+              0.6231023102310231,
+              0.9042904290429042
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              0.9399339933993399,
+              0.9993399339933994
+            ],
+            "longest_four_loss_frames": 417,
+            "first_loss_over5_frame": 163,
+            "peak_force_n": 116.73905181884766,
+            "p95_force_n": 56.10420608520508,
+            "over100N_frames": 5,
+            "force_peak_by_part_n": {
+              "true_fingertip": 55.09628677368164,
+              "connector": 116.73905181884766,
+              "other_link": 2.6884348392486572,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.5434329395413482,
+            "found_four_rate": 0.9360667129951356,
+            "strict_healthy_per_finger": [
+              1.0,
+              0.9979152189020153,
+              0.6031966643502432,
+              0.8992355802640722
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              0.936761640027797,
+              0.9993050729673384
+            ],
+            "longest_four_loss_frames": 417,
+            "first_loss_over5_frame": 87,
+            "peak_force_n": 116.73905181884766,
+            "p95_force_n": 56.79170227050781,
+            "over100N_frames": 5,
+            "force_peak_by_part_n": {
+              "true_fingertip": 55.09628677368164,
+              "connector": 116.73905181884766,
+              "other_link": 2.6884348392486572,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 12,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry0014",
+          "family": "spatial_spiral",
+          "frames": 1515,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.46864686468646866,
+            "found_four_rate": 0.5135313531353135,
+            "strict_healthy_per_finger": [
+              0.9722772277227723,
+              0.9986798679867986,
+              0.5432343234323432,
+              0.9089108910891089
+            ],
+            "found_per_finger": [
+              0.9815181518151815,
+              0.9986798679867986,
+              0.5953795379537954,
+              0.9095709570957096
+            ],
+            "longest_four_loss_frames": 687,
+            "first_loss_over5_frame": 652,
+            "peak_force_n": 73.03376007080078,
+            "p95_force_n": 48.462974548339844,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 52.91184997558594,
+              "connector": 30.456270217895508,
+              "other_link": 73.03376007080078,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.44475330090340515,
+            "found_four_rate": 0.49200833912439196,
+            "strict_healthy_per_finger": [
+              0.970813064628214,
+              0.9993050729673384,
+              0.5191104933981932,
+              0.9075747046560111
+            ],
+            "found_per_finger": [
+              0.980542043085476,
+              0.9993050729673384,
+              0.5740097289784573,
+              0.9082696316886727
+            ],
+            "longest_four_loss_frames": 687,
+            "first_loss_over5_frame": 576,
+            "peak_force_n": 73.03376007080078,
+            "p95_force_n": 48.820770263671875,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 49.94589614868164,
+              "connector": 30.456270217895508,
+              "other_link": 73.03376007080078,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 12,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry0014",
+          "family": "spatial_spiral",
+          "frames": 1515,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.30363036303630364,
+            "found_four_rate": 0.3940594059405941,
+            "strict_healthy_per_finger": [
+              0.3214521452145215,
+              0.6448844884488449,
+              0.6112211221122112,
+              0.5887788778877888
+            ],
+            "found_per_finger": [
+              0.5762376237623762,
+              0.7927392739273927,
+              0.6402640264026402,
+              0.6528052805280528
+            ],
+            "longest_four_loss_frames": 1021,
+            "first_loss_over5_frame": 494,
+            "peak_force_n": 172.66506958007812,
+            "p95_force_n": 87.56793212890625,
+            "over100N_frames": 65,
+            "force_peak_by_part_n": {
+              "true_fingertip": 75.32460021972656,
+              "connector": 149.45701599121094,
+              "other_link": 172.66506958007812,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.2710215427380125,
+            "found_four_rate": 0.36622654621264766,
+            "strict_healthy_per_finger": [
+              0.28561501042390547,
+              0.6268241834607367,
+              0.590687977762335,
+              0.5705350938151494
+            ],
+            "found_per_finger": [
+              0.5538568450312717,
+              0.7824878387769284,
+              0.621264767199444,
+              0.6379430159833217
+            ],
+            "longest_four_loss_frames": 1021,
+            "first_loss_over5_frame": 418,
+            "peak_force_n": 172.66506958007812,
+            "p95_force_n": 88.7685317993164,
+            "over100N_frames": 65,
+            "force_peak_by_part_n": {
+              "true_fingertip": 75.32460021972656,
+              "connector": 149.45701599121094,
+              "other_link": 172.66506958007812,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 0,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry0001",
+          "family": "oblique_orbit",
+          "frames": 1561,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.37668161434977576,
+            "found_four_rate": 0.8782831518257527,
+            "strict_healthy_per_finger": [
+              0.8968609865470852,
+              0.8673926969891096,
+              0.9929532351057014,
+              0.4023062139654068
+            ],
+            "found_per_finger": [
+              0.9692504804612428,
+              0.9436258808456118,
+              0.994234465086483,
+              0.9634849455477258
+            ],
+            "longest_four_loss_frames": 813,
+            "first_loss_over5_frame": 138,
+            "peak_force_n": 130.24668884277344,
+            "p95_force_n": 62.10995101928711,
+            "over100N_frames": 12,
+            "force_peak_by_part_n": {
+              "true_fingertip": 130.24668884277344,
+              "connector": 35.21901321411133,
+              "other_link": 26.886655807495117,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.3447811447811448,
+            "found_four_rate": 0.8720538720538721,
+            "strict_healthy_per_finger": [
+              0.8915824915824916,
+              0.8606060606060606,
+              0.9925925925925926,
+              0.3717171717171717
+            ],
+            "found_per_finger": [
+              0.9676767676767677,
+              0.9407407407407408,
+              0.9939393939393939,
+              0.9616161616161616
+            ],
+            "longest_four_loss_frames": 813,
+            "first_loss_over5_frame": 62,
+            "peak_force_n": 130.24668884277344,
+            "p95_force_n": 63.05440139770508,
+            "over100N_frames": 12,
+            "force_peak_by_part_n": {
+              "true_fingertip": 130.24668884277344,
+              "connector": 35.21901321411133,
+              "other_link": 26.886655807495117,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 0,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry0001",
+          "family": "oblique_orbit",
+          "frames": 1561,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.5663036515054453,
+            "found_four_rate": 0.942985265855221,
+            "strict_healthy_per_finger": [
+              0.9967969250480462,
+              0.9929532351057014,
+              0.8276745675848814,
+              0.6015374759769379
+            ],
+            "found_per_finger": [
+              0.9987187700192185,
+              0.9929532351057014,
+              0.9762972453555413,
+              0.9750160153747598
+            ],
+            "longest_four_loss_frames": 492,
+            "first_loss_over5_frame": 202,
+            "peak_force_n": 106.68744659423828,
+            "p95_force_n": 33.024559020996094,
+            "over100N_frames": 1,
+            "force_peak_by_part_n": {
+              "true_fingertip": 106.68744659423828,
+              "connector": 39.99530029296875,
+              "other_link": 31.61578369140625,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.5441077441077441,
+            "found_four_rate": 0.94006734006734,
+            "strict_healthy_per_finger": [
+              0.9966329966329966,
+              0.9925925925925926,
+              0.8188552188552188,
+              0.5811447811447812
+            ],
+            "found_per_finger": [
+              0.9986531986531987,
+              0.9925925925925926,
+              0.9750841750841751,
+              0.9737373737373738
+            ],
+            "longest_four_loss_frames": 492,
+            "first_loss_over5_frame": 126,
+            "peak_force_n": 106.68744659423828,
+            "p95_force_n": 33.58037185668945,
+            "over100N_frames": 1,
+            "force_peak_by_part_n": {
+              "true_fingertip": 106.68744659423828,
+              "connector": 39.99530029296875,
+              "other_link": 31.61578369140625,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 103,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry0113",
+          "family": "oblique_orbit",
+          "frames": 1574,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.7712833545108005,
+            "found_four_rate": 0.9752223634053367,
+            "strict_healthy_per_finger": [
+              1.0,
+              0.9936467598475223,
+              0.8214739517153749,
+              0.9491740787801779
+            ],
+            "found_per_finger": [
+              1.0,
+              0.9942820838627701,
+              0.9904701397712834,
+              0.9891994917407878
+            ],
+            "longest_four_loss_frames": 236,
+            "first_loss_over5_frame": 920,
+            "peak_force_n": 111.57303619384766,
+            "p95_force_n": 76.31908416748047,
+            "over100N_frames": 2,
+            "force_peak_by_part_n": {
+              "true_fingertip": 38.170616149902344,
+              "connector": 111.57303619384766,
+              "other_link": 98.37644958496094,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.7596795727636849,
+            "found_four_rate": 0.9739652870493992,
+            "strict_healthy_per_finger": [
+              1.0,
+              0.9933244325767691,
+              0.8124165554072096,
+              0.9465954606141522
+            ],
+            "found_per_finger": [
+              1.0,
+              0.9939919893190922,
+              0.9899866488651535,
+              0.9886515353805073
+            ],
+            "longest_four_loss_frames": 236,
+            "first_loss_over5_frame": 844,
+            "peak_force_n": 111.57303619384766,
+            "p95_force_n": 76.80581665039062,
+            "over100N_frames": 2,
+            "force_peak_by_part_n": {
+              "true_fingertip": 38.170616149902344,
+              "connector": 111.57303619384766,
+              "other_link": 98.37644958496094,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 103,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry0113",
+          "family": "oblique_orbit",
+          "frames": 1574,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.7515883100381194,
+            "found_four_rate": 0.9587039390088945,
+            "strict_healthy_per_finger": [
+              1.0,
+              0.9987293519695044,
+              0.8074968233799238,
+              0.9428208386277002
+            ],
+            "found_per_finger": [
+              1.0,
+              0.9987293519695044,
+              0.9599745870393901,
+              1.0
+            ],
+            "longest_four_loss_frames": 280,
+            "first_loss_over5_frame": 943,
+            "peak_force_n": 79.35543823242188,
+            "p95_force_n": 49.00165557861328,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 39.8831901550293,
+              "connector": 79.35543823242188,
+              "other_link": 53.68585968017578,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.7389853137516689,
+            "found_four_rate": 0.9566088117489987,
+            "strict_healthy_per_finger": [
+              1.0,
+              0.9986648865153538,
+              0.7977303070761015,
+              0.9399198931909212
+            ],
+            "found_per_finger": [
+              1.0,
+              0.9986648865153538,
+              0.9579439252336449,
+              1.0
+            ],
+            "longest_four_loss_frames": 280,
+            "first_loss_over5_frame": 867,
+            "peak_force_n": 79.35543823242188,
+            "p95_force_n": 49.6521110534668,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 39.8831901550293,
+              "connector": 79.35543823242188,
+              "other_link": 53.68585968017578,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 72,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry0072",
+          "family": "meridian_arc",
+          "frames": 1688,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.3246445497630332,
+            "found_four_rate": 0.504739336492891,
+            "strict_healthy_per_finger": [
+              0.7968009478672986,
+              0.8933649289099526,
+              0.3281990521327014,
+              0.893957345971564
+            ],
+            "found_per_finger": [
+              0.8631516587677726,
+              0.9579383886255924,
+              0.5521327014218009,
+              0.9840047393364929
+            ],
+            "longest_four_loss_frames": 739,
+            "first_loss_over5_frame": 399,
+            "peak_force_n": 329.2598571777344,
+            "p95_force_n": 98.32856750488281,
+            "over100N_frames": 77,
+            "force_peak_by_part_n": {
+              "true_fingertip": 58.48487091064453,
+              "connector": 104.45339965820312,
+              "other_link": 329.2598571777344,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.29280397022332505,
+            "found_four_rate": 0.4813895781637717,
+            "strict_healthy_per_finger": [
+              0.7872208436724566,
+              0.8883374689826302,
+              0.29652605459057074,
+              0.8889578163771712
+            ],
+            "found_per_finger": [
+              0.8566997518610422,
+              0.955955334987593,
+              0.5310173697270472,
+              0.9832506203473945
+            ],
+            "longest_four_loss_frames": 739,
+            "first_loss_over5_frame": 323,
+            "peak_force_n": 329.2598571777344,
+            "p95_force_n": 98.8576431274414,
+            "over100N_frames": 77,
+            "force_peak_by_part_n": {
+              "true_fingertip": 58.48487091064453,
+              "connector": 104.45339965820312,
+              "other_link": 329.2598571777344,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 72,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry0072",
+          "family": "meridian_arc",
+          "frames": 1688,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.4087677725118483,
+            "found_four_rate": 0.5941943127962085,
+            "strict_healthy_per_finger": [
+              0.9016587677725119,
+              0.8359004739336493,
+              0.4543838862559242,
+              0.9383886255924171
+            ],
+            "found_per_finger": [
+              0.9727488151658767,
+              0.8821090047393365,
+              0.606042654028436,
+              0.9401658767772512
+            ],
+            "longest_four_loss_frames": 724,
+            "first_loss_over5_frame": 394,
+            "peak_force_n": 2360.616943359375,
+            "p95_force_n": 141.58474731445312,
+            "over100N_frames": 136,
+            "force_peak_by_part_n": {
+              "true_fingertip": 2067.5283203125,
+              "connector": 1502.385986328125,
+              "other_link": 2360.616943359375,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.38089330024813894,
+            "found_four_rate": 0.575062034739454,
+            "strict_healthy_per_finger": [
+              0.8970223325062034,
+              0.8281637717121588,
+              0.4286600496277916,
+              0.9354838709677419
+            ],
+            "found_per_finger": [
+              0.9714640198511166,
+              0.8765508684863523,
+              0.5874689826302729,
+              0.9373449131513648
+            ],
+            "longest_four_loss_frames": 724,
+            "first_loss_over5_frame": 318,
+            "peak_force_n": 2360.616943359375,
+            "p95_force_n": 150.67161560058594,
+            "over100N_frames": 136,
+            "force_peak_by_part_n": {
+              "true_fingertip": 2067.5283203125,
+              "connector": 1502.385986328125,
+              "other_link": 2360.616943359375,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 71,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry0072",
+          "family": "meridian_arc",
+          "frames": 2812,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.4615931721194879,
+            "found_four_rate": 0.5458748221906117,
+            "strict_healthy_per_finger": [
+              0.854551920341394,
+              0.9434566145092461,
+              0.5007112375533428,
+              0.7955192034139402
+            ],
+            "found_per_finger": [
+              0.930298719772404,
+              0.9772403982930299,
+              0.5860597439544808,
+              0.8886913229018493
+            ],
+            "longest_four_loss_frames": 1224,
+            "first_loss_over5_frame": 632,
+            "peak_force_n": 584.6005859375,
+            "p95_force_n": 66.19832611083984,
+            "over100N_frames": 24,
+            "force_peak_by_part_n": {
+              "true_fingertip": 66.65228271484375,
+              "connector": 269.513427734375,
+              "other_link": 584.6005859375,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.4466374269005848,
+            "found_four_rate": 0.5332602339181286,
+            "strict_healthy_per_finger": [
+              0.8505116959064327,
+              0.9418859649122807,
+              0.4868421052631579,
+              0.7898391812865497
+            ],
+            "found_per_finger": [
+              0.9283625730994152,
+              0.9766081871345029,
+              0.5745614035087719,
+              0.8855994152046783
+            ],
+            "longest_four_loss_frames": 1224,
+            "first_loss_over5_frame": 556,
+            "peak_force_n": 584.6005859375,
+            "p95_force_n": 66.65106201171875,
+            "over100N_frames": 24,
+            "force_peak_by_part_n": {
+              "true_fingertip": 66.65228271484375,
+              "connector": 269.513427734375,
+              "other_link": 584.6005859375,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 71,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry0072",
+          "family": "meridian_arc",
+          "frames": 2812,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.4235419630156472,
+            "found_four_rate": 0.5170697012802276,
+            "strict_healthy_per_finger": [
+              0.852773826458037,
+              0.9142958748221907,
+              0.5327169274537695,
+              0.7204836415362731
+            ],
+            "found_per_finger": [
+              0.8801564722617354,
+              0.9214082503556188,
+              0.6073968705547653,
+              0.9292318634423897
+            ],
+            "longest_four_loss_frames": 1080,
+            "first_loss_over5_frame": 630,
+            "peak_force_n": 437.72662353515625,
+            "p95_force_n": 108.62643432617188,
+            "over100N_frames": 215,
+            "force_peak_by_part_n": {
+              "true_fingertip": 46.5088996887207,
+              "connector": 118.77478790283203,
+              "other_link": 437.72662353515625,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.40752923976608185,
+            "found_four_rate": 0.5036549707602339,
+            "strict_healthy_per_finger": [
+              0.8486842105263158,
+              0.9119152046783626,
+              0.5197368421052632,
+              0.7127192982456141
+            ],
+            "found_per_finger": [
+              0.876827485380117,
+              0.9192251461988304,
+              0.5964912280701754,
+              0.9272660818713451
+            ],
+            "longest_four_loss_frames": 1080,
+            "first_loss_over5_frame": 554,
+            "peak_force_n": 437.72662353515625,
+            "p95_force_n": 108.84722900390625,
+            "over100N_frames": 215,
+            "force_peak_by_part_n": {
+              "true_fingertip": 46.5088996887207,
+              "connector": 118.77478790283203,
+              "other_link": 437.72662353515625,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 160,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry5330",
+          "family": "oblique_orbit",
+          "frames": 3000,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.4736666666666667,
+            "found_four_rate": 0.958,
+            "strict_healthy_per_finger": [
+              0.985,
+              0.9763333333333334,
+              0.983,
+              0.4746666666666667
+            ],
+            "found_per_finger": [
+              0.9886666666666667,
+              0.9783333333333334,
+              0.988,
+              0.9963333333333333
+            ],
+            "longest_four_loss_frames": 1372,
+            "first_loss_over5_frame": 1119,
+            "peak_force_n": 80.79871368408203,
+            "p95_force_n": 54.03068542480469,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 58.56562805175781,
+              "connector": 80.79871368408203,
+              "other_link": 55.918758392333984,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.4606703146374829,
+            "found_four_rate": 0.957592339261286,
+            "strict_healthy_per_finger": [
+              0.9846101231190151,
+              0.9764021887824897,
+              0.9825581395348837,
+              0.46101231190150477
+            ],
+            "found_per_finger": [
+              0.9883720930232558,
+              0.978454172366621,
+              0.987688098495212,
+              0.9962380300957593
+            ],
+            "longest_four_loss_frames": 1372,
+            "first_loss_over5_frame": 1043,
+            "peak_force_n": 80.79871368408203,
+            "p95_force_n": 54.135475158691406,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 58.56562805175781,
+              "connector": 80.79871368408203,
+              "other_link": 55.918758392333984,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 160,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry5330",
+          "family": "oblique_orbit",
+          "frames": 3000,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.7833333333333333,
+            "found_four_rate": 0.924,
+            "strict_healthy_per_finger": [
+              0.9846666666666667,
+              0.9416666666666667,
+              0.9486666666666667,
+              0.8986666666666666
+            ],
+            "found_per_finger": [
+              0.985,
+              0.944,
+              0.992,
+              0.9966666666666667
+            ],
+            "longest_four_loss_frames": 137,
+            "first_loss_over5_frame": 1215,
+            "peak_force_n": 61.2883186340332,
+            "p95_force_n": 26.3035831451416,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 61.2883186340332,
+              "connector": 37.154029846191406,
+              "other_link": 39.705081939697266,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.7783857729138167,
+            "found_four_rate": 0.9227086183310533,
+            "strict_healthy_per_finger": [
+              0.9842681258549931,
+              0.9408344733242134,
+              0.9473324213406292,
+              0.896032831737346
+            ],
+            "found_per_finger": [
+              0.9846101231190151,
+              0.9432284541723667,
+              0.9917920656634747,
+              0.9965800273597811
+            ],
+            "longest_four_loss_frames": 137,
+            "first_loss_over5_frame": 1139,
+            "peak_force_n": 61.2883186340332,
+            "p95_force_n": 26.374727249145508,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 61.2883186340332,
+              "connector": 37.154029846191406,
+              "other_link": 39.705081939697266,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 22,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry0021",
+          "family": "oblique_orbit",
+          "frames": 3079,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.4391036050665801,
+            "found_four_rate": 0.9568041571938941,
+            "strict_healthy_per_finger": [
+              0.9415394608639168,
+              0.9256252029879831,
+              0.9600519649236765,
+              0.464761286131861
+            ],
+            "found_per_finger": [
+              0.9879831113998051,
+              0.9883078921727834,
+              0.9873335498538487,
+              0.9915556999025658
+            ],
+            "longest_four_loss_frames": 1621,
+            "first_loss_over5_frame": 1225,
+            "peak_force_n": 159.38406372070312,
+            "p95_force_n": 58.673282623291016,
+            "over100N_frames": 12,
+            "force_peak_by_part_n": {
+              "true_fingertip": 75.61328125,
+              "connector": 159.38406372070312,
+              "other_link": 127.39453887939453,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.4249084249084249,
+            "found_four_rate": 0.9557109557109557,
+            "strict_healthy_per_finger": [
+              0.9400599400599401,
+              0.9237429237429238,
+              0.9590409590409591,
+              0.4512154512154512
+            ],
+            "found_per_finger": [
+              0.9876789876789877,
+              0.988011988011988,
+              0.987012987012987,
+              0.9913419913419913
+            ],
+            "longest_four_loss_frames": 1621,
+            "first_loss_over5_frame": 1149,
+            "peak_force_n": 159.38406372070312,
+            "p95_force_n": 58.84738540649414,
+            "over100N_frames": 12,
+            "force_peak_by_part_n": {
+              "true_fingertip": 75.61328125,
+              "connector": 159.38406372070312,
+              "other_link": 127.39453887939453,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 22,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry0021",
+          "family": "oblique_orbit",
+          "frames": 3079,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.4605391360831439,
+            "found_four_rate": 0.9691458265670673,
+            "strict_healthy_per_finger": [
+              0.9974017538161741,
+              0.9645988957453718,
+              0.9717440727508931,
+              0.46118869762910036
+            ],
+            "found_per_finger": [
+              0.9977265345891523,
+              0.9805131536213056,
+              0.9967521922702176,
+              0.9941539460863917
+            ],
+            "longest_four_loss_frames": 1631,
+            "first_loss_over5_frame": 1448,
+            "peak_force_n": 196.3839569091797,
+            "p95_force_n": 56.751163482666016,
+            "over100N_frames": 7,
+            "force_peak_by_part_n": {
+              "true_fingertip": 45.171295166015625,
+              "connector": 196.3839569091797,
+              "other_link": 153.02578735351562,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.4468864468864469,
+            "found_four_rate": 0.9683649683649683,
+            "strict_healthy_per_finger": [
+              0.9973359973359973,
+              0.9637029637029637,
+              0.971028971028971,
+              0.44755244755244755
+            ],
+            "found_per_finger": [
+              0.9976689976689976,
+              0.98001998001998,
+              0.9966699966699967,
+              0.994005994005994
+            ],
+            "longest_four_loss_frames": 1631,
+            "first_loss_over5_frame": 1372,
+            "peak_force_n": 196.3839569091797,
+            "p95_force_n": 56.8577766418457,
+            "over100N_frames": 7,
+            "force_peak_by_part_n": {
+              "true_fingertip": 45.171295166015625,
+              "connector": 196.3839569091797,
+              "other_link": 153.02578735351562,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 21,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry0021",
+          "family": "oblique_orbit",
+          "frames": 5131,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.16819333463262523,
+            "found_four_rate": 0.9861625414149289,
+            "strict_healthy_per_finger": [
+              0.991619567335802,
+              0.992204248684467,
+              0.9871370103293705,
+              0.16819333463262523
+            ],
+            "found_per_finger": [
+              0.9949327616449035,
+              0.9935685051646852,
+              0.9992204248684466,
+              0.9984408497368934
+            ],
+            "longest_four_loss_frames": 4239,
+            "first_loss_over5_frame": 892,
+            "peak_force_n": 270.79229736328125,
+            "p95_force_n": 57.68617248535156,
+            "over100N_frames": 9,
+            "force_peak_by_part_n": {
+              "true_fingertip": 76.74005889892578,
+              "connector": 270.79229736328125,
+              "other_link": 231.4388427734375,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.1556874381800198,
+            "found_four_rate": 0.9859545004945598,
+            "strict_healthy_per_finger": [
+              0.9914935707220573,
+              0.9920870425321464,
+              0.9869436201780415,
+              0.1556874381800198
+            ],
+            "found_per_finger": [
+              0.9948565776458952,
+              0.9934718100890207,
+              0.9992087042532146,
+              0.9984174085064292
+            ],
+            "longest_four_loss_frames": 4239,
+            "first_loss_over5_frame": 816,
+            "peak_force_n": 270.79229736328125,
+            "p95_force_n": 57.75441360473633,
+            "over100N_frames": 9,
+            "force_peak_by_part_n": {
+              "true_fingertip": 76.74005889892578,
+              "connector": 270.79229736328125,
+              "other_link": 231.4388427734375,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 21,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry0021",
+          "family": "oblique_orbit",
+          "frames": 5131,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.15942311440265056,
+            "found_four_rate": 0.965893587994543,
+            "strict_healthy_per_finger": [
+              0.9828493471058273,
+              0.9768076398362893,
+              0.9885012668095887,
+              0.1598129019684272
+            ],
+            "found_per_finger": [
+              0.9881114792438122,
+              0.9795361527967258,
+              0.9972714870395635,
+              0.9992204248684466
+            ],
+            "longest_four_loss_frames": 4304,
+            "first_loss_over5_frame": 827,
+            "peak_force_n": 122.21209716796875,
+            "p95_force_n": 65.6117935180664,
+            "over100N_frames": 4,
+            "force_peak_by_part_n": {
+              "true_fingertip": 36.84838104248047,
+              "connector": 122.21209716796875,
+              "other_link": 79.56871032714844,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.14678536102868447,
+            "found_four_rate": 0.9653808110781404,
+            "strict_healthy_per_finger": [
+              0.9825914935707221,
+              0.9764589515331356,
+              0.9883283877349159,
+              0.14718100890207717
+            ],
+            "found_per_finger": [
+              0.9879327398615232,
+              0.9792284866468842,
+              0.9972304648862512,
+              0.9992087042532146
+            ],
+            "longest_four_loss_frames": 4304,
+            "first_loss_over5_frame": 751,
+            "peak_force_n": 122.21209716796875,
+            "p95_force_n": 65.66910552978516,
+            "over100N_frames": 4,
+            "force_peak_by_part_n": {
+              "true_fingertip": 36.84838104248047,
+              "connector": 122.21209716796875,
+              "other_link": 79.56871032714844,
+              "palm": 0.0
+            }
+          }
+        }
+      ],
+      "count": 40,
+      "metrics": {
+        "full": {
+          "strict_healthy_four_rate": 0.6039011379277593,
+          "found_four_rate": 0.8345490769454385,
+          "longest_four_loss_frames": 635.075,
+          "p95_force_n": 302.88892550468444,
+          "over100N_rollouts": 23,
+          "over100N_frames": 1829,
+          "peak_force_n": 10170.826171875,
+          "strict_per_finger": [
+            0.9220685200910248,
+            0.9285752118399604,
+            0.8391595834384532,
+            0.7644255613010695
+          ],
+          "found_per_finger": [
+            0.9633359922103144,
+            0.9645338959342722,
+            0.8999808456581784,
+            0.9505897193852026
+          ],
+          "success95": 3
+        },
+        "post_bootstrap": {
+          "strict_healthy_four_rate": 0.5846779751828588,
+          "found_four_rate": 0.8267108674882084,
+          "longest_four_loss_frames": 635.075,
+          "p95_force_n": 310.2204649448395,
+          "over100N_rollouts": 23,
+          "over100N_frames": 1829,
+          "peak_force_n": 10170.826171875,
+          "strict_per_finger": [
+            0.9178797141945984,
+            0.9246217890157757,
+            0.8308072333819394,
+            0.7537065323001059
+          ],
+          "found_per_finger": [
+            0.9615022360141309,
+            0.9626984863594965,
+            0.8950296801901636,
+            0.948395550114645
+          ],
+          "success95": 3
+        }
+      }
+    },
+    "oracle": {
+      "lanes": [
+        {
+          "episode_id": 153,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry5343",
+          "family": "spatial_spiral",
+          "frames": 800,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.9725,
+            "found_four_rate": 0.9725,
+            "strict_healthy_per_finger": [
+              1.0,
+              0.99375,
+              0.99,
+              0.9825
+            ],
+            "found_per_finger": [
+              1.0,
+              0.99375,
+              0.99,
+              0.9825
+            ],
+            "longest_four_loss_frames": 8,
+            "first_loss_over5_frame": 267,
+            "peak_force_n": 24.297048568725586,
+            "p95_force_n": 17.92849349975586,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 24.297048568725586,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.9696132596685083,
+            "found_four_rate": 0.9696132596685083,
+            "strict_healthy_per_finger": [
+              1.0,
+              0.9930939226519337,
+              0.988950276243094,
+              0.9806629834254144
+            ],
+            "found_per_finger": [
+              1.0,
+              0.9930939226519337,
+              0.988950276243094,
+              0.9806629834254144
+            ],
+            "longest_four_loss_frames": 8,
+            "first_loss_over5_frame": 191,
+            "peak_force_n": 24.297048568725586,
+            "p95_force_n": 18.567522048950195,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 24.297048568725586,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 153,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry5343",
+          "family": "spatial_spiral",
+          "frames": 800,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.97375,
+            "found_four_rate": 0.97375,
+            "strict_healthy_per_finger": [
+              0.99875,
+              0.99375,
+              0.99,
+              0.985
+            ],
+            "found_per_finger": [
+              0.99875,
+              0.99375,
+              0.99,
+              0.985
+            ],
+            "longest_four_loss_frames": 8,
+            "first_loss_over5_frame": 267,
+            "peak_force_n": 24.083005905151367,
+            "p95_force_n": 17.9288330078125,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 24.083005905151367,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.9709944751381215,
+            "found_four_rate": 0.9709944751381215,
+            "strict_healthy_per_finger": [
+              0.9986187845303868,
+              0.9930939226519337,
+              0.988950276243094,
+              0.9834254143646409
+            ],
+            "found_per_finger": [
+              0.9986187845303868,
+              0.9930939226519337,
+              0.988950276243094,
+              0.9834254143646409
+            ],
+            "longest_four_loss_frames": 8,
+            "first_loss_over5_frame": 191,
+            "peak_force_n": 24.083005905151367,
+            "p95_force_n": 18.713165283203125,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 24.083005905151367,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 184,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry0079",
+          "family": "direction_sweep",
+          "frames": 800,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.97125,
+            "found_four_rate": 0.97125,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.97125
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.97125
+            ],
+            "longest_four_loss_frames": 11,
+            "first_loss_over5_frame": 77,
+            "peak_force_n": 34.545475006103516,
+            "p95_force_n": 19.723129272460938,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 34.545475006103516,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.9696132596685083,
+            "found_four_rate": 0.9696132596685083,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.9696132596685083
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.9696132596685083
+            ],
+            "longest_four_loss_frames": 11,
+            "first_loss_over5_frame": 1,
+            "peak_force_n": 34.545475006103516,
+            "p95_force_n": 20.82444953918457,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 34.545475006103516,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 184,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry0079",
+          "family": "direction_sweep",
+          "frames": 800,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.96625,
+            "found_four_rate": 0.96625,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.96625
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.96625
+            ],
+            "longest_four_loss_frames": 11,
+            "first_loss_over5_frame": 77,
+            "peak_force_n": 34.55668640136719,
+            "p95_force_n": 19.821548461914062,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 34.55668640136719,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.9640883977900553,
+            "found_four_rate": 0.9640883977900553,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.9640883977900553
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.9640883977900553
+            ],
+            "longest_four_loss_frames": 11,
+            "first_loss_over5_frame": 1,
+            "peak_force_n": 34.55668640136719,
+            "p95_force_n": 20.43436050415039,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 34.55668640136719,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 199,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry0079",
+          "family": "direction_sweep",
+          "frames": 800,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.99,
+            "found_four_rate": 0.99,
+            "strict_healthy_per_finger": [
+              1.0,
+              0.99875,
+              1.0,
+              0.99125
+            ],
+            "found_per_finger": [
+              1.0,
+              0.99875,
+              1.0,
+              0.99125
+            ],
+            "longest_four_loss_frames": 2,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 46.39409255981445,
+            "p95_force_n": 29.84202003479004,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 46.39409255981445,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.988950276243094,
+            "found_four_rate": 0.988950276243094,
+            "strict_healthy_per_finger": [
+              1.0,
+              0.9986187845303868,
+              1.0,
+              0.9903314917127072
+            ],
+            "found_per_finger": [
+              1.0,
+              0.9986187845303868,
+              1.0,
+              0.9903314917127072
+            ],
+            "longest_four_loss_frames": 2,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 36.07841491699219,
+            "p95_force_n": 23.962316513061523,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 36.07841491699219,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 199,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry0079",
+          "family": "direction_sweep",
+          "frames": 800,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.98375,
+            "found_four_rate": 0.98375,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.98375
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.98375
+            ],
+            "longest_four_loss_frames": 1,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 44.969970703125,
+            "p95_force_n": 29.591310501098633,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 44.969970703125,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.9834254143646409,
+            "found_four_rate": 0.9834254143646409,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.9834254143646409
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.9834254143646409
+            ],
+            "longest_four_loss_frames": 1,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 34.97597885131836,
+            "p95_force_n": 24.440914154052734,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 34.97597885131836,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 208,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry5351",
+          "family": "oblique_orbit",
+          "frames": 800,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.89,
+            "found_four_rate": 0.89,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.89
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.89
+            ],
+            "longest_four_loss_frames": 11,
+            "first_loss_over5_frame": 614,
+            "peak_force_n": 36.077720642089844,
+            "p95_force_n": 18.665197372436523,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 36.077720642089844,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.8784530386740331,
+            "found_four_rate": 0.8784530386740331,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.8784530386740331
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.8784530386740331
+            ],
+            "longest_four_loss_frames": 11,
+            "first_loss_over5_frame": 538,
+            "peak_force_n": 36.077720642089844,
+            "p95_force_n": 19.576263427734375,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 36.077720642089844,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 208,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry5351",
+          "family": "oblique_orbit",
+          "frames": 800,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.89,
+            "found_four_rate": 0.89,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.89
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.89
+            ],
+            "longest_four_loss_frames": 11,
+            "first_loss_over5_frame": 614,
+            "peak_force_n": 36.07830047607422,
+            "p95_force_n": 18.631906509399414,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 36.07830047607422,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.8784530386740331,
+            "found_four_rate": 0.8784530386740331,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.8784530386740331
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.8784530386740331
+            ],
+            "longest_four_loss_frames": 11,
+            "first_loss_over5_frame": 538,
+            "peak_force_n": 36.07830047607422,
+            "p95_force_n": 19.5716495513916,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 36.07830047607422,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 133,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry5351",
+          "family": "oblique_orbit",
+          "frames": 1162,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.9655765920826161,
+            "found_four_rate": 0.9690189328743546,
+            "strict_healthy_per_finger": [
+              0.9982788296041308,
+              0.9905335628227194,
+              0.9819277108433735,
+              0.9948364888123924
+            ],
+            "found_per_finger": [
+              0.9991394148020654,
+              0.9931153184165232,
+              0.9819277108433735,
+              0.9948364888123924
+            ],
+            "longest_four_loss_frames": 14,
+            "first_loss_over5_frame": 703,
+            "peak_force_n": 66.50576782226562,
+            "p95_force_n": 32.97381591796875,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 66.50576782226562,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.9668508287292817,
+            "found_four_rate": 0.9705340699815838,
+            "strict_healthy_per_finger": [
+              0.998158379373849,
+              0.9898710865561694,
+              0.9834254143646409,
+              0.9953959484346224
+            ],
+            "found_per_finger": [
+              0.9990791896869244,
+              0.992633517495396,
+              0.9834254143646409,
+              0.9953959484346224
+            ],
+            "longest_four_loss_frames": 14,
+            "first_loss_over5_frame": 627,
+            "peak_force_n": 66.50576782226562,
+            "p95_force_n": 33.451873779296875,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 66.50576782226562,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 133,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry5351",
+          "family": "oblique_orbit",
+          "frames": 1162,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.9690189328743546,
+            "found_four_rate": 0.9733218588640276,
+            "strict_healthy_per_finger": [
+              0.9974182444061962,
+              0.9931153184165232,
+              0.9836488812392427,
+              0.9948364888123924
+            ],
+            "found_per_finger": [
+              0.9982788296041308,
+              0.9965576592082617,
+              0.9836488812392427,
+              0.9948364888123924
+            ],
+            "longest_four_loss_frames": 14,
+            "first_loss_over5_frame": 702,
+            "peak_force_n": 66.45616149902344,
+            "p95_force_n": 33.01388168334961,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 66.45616149902344,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.9705340699815838,
+            "found_four_rate": 0.9751381215469613,
+            "strict_healthy_per_finger": [
+              0.9972375690607734,
+              0.992633517495396,
+              0.9852670349907919,
+              0.9953959484346224
+            ],
+            "found_per_finger": [
+              0.998158379373849,
+              0.996316758747698,
+              0.9852670349907919,
+              0.9953959484346224
+            ],
+            "longest_four_loss_frames": 14,
+            "first_loss_over5_frame": 626,
+            "peak_force_n": 66.45616149902344,
+            "p95_force_n": 33.25994110107422,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 66.45616149902344,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 1,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry0001",
+          "family": "oblique_orbit",
+          "frames": 1405,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.993594306049822,
+            "found_four_rate": 0.993594306049822,
+            "strict_healthy_per_finger": [
+              0.9950177935943061,
+              1.0,
+              1.0,
+              0.998576512455516
+            ],
+            "found_per_finger": [
+              0.9950177935943061,
+              1.0,
+              1.0,
+              0.998576512455516
+            ],
+            "longest_four_loss_frames": 1,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 60.17497253417969,
+            "p95_force_n": 19.10715103149414,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 60.17497253417969,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.9932279909706546,
+            "found_four_rate": 0.9932279909706546,
+            "strict_healthy_per_finger": [
+              0.9947328818660647,
+              1.0,
+              1.0,
+              0.9984951091045899
+            ],
+            "found_per_finger": [
+              0.9947328818660647,
+              1.0,
+              1.0,
+              0.9984951091045899
+            ],
+            "longest_four_loss_frames": 1,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 60.17497253417969,
+            "p95_force_n": 19.29815101623535,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 60.17497253417969,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 1,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry0001",
+          "family": "oblique_orbit",
+          "frames": 1405,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.993594306049822,
+            "found_four_rate": 0.993594306049822,
+            "strict_healthy_per_finger": [
+              0.9950177935943061,
+              1.0,
+              1.0,
+              0.998576512455516
+            ],
+            "found_per_finger": [
+              0.9950177935943061,
+              1.0,
+              1.0,
+              0.998576512455516
+            ],
+            "longest_four_loss_frames": 1,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 60.09048843383789,
+            "p95_force_n": 19.139591217041016,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 60.09048843383789,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.9932279909706546,
+            "found_four_rate": 0.9932279909706546,
+            "strict_healthy_per_finger": [
+              0.9947328818660647,
+              1.0,
+              1.0,
+              0.9984951091045899
+            ],
+            "found_per_finger": [
+              0.9947328818660647,
+              1.0,
+              1.0,
+              0.9984951091045899
+            ],
+            "longest_four_loss_frames": 1,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 60.09048843383789,
+            "p95_force_n": 19.244293212890625,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 60.09048843383789,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 48,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry0049",
+          "family": "oblique_orbit",
+          "frames": 1414,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.9971711456859972,
+            "found_four_rate": 0.9971711456859972,
+            "strict_healthy_per_finger": [
+              0.9978783592644979,
+              1.0,
+              1.0,
+              0.9992927864214993
+            ],
+            "found_per_finger": [
+              0.9978783592644979,
+              1.0,
+              1.0,
+              0.9992927864214993
+            ],
+            "longest_four_loss_frames": 3,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 46.073116302490234,
+            "p95_force_n": 21.596805572509766,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 46.073116302490234,
+              "connector": 0.25628045201301575,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.9970104633781763,
+            "found_four_rate": 0.9970104633781763,
+            "strict_healthy_per_finger": [
+              0.9977578475336323,
+              1.0,
+              1.0,
+              0.9992526158445441
+            ],
+            "found_per_finger": [
+              0.9977578475336323,
+              1.0,
+              1.0,
+              0.9992526158445441
+            ],
+            "longest_four_loss_frames": 3,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 46.073116302490234,
+            "p95_force_n": 21.810510635375977,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 46.073116302490234,
+              "connector": 0.25628045201301575,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 48,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry0049",
+          "family": "oblique_orbit",
+          "frames": 1414,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.9971711456859972,
+            "found_four_rate": 0.9971711456859972,
+            "strict_healthy_per_finger": [
+              0.9978783592644979,
+              1.0,
+              1.0,
+              0.9992927864214993
+            ],
+            "found_per_finger": [
+              0.9978783592644979,
+              1.0,
+              1.0,
+              0.9992927864214993
+            ],
+            "longest_four_loss_frames": 3,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 47.23215866088867,
+            "p95_force_n": 21.603429794311523,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 47.23215866088867,
+              "connector": 0.245890274643898,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.9970104633781763,
+            "found_four_rate": 0.9970104633781763,
+            "strict_healthy_per_finger": [
+              0.9977578475336323,
+              1.0,
+              1.0,
+              0.9992526158445441
+            ],
+            "found_per_finger": [
+              0.9977578475336323,
+              1.0,
+              1.0,
+              0.9992526158445441
+            ],
+            "longest_four_loss_frames": 3,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 47.23215866088867,
+            "p95_force_n": 21.81558609008789,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 47.23215866088867,
+              "connector": 0.245890274643898,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 47,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry0049",
+          "family": "oblique_orbit",
+          "frames": 1415,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 1.0,
+            "found_four_rate": 1.0,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "longest_four_loss_frames": 0,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 42.39265060424805,
+            "p95_force_n": 26.4761905670166,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 42.39265060424805,
+              "connector": 20.862754821777344,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 1.0,
+            "found_four_rate": 1.0,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "longest_four_loss_frames": 0,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 42.39265060424805,
+            "p95_force_n": 26.5703182220459,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 42.39265060424805,
+              "connector": 20.862754821777344,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 47,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry0049",
+          "family": "oblique_orbit",
+          "frames": 1415,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 1.0,
+            "found_four_rate": 1.0,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "longest_four_loss_frames": 0,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 44.40127182006836,
+            "p95_force_n": 26.41170883178711,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 44.40127182006836,
+              "connector": 20.312606811523438,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 1.0,
+            "found_four_rate": 1.0,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "longest_four_loss_frames": 0,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 44.40127182006836,
+            "p95_force_n": 26.57933235168457,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 44.40127182006836,
+              "connector": 20.312606811523438,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 139,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry5330",
+          "family": "oblique_orbit",
+          "frames": 1500,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.9966666666666667,
+            "found_four_rate": 0.9966666666666667,
+            "strict_healthy_per_finger": [
+              1.0,
+              0.9993333333333333,
+              1.0,
+              0.9973333333333333
+            ],
+            "found_per_finger": [
+              1.0,
+              0.9993333333333333,
+              1.0,
+              0.9973333333333333
+            ],
+            "longest_four_loss_frames": 1,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 24.768850326538086,
+            "p95_force_n": 13.324416160583496,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 24.768850326538086,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.9971910112359551,
+            "found_four_rate": 0.9971910112359551,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.9971910112359551
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.9971910112359551
+            ],
+            "longest_four_loss_frames": 1,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 24.768850326538086,
+            "p95_force_n": 13.150775909423828,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 24.768850326538086,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 139,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry5330",
+          "family": "oblique_orbit",
+          "frames": 1500,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.9966666666666667,
+            "found_four_rate": 0.9966666666666667,
+            "strict_healthy_per_finger": [
+              1.0,
+              0.9993333333333333,
+              1.0,
+              0.9973333333333333
+            ],
+            "found_per_finger": [
+              1.0,
+              0.9993333333333333,
+              1.0,
+              0.9973333333333333
+            ],
+            "longest_four_loss_frames": 1,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 21.55440330505371,
+            "p95_force_n": 13.231778144836426,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 21.55440330505371,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.9971910112359551,
+            "found_four_rate": 0.9971910112359551,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.9971910112359551
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.9971910112359551
+            ],
+            "longest_four_loss_frames": 1,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 20.239158630371094,
+            "p95_force_n": 13.040739059448242,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 20.239158630371094,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 148,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry5330",
+          "family": "oblique_orbit",
+          "frames": 1500,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.97,
+            "found_four_rate": 0.97,
+            "strict_healthy_per_finger": [
+              1.0,
+              0.9933333333333333,
+              0.978,
+              0.9966666666666667
+            ],
+            "found_per_finger": [
+              1.0,
+              0.9933333333333333,
+              0.978,
+              0.9966666666666667
+            ],
+            "longest_four_loss_frames": 2,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 26.791080474853516,
+            "p95_force_n": 14.913298606872559,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 26.791080474853516,
+              "connector": 9.025479316711426,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.9683988764044944,
+            "found_four_rate": 0.9683988764044944,
+            "strict_healthy_per_finger": [
+              1.0,
+              0.9929775280898876,
+              0.9768258426966292,
+              0.9964887640449438
+            ],
+            "found_per_finger": [
+              1.0,
+              0.9929775280898876,
+              0.9768258426966292,
+              0.9964887640449438
+            ],
+            "longest_four_loss_frames": 2,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 26.791080474853516,
+            "p95_force_n": 14.815533638000488,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 26.791080474853516,
+              "connector": 9.025479316711426,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 148,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry5330",
+          "family": "oblique_orbit",
+          "frames": 1500,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.97,
+            "found_four_rate": 0.97,
+            "strict_healthy_per_finger": [
+              1.0,
+              0.9913333333333333,
+              0.978,
+              0.998
+            ],
+            "found_per_finger": [
+              1.0,
+              0.9913333333333333,
+              0.978,
+              0.998
+            ],
+            "longest_four_loss_frames": 3,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 27.228574752807617,
+            "p95_force_n": 14.839618682861328,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 27.228574752807617,
+              "connector": 8.95239543914795,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.9683988764044944,
+            "found_four_rate": 0.9683988764044944,
+            "strict_healthy_per_finger": [
+              1.0,
+              0.9908707865168539,
+              0.9768258426966292,
+              0.9978932584269663
+            ],
+            "found_per_finger": [
+              1.0,
+              0.9908707865168539,
+              0.9768258426966292,
+              0.9978932584269663
+            ],
+            "longest_four_loss_frames": 3,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 27.228574752807617,
+            "p95_force_n": 14.725702285766602,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 27.228574752807617,
+              "connector": 8.95239543914795,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 212,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry0113",
+          "family": "oblique_orbit",
+          "frames": 1500,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.994,
+            "found_four_rate": 0.994,
+            "strict_healthy_per_finger": [
+              0.9993333333333333,
+              1.0,
+              0.9953333333333333,
+              0.9993333333333333
+            ],
+            "found_per_finger": [
+              0.9993333333333333,
+              1.0,
+              0.9953333333333333,
+              0.9993333333333333
+            ],
+            "longest_four_loss_frames": 2,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 63.57713317871094,
+            "p95_force_n": 34.95943069458008,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 63.57713317871094,
+              "connector": 0.5012348890304565,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.9936797752808989,
+            "found_four_rate": 0.9936797752808989,
+            "strict_healthy_per_finger": [
+              0.9992977528089888,
+              1.0,
+              0.9950842696629213,
+              0.9992977528089888
+            ],
+            "found_per_finger": [
+              0.9992977528089888,
+              1.0,
+              0.9950842696629213,
+              0.9992977528089888
+            ],
+            "longest_four_loss_frames": 2,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 63.57713317871094,
+            "p95_force_n": 35.1788215637207,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 63.57713317871094,
+              "connector": 0.5012348890304565,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 212,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry0113",
+          "family": "oblique_orbit",
+          "frames": 1500,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.9933333333333333,
+            "found_four_rate": 0.9933333333333333,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              0.994,
+              0.9993333333333333
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              0.994,
+              0.9993333333333333
+            ],
+            "longest_four_loss_frames": 6,
+            "first_loss_over5_frame": 1419,
+            "peak_force_n": 66.1473617553711,
+            "p95_force_n": 34.546024322509766,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 66.1473617553711,
+              "connector": 0.5116267204284668,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.9929775280898876,
+            "found_four_rate": 0.9929775280898876,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              0.9936797752808989,
+              0.9992977528089888
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              0.9936797752808989,
+              0.9992977528089888
+            ],
+            "longest_four_loss_frames": 6,
+            "first_loss_over5_frame": 1343,
+            "peak_force_n": 66.1473617553711,
+            "p95_force_n": 34.60945510864258,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 66.1473617553711,
+              "connector": 0.5116267204284668,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 11,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry0014",
+          "family": "spatial_spiral",
+          "frames": 1515,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 1.0,
+            "found_four_rate": 1.0,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "longest_four_loss_frames": 0,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 28.79987144470215,
+            "p95_force_n": 20.59346580505371,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 28.79987144470215,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 1.0,
+            "found_four_rate": 1.0,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "longest_four_loss_frames": 0,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 28.79987144470215,
+            "p95_force_n": 20.70826530456543,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 28.79987144470215,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 11,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry0014",
+          "family": "spatial_spiral",
+          "frames": 1515,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.9993399339933994,
+            "found_four_rate": 0.9993399339933994,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.9993399339933994
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.9993399339933994
+            ],
+            "longest_four_loss_frames": 1,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 28.77086639404297,
+            "p95_force_n": 20.3615779876709,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 28.77086639404297,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.9993050729673384,
+            "found_four_rate": 0.9993050729673384,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.9993050729673384
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.9993050729673384
+            ],
+            "longest_four_loss_frames": 1,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 28.77086639404297,
+            "p95_force_n": 20.66604995727539,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 28.77086639404297,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 12,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry0014",
+          "family": "spatial_spiral",
+          "frames": 1515,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.8818481848184818,
+            "found_four_rate": 0.8897689768976897,
+            "strict_healthy_per_finger": [
+              0.9927392739273927,
+              0.994059405940594,
+              0.9973597359735974,
+              0.8930693069306931
+            ],
+            "found_per_finger": [
+              0.9973597359735974,
+              0.9947194719471947,
+              0.9973597359735974,
+              0.897029702970297
+            ],
+            "longest_four_loss_frames": 13,
+            "first_loss_over5_frame": 1059,
+            "peak_force_n": 59.83591079711914,
+            "p95_force_n": 28.671775817871094,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 59.83591079711914,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.8776928422515636,
+            "found_four_rate": 0.8860319666435025,
+            "strict_healthy_per_finger": [
+              0.9923558026407228,
+              0.9937456567060459,
+              0.9972202918693537,
+              0.8895066018068103
+            ],
+            "found_per_finger": [
+              0.9972202918693537,
+              0.9944405837387075,
+              0.9972202918693537,
+              0.8936761640027797
+            ],
+            "longest_four_loss_frames": 13,
+            "first_loss_over5_frame": 983,
+            "peak_force_n": 59.83591079711914,
+            "p95_force_n": 21.51006507873535,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 59.83591079711914,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 12,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry0014",
+          "family": "spatial_spiral",
+          "frames": 1515,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.9148514851485149,
+            "found_four_rate": 0.9234323432343234,
+            "strict_healthy_per_finger": [
+              0.994059405940594,
+              0.998019801980198,
+              0.998019801980198,
+              0.9247524752475248
+            ],
+            "found_per_finger": [
+              0.9973597359735974,
+              0.998019801980198,
+              0.998019801980198,
+              0.93003300330033
+            ],
+            "longest_four_loss_frames": 12,
+            "first_loss_over5_frame": 1058,
+            "peak_force_n": 47.99098587036133,
+            "p95_force_n": 28.691749572753906,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 47.99098587036133,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.9138290479499652,
+            "found_four_rate": 0.9228630993745657,
+            "strict_healthy_per_finger": [
+              0.9937456567060459,
+              0.9979152189020153,
+              0.9979152189020153,
+              0.9242529534398888
+            ],
+            "found_per_finger": [
+              0.9972202918693537,
+              0.9979152189020153,
+              0.9979152189020153,
+              0.9298123697011814
+            ],
+            "longest_four_loss_frames": 12,
+            "first_loss_over5_frame": 982,
+            "peak_force_n": 46.94772720336914,
+            "p95_force_n": 21.709882736206055,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 46.94772720336914,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 0,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry0001",
+          "family": "oblique_orbit",
+          "frames": 1561,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.9955156950672646,
+            "found_four_rate": 0.9955156950672646,
+            "strict_healthy_per_finger": [
+              0.9993593850096092,
+              1.0,
+              1.0,
+              0.9961563100576554
+            ],
+            "found_per_finger": [
+              0.9993593850096092,
+              1.0,
+              1.0,
+              0.9961563100576554
+            ],
+            "longest_four_loss_frames": 1,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 39.40752029418945,
+            "p95_force_n": 20.094402313232422,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 39.40752029418945,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.9952861952861953,
+            "found_four_rate": 0.9952861952861953,
+            "strict_healthy_per_finger": [
+              0.9993265993265993,
+              1.0,
+              1.0,
+              0.9959595959595959
+            ],
+            "found_per_finger": [
+              0.9993265993265993,
+              1.0,
+              1.0,
+              0.9959595959595959
+            ],
+            "longest_four_loss_frames": 1,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 39.40752029418945,
+            "p95_force_n": 20.288475036621094,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 39.40752029418945,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 0,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry0001",
+          "family": "oblique_orbit",
+          "frames": 1561,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.9955156950672646,
+            "found_four_rate": 0.9955156950672646,
+            "strict_healthy_per_finger": [
+              0.9993593850096092,
+              1.0,
+              1.0,
+              0.9961563100576554
+            ],
+            "found_per_finger": [
+              0.9993593850096092,
+              1.0,
+              1.0,
+              0.9961563100576554
+            ],
+            "longest_four_loss_frames": 1,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 39.594295501708984,
+            "p95_force_n": 20.09708595275879,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 39.594295501708984,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.9952861952861953,
+            "found_four_rate": 0.9952861952861953,
+            "strict_healthy_per_finger": [
+              0.9993265993265993,
+              1.0,
+              1.0,
+              0.9959595959595959
+            ],
+            "found_per_finger": [
+              0.9993265993265993,
+              1.0,
+              1.0,
+              0.9959595959595959
+            ],
+            "longest_four_loss_frames": 1,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 39.594295501708984,
+            "p95_force_n": 20.307945251464844,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 39.594295501708984,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 103,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry0113",
+          "family": "oblique_orbit",
+          "frames": 1574,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.9955527318932655,
+            "found_four_rate": 0.9955527318932655,
+            "strict_healthy_per_finger": [
+              0.9987293519695044,
+              0.9980940279542567,
+              0.9993646759847522,
+              0.9993646759847522
+            ],
+            "found_per_finger": [
+              0.9987293519695044,
+              0.9980940279542567,
+              0.9993646759847522,
+              0.9993646759847522
+            ],
+            "longest_four_loss_frames": 1,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 35.10234832763672,
+            "p95_force_n": 24.437211990356445,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 35.10234832763672,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.9953271028037384,
+            "found_four_rate": 0.9953271028037384,
+            "strict_healthy_per_finger": [
+              0.9986648865153538,
+              0.9979973297730307,
+              0.9993324432576769,
+              0.9993324432576769
+            ],
+            "found_per_finger": [
+              0.9986648865153538,
+              0.9979973297730307,
+              0.9993324432576769,
+              0.9993324432576769
+            ],
+            "longest_four_loss_frames": 1,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 35.10234832763672,
+            "p95_force_n": 24.525264739990234,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 35.10234832763672,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 103,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry0113",
+          "family": "oblique_orbit",
+          "frames": 1574,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.9974587039390089,
+            "found_four_rate": 0.9980940279542567,
+            "strict_healthy_per_finger": [
+              0.9987293519695044,
+              0.9987293519695044,
+              1.0,
+              1.0
+            ],
+            "found_per_finger": [
+              0.9987293519695044,
+              0.9993646759847522,
+              1.0,
+              1.0
+            ],
+            "longest_four_loss_frames": 1,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 34.903568267822266,
+            "p95_force_n": 24.50794219970703,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 34.903568267822266,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.9973297730307076,
+            "found_four_rate": 0.9979973297730307,
+            "strict_healthy_per_finger": [
+              0.9986648865153538,
+              0.9986648865153538,
+              1.0,
+              1.0
+            ],
+            "found_per_finger": [
+              0.9986648865153538,
+              0.9993324432576769,
+              1.0,
+              1.0
+            ],
+            "longest_four_loss_frames": 1,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 34.903568267822266,
+            "p95_force_n": 24.539831161499023,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 34.903568267822266,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 72,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry0072",
+          "family": "meridian_arc",
+          "frames": 1688,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.9845971563981043,
+            "found_four_rate": 0.9845971563981043,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              0.9988151658767772,
+              0.985781990521327
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              0.9988151658767772,
+              0.985781990521327
+            ],
+            "longest_four_loss_frames": 9,
+            "first_loss_over5_frame": 487,
+            "peak_force_n": 34.56724166870117,
+            "p95_force_n": 24.84963607788086,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 34.56724166870117,
+              "connector": 5.7823405265808105,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.9838709677419355,
+            "found_four_rate": 0.9838709677419355,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              0.9987593052109182,
+              0.9851116625310173
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              0.9987593052109182,
+              0.9851116625310173
+            ],
+            "longest_four_loss_frames": 9,
+            "first_loss_over5_frame": 411,
+            "peak_force_n": 34.56724166870117,
+            "p95_force_n": 25.276304244995117,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 34.56724166870117,
+              "connector": 5.7823405265808105,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 72,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry0072",
+          "family": "meridian_arc",
+          "frames": 1688,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.9863744075829384,
+            "found_four_rate": 0.9863744075829384,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.9863744075829384
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.9863744075829384
+            ],
+            "longest_four_loss_frames": 9,
+            "first_loss_over5_frame": 487,
+            "peak_force_n": 35.86094284057617,
+            "p95_force_n": 29.341123580932617,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 35.86094284057617,
+              "connector": 4.8944830894470215,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.9857320099255583,
+            "found_four_rate": 0.9857320099255583,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.9857320099255583
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.9857320099255583
+            ],
+            "longest_four_loss_frames": 9,
+            "first_loss_over5_frame": 411,
+            "peak_force_n": 35.86094284057617,
+            "p95_force_n": 29.706192016601562,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 35.86094284057617,
+              "connector": 4.8944830894470215,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 71,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry0072",
+          "family": "meridian_arc",
+          "frames": 2812,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.9950213371266002,
+            "found_four_rate": 0.9953769559032717,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.9950213371266002
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.9953769559032717
+            ],
+            "longest_four_loss_frames": 1,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 34.79108428955078,
+            "p95_force_n": 20.075214385986328,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 34.79108428955078,
+              "connector": 6.416712284088135,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.9948830409356725,
+            "found_four_rate": 0.9952485380116959,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.9948830409356725
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.9952485380116959
+            ],
+            "longest_four_loss_frames": 1,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 34.79108428955078,
+            "p95_force_n": 20.113161087036133,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 34.79108428955078,
+              "connector": 6.416712284088135,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 71,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry0072",
+          "family": "meridian_arc",
+          "frames": 2812,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.9946657183499289,
+            "found_four_rate": 0.9957325746799431,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.9946657183499289
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.9957325746799431
+            ],
+            "longest_four_loss_frames": 1,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 34.79069137573242,
+            "p95_force_n": 20.20725440979004,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 34.79069137573242,
+              "connector": 6.415494441986084,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.9945175438596491,
+            "found_four_rate": 0.9956140350877193,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.9945175438596491
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.9956140350877193
+            ],
+            "longest_four_loss_frames": 1,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 34.79069137573242,
+            "p95_force_n": 20.344528198242188,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 34.79069137573242,
+              "connector": 6.415494441986084,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 160,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry5330",
+          "family": "oblique_orbit",
+          "frames": 3000,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.9856666666666667,
+            "found_four_rate": 0.986,
+            "strict_healthy_per_finger": [
+              1.0,
+              0.9953333333333333,
+              0.9916666666666667,
+              0.998
+            ],
+            "found_per_finger": [
+              1.0,
+              0.9953333333333333,
+              0.9916666666666667,
+              0.9983333333333333
+            ],
+            "longest_four_loss_frames": 3,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 46.10965347290039,
+            "p95_force_n": 13.952008247375488,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 46.10965347290039,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.9859781121751026,
+            "found_four_rate": 0.9863201094391245,
+            "strict_healthy_per_finger": [
+              1.0,
+              0.9958960328317373,
+              0.9914500683994528,
+              0.9979480164158687
+            ],
+            "found_per_finger": [
+              1.0,
+              0.9958960328317373,
+              0.9914500683994528,
+              0.9982900136798906
+            ],
+            "longest_four_loss_frames": 3,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 46.10965347290039,
+            "p95_force_n": 14.038126945495605,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 46.10965347290039,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 160,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry5330",
+          "family": "oblique_orbit",
+          "frames": 3000,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.9863333333333333,
+            "found_four_rate": 0.987,
+            "strict_healthy_per_finger": [
+              1.0,
+              0.9966666666666667,
+              0.9913333333333333,
+              0.998
+            ],
+            "found_per_finger": [
+              1.0,
+              0.997,
+              0.9913333333333333,
+              0.9983333333333333
+            ],
+            "longest_four_loss_frames": 2,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 44.43727111816406,
+            "p95_force_n": 13.909078598022461,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 44.43727111816406,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.9866621067031464,
+            "found_four_rate": 0.9873461012311902,
+            "strict_healthy_per_finger": [
+              1.0,
+              0.9972640218878249,
+              0.9911080711354309,
+              0.9979480164158687
+            ],
+            "found_per_finger": [
+              1.0,
+              0.9976060191518468,
+              0.9911080711354309,
+              0.9982900136798906
+            ],
+            "longest_four_loss_frames": 2,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 44.43727111816406,
+            "p95_force_n": 13.944670677185059,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 44.43727111816406,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 22,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry0021",
+          "family": "oblique_orbit",
+          "frames": 3079,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.9964274114972393,
+            "found_four_rate": 0.9964274114972393,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.9964274114972393
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.9964274114972393
+            ],
+            "longest_four_loss_frames": 3,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 36.56492614746094,
+            "p95_force_n": 31.738595962524414,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 36.56492614746094,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.9963369963369964,
+            "found_four_rate": 0.9963369963369964,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.9963369963369964
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.9963369963369964
+            ],
+            "longest_four_loss_frames": 3,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 36.56492614746094,
+            "p95_force_n": 31.808202743530273,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 36.56492614746094,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 22,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry0021",
+          "family": "oblique_orbit",
+          "frames": 3079,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.9964274114972393,
+            "found_four_rate": 0.9964274114972393,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.9964274114972393
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.9964274114972393
+            ],
+            "longest_four_loss_frames": 2,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 55.643798828125,
+            "p95_force_n": 31.890230178833008,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 55.643798828125,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.9963369963369964,
+            "found_four_rate": 0.9963369963369964,
+            "strict_healthy_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.9963369963369964
+            ],
+            "found_per_finger": [
+              1.0,
+              1.0,
+              1.0,
+              0.9963369963369964
+            ],
+            "longest_four_loss_frames": 2,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 55.643798828125,
+            "p95_force_n": 31.92850685119629,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 55.643798828125,
+              "connector": 0.0,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 21,
+          "branch": 0,
+          "parent": "mustard_exploration_seed20261015_geometry0021",
+          "family": "oblique_orbit",
+          "frames": 5131,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.9955174429935685,
+            "found_four_rate": 0.9955174429935685,
+            "strict_healthy_per_finger": [
+              1.0,
+              0.9998051062171117,
+              1.0,
+              0.9957123367764569
+            ],
+            "found_per_finger": [
+              1.0,
+              0.9998051062171117,
+              1.0,
+              0.9957123367764569
+            ],
+            "longest_four_loss_frames": 3,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 59.12746810913086,
+            "p95_force_n": 19.172698974609375,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 59.12746810913086,
+              "connector": 19.53050994873047,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.9954500494559841,
+            "found_four_rate": 0.9954500494559841,
+            "strict_healthy_per_finger": [
+              1.0,
+              0.9998021760633037,
+              1.0,
+              0.9956478733926805
+            ],
+            "found_per_finger": [
+              1.0,
+              0.9998021760633037,
+              1.0,
+              0.9956478733926805
+            ],
+            "longest_four_loss_frames": 3,
+            "first_loss_over5_frame": null,
+            "peak_force_n": 59.12746810913086,
+            "p95_force_n": 19.259279251098633,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 59.12746810913086,
+              "connector": 19.53050994873047,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        },
+        {
+          "episode_id": 21,
+          "branch": 1,
+          "parent": "mustard_exploration_seed20261015_geometry0021",
+          "family": "oblique_orbit",
+          "frames": 5131,
+          "complete": true,
+          "held_target_max_error_rad": 0.0,
+          "full": {
+            "strict_healthy_four_rate": 0.9705710387838627,
+            "found_four_rate": 0.973104657961411,
+            "strict_healthy_per_finger": [
+              0.9998051062171117,
+              1.0,
+              0.9998051062171117,
+              0.9709608263496394
+            ],
+            "found_per_finger": [
+              0.9998051062171117,
+              1.0,
+              1.0,
+              0.9732995517442994
+            ],
+            "longest_four_loss_frames": 21,
+            "first_loss_over5_frame": 2249,
+            "peak_force_n": 68.46326446533203,
+            "p95_force_n": 24.341388702392578,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 68.46326446533203,
+              "connector": 36.6007194519043,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          },
+          "post_bootstrap": {
+            "strict_healthy_four_rate": 0.9701285855588526,
+            "found_four_rate": 0.9727002967359051,
+            "strict_healthy_per_finger": [
+              0.9998021760633037,
+              1.0,
+              0.9998021760633037,
+              0.9705242334322453
+            ],
+            "found_per_finger": [
+              0.9998021760633037,
+              1.0,
+              1.0,
+              0.9728981206726014
+            ],
+            "longest_four_loss_frames": 21,
+            "first_loss_over5_frame": 2173,
+            "peak_force_n": 68.46326446533203,
+            "p95_force_n": 24.44341278076172,
+            "over100N_frames": 0,
+            "force_peak_by_part_n": {
+              "true_fingertip": 68.46326446533203,
+              "connector": 36.6007194519043,
+              "other_link": 0.0,
+              "palm": 0.0
+            }
+          }
+        }
+      ],
+      "count": 40,
+      "metrics": {
+        "full": {
+          "strict_healthy_four_rate": 0.978649436231299,
+          "found_four_rate": 0.9793953946124466,
+          "longest_four_loss_frames": 4.95,
+          "p95_force_n": 22.88005051612854,
+          "over100N_rollouts": 0,
+          "over100N_frames": 0,
+          "peak_force_n": 68.46326446533203,
+          "strict_per_finger": [
+            0.9990588493276146,
+            0.9983484977158561,
+            0.9966818602862096,
+            0.9839905506837965
+          ],
+          "found_per_finger": [
+            0.9992998983894916,
+            0.9985398182093741,
+            0.9966867326307819,
+            0.984332270465307
+          ],
+          "success95": 31
+        },
+        "post_bootstrap": {
+          "strict_healthy_four_rate": 0.9775810671221702,
+          "found_four_rate": 0.9783657600384139,
+          "longest_four_loss_frames": 4.95,
+          "p95_force_n": 22.46899597644806,
+          "over100N_rollouts": 0,
+          "over100N_frames": 0,
+          "peak_force_n": 68.46326446533203,
+          "strict_per_finger": [
+            0.9990045137916844,
+            0.9983111217792968,
+            0.9966149076754214,
+            0.98303506472442
+          ],
+          "found_per_finger": [
+            0.9992590324171367,
+            0.9985148756100604,
+            0.9966198532738387,
+            0.9833912859376639
+          ],
+          "success95": 31
+        }
+      }
+    }
+  }
+}
