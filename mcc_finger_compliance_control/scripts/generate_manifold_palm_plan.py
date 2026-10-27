@@ -538,6 +538,31 @@ def smooth_surface_aligned_poses(
     return body_position, rotations, anchor_count
 
 
+def sweep_curve(position, tangent, center, axis, phase, arc_rad, sweep_deg, weave_deg):
+    """Rotate an ellipse plane continuously, including its tangent derivative."""
+    if sweep_deg == 0 and weave_deg == 0:
+        return position, tangent
+    axis = np.asarray(axis, dtype=float)
+    axis /= np.linalg.norm(axis)
+    phase = np.asarray(phase, dtype=float)
+    phi = np.deg2rad(sweep_deg)*phase + np.deg2rad(weave_deg)*np.sin(4*np.pi*phase)
+    dphi = np.deg2rad(sweep_deg) + 4*np.pi*np.deg2rad(weave_deg)*np.cos(4*np.pi*phase)
+    rotation = R.from_rotvec(phi[:, None]*axis)
+    radial = rotation.apply(position-center)
+    moved = center+radial
+    derivative = rotation.apply(tangent*arc_rad) + dphi[:, None]*np.cross(axis, radial)
+    return moved, derivative
+
+
+def sample_palm_clearance(bounds, seed: int) -> float:
+    """One reproducible margin per plan, independent of orientation RNG."""
+    low, high = map(float, bounds)
+    if not np.isfinite([low, high]).all() or not 0 < low <= high:
+        raise ValueError("clearance range must be finite and 0 < min <= max")
+    rng = np.random.default_rng(np.random.SeedSequence([int(seed), 3040]))
+    return float(rng.uniform(low, high))
+
+
 def generate(source: Path | None, output: Path, episode_id: int, frames: int,
              angle_deg: float, axis: np.ndarray, direction: int,
              control_dt: float, object_id: str, palm_pos_world: np.ndarray,
@@ -560,7 +585,23 @@ def generate(source: Path | None, output: Path, episode_id: int, frames: int,
              max_plan_rotation_path_deg: float = 0.0,
              max_plan_translation_step_m: float = 0.0,
              max_plan_rotation_step_deg: float = 0.0,
-             time_parameterization: str = "arc_length") -> None:
+             time_parameterization: str = "arc_length",
+             global_ellipse_plane_mode: str = "calibrated",
+             palm_yaw_offset_deg: float = 0.0,
+             palm_yaw_end_offset_deg: float | None = None,
+             palm_clearance_range_m: tuple[float, float] | None = None,
+             palm_clearance_seed: int | None = None,
+             meridian_sweep_deg: float = 0.0,
+             meridian_weave_deg: float = 0.0) -> None:
+    if (meridian_sweep_deg or meridian_weave_deg) and path_mode != 'minimum_enclosing_ellipse':
+        raise ValueError('variable-plane sweep requires minimum_enclosing_ellipse')
+    if palm_clearance_range_m is not None:
+        if path_mode != "minimum_enclosing_ellipse":
+            raise ValueError("random outline clearance requires minimum_enclosing_ellipse")
+        palm_clearance_seed = seed if palm_clearance_seed is None else palm_clearance_seed
+        palm_outline_clearance_m = sample_palm_clearance(
+            palm_clearance_range_m, palm_clearance_seed)
+        print(f"[PLAN] sampled palm outline clearance={palm_outline_clearance_m * 1000:.3f} mm")
     if palm_tangent_sign not in (-1, 1):
         raise ValueError("palm_tangent_sign must be -1 or 1")
     if source is not None:
@@ -704,6 +745,21 @@ def generate(source: Path | None, output: Path, episode_id: int, frames: int,
             if long_axis_global[dominant_global] < 0.0:
                 long_axis_global = -long_axis_global
             radial = palm_center_obj0 - mesh_center
+            if global_ellipse_plane_mode == "long_axis":
+                # A true meridian plane must contain the object's PCA long
+                # axis.  The legacy calibrated plane used the palm tangent as
+                # its second basis vector, so its nominal bottom/cap extrema
+                # were often only extrema of an oblique plane and never
+                # crossed the actual object poles.
+                radial -= long_axis_global * float(radial @ long_axis_global)
+                if float(np.linalg.norm(radial)) < 1.0e-8:
+                    radial = np.cross(
+                        long_axis_global, np.asarray((1.0, 0.0, 0.0))
+                    )
+                    if float(np.linalg.norm(radial)) < 1.0e-8:
+                        radial = np.cross(
+                            long_axis_global, np.asarray((0.0, 1.0, 0.0))
+                        )
             radial /= max(float(np.linalg.norm(radial)), 1.0e-12)
             if abs(float(ellipse_meridian_deg)) > 1.0e-12:
                 # Meridian selection: rotate the orbit plane around the
@@ -714,27 +770,33 @@ def generate(source: Path | None, output: Path, episode_id: int, frames: int,
                     long_axis_global * np.deg2rad(float(ellipse_meridian_deg))
                 )
                 radial = meridian_rot.apply(radial)
-            palm_tangent = palm_rot_obj0 @ np.array((1.0, 0.0, 0.0))
-            tangent = palm_tangent - radial * float(palm_tangent @ radial)
-            if float(np.linalg.norm(tangent)) < 1.0e-8:
-                palm_tangent = palm_rot_obj0 @ np.array((0.0, 1.0, 0.0))
+            if global_ellipse_plane_mode == "long_axis":
+                tangent = long_axis_global.copy()
+            else:
+                palm_tangent = palm_rot_obj0 @ np.array((1.0, 0.0, 0.0))
                 tangent = palm_tangent - radial * float(palm_tangent @ radial)
-            tangent /= max(float(np.linalg.norm(tangent)), 1.0e-12)
-            if abs(float(ellipse_meridian_deg)) > 1.0e-12:
-                tangent = meridian_rot.apply(tangent)
-                tangent -= radial * float(tangent @ radial)
+                if float(np.linalg.norm(tangent)) < 1.0e-8:
+                    palm_tangent = palm_rot_obj0 @ np.array((0.0, 1.0, 0.0))
+                    tangent = palm_tangent - radial * float(palm_tangent @ radial)
                 tangent /= max(float(np.linalg.norm(tangent)), 1.0e-12)
-            if abs(float(ellipse_azimuth_deg)) > 1.0e-12:
-                tangent = R.from_rotvec(
-                    radial * np.deg2rad(float(ellipse_azimuth_deg))
-                ).apply(tangent)
-                tangent -= radial * float(tangent @ radial)
-                tangent /= max(float(np.linalg.norm(tangent)), 1.0e-12)
+                if abs(float(ellipse_meridian_deg)) > 1.0e-12:
+                    tangent = meridian_rot.apply(tangent)
+                    tangent -= radial * float(tangent @ radial)
+                    tangent /= max(float(np.linalg.norm(tangent)), 1.0e-12)
+                if abs(float(ellipse_azimuth_deg)) > 1.0e-12:
+                    tangent = R.from_rotvec(
+                        radial * np.deg2rad(float(ellipse_azimuth_deg))
+                    ).apply(tangent)
+                    tangent -= radial * float(tangent @ radial)
+                    tangent /= max(float(np.linalg.norm(tangent)), 1.0e-12)
             plane_normal = np.cross(radial, tangent)
             plane_normal /= max(float(np.linalg.norm(plane_normal)), 1.0e-12)
             plane_basis = np.column_stack((radial, tangent))
             projected = (oracle.vertices - mesh_center) @ plane_basis
             projection_origin = mesh_center
+            section_attrs["planner_global_ellipse_plane_mode"] = (
+                global_ellipse_plane_mode
+            )
 
         center_2d, ellipse_axes_2d, base_radii = minimum_enclosing_ellipse_2d(
             projected
@@ -793,6 +855,10 @@ def generate(source: Path | None, output: Path, episode_id: int, frames: int,
                 )
             )
         section_attrs["planner_ellipse_arc_region"] = ellipse_arc_region
+        _, _, sweep_axes = np.linalg.svd(oracle.vertices-mesh_center, full_matrices=False)
+        sweep_axis = sweep_axes[0]
+        if sweep_axis[np.abs(sweep_axis).argmax()] < 0:
+            sweep_axis = -sweep_axis
 
         def ellipse_poses(
             theta: np.ndarray, axis_inflation: np.ndarray | float
@@ -812,6 +878,10 @@ def generate(source: Path | None, output: Path, episode_id: int, frames: int,
                 -radii[0] * sine * ellipse_axis_a[None, :]
                 + radii[1] * cosine * ellipse_axis_b[None, :]
             )
+            phase = direction*(theta-theta0)/np.deg2rad(angle_deg)
+            control_position, motion_tangent = sweep_curve(control_position, motion_tangent,
+                mesh_center, sweep_axis, phase, np.deg2rad(angle_deg),
+                meridian_sweep_deg, meridian_weave_deg)
             _, nearest_face = oracle.face_tree.query(control_position)
             nearest_face = np.asarray(nearest_face, dtype=np.int64)
             surface_point = oracle.face_centroids[nearest_face]
@@ -836,6 +906,38 @@ def generate(source: Path | None, output: Path, episode_id: int, frames: int,
                 ],
                 axis=0,
             )
+            yaw_end = (
+                float(palm_yaw_offset_deg)
+                if palm_yaw_end_offset_deg is None
+                else float(palm_yaw_end_offset_deg)
+            )
+            if (
+                abs(float(palm_yaw_offset_deg)) > 1.0e-12
+                or abs(yaw_end) > 1.0e-12
+            ):
+                # Right multiplication rotates the palm around its local +Z.
+                # The surface-facing axis is unchanged, while the free wrist
+                # yaw can place the three ordinary fingertip pads on a
+                # reachable branch near narrow cap/bottom extrema.  A smooth
+                # start-to-end schedule is useful on body->cap transitions,
+                # where one constant wrist yaw cannot retain pad alignment.
+                path_fraction = np.clip(
+                    direction * (theta - theta0)
+                    / max(np.deg2rad(float(angle_deg)), 1.0e-12),
+                    0.0,
+                    1.0,
+                )
+                yaw_blend = path_fraction * path_fraction * (
+                    3.0 - 2.0 * path_fraction
+                )
+                yaw_deg = (
+                    float(palm_yaw_offset_deg)
+                    + yaw_blend * (yaw_end - float(palm_yaw_offset_deg))
+                )
+                yaw_rotvec = np.zeros((len(theta), 3), dtype=np.float64)
+                yaw_rotvec[:, 2] = np.deg2rad(yaw_deg)
+                yaw_local = R.from_rotvec(yaw_rotvec).as_matrix()
+                rotation = np.einsum("nij,njk->nik", rotation, yaw_local)
             body_position = control_position - np.einsum(
                 "nij,j->ni", rotation, PALM_CENTER_LOCAL
             )
@@ -989,6 +1091,12 @@ def generate(source: Path | None, output: Path, episode_id: int, frames: int,
             + final_radii[0] * dense_cosine * ellipse_axis_a[None, :]
             + final_radii[1] * dense_sine * ellipse_axis_b[None, :]
         )
+        dense_tangent = direction * (
+            -final_radii[0]*dense_sine*ellipse_axis_a[None, :]
+            +final_radii[1]*dense_cosine*ellipse_axis_b[None, :])
+        dense_control, _ = sweep_curve(dense_control, dense_tangent,
+            mesh_center, sweep_axis, np.linspace(0, 1, dense_count), np.deg2rad(angle_deg),
+            meridian_sweep_deg, meridian_weave_deg)
         dense_segment = np.linalg.norm(np.diff(dense_control, axis=0), axis=1)
         dense_arc = np.concatenate(([0.0], np.cumsum(dense_segment)))
         keep = np.concatenate(([True], dense_segment > 1.0e-12))
@@ -1093,6 +1201,10 @@ def generate(source: Path | None, output: Path, episode_id: int, frames: int,
             )
             outline_mean_clearance[i] = mean_clearance
             outline_clearance[i] = min_clearance
+        if palm_clearance_range_m is not None:
+            if (not np.isfinite(outline_clearance).all()
+                    or float(outline_clearance.min()) < palm_outline_clearance_m - 1e-5):
+                raise ValueError("resampled palm path violates sampled outline clearance")
         planner_geometry_attrs = {
             "planner_ellipse_center_object": ellipse_center,
             "planner_ellipse_plane_normal_object": plane_normal,
@@ -1106,6 +1218,12 @@ def generate(source: Path | None, output: Path, episode_id: int, frames: int,
             ),
             "planner_ellipse_internal_clearance_target_m": planning_clearance,
             "planner_ellipse_start_phase_rad": float(theta0),
+            "planner_palm_yaw_offset_deg": float(palm_yaw_offset_deg),
+            "planner_palm_yaw_end_offset_deg": float(
+                palm_yaw_offset_deg
+                if palm_yaw_end_offset_deg is None
+                else palm_yaw_end_offset_deg
+            ),
             "planner_projected_mesh_vertices": int(len(projected)),
             "planner_palm_control_point_local": PALM_CENTER_LOCAL,
             "planner_palm_tangent_axis": palm_tangent_axis,
@@ -1322,11 +1440,17 @@ def generate(source: Path | None, output: Path, episode_id: int, frames: int,
         )
         dst.attrs["planner_axis_local"] = axis
         dst.attrs["planner_angle_deg"] = float(angle_deg)
+        dst.attrs['planner_meridian_sweep_deg'] = float(meridian_sweep_deg)
+        dst.attrs['planner_meridian_weave_deg'] = float(meridian_weave_deg)
         dst.attrs["planner_path_mode"] = path_mode
         dst.attrs["planner_path_length_m"] = float(path_length_m)
         dst.attrs["planner_palm_outline_clearance_m"] = float(
             palm_outline_clearance_m
         )
+        if palm_clearance_range_m is not None:
+            dst.attrs["planner_palm_clearance_range_m"] = palm_clearance_range_m
+            dst.attrs["planner_palm_clearance_seed"] = int(palm_clearance_seed)
+            dst.attrs["planner_palm_clearance_sampling"] = "uniform_per_trajectory_independent_rng_v1"
         dst.attrs["planner_smoothing_sigma_frames"] = float(
             smoothing_sigma_frames
         )
@@ -1388,6 +1512,14 @@ def main() -> None:
         "--smoothing-sigma-frames", type=float, default=8.0,
         help="Gaussian smoothing width applied before the final clearance pass.",
     )
+    parser.add_argument("--palm-clearance-range-m", type=float, nargs=2,
+        metavar=("MIN", "MAX"), help="Sample one minimum palm-outline margin per plan, e.g. 0.03 0.04")
+    parser.add_argument("--palm-clearance-seed", type=int,
+        help="Independent clearance seed; defaults to the plan seed")
+    parser.add_argument('--meridian-sweep-deg', type=float, default=0.,
+        help='Continuous plane rotation about the object long axis; yields a spatial spiral')
+    parser.add_argument('--meridian-weave-deg', type=float, default=0.,
+        help='Smooth two-cycle plane weave for continuously changing local direction')
     parser.add_argument(
         "--palm-mean-clearance-m", type=float, default=0.030,
         help=(
@@ -1530,6 +1662,36 @@ def main() -> None:
             "several-fold, and the fast segments shed contact."
         ),
     )
+    parser.add_argument(
+        "--global-ellipse-plane-mode",
+        choices=("calibrated", "long_axis"),
+        default="calibrated",
+        help=(
+            "Global ellipse only: calibrated preserves the legacy palm-tangent "
+            "plane; long_axis forces a true meridian plane through the object's "
+            "PCA long axis, so bottom/cap arcs cross the geometric poles."
+        ),
+    )
+    parser.add_argument(
+        "--palm-yaw-offset-deg",
+        type=float,
+        default=0.0,
+        help=(
+            "Constant wrist yaw about palm local +Z after surface/tangent "
+            "alignment. This preserves palm-normal alignment while exposing "
+            "different fingertip-pad grasp branches (default: 0)."
+        ),
+    )
+    parser.add_argument(
+        "--palm-yaw-end-offset-deg",
+        type=float,
+        default=None,
+        help=(
+            "Optional final wrist yaw. The planner applies a smoothstep yaw "
+            "schedule from --palm-yaw-offset-deg to this value while keeping "
+            "palm +Z aligned with the surface normal."
+        ),
+    )
     args = parser.parse_args()
     generate(
         args.source, args.output, args.episode_id, args.frames,
@@ -1551,6 +1713,13 @@ def main() -> None:
         args.max_plan_translation_step_m,
         args.max_plan_rotation_step_deg,
         args.time_parameterization,
+        args.global_ellipse_plane_mode,
+        args.palm_yaw_offset_deg,
+        args.palm_yaw_end_offset_deg,
+        args.palm_clearance_range_m,
+        args.palm_clearance_seed,
+        args.meridian_sweep_deg,
+        args.meridian_weave_deg,
     )
 
 

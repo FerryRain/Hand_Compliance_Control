@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "accepted_interactively": true,
+  "source": "src/mjlab/asset_zoo/robots/xarm6_leap_hand/assets/thumb_fingertip.stl",
+  "source_sha256": "b43c5a13cf67a25da5ea64afafdcae2179b53971f940375c94656919d717dfb0",
+  "plane_normal_source_mesh": [
+    0.0,
+    1.0,
+    0.0
+  ],
+  "plane_offset_m": -0.11115524918743108,
+  "pad_side": "negative",
+  "edge_plane_intersection_count": 401,
+  "pad_bounds_m": [
+    [
+      -0.07365765422582626,
+      -0.14055968821048737,
+      -0.0752929151058197
+    ],
+    [
+      -0.05305953696370125,
+      -0.11115524918743108,
+      -0.05129291117191315
+    ]
+  ],
+  "connector_bounds_m": [
+    [
+      -0.07311243033798667,
+      -0.11115524918743108,
+      -0.07979290932416916
+    ],
+    [
+      -0.04405953735113144,
+      -0.06895968317985535,
+      -0.04679291322827339
+    ]
+  ],
+  "runtime_semantics": {
+    "pad_convex.obj": "compliant_priority20_and_tip_sensor",
+    "connector_convex.obj": "hard_priority10_not_tip_sensor"
+  }
+}

@@ -206,6 +206,7 @@ def replay_env_cfg(
     object_config=None,
     object_scale: float = 1.0,
     physics_substeps: int = REPLAY_PHYSICS_SUBSTEPS,
+    num_envs: int = 1,
 ) -> ManagerBasedRlEnvCfg:
     if physics_substeps <= 0:
         raise ValueError("physics_substeps must be positive")
@@ -275,7 +276,7 @@ def replay_env_cfg(
             terrain=None,
             entities={"robot": robot, "target": target},
         sensors=_sensor_cfgs(target_name),
-            num_envs=1,
+            num_envs=num_envs,
             env_spacing=2.0,
         ),
         observations=observations,

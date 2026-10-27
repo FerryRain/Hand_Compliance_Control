@@ -19,7 +19,7 @@ import numpy as np
 from object_catalog import add_object_body, load_object_config
 
 
-HAND_XML = Path(
+HAND_XML = Path(__file__).resolve().parents[2] / Path(
     "src/mjlab/asset_zoo/robots/xarm6_leap_hand/leap_hand_tactile.xml"
 )
 HAND_JOINT_NAMES = (
@@ -310,7 +310,21 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Show coloured palm trajectories in the fixed-object inverse frame."
     )
-    parser.add_argument("plans", nargs="+", type=Path)
+    parser.add_argument("plans", nargs="*", type=Path)
+    parser.add_argument('--interactive', action='store_true',
+        help='Single-trajectory browser with transparent hands and time/waypoint sliders')
+    parser.add_argument('--trajectory-root', type=Path,
+        default=Path(__file__).resolve().parents[1]/'data/exploration_collection_pass_20261016')
+    parser.add_argument('--candidate-id', type=int, default=34)
+    parser.add_argument('--port', type=int, default=8081)
+    parser.add_argument('--host', default='127.0.0.1')
+    parser.add_argument('--ghost-count', type=int, default=8)
+    parser.add_argument('--hand-alpha', type=float, default=.50)
+    parser.add_argument('--ghost-alpha', type=float, default=.12)
+    parser.add_argument('--check-only', action='store_true', help='Validate native FK without opening a viewer')
+    parser.add_argument('--snapshot', type=Path, help='Optional MuJoCo reference preview image')
+    parser.add_argument('--frame', type=int, default=0, help='Initial reference frame')
+    parser.add_argument('--duration-s', type=float, default=0., help='Optional automatic viewer shutdown')
     parser.add_argument("--stride", type=int, default=4)
     parser.add_argument("--line-radius-m", type=float, default=0.0018)
     parser.add_argument("--camera-azimuth", type=float, default=135.0)
@@ -326,6 +340,12 @@ def main() -> None:
         help="Do not load the four fixed-base Leap Hand models at path starts.",
     )
     args = parser.parse_args()
+    if args.interactive or args.check_only:
+        from plan_waypoint_viewer import run
+        run(args)
+        return
+    if not args.plans:
+        parser.error('Supply plan paths, or use --interactive to browse the exploration references')
     if args.stride < 1:
         raise ValueError("--stride must be at least one")
     if args.line_radius_m <= 0.0:

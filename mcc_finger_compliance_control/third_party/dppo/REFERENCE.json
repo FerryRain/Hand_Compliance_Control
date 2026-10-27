@@ -1,0 +1,9 @@
+{
+  "source": "https://github.com/irom-princeton/dppo",
+  "files": [
+    "model/diffusion/diffusion_vpg.py",
+    "model/diffusion/diffusion_ppo.py"
+  ],
+  "adaptation": "Clipped coordinate-average PPO surrogate, denoising discount and frozen early actor. Native LeRobot/DDPM kernels retained; untruncated Gaussian raw latents use matched sampling/logprob std.",
+  "license": "MIT, Copyright (c) 2024 Intelligent Robot Motion Lab"
+}

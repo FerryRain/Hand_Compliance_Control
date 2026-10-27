@@ -146,9 +146,12 @@ ROBOT_STATE_DIM = 40
 ENV_STATE_DIM = 6
 STATE_DIM = ROBOT_STATE_DIM + ENV_STATE_DIM
 ACTION_DIM = 16
-ActionRepresentation = Literal["delta_q", "absolute_q", "kinematic_residual_q"]
+ActionRepresentation = Literal[
+    "delta_q", "anchored_delta_q", "absolute_q", "kinematic_residual_q"
+]
 ACTION_REPRESENTATIONS: tuple[ActionRepresentation, ...] = (
     "delta_q",
+    "anchored_delta_q",
     "absolute_q",
     "kinematic_residual_q",
 )
@@ -454,6 +457,23 @@ def compute_normalization(
         # guarantees that every valid displacement remains inside [-1, 1].
         action_mean = np.zeros(action_dim, dtype=np.float64)
         action_std = np.maximum(np.ptp(q_values, axis=0), 1.0e-4)
+    elif action_representation == "anchored_delta_q":
+        if action_dim != ACTION_DIM:
+            raise ValueError("anchored_delta_q requires 16-D joint actions")
+        # One observed q anchors the whole future chunk.  A separate bound
+        # for each waypoint/joint prevents the 50 ms target from being scaled
+        # by an unrelated 800 ms displacement.  Exact training maxima keep
+        # every training target inside the sampler's [-1, 1] clip interval.
+        action_mean = np.zeros((pred_horizon, action_dim), dtype=np.float64)
+        action_std = np.full((pred_horizon, action_dim), 1.0e-4, dtype=np.float64)
+        for eid in train_ids:
+            state, q = episodes[eid]
+            current = np.arange(obs_horizon - 1, len(q) - pred_horizon)
+            if not current.size:
+                continue
+            future = q[current[:, None] + 1 + np.arange(pred_horizon)[None, :]]
+            delta = future - state[current, None, :ACTION_DIM]
+            action_std = np.maximum(action_std, np.abs(delta).max(axis=0))
     elif action_representation == "absolute_q":
         # LeRobot clips denoised normalized actions to [-1, 1]. Map the
         # demonstrated absolute joint limits exactly into that interval.
@@ -724,7 +744,7 @@ class FingertipDiffusionDataset(Dataset):
                 history[:, point_base : point_base + 12] = 0.0
                 history[:, normal_rate_base : normal_rate_base + 12] = 0.0
         future = action_q[current + 1 : current + 1 + self.pred_horizon]
-        if self.action_representation == "delta_q":
+        if self.action_representation in ("delta_q", "anchored_delta_q"):
             current_live_q = state[current, :ACTION_DIM]
             action = future - current_live_q
         elif self.action_representation == "kinematic_residual_q":
@@ -785,7 +805,7 @@ class FingertipDiffusionDataset(Dataset):
         state, _ = self.episodes[eid]
         if self.action_representation == "absolute_q":
             return np.zeros((self.pred_horizon, self.action_dim), dtype=np.float32)
-        if self.action_representation == "delta_q":
+        if self.action_representation in ("delta_q", "anchored_delta_q"):
             return np.broadcast_to(
                 state[current, :ACTION_DIM],
                 (self.pred_horizon, self.action_dim),

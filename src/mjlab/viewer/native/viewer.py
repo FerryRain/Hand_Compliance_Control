@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import copy
 import math
+import threading
 from collections import deque
 from dataclasses import dataclass
 from threading import Lock
@@ -131,6 +132,7 @@ class NativeMujocoViewer(BaseViewer):
     self.mjm: Optional[mujoco.MjModel] = None
     self.mjd: Optional[mujoco.MjData] = None
     self.viewer: Optional[mujoco.viewer.Handle] = None
+    self._render_threads: tuple[threading.Thread, ...] = ()
     self.vd: Optional[mujoco.MjData] = None
     self.vopt: Optional[mujoco.MjvOption] = None
     self.pert: Optional[mujoco.MjvPerturb] = None
@@ -173,7 +175,10 @@ class NativeMujocoViewer(BaseViewer):
     if self.env.unwrapped.num_envs > 1:
       self.vd = mujoco.MjData(self.mjm)
 
-    self.pert = mujoco.MjvPerturb() if self.enable_perturbations else None
+    # mjv_addGeoms requires a perturbation descriptor even for read-only
+    # multi-environment rendering. Its default state is inactive; enabling
+    # mouse-to-physics feedback remains a separate viewer setting.
+    self.pert = mujoco.MjvPerturb()
     self.vopt = mujoco.MjvOption()
 
     self._term_names = [
@@ -186,12 +191,24 @@ class NativeMujocoViewer(BaseViewer):
 
     assert self.mjm is not None
     assert self.mjd is not None
+    previous_threads = set(threading.enumerate())
     self.viewer = mujoco.viewer.launch_passive(
       self.mjm,
       self.mjd,
       key_callback=self._safe_key_callback,
       show_left_ui=False,
       show_right_ui=False,
+    )
+    # launch_passive returns before its daemon render thread finishes. In
+    # particular, Handle.is_running becomes false as soon as exit is requested,
+    # before simulate.destroy has released the GLX context. Retain only this
+    # launch's render thread so close can await destruction before glfw's
+    # process-exit cleanup; unrelated application threads are never joined.
+    render_target = getattr(mujoco.viewer, "_launch_internal", None)
+    self._render_threads = tuple(
+      thread for thread in threading.enumerate()
+      if thread not in previous_threads
+      and getattr(thread, "_target", None) is render_target
     )
     if self.viewer is None:
       raise RuntimeError("Failed to launch MuJoCo viewer")
@@ -461,6 +478,12 @@ class NativeMujocoViewer(BaseViewer):
     # the handle is still running, so close it normally.
     if v and v.is_running():
       v.close()
+    for thread in self._render_threads:
+      if thread is not threading.current_thread():
+        thread.join(timeout=20.0)
+        if thread.is_alive():
+          raise RuntimeError("MuJoCo render thread did not finish context cleanup")
+    self._render_threads = ()
     self.log("[INFO] MuJoCo viewer closed", VerbosityLevel.INFO)
 
   def reset_environment(self) -> None:

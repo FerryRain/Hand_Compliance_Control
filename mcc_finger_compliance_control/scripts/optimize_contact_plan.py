@@ -14,6 +14,8 @@ intentional and never becomes a deployment-policy input.
 from __future__ import annotations
 
 import argparse
+import copy
+import hashlib
 from pathlib import Path
 
 import h5py
@@ -110,6 +112,11 @@ def _solve_frame(
         "ik_iterations": int(projection_iterations),
         "planner_valid": bool(result["valid"]),
         "planner_score": float(result["score"]),
+        "true_tip_geometry_valid": bool(result["valid"]),
+        "connector_distance": np.asarray(result.get("connector_distance", np.full(4, np.inf))),
+        "self_penetration": float(result.get("self_penetration", 0.)),
+        "top_fraction": np.asarray(result.get("top_fraction", np.full(4, np.nan))),
+        "non_tip_distance": np.asarray(result.get("non_tip_distance", np.zeros(0))),
     }
 
 
@@ -145,7 +152,7 @@ def _evaluate_frame(
                 finger, tip_palm[finger], health_maps[finger]
             )
         )
-    return {
+    result = {
         "surface_point": np.asarray(observation.points_world, dtype=np.float32),
         "surface_normal": normals_object.astype(np.float32),
         "signed_distance": np.asarray(observation.signed_distance, dtype=np.float32),
@@ -155,6 +162,49 @@ def _evaluate_frame(
         "isotropic_reachability": isotropic_reachability.astype(np.float32),
         "manipulability": manipulability.astype(np.float32),
     }
+    if getattr(controller, 'non_tip_clearance_m', None) is not None:
+        geometry = controller.geometry.evaluate(q, palm_pose_object,
+            self_collision=True, non_tip_clearance=True)
+        result.update(signed_distance=geometry['distance'].astype(np.float32),
+            non_tip_distance=geometry['non_tip_distance'].astype(np.float32),
+            self_penetration=geometry['self_penetration'],
+            true_tip_geometry_valid=controller.geometry_valid(geometry))
+    return result
+
+
+def _screening_violation(
+    debug: dict[str, np.ndarray | float | int], args: argparse.Namespace
+) -> float:
+    """Dimensionless violation used to trigger/choose a branch replan."""
+    signed = np.asarray(debug["signed_distance"], dtype=np.float64)
+    pad = np.asarray(debug["pad_normal_error"], dtype=np.float64)
+    isotropic = np.asarray(debug["isotropic_reachability"], dtype=np.float64)
+    manipulability = np.asarray(debug["manipulability"], dtype=np.float64)
+    outside = np.maximum(signed - float(args.max_outside_distance_m), 0.0)
+    inside = np.maximum(-float(args.max_inside_distance_m) - signed, 0.0)
+    pad_limit = np.deg2rad(float(args.max_pad_normal_error_deg))
+    pad_excess = np.maximum(pad - pad_limit, 0.0)
+    isotropic_shortfall = np.maximum(
+        float(args.min_isotropic_reachability) - isotropic, 0.0
+    )
+    manipulability_shortfall = np.maximum(
+        float(args.min_manipulability) - manipulability, 0.0
+    )
+    extra = 0.
+    if args.true_tip_waypoints:
+        extra = (0. if debug['true_tip_geometry_valid'] else 1.)
+        extra += float(np.sum((np.maximum(-.0005-debug['connector_distance'], 0)/.001)**2))
+        clearance = getattr(args, 'non_tip_clearance_m', None)
+        if clearance is not None:
+            extra += float(np.sum((np.maximum(clearance-debug['non_tip_distance'],0)/.001)**2))
+            extra += float((max(debug['self_penetration']-args.max_cross_finger_penetration_m,0)/.001)**2)
+    return float(
+        np.sum((outside / 0.001) ** 2)
+        + np.sum((inside / 0.001) ** 2)
+        + np.sum((pad_excess / np.deg2rad(5.0)) ** 2)
+        + np.sum((isotropic_shortfall / 1.0e-3) ** 2)
+        + np.sum((manipulability_shortfall / 0.01) ** 2)+extra
+    )
 
 
 def optimize(args: argparse.Namespace) -> None:
@@ -193,6 +243,14 @@ def optimize(args: argparse.Namespace) -> None:
                 "grasp_keyframe_lateral_margin",
                 "grasp_keyframe_posture_deviation",
                 "grasp_keyframe_valid",
+                "grasp_keyframe_true_tip_geometry_valid",
+                "grasp_keyframe_tip_top_fraction",
+                "grasp_keyframe_non_tip_distance",
+                "grasp_keyframe_cross_finger_penetration",
+                "non_tip_geom_name",
+                "finger_non_tip_distance",
+                "finger_cross_finger_penetration",
+                "finger_true_tip_geometry_valid",
             }
         }
         source_attrs = dict(source.attrs)
@@ -224,11 +282,25 @@ def optimize(args: argparse.Namespace) -> None:
             flexion_synergy_max_step=0.025,
         )
     )
+    if args.true_tip_waypoints:
+        from true_tip_waypoint_optimizer import TrueTipWaypointController
+        controller = TrueTipWaypointController(controller, config, args.object_scale,
+            args.tip_top_weight, args.tip_top_preferred_fraction,
+            non_tip_clearance_m=getattr(args, 'non_tip_clearance_m', None),
+            max_cross_finger_penetration_m=getattr(args, 'max_cross_finger_penetration_m', .0001),
+            clearance_polish=getattr(args, 'clearance_polish', True),
+            preferred_non_tip_clearance_m=getattr(args, 'non_tip_preferred_clearance_m', None))
+        controller.measured_seed_mode = args.reference_trajectory is not None or args.reference_bank is not None
+        # Whole fingertip orientation is free. Geometry/contact health gates
+        # remain; angular measurements are diagnostics rather than front-axis
+        # acceptance thresholds.
+        args.max_pad_normal_error_deg = 180.
     nominal = controller.clamp_joint_positions(nominal).astype(np.float64)
     knot_indices = np.unique(
         np.concatenate(
             (
                 np.arange(0, len(palm_pose), max(1, args.knot_stride)),
+                np.asarray(getattr(args, 'extra_keyframe_frames', None) or [], dtype=np.int32),
                 np.asarray((len(palm_pose) - 1,)),
             )
         )
@@ -243,6 +315,13 @@ def optimize(args: argparse.Namespace) -> None:
     knot_manipulability = np.zeros_like(knot_signed_distance)
     knot_lateral_margin = np.zeros((len(knot_indices), 2), dtype=np.float32)
     knot_posture_deviation = np.zeros(len(knot_indices), dtype=np.float32)
+    true_tip_geometry_valid = np.ones(len(knot_indices), dtype=bool)
+    knot_top_fraction = np.full((len(knot_indices), 4), np.nan, dtype=np.float32)
+    all_link_clearance = getattr(args, 'non_tip_clearance_m', None) is not None
+    if all_link_clearance:
+        knot_non_tip_distance = np.full((len(knot_indices), len(controller.geometry.non_tip_geoms)),
+                                        np.nan, dtype=np.float32)
+        knot_cross_finger_penetration = np.full(len(knot_indices), np.nan, dtype=np.float32)
     lateral_axis = np.asarray(
         controller.config.qp_lateral_axis_palm, dtype=np.float64
     )
@@ -256,11 +335,41 @@ def optimize(args: argparse.Namespace) -> None:
         dtype=np.float64,
     )
     lateral_order_sign = np.where(nominal_signed >= 0.0, 1.0, -1.0)
+    if args.true_tip_waypoints:
+        controller.health_limits = dict(posture=args.max_posture_deviation_rad,
+            eta=args.min_isotropic_reachability,mu=args.min_manipulability,
+            lateral=args.min_lateral_margin_m,axis=lateral_axis,order=lateral_order_sign)
     # The first contact is solved directly from exact geometry with a
     # structured posture bank.  No open->grasp path or path/surface crossing
     # participates in contact selection.
     q_previous = nominal.copy()
+    reference_q = None
+    reference_bank = None
+    if args.reference_bank is not None:
+        reference_bank = np.load(args.reference_bank)
+    if args.reference_trajectory is not None:
+        with h5py.File(args.reference_trajectory, 'r') as reference:
+            reference_q = np.asarray(reference['q_hand'], dtype=np.float64).reshape(-1, 16)
+        if len(reference_q) != len(palm_pose):
+            raise ValueError('reference trajectory must have the same full control horizon')
     for knot_id, frame in enumerate(knot_indices):
+        if reference_q is not None:
+            q_previous = reference_q[frame].copy()
+        elif reference_bank is not None and not (
+                getattr(args, 'temporal_seed_first', False) and knot_id > 0):
+            poses = reference_bank['palm_pose_object']
+            distance = (np.linalg.norm(poses[:, :3]-palm_pose[frame, :3], axis=-1)/.03
+                + 2*np.arccos(np.clip(np.abs(poses[:, 3:] @ palm_pose[frame, 3:]), 0, 1)))
+            candidates = np.argsort(distance)[:4]
+            best_q, best_cost = q_previous, float('inf')
+            for index in candidates:
+                value = reference_bank['q_hand'][index]
+                geometry = controller.geometry.evaluate(value, palm_pose[frame])
+                cost = (np.sum((geometry['distance']+args.preload_m)**2)
+                    + 4*np.sum(np.maximum(-.0005-geometry['connector_distance'], 0)**2))
+                if cost < best_cost: best_q, best_cost = value, cost
+            q_previous = np.asarray(best_q).copy()
+        q_seed = q_previous.copy()
         q_previous, debug = _solve_frame(
             controller,
             oracle,
@@ -273,6 +382,49 @@ def optimize(args: argparse.Namespace) -> None:
             pad_alignment_gain=args.ik_pad_weight,
             multistart=(knot_id == 0),
         )
+        violation = _screening_violation(debug, args)
+        if args.retry_multistart and knot_id > 0 and violation > 0.0:
+            retry_q, retry_debug = _solve_frame(
+                controller,
+                oracle,
+                palm_pose[frame],
+                q_seed,
+                nominal,
+                preload_m=args.preload_m,
+                projection_iterations=args.projection_iterations,
+                posture_gain=args.ik_posture_gain,
+                pad_alignment_gain=args.ik_pad_weight,
+                multistart=True,
+            )
+            retry_violation = _screening_violation(retry_debug, args)
+            if (
+                retry_violation < violation
+                or (
+                    np.isclose(retry_violation, violation)
+                    and float(retry_debug["planner_score"])
+                    < float(debug["planner_score"])
+                )
+            ):
+                q_previous, debug = retry_q, retry_debug
+        if (reference_bank is not None and getattr(args, 'temporal_seed_first', False)
+                and knot_id > 0 and _screening_violation(debug, args) > 0):
+            # Retry the bank only after temporal continuation fails. The bank
+            # supplies initial guesses, never replacement trajectory labels.
+            poses = reference_bank['palm_pose_object']
+            distances = (np.linalg.norm(poses[:, :3]-palm_pose[frame, :3], axis=-1)/.03
+                + 2*np.arccos(np.clip(np.abs(poses[:, 3:] @ palm_pose[frame, 3:]), 0, 1)))
+            for index in np.argsort(distances)[:2]:
+                retry_q, retry_debug = _solve_frame(controller, oracle, palm_pose[frame],
+                    reference_bank['q_hand'][index], nominal, preload_m=args.preload_m,
+                    projection_iterations=args.projection_iterations,
+                    posture_gain=args.ik_posture_gain, pad_alignment_gain=args.ik_pad_weight,
+                    multistart=False)
+                old_violation = _screening_violation(debug, args)
+                new_violation = _screening_violation(retry_debug, args)
+                if new_violation < old_violation:
+                    q_previous, debug = retry_q, retry_debug
+                if _screening_violation(debug, args) == 0:
+                    break
         knot_q[knot_id] = q_previous
         knot_surface[knot_id] = debug["surface_point"]
         knot_normal[knot_id] = debug["surface_normal"]
@@ -295,6 +447,12 @@ def optimize(args: argparse.Namespace) -> None:
         knot_posture_deviation[knot_id] = float(
             np.max(np.abs(np.asarray(q_previous) - nominal))
         )
+        if args.true_tip_waypoints:
+            true_tip_geometry_valid[knot_id] = debug['true_tip_geometry_valid']
+            knot_top_fraction[knot_id] = debug['top_fraction']
+        if all_link_clearance:
+            knot_non_tip_distance[knot_id] = debug['non_tip_distance']
+            knot_cross_finger_penetration[knot_id] = debug['self_penetration']
         if knot_id % max(1, len(knot_indices) // 10) == 0:
             print(
                 f"[CONTACT-PLAN] knot={knot_id + 1}/{len(knot_indices)} "
@@ -323,7 +481,15 @@ def optimize(args: argparse.Namespace) -> None:
     synergy_residual = np.zeros_like(signed_distance)
     isotropic_reachability = np.zeros_like(signed_distance)
     manipulability = np.zeros_like(signed_distance)
-    for frame, (pose, q) in enumerate(zip(palm_pose, q_plan, strict=True)):
+    if all_link_clearance:
+        dense_non_tip_distance = np.full((len(palm_pose), len(controller.geometry.non_tip_geoms)),
+                                         np.nan, dtype=np.float32)
+        dense_cross_finger_penetration = np.full(len(palm_pose), np.nan, dtype=np.float32)
+        dense_geometry_valid = np.zeros(len(palm_pose), dtype=bool)
+    # Sparse collection consumes only these26 boundary conditions. Avoid
+    # running2500 diagnostic geometry queries in keyframe-only mode.
+    dense_frames = [] if args.keyframes_only else zip(palm_pose, q_plan, strict=True)
+    for frame, (pose, q) in enumerate(dense_frames):
         debug = _evaluate_frame(controller, oracle, pose, q)
         surface[frame] = debug["surface_point"]
         normal[frame] = debug["surface_normal"]
@@ -336,6 +502,10 @@ def optimize(args: argparse.Namespace) -> None:
         synergy_residual[frame] = debug["synergy_residual"]
         isotropic_reachability[frame] = debug["isotropic_reachability"]
         manipulability[frame] = debug["manipulability"]
+        if all_link_clearance:
+            dense_non_tip_distance[frame] = debug['non_tip_distance']
+            dense_cross_finger_penetration[frame] = debug['self_penetration']
+            dense_geometry_valid[frame] = debug['true_tip_geometry_valid']
 
     feasible = (
         (signed_distance <= args.max_outside_distance_m).all(axis=1)
@@ -344,6 +514,8 @@ def optimize(args: argparse.Namespace) -> None:
         & (isotropic_reachability >= args.min_isotropic_reachability).all(axis=1)
         & (manipulability >= args.min_manipulability).all(axis=1)
     )
+    if all_link_clearance:
+        feasible &= dense_geometry_valid
     knot_valid = (
         (knot_signed_distance <= args.max_outside_distance_m).all(axis=1)
         & (knot_signed_distance >= -args.max_inside_distance_m).all(axis=1)
@@ -354,6 +526,7 @@ def optimize(args: argparse.Namespace) -> None:
         & (knot_manipulability >= args.min_manipulability).all(axis=1)
         & (knot_lateral_margin >= args.min_lateral_margin_m).all(axis=1)
         & (knot_posture_deviation <= args.max_posture_deviation_rad)
+        & true_tip_geometry_valid
     )
 
     if args.keyframes_only:
@@ -420,6 +593,8 @@ def optimize(args: argparse.Namespace) -> None:
             )
             & (manipulability >= args.min_manipulability).all(axis=1)
         )
+        if all_link_clearance:
+            feasible &= dense_geometry_valid
         max_step = float(np.max(np.abs(np.diff(q_plan, axis=0))))
         print(
             "[CONTACT-PLAN-RESULT] "
@@ -503,9 +678,40 @@ def optimize(args: argparse.Namespace) -> None:
         output.create_dataset(
             "grasp_keyframe_valid", data=knot_valid.astype(np.uint8)
         )
+        if args.true_tip_waypoints:
+            output.create_dataset("grasp_keyframe_true_tip_geometry_valid", data=true_tip_geometry_valid.astype(np.uint8))
+            output.create_dataset("grasp_keyframe_tip_top_fraction", data=knot_top_fraction)
+        if all_link_clearance:
+            output.create_dataset('grasp_keyframe_non_tip_distance', data=knot_non_tip_distance)
+            output.create_dataset('grasp_keyframe_cross_finger_penetration', data=knot_cross_finger_penetration)
+            output.create_dataset('non_tip_geom_name', data=np.asarray(controller.geometry.non_tip_names,
+                                  dtype=h5py.string_dtype('utf-8')))
+            if not args.keyframes_only:
+                output.create_dataset('finger_non_tip_distance', data=dense_non_tip_distance)
+                output.create_dataset('finger_cross_finger_penetration', data=dense_cross_finger_penetration)
+                output.create_dataset('finger_true_tip_geometry_valid', data=dense_geometry_valid.astype(np.uint8))
         for key, value in source_attrs.items():
             output.attrs[key] = value
         output.attrs["finger_contact_plan"] = True
+        if args.true_tip_waypoints:
+            output.attrs["collision_geometry"] = "true_fingertip_contact_v1_split"
+            output.attrs["tip_top_preference_weight"] = args.tip_top_weight
+            output.attrs["tip_top_preferred_fraction"] = args.tip_top_preferred_fraction
+            output.attrs["tip_top_preference_is_hard_gate"] = False
+            output.attrs["fixed_pad_orientation_constraint"] = False
+            output.attrs["sampling_required_valid_ratio"] = 1.
+        output.attrs['finger_contact_posture_gain'] = float(args.ik_posture_gain)
+        if all_link_clearance:
+            output.attrs['non_tip_clearance_m'] = float(args.non_tip_clearance_m)
+            if getattr(args, 'non_tip_preferred_clearance_m', None) is not None:
+                output.attrs['non_tip_preferred_clearance_m'] = float(args.non_tip_preferred_clearance_m)
+            output.attrs['max_cross_finger_penetration_m'] = float(args.max_cross_finger_penetration_m)
+            output.attrs['non_tip_clearance_scope'] = 'all active hand collision geoms except the four split true-tip pads'
+            output.attrs['non_tip_clearance_acceptance'] = 'strict final geometry rejection; least-squares penalties do not guarantee feasibility'
+            output.attrs['clearance_constrained_polish'] = bool(getattr(args,'clearance_polish',True))
+            output.attrs['clearance_acceptance_representation'] = 'float32 joint waypoint, normalized float64 geometry pose'
+            output.attrs['clearance_solver_sha256'] = hashlib.sha256(
+                Path(__file__).with_name('true_tip_waypoint_optimizer.py').read_bytes()).hexdigest()
         output.attrs["finger_contact_knot_stride"] = int(args.knot_stride)
         output.attrs["finger_contact_preload_m"] = float(args.preload_m)
         output.attrs["grasp_keyframe_valid_ratio"] = float(np.mean(knot_valid))
@@ -527,14 +733,43 @@ def optimize(args: argparse.Namespace) -> None:
             output.attrs["finger_contact_max_q_step_rad"] = 0.0
             output.attrs["finger_contact_keyframes_only"] = True
     print(f"[SAVED] {args.output}")
+    if (args.true_tip_waypoints and args.reference_bank is not None
+            and args.reference_trajectory is None and not knot_valid.all()
+            and args.extract_feasible_segment):
+        from true_tip_plan_segment import write_feasible_segment
+        segment = args.output.with_name(args.output.stem+'_segment_seed.h5')
+        if write_feasible_segment(args.input, segment, knot_indices, knot_valid, knot_q, controller.base):
+            retry=copy.copy(args)
+            retry.input=segment;retry.reference_trajectory=segment;retry.reference_bank=None
+            print('[TRUE-TIP-SEGMENT] replanning a continuous feasible interval over the full2500-frame horizon',flush=True)
+            optimize(retry)
+            segment.unlink()
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", type=Path, required=True)
+    parser.add_argument('--reference-trajectory', type=Path,
+        help='Optional measured teacher q seed for each waypoint; palm path and acceptance remain unchanged')
+    parser.add_argument('--reference-bank', type=Path,
+        help='Measured healthy q/palm pose seeds for new true-tip waypoint optimization')
+    parser.add_argument('--extract-feasible-segment', action=argparse.BooleanOptionalAction, default=True,
+        help='For new bank-seeded paths, replan a continuous healthy interval as a full-length path if needed; record source interval')
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--object-id", default="ycb_mustard")
     parser.add_argument("--object-scale", type=float, default=1.0)
+    parser.add_argument("--true-tip-waypoints", action="store_true",
+        help="refine using split collision geometry, connector clearance and soft distal-top preference")
+    parser.add_argument("--tip-top-weight", type=float, default=.05)
+    parser.add_argument("--tip-top-preferred-fraction", type=float, default=.75)
+    parser.add_argument('--non-tip-clearance-m', type=float, default=None,
+        help='Opt-in positive clearance for connector/MCP/PIP/DIP/palm collision geoms; final acceptance is strict')
+    parser.add_argument('--non-tip-preferred-clearance-m', type=float,
+        help='Soft planning reserve above the hard non-tip margin, to accommodate execution deviation')
+    parser.add_argument('--max-cross-finger-penetration-m', type=float, default=.0001,
+        help='Cross-finger assembly penetration tolerance when full non-tip clearance is enabled')
+    parser.add_argument('--clearance-polish', action=argparse.BooleanOptionalAction, default=True,
+        help='Polish infeasible clearance candidates using constrained SLSQP; final geometry is always rechecked')
     parser.add_argument(
         "--keyframes-only",
         action="store_true",
@@ -547,7 +782,20 @@ def main() -> None:
         ),
     )
     parser.add_argument("--knot-stride", type=int, default=100)
+    parser.add_argument('--extra-keyframe-frames', type=int, nargs='+',
+        help='Additional control frames for adaptive interpolation repair')
+    parser.add_argument('--temporal-seed-first', action='store_true',
+        help='With a reference bank, use it for the first knot, then continue the previous solution')
     parser.add_argument("--projection-iterations", type=int, default=5)
+    parser.add_argument(
+        "--retry-multistart",
+        action="store_true",
+        help=(
+            "When temporal continuation violates screening constraints, retry "
+            "that keyframe with the structured posture bank and keep the less "
+            "violating branch. Intended for shoulder/cap transitions."
+        ),
+    )
     parser.add_argument("--preload-m", type=float, default=0.003)
     parser.add_argument(
         "--ik-pad-weight",
@@ -577,6 +825,13 @@ def main() -> None:
     args = parser.parse_args()
     if args.knot_stride <= 0 or args.projection_iterations <= 0:
         raise ValueError("stride and projection iterations must be positive")
+    if args.non_tip_clearance_m is not None and not args.true_tip_waypoints:
+        parser.error('non-tip clearance requires --true-tip-waypoints')
+    if args.extra_keyframe_frames:
+        with h5py.File(args.input) as handle:
+            total = len(handle['palm_pose_object'])
+        if min(args.extra_keyframe_frames) < 0 or max(args.extra_keyframe_frames) >= total:
+            parser.error('extra keyframes must lie within the input trajectory')
     optimize(args)
 
 
