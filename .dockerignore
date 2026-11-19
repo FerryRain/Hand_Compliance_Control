@@ -28,7 +28,3 @@ notebooks/
 # Docker
 Dockerfile
 .dockerignore
-
-# Docs build artifacts
-docs/source/_build/
-docs/source/generated/

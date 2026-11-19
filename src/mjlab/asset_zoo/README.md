@@ -1,7 +1,3 @@
-# Asset Zoo
+# Robot assets
 
-| Robot | Image |
-|-------|-------|
-| **Unitree G1** | <img src="../../../docs/source/_static/content/g1.png" width="200" height="150" alt="Unitree G1 Humanoid"> |
-| **Unitree Go1** | <img src="../../../docs/source/_static/content/go1.png" width="200" height="150" alt="Unitree Go1 Quadruped"> |
-| **i2rt YAM** | <img src="../../../docs/source/_static/content/yam.png" width="200" height="150" alt="i2rt YAM Robot Arm"> |
+The I04 and hand-control experiments use the [FR3 model](robots/fr3_leap_hand/), the [standalone LEAP Hand](robots/leaphand_only.xml), and the [xArm6 and LEAP assets](robots/xarm6_leap_hand/).

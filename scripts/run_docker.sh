@@ -1,7 +1,6 @@
 #!/usr/bin/env sh
 #
 # Injects useful arguments for running mjlab in docker.
-# See docs/source/installation.rst for usage.
 #
 # Patterned after the uv-in-docker example:
 # https://github.com/astral-sh/uv-docker-example/blob/5748835918ec293d547bbe0e42df34e140aca1eb/run.sh

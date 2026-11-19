@@ -18,12 +18,10 @@ def load_robot_model(robot_name: str) -> mujoco.MjModel:
   """Load a robot model from the asset zoo."""
   base_path = Path(__file__).parent.parent / "src/mjlab/asset_zoo/robots"
 
-  # Map robot names to their XML files.
   robot_paths = {
-    "unitree_g1": base_path / "unitree_g1/xmls/g1.xml",
-    "unitree_go1": base_path / "unitree_go1/xmls/go1.xml",
+    "leap": base_path / "leaphand_only.xml",
+    "fr3": base_path / "fr3_leap_hand" / "fr3v2_collision.xml",
   }
-
   if robot_name not in robot_paths:
     raise ValueError(f"Unknown robot: {robot_name}")
 
@@ -31,12 +29,14 @@ def load_robot_model(robot_name: str) -> mujoco.MjModel:
   if not xml_path.exists():
     raise FileNotFoundError(f"Robot XML not found: {xml_path}")
 
+  if xml_path.is_relative_to(Path.cwd()):
+    xml_path = xml_path.relative_to(Path.cwd())
   return mujoco.MjModel.from_xml_path(str(xml_path))
 
 
-def test_unitree_g1_conversion():
-  """Test conversion with Unitree G1 robot."""
-  model = load_robot_model("unitree_g1")
+def test_leap_conversion():
+  """Test conversion with LEAP Hand robot."""
+  model = load_robot_model("leap")
 
   mesh_geom_count = 0
   has_textures = False
@@ -57,15 +57,15 @@ def test_unitree_g1_conversion():
       if hasattr(mesh.visual, "uv"):
         has_textures = True
 
-  assert mesh_geom_count > 0, "No mesh geometries found in Unitree G1"
-  print(f"✓ Unitree G1: Successfully converted {mesh_geom_count} mesh geometries")
+  assert mesh_geom_count > 0, "No mesh geometries found in LEAP Hand"
+  print(f"✓ LEAP Hand: Successfully converted {mesh_geom_count} mesh geometries")
   if has_textures:
     print("  - Found textured meshes")
 
 
-def test_unitree_go1_conversion():
-  """Test conversion with Unitree Go1 robot."""
-  model = load_robot_model("unitree_go1")
+def test_fr3_conversion():
+  """Test conversion with FR3 robot."""
+  model = load_robot_model("fr3")
 
   mesh_geom_count = 0
   primitive_geom_count = 0
@@ -87,7 +87,7 @@ def test_unitree_go1_conversion():
       # Count primitive geometries (box, sphere, capsule, etc.).
       primitive_geom_count += 1
 
-  print(f"✓ Unitree Go1: Successfully converted {mesh_geom_count} mesh geometries")
+  print(f"✓ FR3: Successfully converted {mesh_geom_count} mesh geometries")
   print(f"  - Also has {primitive_geom_count} primitive geometries")
 
 
@@ -188,7 +188,7 @@ def test_performance():
   """Test conversion performance with a complex model."""
   import time
 
-  model = load_robot_model("unitree_g1")
+  model = load_robot_model("leap")
 
   mesh_geoms = []
   for geom_idx in range(model.ngeom):
@@ -573,8 +573,8 @@ if __name__ == "__main__":
   print("=" * 60)
 
   tests = [
-    test_unitree_g1_conversion,
-    test_unitree_go1_conversion,
+    test_leap_conversion,
+    test_fr3_conversion,
     test_texture_extraction,
     test_material_colors,
     test_performance,

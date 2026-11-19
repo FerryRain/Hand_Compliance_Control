@@ -67,11 +67,6 @@ def device():
   return get_test_device()
 
 
-class _FakeEnv:
-  def __init__(self, scene):
-    self.scene = scene
-
-
 def test_foot_height_flat_platform(device):
   """Two feet at different heights above a flat platform."""
   cfg = _foot_sensor_cfg()
@@ -104,23 +99,6 @@ def test_foot_height_stepped_terrain(device):
   assert heights[0, 0].item() == pytest.approx(0.4, abs=0.1)
   # Right foot at x=0.5, z=0.8, over ground at z=0 -> height ~0.8.
   assert heights[0, 1].item() == pytest.approx(0.8, abs=0.1)
-
-
-def test_foot_height_observation(device):
-  """foot_height observation delegates to sensor.data.heights."""
-  from mjlab.tasks.velocity.mdp.observations import foot_height
-
-  cfg = _foot_sensor_cfg()
-  scene, sim = make_scene_and_sim(device, TWO_FEET_ABOVE_PLATFORM_XML, (cfg,))
-  sim.step()
-  sim.sense()
-
-  env = _FakeEnv(scene)
-  obs = foot_height(env, "foot_height_scan")  # type: ignore[invalid-argument-type]
-  sensor: TerrainHeightSensor = scene["foot_height_scan"]
-  direct = sensor.data.heights
-
-  assert torch.allclose(obs, direct)
 
 
 def test_foot_height_multi_env(device):

@@ -2,6 +2,10 @@
 
 **Finger Policy 数据与复现** · [下载权重、连接训练数据、运行闭环评估](finger_policy/README.md)。
 
+[I04 A/B 运行与回放](Module/I04_AB_RETAINED.md)和[全手 MCC 控制](Module/module_4_whole_hand_mcc/README.md)使用仓库中的 FR3、LEAP 手和物体模型。Finger Policy 的训练与闭环评估复用 `mcc_finger_compliance_control/` 和 `src/mjlab/`。
+
+待开发的掌侧触觉和形变策略分别见 [simulation_Etac](simulation_Etac/README.md) 和 [deformation_policy](deformation_policy/README.md)。
+
 2026-11-19 · I04 已按要求清理为保留版。当前运行与回放入口、A/B 实际结论和依赖清单见 [I04 A/B 保留说明](Module/I04_AB_RETAINED.md)。B 保留掌部修复后的完成数据；A 保留完整原生记录中最佳的 14.67% 部分结果。下方旧 I04 链接属于历史记录，部分实验文件已删除。
 
 I04 快速使用（先按上述说明下载 Git LFS 文件并安装 Python 3.10 依赖）：

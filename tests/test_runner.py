@@ -23,7 +23,6 @@ from mjlab.rl.runner import MjlabOnPolicyRunner
 from mjlab.rl.spatial_softmax import SpatialSoftmaxCNNModel
 from mjlab.scene import SceneCfg
 from mjlab.sim import MujocoCfg, SimulationCfg
-from mjlab.tasks.tracking.rl.runner import _OnnxMotionModel
 from mjlab.terrains import TerrainEntityCfg
 from mjlab.utils.os import dump_yaml
 
@@ -425,79 +424,3 @@ def test_agent_cfg_serializable_after_runner_creation(env, device):
     f"dump_yaml (line {dump_yaml_line}) must be called before "
     f"runner_cls (line {runner_cls_line})"
   )
-
-
-class _MockMotion:
-  """Minimal mock of a motion object with tensor attributes."""
-
-  def __init__(self, num_steps, num_joints=12, num_bodies=5):
-    self.joint_pos = torch.randn(num_steps, num_joints)
-    self.joint_vel = torch.randn(num_steps, num_joints)
-    self.body_pos_w = torch.randn(num_steps, num_bodies, 3)
-    self.body_quat_w = torch.randn(num_steps, num_bodies, 4)
-    self.body_lin_vel_w = torch.randn(num_steps, num_bodies, 3)
-    self.body_ang_vel_w = torch.randn(num_steps, num_bodies, 3)
-
-
-def test_onnx_motion_model_policy_matches_actor():
-  """_OnnxMotionModel actions output matches calling the actor directly."""
-
-  actor = _make_actor(obs_normalization=True)
-  _train_normalizer(actor)
-  motion = _MockMotion(num_steps=50)
-
-  model = _OnnxMotionModel(actor, motion)
-  model.eval()
-
-  x = torch.randn(4, actor.obs_dim)
-  time_step = torch.tensor([[5]], dtype=torch.float32)
-
-  with torch.no_grad():
-    actions, *_ = model(x, time_step)
-  expected = _model_output(actor, x)
-  torch.testing.assert_close(actions, expected, atol=1e-6, rtol=0)
-
-
-def test_onnx_motion_model_returns_correct_motion_frame():
-  """_OnnxMotionModel returns the motion data at the requested time step."""
-
-  actor = _make_actor(obs_normalization=False)
-  motion = _MockMotion(num_steps=50)
-
-  model = _OnnxMotionModel(actor, motion)
-  model.eval()
-
-  x = torch.randn(1, actor.obs_dim)
-  t = 17
-  time_step = torch.tensor([[t]], dtype=torch.float32)
-
-  with torch.no_grad():
-    _, joint_pos, joint_vel, body_pos, body_quat, body_lin_vel, body_ang_vel = model(
-      x, time_step
-    )
-
-  torch.testing.assert_close(joint_pos, motion.joint_pos[t : t + 1])
-  torch.testing.assert_close(joint_vel, motion.joint_vel[t : t + 1])
-  torch.testing.assert_close(body_pos, motion.body_pos_w[t : t + 1])
-  torch.testing.assert_close(body_quat, motion.body_quat_w[t : t + 1])
-  torch.testing.assert_close(body_lin_vel, motion.body_lin_vel_w[t : t + 1])
-  torch.testing.assert_close(body_ang_vel, motion.body_ang_vel_w[t : t + 1])
-
-
-def test_onnx_motion_model_clamps_out_of_bounds_time_step():
-  """_OnnxMotionModel clamps time_step beyond motion length to last frame."""
-
-  num_steps = 20
-  actor = _make_actor(obs_normalization=False)
-  motion = _MockMotion(num_steps=num_steps)
-
-  model = _OnnxMotionModel(actor, motion)
-  model.eval()
-
-  x = torch.randn(1, actor.obs_dim)
-  time_step = torch.tensor([[999]], dtype=torch.float32)
-
-  with torch.no_grad():
-    _, joint_pos, *_ = model(x, time_step)
-
-  torch.testing.assert_close(joint_pos, motion.joint_pos[num_steps - 1 : num_steps])
