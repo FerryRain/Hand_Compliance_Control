@@ -48,7 +48,7 @@ deformed_world = reference_world + displacement_world.cpu().numpy()
 | --- | --- | --- |
 | 多指节贴合教师 | 给定腕部轨迹，只调 16 个手指关节。用各可达指节的接触面积、压入和双向关节余量生成示范，包括指尖卸压、中节重新贴上。 | [I04-B 有界关节求解器](../Module/i04_geometric_traversal/whole_hand_step_solver.py) |
 | 整手同步采集与导出 | 在同一试次、同一时刻记录全手形变、实测关节角和速度、双向余量及当时已发布的腕指令。用历史 16 帧作为条件，未来 16 步实测关节角均减去同一当前实测角作为动作标签。 | [现有切窗与同步采样](../finger_policy/scripts/expanded_policy_data.py) |
-| 形变编码器和 DP 输入 | 先做分区接触面积、压入量基线，再用 PointNet++ 编码本指和整手形变特征。保留手指身份、关节状态与掌运动，接入长指共享、拇指独立的 DP。 | [现有 DP 条件与去噪损失](../finger_policy/scripts/controlled_policy_ablation.py) |
-| 全手闭环部署、评价和纠偏 | 操作者给腕指令，策略滚动输出手指参考。按指节统计贴合时长、过压、失触恢复时间和关节余量。策略持续失触时，从当时状态交给教师恢复并导出接管片段。 | [动作调度器](../mcc_finger_compliance_control/scripts/dp_chunk_scheduler.py) · [恢复数据工具](../recovery_standalone/scripts/build_recovery_dataset.py) |
+| 形变编码器和 DP 输入 | 先做分区接触面积、压入量基线，再用 PointNet++ 编码本指和整手形变特征。保留手指身份、关节状态与掌运动，按策略版本接入逐指或全手联合动作模型。 | [现有 DP 条件与去噪损失](../finger_policy/scripts/controlled_policy_ablation.py) |
+| 全手闭环部署与评价 | 操作者给腕指令，策略滚动输出手指参考。按指节统计贴合时长、过深压入、策略自主恢复接触的时间和关节余量。 | [动作调度器](../mcc_finger_compliance_control/scripts/dp_chunk_scheduler.py) · [三个策略版本与完整开发流程](../deformation_policy/README.md) |
 
 第一条目标示范是腕部沿方块平移并轻微倾转，在同一时间轴上读出指尖压入减轻、中节恢复接触，以及教师实际执行的关节运动。现有 `deformation()` 只把压入深度大于零且小于 2 mm 的节点标为直接受压。新采集器需要另行记录达到或超过这个深度的节点，才能区分过度压入和失触。扩展到芥末瓶等物体还需要为读取器接入与碰撞模型对齐的连续物体表面。

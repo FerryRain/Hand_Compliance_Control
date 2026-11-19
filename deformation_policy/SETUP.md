@@ -97,8 +97,8 @@ python -B -c "import h5py, torch; from lerobot.policies.diffusion.modeling_diffu
 | LEAP XML / 网格、三份核心触觉代码、检查与查看器 | 来自主库。方块可直接由示例构建。主库已有四个指尖的指腹/连接件拆分，新项目自己补齐其余合格掌侧面的掩码。[LEAP 读取器](../simulation_Etac/mujoco_leap.py) · [指尖分件](../mcc_finger_compliance_control/assets/true_fingertip_contact_v1/asset_manifest.json) |
 | 传播权重、通用 ETac 类、定制几何库 | 来自步骤 1 的上游固定提交。`linear.pth` 是形变传播权重，和待训练的手指动作 checkpoint 用途不同。[ETac 上游权重](https://github.com/Crxus/ETac/tree/6dc00c5d3dc49a6915076a2e1c63b9cff02179b0/BlindGrasping/propagation-ckpt) |
 | I04-B 规划、模型、初态与紧凑种子 | 主库和 Git LFS 提供。重放旧完整轨迹才需要其 Drive 历史包，第一条方块试次可以自己生成。[代码与启动输入](../Module/I04_AB_RETAINED.md) · [历史数据下载](../data/i04/README.md) |
-| 原指尖 DP 的参考权重和 YCB 包 | `finger_policy/README.md` 指向 Drive 的 `finger-policy-checkpoints-20261119.zip` 和 `ycb-collision-and-runtime-20261119.zip`。只有做旧模型对照或增加相应物体时才需要。新实验可把单独解压的资源放在 `deformation_policy/.deps/`，在本目录配置它们的真实路径。[权重与物体来源](../finger_policy/README.md) |
-| 原采集协议、训练样本和闭环参考 | 干净克隆没有 `finger_policy/data/protocols/collection/recipes.json`、`data/protocols/training.json`、`data/old222/single_finger_frames.npz`、`data/expanded/manifest.json` 等，后几个路径相对于 `finger_policy/`。精确复跑原实验还需要相应 shard、HDF5、初态和版本一致的协议。参考权重包不足以重建这些数据。新方块流程用本目录生成的配置、数据和 manifest 启动。[原实验输入清单](../finger_policy/README.md) |
+| 原指尖 DP 的参考权重、Mustard 和 Expanded 数据 | 主库的下载指南指向 `FingerPolicy_Data`。`policy/` 提供三个历史权重，`data/training/mustard222/` 和 `data/training/expanded/` 提供相应的准备数据与原始记录。新实验可把资源放在 `deformation_policy/.deps/FingerPolicy_Data/`，由本目录配置引用。原数据用于核对来源及重建采集条件，新策略训练使用同步记录了掌侧形变的试次。[权重与训练数据下载](../finger_policy/README.md) |
+| 原物体几何、闭环参考和采集配方 | 下载目录的 `assets_3d/` 存储物体几何，`data/evaluation/` 提供参考、请求、初态和运行依赖。复跑旧采集还需对应的任务协议和对象池配置。新方块流程使用本目录自己的配置、试次和 manifest。[原实验输入清单](../finger_policy/README.md) |
 | 新触觉数据与策略 | 三档固定点表、整手形变试次、多指节教师、编码器、训练入口及新 checkpoint 都由新项目产出。现有方块演示、旧指尖权重及 I04-B 记录都不能替代这些交付物。[开发顺序和数据合同](README.md) |
 
-旧恢复指南还提到 `collect_dagger_rollouts.py`，所核对的主库提交未跟踪这个脚本。新项目用本目录的闭环入口产生失败轨迹，再适配已有的状态提取与拼接逻辑即可。已有恢复包也记录过接管早期帧漏录，复用时要保留并检查接管时点。[恢复包的已知限制](../recovery_standalone/README.md)
+开始正式训练前，按配置检查数据来源。`single_common` 与 `flat_common` 都只读取 Mustard 训练试次，`single_all` 同时读取 Mustard 和 Expanded。旧入口的 `--group` 会选择网络与采样方式，当前实现对两个 `common` 组也会加入 Expanded 窗口。形变训练入口需要按新配置显式选择数据集。[三个版本与采样要求](README.md#三个策略版本)

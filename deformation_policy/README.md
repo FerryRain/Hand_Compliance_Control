@@ -15,7 +15,7 @@ git rev-parse HEAD
 python -B finger_policy/pipeline.py --help
 ```
 
-本说明核对的现有代码基线是 `5c87bd0b544fdd49bdf07533e935e60946d9f383`，其中已经包含 `simulation_Etac/`。开发时使用刚克隆到的提交，并把实际 SHA 记入新实验。首次接手先读主库约定和主计划，再按启动说明取得上游 ETac、加载 LEAP 模型。启动说明也列出原 DP 哪些输入需单独获取。[仓库约定](../CLAUDE.md) · [主计划](../Module/MASTER_PLAN.md) · [环境、资源与检查命令](SETUP.md)
+本说明核对的已有代码基线是 `76af384ef32bab28dd7e5e0b23807cf32dc46175`，其中已经包含 `simulation_Etac/`。开发时使用刚克隆到的提交，并把实际 SHA 记入新实验。首次接手先读主库约定和主计划，再按启动说明取得上游 ETac、加载 LEAP 模型。启动说明也列出原 DP 哪些输入需单独获取。[仓库约定](../CLAUDE.md) · [主计划](../Module/MASTER_PLAN.md) · [环境、资源与检查命令](SETUP.md)
 
 下表给出新代码和产物的建议落点。现在这个目录包含交接文档和本地运行目录的 Git 忽略规则，表中的功能随开发逐步实现。
 
@@ -24,8 +24,22 @@ python -B finger_policy/pipeline.py --help
 | `assets/`、`configs/`、`atlas.py`、`tactile.py` | 可版本控制的面掩码、固定点表、配置、生成与逐帧读取。 |
 | `scene.py`、`wrist_trajectories.py`、`teacher.py` | 可动手腕、轨迹族、多指节教师和可重复的初始条件。 |
 | `collect.py`、`dataset.py`、`encoders.py`、`policy.py`、`train.py` | 同步采集、切窗、触觉表示、DP 和训练入口。 |
-| `rollout.py`、`evaluate.py`、`recover.py` | 腕指令闭环、评价和教师接管。 |
+| `rollout.py`、`evaluate.py` | 腕指令闭环、各指节贴合与失触后的自主恢复评价。 |
 | `runs/<run_id>/` | 每次运行独立保存配置、原始试次、样本索引、权重和评估。清单中的路径以所属数据集或运行目录为基准。 |
+
+## 三个策略版本
+
+三个版本都从历史观测预测未来 16 步的关节增量。配置名沿用仓库中的小写拼法。下表是形变项目采用的训练定义。
+
+| 配置名 | 正式训练数据 | 每一步怎样产生四指动作 |
+| --- | --- | --- |
+| `single_all` | Mustard（芥末瓶）和 Expanded。Expanded 补充其他物体及特殊接触构型，例如手指贴到正方体的角部。 | 逐指预测，每指输出自己的 4 个关节增量。食指、中指和无名指合批使用长指网络，拇指使用独立网络。 |
+| `single_common` | 仅 Mustard。 | 和 `single_all` 使用同一逐指结构，每指输出 4 个关节增量，再按关节顺序组装。 |
+| `flat_common` | 仅 Mustard。 | 一个全手策略同时读取四指状态和共享条件，每步联合输出 16 个关节增量。 |
+
+**旧训练入口有一处需要改。** 在上述基线中，`train_expanded_policy_comparison.py` 对三个配置都会创建 `ExpandedWindows`。其 `choose()` 每批从旧数据和扩展数据各取一半，两组 `common` 也会抽到 Expanded 的同步整手试次。实现本目录的加载器时，先按上表选训练数据，再按架构组装样本。两个 `common` 组应能仅凭 Mustard 的清单启动。每份训练产物记下实际抽到的来源、试次及窗口数。核对历史权重的来源时，以对应训练运行的清单为准。[旧训练入口](../finger_policy/scripts/train_expanded_policy_comparison.py) · [旧采样器](../finger_policy/scripts/expanded_policy_data.py) · [命令行配置名](../finger_policy/pipeline.py)
+
+这里的 Mustard 和 Expanded 定义了形变示范应覆盖的物体和构型。原指尖数据可用来查找初始手型、腕轨迹和物体几何。用于新模型的试次要同步记录全手形变。方块试次可用于调试输入输出，正式训练时按上表归入 Expanded。
 
 ## 现有策略怎样采、怎样学、怎样执行
 
@@ -34,7 +48,7 @@ python -B finger_policy/pipeline.py --help
 | 采集与审核 | 原 mocap 流程按协议施加运动，由 MCC 控制手指，写 `rollout.h5`。候选审核检查指腹接触和力、试次是否完整、关节余量和异常跳步。 | 沿用原始轨迹、审核、导出分层。把训练准入改成多指节的贴合、卸载和恢复质量，保留原始失败轨迹用于诊断。[原采集说明](../finger_policy/README.md) · [整手采集入口](../finger_policy/scripts/collect_contact_wm_planned.py) · [候选审核](../finger_policy/scripts/prepare_expanded_finger_candidates.py) |
 | 观测与标签 | 原导出器从 100 Hz 记录重建因果观测，每 5 帧取一次。每指得到 16 帧 × 45 维历史，用未来实测关节角生成 16 步动作。 | 复用时间基准、关节顺序和标签定义。重写全手同步导出，给同一物理试次的四指绑定同一份触觉。[逐指字段与投影](../finger_policy/scripts/single_finger_dp.py) · [原逐指导出器](../finger_policy/scripts/export_wm_finger_candidates.py) |
 | 训练 | 默认 `single_all` 有长指、拇指两个 U-Net，三根长指合批。旧训练器从随机权重开始，按噪声预测误差训练，保存 `best.pt` 和归一化参数。 | 复用 U-Net 构造、噪声调度、损失和当前关节角解码。改输入维度、窗口加载器、归一化和 checkpoint 格式。[训练入口](../finger_policy/scripts/train_expanded_policy_comparison.py) · [模型与损失](../finger_policy/scripts/controlled_policy_ablation.py) · [U-Net 构造](../mcc_finger_compliance_control/scripts/train_dp.py) |
-| 执行与“矫正” | DP 输出关节参考块，调度器对齐新旧动作并插值，随后 MCC 根据接触反馈修正逐帧命令。另有一套闭环失触后由教师接管、补录示范的流程。 | 调度平滑、MCC 在线修正、恢复样本再训练是三个环节，分别记日志。现有 `single_all` 的训练入口只执行监督去噪，恢复数据需另行采集与接入。[动作调度器](../mcc_finger_compliance_control/scripts/dp_chunk_scheduler.py) · [MCC 执行链](../mcc_finger_compliance_control/scripts/deploy_b_gpu_serial_parity.py) · [恢复数据说明](../recovery_standalone/README.md) |
+| 执行与修正 | DP 输出关节参考块，调度器对齐动作并插值，原执行链的 MCC 根据接触反馈修正逐帧命令。 | 记录调度前后的参考和执行器收到的命令。教师在离线采集阶段生成示范，部署时测策略自己的响应。DAgger 已废弃。[动作调度器](../mcc_finger_compliance_control/scripts/dp_chunk_scheduler.py) · [MCC 执行链](../mcc_finger_compliance_control/scripts/deploy_b_gpu_serial_parity.py) |
 
 ## 一、建立固定掌侧点表和逐帧形变读取器
 
@@ -69,7 +83,7 @@ python -B finger_policy/pipeline.py --help
 | `wrist_pose_world[T,7]`、`palm_twist_palm[T,6]`、`published_palm_delta_palm[T,6]` | 说明位置单位、四元数顺序和各速度的坐标系。后两项构成共享 12 维条件。用当时已发布的腕指令，记录指令时间戳。 |
 | `u_link_m[T,N,3]`、`obs_valid[T,N]` | 每点局部形变及传感有效性。能看到且未形变的点有效，丢帧或不可读另标。合成触觉的预处理要能在部署端执行。 |
 | `direct_gt[T,N]`、`depth_gt_m[T,N]`、区域目标/可达性、过深与碰撞事件 | 仿真真值供教师、采集审核和独立评价。策略所需接触面积或掩码从当时可观测的触觉推得，几何真值单独存。 |
-| `q_teacher_ref[T,16]`、`q_command[T,16]`、控制来源、接管/终止原因 | 区分教师请求、下发命令、实测关节以及策略/教师控制时间段，支持后续纠偏标签审核。 |
+| `q_teacher_ref[T,16]`、`q_command[T,16]`、运行类型与终止原因 | 在离线示范中对齐教师参考、下发命令与实测关节角，复核动作标签。策略闭环单独记录预测值和执行值。 |
 
 每个控制周期先在同一物理状态读形变、关节和当时的腕指令，再生成参考并步进。采用旧基线的 100 Hz 原始记录、20 Hz 策略帧时，每隔 5 个原始帧取一个样本。不同传感频率要保留时间戳，只使用参考时刻之前已经到达的信息。训练集读出的任意窗口应能从原始记录逐帧复算。[旧观测重建](../finger_policy/scripts/reconstruct_contact_wm_dp_observation.py) · [现有切窗代码](../finger_policy/scripts/expanded_policy_data.py)
 
@@ -79,37 +93,35 @@ python -B finger_policy/pipeline.py --help
 整手解码    Q_ref(t,k) = q_measured(t) + Y_pred(t,k)    整手 [16,16]
 ```
 
-每一步的标签减同一个当前实测角。原始帧、窗口索引、数据划分和归一化各自留档。四指、本指特征及全手特征必须来自同一试次、同一帧。旧 `single_all` 可以从同一物体的不同试次抽四根手指，接入全手特征后需替换这段采样。按物体和母轨迹分组，增强版本、分辨率和恢复片段继承母试次的划分。第一条方块轨迹只用于调通。仅有方块时可留出腕轨迹族，跨物体验证要另留出实物模型。归一化只在训练划分拟合。[旧采样与同帧整手分支](../finger_policy/scripts/expanded_policy_data.py)
+每一步的标签减同一个当前实测角。原始帧、窗口索引、数据划分和归一化各自留档。一个样本中的本指观测、全手特征及其所引用的各指状态必须来自同一试次、同一帧。旧 `single_all` 可以从同一物体的不同试次抽四根手指，新数据的每个逐指样本都要带上它自己试次的全手触觉。`flat_common` 的四指动作标签也必须取自同一时刻。Mustard 内按母轨迹分训练和留出集，增强版本和三档点表继承母试次划分。Expanded 再按物体与母轨迹分组。归一化只在该版本实际使用的训练划分拟合。[旧采样与同帧整手分支](../finger_policy/scripts/expanded_policy_data.py)
 
 **交付与验收。** 一份原始试次、一份含相对路径和哈希的 manifest，以及至少一个可反查的样本。对一个索引人工核对 16 帧输入、接下来的 16 步标签、四指一致的时间戳和双向余量。检查切窗不跨试次或复位点，未来腕实测、未来形变和教师内部量均不出现在条件中。保留有价值的失触、卸载和恢复阶段，旧版“四个指腹接触”的力阈值不适合作为新数据的准入条件。
 
 ## 四、训练以形变历史为条件的 DP
 
-原每指 33 维中保留 20 维，即关节角 4、速度 4、下限余量 4、上限余量 4、指身份 4。原接触点 3、法向 3、有效位 1、接触点变化 3、法向变化 3 合计 13 维，由本指和整手的形变特征替换。共享的掌运动与已发布腕指令 12 维继续输入。**形变是输入，监督来自未来实测的手指动作。** 长指、拇指各一套网络权重，可以放在同一 checkpoint。一次去噪时，三根长指作为三个样本合批，拇指走自己的分支，再按关节名拼回 16 维。可选的双 CUDA stream 只影响执行方式。[实际分支与推理代码](../finger_policy/scripts/controlled_policy_ablation.py)
+原每指 33 维中保留 20 维，即关节角 4、速度 4、下限余量 4、上限余量 4、指身份 4。原接触点 3、法向 3、有效位 1、接触点变化 3、法向变化 3 合计 13 维，由本指和整手的形变特征替换。共享的掌运动与已发布腕指令 12 维继续输入。**形变是输入，监督来自未来实测的手指动作。** 两个逐指版本各自的 checkpoint 可同时保存长指和拇指两套权重，按指输出形状是 `[未来16步, 4关节]`。`flat_common` 将四指状态和本指形变特征按固定顺序组合，并提供一份共享的全手特征与腕条件，单一网络联合输出 `[未来16步, 16关节]`。[实际分支与推理代码](../finger_policy/scripts/controlled_policy_ablation.py)
 
 1. **先训练可解释的基线。** 在 `encoders.py` 按掌区和各指节，对有效观测计算面积加权的接触估计、压入均值/峰值及其历史变化。用校准后的位移方向定义压入正向，记录估计阈值和有效面积。每指拿本指特征和同帧全手摘要。先用一个小数据集调通归一化、掩码、去噪和关节解码，并检查模型能拟合几个已知窗口。
 2. **再接 PointNet++。** 每点持有参考位置、法向、`u_link_m`、区域身份和有效位。在本链节参考网格上分组和聚合，随后按指和掌区池化得到 `z_finger` 与 `z_hand`。若需要在整手做空间邻域，把各链节点通过当前 FK 变换到共同掌系。来自不同链节的局部坐标不能直接拼成一个欧氏点云。对每一历史帧编码，按原有时间顺序输入 DP，一次计算的全手特征供四指共用。训练端与部署端共用同一编码器。仓库的普通 `SurfacePointNet` 输入是物体 GP 表面点云，可参考张量和池化写法，新的形变 PointNet++ 需要实现。[已有 PointNet](../mcc_finger_compliance_control/scripts/train_surface_pointnet.py)
 3. **训练并复现。** 在本目录的 `policy.py`、`train.py` 接入新的条件维度。沿用已有 U-Net 构造、100 个训练噪声步的 epsilon 预测损失与采样逻辑，推理可从旧版默认 10 个去噪步起步。原 `conditions`、`CommonWindows`、`ControlledRuntime` 和 CUDA Graph 含有固定 45 维与旧 checkpoint 检查，需提供新接口。训练型编码器和 DP 一起进入优化器。用新数据重新拟合归一化和动作尺度，先从随机初始化训练。将模型、编码器、字段/节点版本、归一化、动作尺度、关节顺序、训练划分和 seed 随 checkpoint 保存。[现有训练循环](../finger_policy/scripts/train_expanded_policy_comparison.py) · [旧模型的固定输入检查](../finger_policy/scripts/controlled_policy_ablation.py)
 
-**交付与验收。** 先得到可由新进程加载的基线 checkpoint，在留出轨迹上按指记录前 4 步与完整 16 步的关节 MAE。之后在同一批母试次、划分和训练预算下比较分区特征与 PointNet++、300/500/1000 点。旧模型的 20,000 次更新及新旧数据各半是它自己的训练协议。旧 45 维历史没有掌侧节点形变，不能靠补零合成新示范。若另外比较动作分块模型，仓库已有 ACT 实现，可在同一数据和动作标签上单独比较。[旧训练协议](../finger_policy/README.md) · [ACT 实现](../mcc_finger_compliance_control/scripts/chunk_policy_models.py)
+**交付与验收。** 保存每个版本的 checkpoint 和训练清单，核对两个 `common` 组实际抽到的 Expanded 窗口数均为零，`single_all` 的两个来源都有训练样本。用同一批 Mustard 试次、窗口、训练预算与评价条件比较 `single_common` 和 `flat_common`，观察逐指与整手建模的影响。比较 `single_all` 和 `single_common` 时固定逐指结构及留出集，观察扩充数据带来的变化。按指报告前 4 步与完整 16 步的关节 MAE。比较分区特征与 PointNet++ 或 300/500/1000 点时，再固定策略版本、母试次和划分。
 
-## 五、闭环运行、评价和失触纠偏
+## 五、闭环运行与贴合评价
 
 在 `rollout.py` 接入与训练相同的输入、坐标、归一化和 16 帧历史。先积累有效历史或明确标记启动阶段的填充。用当前实测 `q` 将动作块恢复为绝对参考，再按 `DPChunkScheduler.observe / install / next_command` 的顺序接到执行器。默认调度器使用 0.05 s 路点、0.01 s 控制周期，配置要与实际时钟一致。分别记录调度前、调度后、实际下发和实测关节。操作者的腕指令在整个回路持续作为外部输入。[调度器与配置](../mcc_finger_compliance_control/scripts/dp_chunk_scheduler.py)
 
 | 对照或指标 | 怎样判断是否完成用户要的功能 |
 | --- | --- |
-| 相同腕轨迹的闭环对照 | 对相同初态、物体、腕指令和 seed 跑固定手型、教师、形变 DP。主结果报告形变 DP 加相同执行器/限位保护。若加入旧力反馈 MCC 或新的形变反馈修正，另列一组，报告接管占比和修正量，便于判断策略本身学到多少。 |
+| 相同腕轨迹的闭环对照 | 对相同初态、物体、腕指令和 seed 跑固定手型、离线教师示范和三个版本的形变 DP。策略使用相同执行器和限位保护。若另测带 MCC 在线修正的执行链，单列实际修正量，区分策略表现和控制器贡献。 |
 | 每个可达区域的持续贴合 | 用采样点代表面积统计接触面积与目标面积比、连续贴合时长，同时给出各指近/中/远节、指尖和掌区的明细。用几何真值或独立接触读数评价，保存同一时间轴上的区域曲线和回放。 |
 | 卸载、恢复与运动质量 | 统计过深压入的深度和时长、失触到稳定恢复的时间及未恢复次数、到两端的最小关节余量、越界次数、腕跟踪误差和控制延迟。以深度描述仿真压入，报告压强或力需要相应测量/标定。 |
 | 预先约定验收值 | 在开发用的教师示范上估计正常压入带、观测噪声、恢复保持时长和腕跟踪容差，写进本目录配置。按冻结值报告所有留出轨迹及失败案例。效益体现在多指节贴合，同时检查过深、关节余量和腕跟踪。 |
-
-**做一轮真正的纠偏。** 在 `recover.py` 用区域持续失触或过深触发接管，保存触发前历史、真实位置与速度、物体与手腕状态和已发布的腕指令。教师从这个状态接管，继续原腕指令，录到稳定恢复。学生失触前的帧可以作历史上下文，监督窗口的未来动作应来自教师控制下的实测运动。标出控制归属，过滤跨复位、时间空洞或混合控制来源的标签，检查接管时刻的关节和腕位姿连续。把合格恢复片段混入训练集再训练，同时保留正常示范。用同一留出集对比恢复时间、过深和原有贴合性能。旧恢复拼接器有基于力的恢复确认和专用 HDF5 字段，新流程复用状态提取与连续性审核思路，重写形变触发、字段和确认逻辑。[状态提取](../recovery_standalone/scripts/extract_recovery_state.py) · [恢复段拼接](../recovery_standalone/scripts/build_recovery_dataset.py) · [已知接管录制问题](../recovery_standalone/README.md)
 
 ## 第一个工作包与最终交付
 
 **第一个工作包**交付方块、可移动的腕、三档带 ID 的点表和一条教师执行的整手试次。先画同一时间轴的“腕倾转 → 指尖卸载 → 中节复触”，再导出一个可以手算核对的 16 入 / 16 出样本。做到这里才有依据投入批量采集和模型训练。
 
-**最终交付**应让另一台机器从本目录的配置和命令，重建点表、生成或读取有来源的试次、训练或加载形变 checkpoint，并运行“只给腕指令”的闭环。每次交付附实际命令、提交号、输入清单和产物相对路径。可运行入口写回本目录。当前可执行的已有命令列在 [启动说明](SETUP.md)，上文 `atlas.py` 至 `recover.py` 均为建议新增的实现位置。
+**最终交付**应让另一台机器从本目录的配置和命令，重建点表、生成或读取有来源的试次、选择上述三个版本之一训练或加载形变 checkpoint，并运行“只给腕指令”的闭环。每次交付附实际命令、提交号、训练来源清单和闭环指标。可运行入口写回本目录。当前可执行的已有命令列在 [启动说明](SETUP.md)，上文列出的新模块属于待实现内容。
 
 迁移到真手时，还需要能观测相应掌区和指节形变的传感器，或经过标定的可观测映射。多点仿真输出本身不提供实机测量。记录实机可用部位、坐标、时间延迟、幅值与噪声，再决定哪些通道可以用于部署。仿真闭环与实机验证分别记录。
