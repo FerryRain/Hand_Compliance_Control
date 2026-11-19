@@ -1,0 +1,12 @@
+{
+  "mcc_controller": "finger_admittance_v1",
+  "admittance_after_bootstrap": true,
+  "admittance_config": {
+    "damping_ns_m": 80.0,
+    "normal_jacobian_only": true,
+    "contact_handover_revision": 5,
+    "retain_legacy_recovery": true
+  },
+  "validation": "mcc_finger_compliance_control/data/admittance_teacher_gate_20261026/teacher_gate.json",
+  "scope": "Teacher reference validated; DP closed-loop is not certified by this gate"
+}

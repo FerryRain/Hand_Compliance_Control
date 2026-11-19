@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 from dataclasses import asdict, replace
 from datetime import datetime
@@ -41,6 +42,40 @@ from surface_mcc_finger import (
 
 
 TASK_ID = "Leaphand-Finger-MCC-Position-Control"
+
+
+def collection_abort_mask(force, q, limits, threshold, response):
+    """Diagnostic record mode continues through force/limit excursions."""
+    numerical = ~torch.isfinite(force) | ~torch.isfinite(q).all(-1)
+    if response == 'record':
+        return numerical
+    if response != 'stop':
+        raise ValueError(f'Unknown overforce response: {response}')
+    return (numerical | (force > threshold)
+        | ((q < limits[..., 0]-.003) | (q > limits[..., 1]+.003)).any(-1))
+
+
+def install_collection_substep_safety(env, observer):
+    """Observe actual solver forces without changing physics or control timing.
+
+    The caller enables monitoring only during the recorded motion window,
+    zeros the peak before each control tick, and applies the usual independent
+    stop after that tick. Preparation/settling retains its original behavior.
+    """
+    state = dict(enabled=False, peak=torch.zeros(env.num_envs, device=env.device),
+                 original_step=env.sim.step)
+
+    def observed_step():
+        state['original_step']()
+        if state['enabled']:
+            env.sim.sense()
+            observer.read(env, None)
+            state['peak'].copy_(torch.maximum(state['peak'], observer.safety_peak_force_n))
+
+    env.sim.step = observed_step
+    return state
+
+
 TIP_SITES = ("if_tip", "mf_tip", "rf_tip", "th_tip")
 TIP_COLORS = (
     (1.0, 0.30, 0.20, 0.95),
@@ -1330,7 +1365,9 @@ class InversePlannedPalmObjectController:
         prefix of every trajectory.
         """
 
-        u = np.clip(motion_step / max(self.motion_length, 1), 0.0, 1.0)
+        # The motion window contains motion_length recorded poses, including
+        # both endpoints. Its final sample is motion_length-1, not length.
+        u = np.clip(motion_step / max(self.motion_length-1, 1), 0.0, 1.0)
         return int(round(u * (len(self.plan_pos) - 1)))
 
     def reanchor_from_current_state(self) -> None:
@@ -1897,14 +1934,25 @@ class FullHandMCCCollectionPolicy:
         enable_privileged_palm_follow: bool = True,
         shape_regularization: bool = False,
         force_servo_integral_gain: float = 0.0,
+        force_profile: str = 'legacy',
         fixed_grasp_nominal_weight: float = 0.80,
         initial_pad_max_angle_rad: float = np.deg2rad(105.0),
         closure_path_fallback_fraction: float = 0.70,
         closure_path_samples: int = 25,
         grasp_keyframe_interval_frames: int = 0,
         grasp_keyframe_projection_iterations: int = 30,
+        free_tip_orientation: bool = False,
+        stable_initialization: bool = False,
     ) -> None:
         self.env = env
+        self.force_profile = force_profile
+        self.free_tip_orientation = bool(free_tip_orientation)
+        self.stable_initialization = bool(stable_initialization)
+        self.initialization_object_config = object_config
+        self.initialization_object_scale = object_scale
+        self.initializers = [None for _ in range(env.num_envs)]
+        self.initialization_active = False
+        self.initialization_overrides = []
         # Articulated FK inside the palm MCC is evaluated in one canonical
         # environment, while scene bodies/contact queries are reported in
         # replicated world coordinates.  Keep the translation that maps each
@@ -2049,9 +2097,10 @@ class FullHandMCCCollectionPolicy:
         nominal_grasp = np.asarray(nominal_grasp_q, dtype=np.float64)
         if nominal_grasp.shape != (16,) or not np.all(np.isfinite(nominal_grasp)):
             raise ValueError("nominal_grasp_q must contain 16 finite joint values")
+        from collection_force_regulation import collection_force_config
         self.controllers = [
             FullHandMCCFingerController(
-                FullHandMCCFingerConfig(
+                collection_force_config(FullHandMCCFingerConfig(
                     control_dt=0.01,
                     posture_cost=0.15,
                     # The old closure-path teacher could use a tight extension
@@ -2079,11 +2128,8 @@ class FullHandMCCCollectionPolicy:
                     persistent_recovery_max_joint_step=(
                         persistent_recovery_max_joint_step_rad
                     ),
-                    # Collection learns q trajectories, not force targets.
-                    # Preserve the FullHandMCC per-finger normal search but
-                    # do not let transient mesh/contact impulses command an
-                    # outward dropout.  Missing contact still advances by the
-                    # configured search step until geometry is recovered.
+                    # The selected force profile owns loaded-contact pressure;
+                    # missing-contact search has a separate bounded state.
                     force_servo_integral_gain=float(force_servo_integral_gain),
                     # The contact-manifold teacher must prefer a smooth
                     # reachable grasp over a large instantaneous IK jump.
@@ -2155,11 +2201,21 @@ class FullHandMCCCollectionPolicy:
                     nominal_surface_preload=(
                         0.003 if self.shape_regularization else 0.0
                     ),
+                    # Split-collision sensors already select the physical tip
+                    # hull. Whole-tip collection must not reject its side/back
+                    # contacts through the legacy front-pad x boundary. This
+                    # matches the existing split-tip deployment configuration.
+                    back_contact_x_limit_m=(
+                        (1.0,) * 4 if self.free_tip_orientation
+                        else tuple(float(x) for x in TIP_BACK_CONTACT_X_LIMIT_M)
+                    ),
                     grasp_closure_q=tuple(float(value) for value in nominal_grasp),
-                )
+                ), 'legacy')
             )
             for _ in range(env.num_envs)
         ]
+        self.legacy_force_configs = [c.config for c in self.controllers]
+        self.force_profile_active = np.zeros(env.num_envs, dtype=bool)
         self.oracles = [
             GeometrySurfaceOracle(
                 object_config,
@@ -2642,12 +2698,11 @@ class FullHandMCCCollectionPolicy:
             q = controller.clamp_joint_positions(next_q).astype(np.float64)
             # Pad attitude is a soft side/opposition correction, followed on
             # the next iteration by another exact normal-distance projection.
-            q = controller.orient_toward_surface_normals(
-                q,
-                palm_pose_world,
-                surface_normals,
-                max_joint_step=0.008,
-            ).astype(np.float64)
+            if not self.free_tip_orientation:
+                q = controller.orient_toward_surface_normals(
+                    q, palm_pose_world, surface_normals,
+                    max_joint_step=0.008,
+                ).astype(np.float64)
             maximum_residual = float(np.max(np.abs(distance_error)))
             maximum_pad_angle = float(
                 np.max(
@@ -2656,7 +2711,7 @@ class FullHandMCCCollectionPolicy:
                     )
                 )
             )
-            if maximum_residual <= 0.0005 and maximum_pad_angle <= np.deg2rad(45.0):
+            if maximum_residual <= 0.0005 and (self.free_tip_orientation or maximum_pad_angle <= np.deg2rad(45.0)):
                 break
 
         final_tips_world = controller.points_palm_to_world(
@@ -2688,7 +2743,7 @@ class FullHandMCCCollectionPolicy:
         valid = bool(
             np.isfinite(q).all()
             and maximum_residual <= 0.0015
-            and maximum_pad_angle <= np.deg2rad(70.0)
+            and (self.free_tip_orientation or maximum_pad_angle <= np.deg2rad(70.0))
             # ``spread`` divides each joint by its open->grasp travel.  A
             # nearly stationary distal coordinate therefore makes that ratio
             # ill-conditioned and rejected otherwise natural s208 grasps.
@@ -2729,9 +2784,22 @@ class FullHandMCCCollectionPolicy:
             maximum_pad_angle,
         )
 
+    def _reset_collection_force_profile(self) -> None:
+        # Settling retains the accepted legacy initialization. Switch only
+        # once motion begins; do not make reset/contact acquisition fight an
+        # emergency release intended for an already loaded moving grasp.
+        self.force_profile_active.fill(False)
+        for controller, config in zip(self.controllers, self.legacy_force_configs, strict=True):
+            controller.config = config
+            controller.nominal_force_setpoint[:] = config.desired_force_per_finger
+
     def reset(self) -> None:
         self.palm_controller.reset()
         self.base_policy.finger_controller.reset()
+        self._reset_collection_force_profile()
+        self.initializers = [None for _ in range(self.env.num_envs)]
+        self.initialization_active = False
+        self.initialization_overrides = []
         for controller in self.controllers:
             controller.reset()
         self.anchor_points_object.fill(0.0)
@@ -2806,6 +2874,9 @@ class FullHandMCCCollectionPolicy:
         planner-settle interval.
         """
 
+        self._reset_collection_force_profile()
+        self.initializers = [None for _ in range(self.env.num_envs)]
+        self.initialization_active = self.stable_initialization
         for controller in self.controllers:
             controller.reset()
         self.anchor_points_object.fill(0.0)
@@ -3023,6 +3094,13 @@ class FullHandMCCCollectionPolicy:
         self.palm_preview_object_pose_world[:, :3] = preview_object_pos
         self.palm_preview_object_pose_world[:, 3:7] = preview_object_quat
         force_batch, found_batch, contact_pos_batch = self._live_contacts()
+        safety_measurements = None
+        self.force_safety_debug = []
+        observer = getattr(self.env, '_collection_contact_observer', None)
+        if self.force_profile == 'regulated' and observer is not None:
+            observer.read(self.env, None)
+            safety_measurements = {key: value.detach().cpu().numpy()
+                                   for key, value in observer.latest.items()}
         # The force tensor is transferred to host once by ``_live_contacts``;
         # reduce the complete batch in one NumPy call instead of recomputing a
         # norm for every environment in the controller loop.
@@ -3130,6 +3208,13 @@ class FullHandMCCCollectionPolicy:
             object_is_moving = False
             if self.motion_preview_controller is not None:
                 object_is_moving = bool(motion_active_batch[env_id])
+            if (self.force_profile == 'regulated' and object_is_moving
+                    and not self.force_profile_active[env_id]):
+                from collection_force_regulation import collection_force_config
+                controller.config = collection_force_config(controller.config, 'regulated')
+                controller.nominal_force_setpoint[:] = controller.config.desired_force_per_finger
+                controller.force_setpoint[:] = controller.nominal_force_setpoint
+                self.force_profile_active[env_id] = True
             motion_just_started = bool(
                 object_is_moving
                 and not self.previous_motion_active[env_id]
@@ -4141,6 +4226,67 @@ class FullHandMCCCollectionPolicy:
                 q_prior = q_hand_batch[env_id]
                 tip_reference = kinematic_targets
                 tip_ik = tip_world_batch[env_id]
+            elif (self.stable_initialization and self.initialization_active
+                  and not object_is_moving):
+                from collection_initialization import StableContactInitializer
+                initial = self.initializers[env_id]
+                if initial is None:
+                    initial = StableContactInitializer(controller,
+                        self.initialization_object_config, self.initialization_object_scale,
+                        closure_target_q_batch[env_id])
+                    self.initializers[env_id] = initial
+                was_calibrated = bool(self.contact_calibrated[env_id])
+                connector_force = (safety_measurements['connector_force'][env_id]
+                    if safety_measurements is not None else np.zeros((4, 3)))
+                q_command, q_prior, acquired = initial.update(
+                    q_hand_batch[env_id], palm_pose_batch[env_id], oracle,
+                    force_batch[env_id], effective_found, contact_pos_batch[env_id],
+                    connector_force, self.precontact_force_threshold,
+                    self.anchor_settle_frames)
+                self.contact_calibrated[env_id] = acquired
+                self.contact_settle_streak[env_id] = initial.streak
+                tip_reference = controller.points_palm_to_world(
+                    controller.tip_positions_palm(q_prior), palm_pose_batch[env_id])
+                tip_ik = controller.points_palm_to_world(
+                    controller.tip_positions_palm(q_command), palm_pose_batch[env_id])
+                normal_force_batch[env_id] = magnitude
+                normal_offset_batch[env_id] = 0.
+                if acquired and not was_calibrated:
+                    controller.calibrate_force_sign(force_batch[env_id], effective_found, normals)
+                    controller.calibrate_force_setpoint(force_batch[env_id], effective_found,
+                                                        normals, capture_measured=False)
+                    controller.update_contact_point_anchors(q_hand_batch[env_id],
+                        palm_pose_batch[env_id], contact_pos_batch[env_id], effective_found)
+                    self.loaded_nominal_q[env_id] = q_hand_batch[env_id]
+                    self.loaded_nominal_valid[env_id] = True
+                    self.hybrid_grasp_q_ref[env_id] = q_hand_batch[env_id]
+                    self.hybrid_grasp_valid[env_id].fill(True)
+                    self.planner_query_world[env_id] = contact_pos_batch[env_id]
+                    self.planner_query_valid[env_id] = True
+                    if self.precomputed_keyframe_frames is not None:
+                        frames = self.precomputed_keyframe_frames[env_id]
+                        old_first = int(frames[0])
+                        if old_first != 0:
+                            self.precomputed_keyframe_frames[env_id] = np.r_[0, frames]
+                            self.precomputed_keyframe_q[env_id] = np.vstack((
+                                q_hand_batch[env_id], self.precomputed_keyframe_q[env_id]))
+                            self.precomputed_keyframe_surface_object[env_id] = np.concatenate((
+                                self.last_contact_points_object[env_id][None],
+                                self.precomputed_keyframe_surface_object[env_id]), axis=0)
+                            self.precomputed_keyframe_normal_object[env_id] = np.concatenate((
+                                (current_rotation.T @ normals.T).T[None],
+                                self.precomputed_keyframe_normal_object[env_id]), axis=0)
+                        else:
+                            self.precomputed_keyframe_q[env_id][0] = q_hand_batch[env_id]
+                            self.precomputed_keyframe_surface_object[env_id][0] = self.last_contact_points_object[env_id]
+                            self.precomputed_keyframe_normal_object[env_id][0] = (current_rotation.T @ normals.T).T
+                        self.initialization_overrides.append(dict(env_id=env_id,
+                            original_first_valid_frame=old_first,
+                            actual_frame0_q=q_hand_batch[env_id].tolist(),
+                            actual_relative_palm=__import__('collection_initialization').relative_palm_pose(
+                                palm_pose_batch[env_id], oracle).tolist()))
+                    print(f'[INITIALIZATION] env={env_id} acquired {initial.streak} stable frames; '
+                          f'force={np.round(magnitude, 2).tolist()}', flush=True)
             elif not self.contact_calibrated[env_id]:
                 # FullHandMCC first obtains a surface-consistent IK posture.
                 # The per-finger normal search is only a correction around
@@ -4152,11 +4298,9 @@ class FullHandMCCCollectionPolicy:
                 # First orient each fingertip toward its own oracle normal.
                 # This prevents a side/edge contact from being accepted merely
                 # because the contact sensor reports a nonzero load.
-                q_orientation = controller.orient_toward_surface_normals(
-                    q_hand_batch[env_id],
-                    palm_pose_batch[env_id],
-                    normals,
-                )
+                q_orientation = (q_hand_batch[env_id].copy() if self.free_tip_orientation
+                    else controller.orient_toward_surface_normals(
+                        q_hand_batch[env_id], palm_pose_batch[env_id], normals))
                 q_prior = q_orientation.copy()
                 q_surface, debug = controller.update(
                     q_live=q_orientation,
@@ -4176,7 +4320,7 @@ class FullHandMCCCollectionPolicy:
                     palm_pose_batch[env_id],
                     normals,
                 )
-                orientation_ok = pad_angle <= self.initial_pad_max_angle_rad
+                orientation_ok = np.ones_like(precontact_loaded) if self.free_tip_orientation else pad_angle <= self.initial_pad_max_angle_rad
                 settled = precontact_loaded & orientation_ok
                 if bool(np.all(settled)):
                     self.contact_settle_streak[env_id] += 1
@@ -4466,6 +4610,15 @@ class FullHandMCCCollectionPolicy:
                     manage_contact_state=True,
                     contact_observed=loaded,
                 )
+                if controller.config.enable_recovery_handover:
+                    # Transfer the recovery posture to the differential
+                    # planner reference once, excluding force correction.
+                    # Otherwise the next tick reinstates the old nominal
+                    # and cancels the just-established physical contact.
+                    for finger in np.flatnonzero(debug["recovery_handover"]):
+                        block = slice(4*finger, 4*finger+4)
+                        self.hybrid_grasp_q_ref[env_id, block] = debug["handover_reference_q"][block]
+                        q_prior[block] = debug["handover_reference_q"][block]
                 persistent_loss = np.asarray(
                     debug["persistent_loss"], dtype=bool
                 ) & (closure_hit | manifold_recovery_seed)
@@ -4530,6 +4683,16 @@ class FullHandMCCCollectionPolicy:
             self.previous_target_valid[env_id] = not bool(
                 palm_in_prep[env_id]
             )
+            safety_debug = dict(active=np.zeros(4, bool), hard_active=np.zeros(4, bool),
+                                correction=np.zeros(16), min_constraint_margin_m=0.)
+            if safety_measurements is not None and self.force_profile_active[env_id]:
+                from collection_force_regulation import protect_collection_contacts
+                q_command, safety_debug = protect_collection_contacts(
+                    controller, q_hand_batch[env_id], q_command,
+                    palm_pose_batch[env_id], safety_measurements, env_id)
+                tip_ik = controller.points_palm_to_world(
+                    controller.tip_positions_palm(q_command), palm_pose_batch[env_id])
+            self.force_safety_debug.append(safety_debug)
             q_command_batch[env_id] = q_command
             q_prior_batch[env_id] = q_prior
             tip_reference_world[env_id] = tip_reference
@@ -4973,10 +5136,15 @@ class StreamingH5:
         "fingertip_contact_normal_world": (4, 3),
         "fingertip_contact_dist": (4,),
         "fingertip_pad_contact_valid": (4,),
+        "true_fingertip_contact_valid": (4,),
+        "fingertip_connector_found": (4,),
+        "fingertip_connector_force_world": (4, 3),
+        "contact_safety_peak_force_n": (),
         "fingertip_contact_pos_tip": (4, 3),
         "contact_curvature_k1": (4,),
         "contact_curvature_k2": (4,),
         "fingertip_collision_found": (4,),
+        "fingertip_body_collision_found": (4,),
         "fingertip_contact": (4,),
         "tip_x_des_world": (4, 3),
         "tip_x_ref_world": (4, 3),
@@ -5119,6 +5287,16 @@ class StreamingH5:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Collect MCC fingertip position-teacher data.")
+    parser.add_argument("--split-fingertip-collision", action="store_true",
+        help="Use real split fingertip and connector collision hulls, pad-only teacher feedback and whole-tip acceptance")
+    parser.add_argument('--stable-initialization', action='store_true',
+        help='Acquire contact using real hulls/current palm; motion waits for measured stable contact')
+    parser.add_argument("--max-safe-force-n", type=float, default=100.,
+        help="Independent recorded-motion force stop; default100N (split collection requires0<limit<=100)")
+    parser.add_argument('--overforce-response', choices=('record','stop'), default='stop',
+        help='record: log force/limit excursions and complete the reference; stop: original cutoff. Nonfinite states remain numerical failures.')
+    parser.add_argument("--substep-force-safety", action="store_true",
+        help="For split collision collection, include every physical solver substep in the independent force stop")
     parser.add_argument(
         "--viewer",
         choices=("headless", "native", "viser"),
@@ -5668,7 +5846,8 @@ def main() -> None:
         default=-HARD_CONTACT_SOLREF[0],
         help=(
             "Direct-format MuJoCo contact stiffness for the target object. "
-            "Default: %(default)g N/m."
+            "Reference-acceleration parameter (s^-2), not a linear N/m spring. "
+            "Default: %(default)g."
         ),
     )
     parser.add_argument(
@@ -5677,7 +5856,7 @@ def main() -> None:
         default=-HARD_CONTACT_SOLREF[1],
         help=(
             "Direct-format MuJoCo contact damping for the target object. "
-            "Default: %(default)g N s/m."
+            "Reference-acceleration parameter (s^-1). Default: %(default)g."
         ),
     )
     parser.add_argument(
@@ -5706,6 +5885,10 @@ def main() -> None:
         type=float,
         default=35.0,
         help="Per-joint effort limit used by the FullHandMCC teacher.",
+    )
+    parser.add_argument(
+        '--fullhand-force-profile', choices=('legacy', 'regulated'), default=None,
+        help='Split-tip default regulated: 6/8 N targets, separate 6 mm outward budget, early loaded-contact retreat after settling; legacy reproduces earlier force control.',
     )
     parser.add_argument(
         "--fullhand-force-servo-gain",
@@ -5763,6 +5946,10 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--filename", default=None)
     args = parser.parse_args()
+    if args.fullhand_force_profile is None:
+        args.fullhand_force_profile = 'regulated' if args.split_fingertip_collision else 'legacy'
+    if args.split_fingertip_collision:
+        args.substep_force_safety = True
 
     if args.contact_stiffness <= 0.0:
         raise ValueError("--contact-stiffness must be positive")
@@ -6203,10 +6390,27 @@ def main() -> None:
             f"solimp_width={contact_solimp[2]:g}m margin=0 gap=0 "
             f"physics_substeps={args.physics_substeps}"
         )
+    contact_observer = None
+    safety_abort = None
+    if args.substep_force_safety and not args.split_fingertip_collision:
+        raise ValueError('Substep force safety requires split fingertip collision sensors')
+    if args.split_fingertip_collision:
+        if not 0 < args.max_safe_force_n <= 100:
+            raise ValueError("split collection requires an independent force stop in (0,100] N")
+        from true_fingertip_contact import ContactSlotObserver
+        if args.fullhand_force_profile == 'regulated':
+            from collection_force_regulation import CollectionForceObserver
+            contact_observer = CollectionForceObserver(controller_scope='pad')
+        else:
+            contact_observer = ContactSlotObserver(controller_scope='pad')
+        contact_observer.configure(env_cfg)
     env_cfg.viewer.env_idx = max(
         0, min(int(args.viewer_env_index), args.num_envs - 1)
     )
     env = ManagerBasedRlEnv(cfg=env_cfg, device=device)
+    env._collection_contact_observer = contact_observer
+    substep_safety = (install_collection_substep_safety(env, contact_observer)
+                      if args.substep_force_safety else None)
     # For mesh objects (convex-decomposed collision parts), MuJoCo contact
     # normals jump at part seams.  Replace them with smooth normals estimated
     # from the high-resolution source OBJ near each contact point.
@@ -6362,9 +6566,12 @@ def main() -> None:
                 # do not collapse into a curled or side-swung configuration.
                 shape_regularization=(manifold_mode or planner_inverse_mode),
                 force_servo_integral_gain=args.fullhand_force_servo_gain,
+                force_profile=args.fullhand_force_profile,
                 initial_pad_max_angle_rad=np.deg2rad(
                     args.initial_pad_max_angle_deg
                 ),
+                free_tip_orientation=args.split_fingertip_collision,
+                stable_initialization=args.stable_initialization,
                 closure_path_fallback_fraction=args.closure_path_fallback_fraction,
                 closure_path_samples=args.closure_path_samples,
                 grasp_keyframe_interval_frames=(
@@ -6624,6 +6831,7 @@ def main() -> None:
                 self.loaded_frames = np.zeros(4, dtype=np.int64)
                 self.found_frames = np.zeros(4, dtype=np.int64)
                 self.all4_frames = 0
+                self.found_all4_frames = 0
                 self.contact_pos = np.full((4, 3), np.nan, dtype=np.float64)
                 self.tip_pos = np.full((4, 3), np.nan, dtype=np.float64)
                 self.found = np.zeros(4, dtype=bool)
@@ -6649,6 +6857,7 @@ def main() -> None:
                 self.loaded_frames.fill(0)
                 self.found_frames.fill(0)
                 self.all4_frames = 0
+                self.found_all4_frames = 0
                 self.contact_pos.fill(np.nan)
                 self.tip_pos.fill(np.nan)
                 self.found.fill(False)
@@ -6701,11 +6910,19 @@ def main() -> None:
                         and self.actual_motion_start is None
                         and self.step_count >= self.planner_settle_until
                     ):
-                        self.actual_motion_start = self.step_count
-                        print(
-                            "[VISUAL] motion and recording start after planner "
-                            f"settle at step {self.actual_motion_start}"
-                        )
+                        if args.stable_initialization and not ready:
+                            motion_controller.motion_start = self.step_count+1
+                            if self.step_count >= self.planner_settle_until+args.max_prep_wait_steps:
+                                raise RuntimeError('Initialization failed before motion: '
+                                    +json.dumps([x.debug if x is not None else {}
+                                                 for x in policy.initializers]))
+                        else:
+                            self.actual_motion_start = self.step_count
+                            motion_controller.motion_start = self.step_count
+                            print(
+                                "[VISUAL] motion and recording start after planner "
+                                f"settle at step {self.actual_motion_start}"
+                            )
                 elif (
                     self.actual_motion_start is None
                     and self.step_count >= args.motion_start
@@ -6807,6 +7024,16 @@ def main() -> None:
                 self.loaded[:] = self.found & (
                     magnitude.detach().cpu().numpy() >= args.contact_threshold
                 )
+                body_found = self.found.copy()
+                if contact_observer is not None:
+                    contact_observer.read(env, None)
+                    measured = contact_observer.latest
+                    pad_force = measured['pad_force'][env_id]
+                    self.loaded[:] = (measured['pad_found'][env_id]
+                        & torch.isfinite(measured['pad_points'][env_id]).all(-1)
+                        & torch.isfinite(pad_force).all(-1)
+                        & (pad_force.norm(dim=-1) >= args.contact_threshold)).cpu().numpy()
+                    body_found = (measured['pad_found'][env_id] | measured['connector_found'][env_id]).cpu().numpy()
                 relative_step = (
                     self.step_count - self.actual_motion_start
                     if self.actual_motion_start is not None
@@ -6817,7 +7044,17 @@ def main() -> None:
                     and self.recorded_frames < saved_frames_per_trajectory
                 )
                 if should_record:
-                    self.found_frames += self.found
+                    if contact_observer is not None:
+                        robot_data = env.scene['robot'].data
+                        q_now = robot_data.joint_pos[:, -16:]
+                        q_limits = robot_data.joint_pos_limits[:, -16:]
+                        peak = contact_observer.safety_peak_force_n
+                        unsafe = collection_abort_mask(peak,q_now,q_limits,
+                                                       args.max_safe_force_n,args.overforce_response)
+                        if bool(unsafe.any()):
+                            raise RuntimeError('Independent visual collection safety stop: '+str(peak.cpu().tolist()))
+                    self.found_frames += body_found
+                    self.found_all4_frames += int(body_found.all())
                     self.loaded_frames += self.loaded
                     self.all4_frames += int(np.all(self.loaded))
                     self.recorded_frames += 1
@@ -6970,6 +7207,7 @@ def main() -> None:
             print(
                 "[VISUAL-RESULT] "
                 f"frames={saved_steps} all4={visual_policy.all4_frames / saved_steps:.1%} "
+                f"found_all4={visual_policy.found_all4_frames / saved_steps:.1%} "
                 f"per_tip={(visual_policy.loaded_frames / saved_steps).round(3).tolist()}"
             )
             wrapped.close()
@@ -7131,13 +7369,21 @@ def main() -> None:
                         and planner_settle_until is not None
                         and episode_step >= planner_settle_until
                     ):
-                        actual_motion_start = episode_step
-                        actual_record_start = episode_step + record_delay
-                        print(
-                            "[START] planner motion starts at simulator step "
-                            f"{actual_motion_start}; recording starts at "
-                            f"{actual_record_start} after settle"
-                        )
+                        if args.stable_initialization and not ready:
+                            motion_controller.motion_start = episode_step+1
+                            if episode_step >= planner_settle_until+args.max_prep_wait_steps:
+                                raise RuntimeError('Initialization failed before motion: '
+                                    +json.dumps([x.debug if x is not None else {}
+                                                 for x in policy.initializers]))
+                        else:
+                            actual_motion_start = episode_step
+                            actual_record_start = episode_step + record_delay
+                            motion_controller.motion_start = episode_step
+                            print(
+                                "[START] planner motion starts at simulator step "
+                                f"{actual_motion_start}; recording starts at "
+                                f"{actual_record_start} after settle"
+                            )
                 elif (
                     actual_motion_start is None
                     and episode_step >= args.motion_start
@@ -7227,6 +7473,10 @@ def main() -> None:
                     1.0,
                 )
                 q_cmd_applied = q_hand_pre_step + 0.08 * action[:, -16:]
+                if substep_safety is not None:
+                    substep_safety['peak'].zero_()
+                    substep_safety['enabled'] = (actual_record_start is not None
+                                                 and episode_step >= actual_record_start)
                 obs, *_ = env.step(action)
                 progress.update(1)
                 body_pose = robot.data.body_link_pose_w
@@ -7295,6 +7545,36 @@ def main() -> None:
                     & contact_point_plausible
                     & (contact_pos_tip[..., 0] <= back_limit)
                 )
+                legacy_pad_contact_valid = current_pad_contact_valid
+                connector_found = torch.zeros_like(contact_found)
+                connector_force = torch.zeros_like(tip_force)
+                safety_peak = tip_force.norm(dim=-1).amax(-1)
+                if contact_observer is not None:
+                    contact_observer.read(env, None)
+                    measured = contact_observer.latest
+                    connector_found = measured['connector_found']
+                    connector_force = measured['connector_force']
+                    safety_peak = contact_observer.safety_peak_force_n
+                    if substep_safety is not None and substep_safety['enabled']:
+                        safety_peak = torch.maximum(safety_peak, substep_safety['peak'])
+                    # Region membership comes from actual pad collision geom
+                    # IDs; no old front-axis or radius restriction applies.
+                    current_pad_contact_valid = (contact_found
+                        & torch.isfinite(contact_pos).all(-1)
+                        & torch.isfinite(tip_force).all(-1))
+                    if actual_record_start is not None and episode_step >= actual_record_start:
+                        hand_q = robot.data.joint_pos[:, -16:]
+                        hand_limits = robot.data.joint_pos_limits[:, -16:]
+                        unsafe = collection_abort_mask(safety_peak,hand_q,hand_limits,
+                                                       args.max_safe_force_n,args.overforce_response)
+                        unsafe |= ~torch.isfinite(robot.data.joint_pos).all(-1)
+                        if bool(unsafe.any()):
+                            safety_abort = dict(episode_step=episode_step,
+                                env_ids=unsafe.nonzero().flatten().cpu().tolist(),
+                                peak_force_n=safety_peak.detach().cpu().tolist())
+                            label = ('Numerical collection stop' if args.overforce_response=='record'
+                                     else 'Independent collection safety stop')
+                            raise RuntimeError(f"{label}: {safety_abort}")
                 # Contact gate for the fixed teacher: all four tips loaded.
                 prev_all4 = (
                     current_pad_contact_valid
@@ -7437,14 +7717,22 @@ def main() -> None:
                         "contact_curvature_k1": contact_curvature_k1,
                         "contact_curvature_k2": contact_curvature_k2,
                         "fingertip_collision_found": contact_found.float(),
+                        "fingertip_body_collision_found": (contact_found | connector_found).float(),
                         "fingertip_contact": (
                             contact_found
                             & (tip_force_magnitude >= args.contact_threshold)
                             & current_pad_contact_valid
                         ).float(),
                         "fingertip_pad_contact_valid": (
-                            current_pad_contact_valid.float()
+                            legacy_pad_contact_valid.float()
                         ),
+                        "true_fingertip_contact_valid": (
+                            current_pad_contact_valid & contact_found
+                            & (tip_force_magnitude >= args.contact_threshold)
+                        ).float(),
+                        "fingertip_connector_found": connector_found.float(),
+                        "fingertip_connector_force_world": connector_force,
+                        "contact_safety_peak_force_n": safety_peak,
                         "fingertip_contact_pos_tip": contact_pos_tip,
                         "tip_x_des_world": debug["tip_x_des"],
                         "tip_x_ref_world": debug["tip_x_ref"],
@@ -7795,6 +8083,8 @@ def main() -> None:
                 print(f"[REJECT] {summary}")
     finally:
         progress.close()
+        if substep_safety is not None:
+            env.sim.step = substep_safety['original_step']
         if planner_palm_trajectory is not None:
             # DP_DATA_COLLECTION_GUIDE sample contract: the future commanded
             # palm trajectory (object frame) is a condition for the sample,
@@ -7885,7 +8175,20 @@ def main() -> None:
                 "strict_four_tip_continuous_contact": args.online_quality_gate,
                 "minimum_realized_rotation_deg": args.min_realized_rotation_deg,
                 "minimum_active_motion_ratio": args.min_active_motion_ratio,
-                "contact_gate": "full_fingertip_geom_found_and_3d_force_magnitude",
+                "contact_gate": ("split_true_fingertip_geom_found_and_3d_force_magnitude"
+                    if args.split_fingertip_collision else "full_fingertip_geom_found_and_3d_force_magnitude"),
+                "split_fingertip_collision": bool(args.split_fingertip_collision),
+                "collision_geometry": ("true_fingertip_contact_v1_split" if args.split_fingertip_collision else "legacy_merged"),
+                "controller_contact_scope": ("pad" if args.split_fingertip_collision else "body"),
+                "fixed_pad_orientation_constraint": not args.split_fingertip_collision,
+                "independent_force_stop_n": (args.max_safe_force_n
+                    if args.split_fingertip_collision and args.overforce_response=='stop' else 0.),
+                "overforce_response": args.overforce_response,
+                "overforce_event_threshold_n": args.max_safe_force_n,
+                "safety_observation_phase": ("actual_physics_substeps_and_post_step"
+                    if args.substep_force_safety else "post_step_only"),
+                "collection_safety_abort_json": json.dumps(safety_abort),
+                "true_tip_contact_definition_json": json.dumps(contact_observer.definition()) if contact_observer else 'null',
                 "contact_threshold": args.contact_threshold,
                 "contact_stiffness": args.contact_stiffness,
                 "contact_damping": args.contact_damping,
@@ -7894,6 +8197,14 @@ def main() -> None:
                 "fullhand_finger_damping": args.fullhand_finger_damping,
                 "fullhand_finger_effort_limit": args.fullhand_finger_effort_limit,
                 "fullhand_force_servo_gain": args.fullhand_force_servo_gain,
+                "fullhand_force_profile": args.fullhand_force_profile,
+                "stable_initialization": bool(args.stable_initialization),
+                "initialization_overrides_json": json.dumps(
+                    policy.initialization_overrides if hasattr(policy, 'initialization_overrides') else []),
+                "fullhand_force_config_json": json.dumps(
+                    __import__('collection_force_regulation').force_profile_description(
+                        policy.controllers[0].config, args.fullhand_force_profile)
+                    if hasattr(policy, 'controllers') else {}),
                 "physics_substeps": args.physics_substeps,
                 "initial_orientation_mode": args.initial_orientation_mode,
                 "object_angular_velocity_frame": "world",
@@ -7906,6 +8217,7 @@ def main() -> None:
                 "motion_mode": args.motion_mode,
                 "manifold_fixed_palm": bool(manifold_mode),
                 "planner_inverse": bool(planner_inverse_mode),
+                "planner_motion_indexing": "endpoint_sample_count_minus_one_v1",
                 "planner_settle_steps": int(args.planner_settle_steps),
                 "planner_file": (
                     str(args.planner_file) if args.planner_file is not None else ""

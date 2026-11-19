@@ -1,0 +1,1 @@
+../../mcc_finger_compliance_control/scripts/surface_mcc_finger.py

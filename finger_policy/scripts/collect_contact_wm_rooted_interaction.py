@@ -1,0 +1,1 @@
+../../mcc_finger_compliance_control/scripts/collect_contact_wm_rooted_interaction.py

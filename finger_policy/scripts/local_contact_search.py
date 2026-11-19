@@ -1,0 +1,1 @@
+../../mcc_finger_compliance_control/scripts/local_contact_search.py

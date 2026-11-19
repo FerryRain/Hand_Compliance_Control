@@ -65,7 +65,18 @@ def export(
     planner_waypoints: int = DEFAULT_PLANNER_WAYPOINTS,
     planner_step_frames: int = DEFAULT_PLANNER_STEP_FRAMES,
     motion_feature_step_frames: int = 5,
+    action_field: str | None = None,
 ) -> None:
+    """Export one inverted trajectory bundle into the DP H5 contract.
+
+    ``action_field`` names the supervised target channel independently of the
+    observation.  Every schema keeps ``q_hand`` as the causal live joint state
+    in ``state_fields``, so selecting a different target such as ``q_prior``
+    stores it under its own dataset instead of overwriting ``q_hand``: the
+    policy input must never be able to see a teacher trajectory.  The default
+    (``None``) preserves the historical behaviour, where observation and
+    target are the same ``q_hand`` array.
+    """
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with h5py.File(input_path, "r") as source, h5py.File(output_path, "w") as target:
         if str(source.attrs.get("contact_mask_source", "")) != (
@@ -110,12 +121,43 @@ def export(
         if missing:
             raise KeyError(f"Missing required inverted fields: {missing}")
 
+        if state_schema == DUAL_TRACK_SCHEMA:
+            if action_field not in (None, "q_prior"):
+                raise ValueError(
+                    f"state_schema={DUAL_TRACK_SCHEMA!r} always supervises "
+                    f"q_prior; action_field={action_field!r} is unsupported"
+                )
+            resolved_action_field = "q_prior"
+        else:
+            resolved_action_field = action_field or "q_hand"
+            if resolved_action_field != "q_hand":
+                # A supervised target channel stored next to, not instead of,
+                # the live joint state.  `q_hand` is still written below and
+                # still heads `state_fields`, so no teacher trajectory can
+                # reach the policy input through the observation contract.
+                if resolved_action_field not in source:
+                    raise KeyError(
+                        f"action_field={resolved_action_field!r} is missing from "
+                        f"{input_path}"
+                    )
+                live_shape = np.asarray(source["q_hand"]).shape
+                channel_shape = np.asarray(source[resolved_action_field]).shape
+                if channel_shape != live_shape:
+                    raise ValueError(
+                        f"action_field={resolved_action_field!r} has shape "
+                        f"{channel_shape}, expected {live_shape} to match q_hand"
+                    )
+
         for name in ("episode_id", "episode_step", "q_hand"):
             dataset = source[name]
             target.create_dataset(name, data=np.asarray(dataset))
         if state_schema == DUAL_TRACK_SCHEMA:
             for name in ("q_prior", "q_cmd", "delta_q_comp", "e_servo"):
                 target.create_dataset(name, data=np.asarray(source[name]))
+        elif resolved_action_field != "q_hand":
+            target.create_dataset(
+                resolved_action_field, data=np.asarray(source[resolved_action_field])
+            )
 
         base_shape = source["q_hand"].shape[:2]
         force_out = None
@@ -261,9 +303,7 @@ def export(
         target.attrs["palm_frame_body"] = "palm_lower"
         target.attrs["dp_state_schema"] = state_schema
         target.attrs["source_file"] = str(input_path)
-        target.attrs["action_field"] = (
-            "q_prior" if state_schema == DUAL_TRACK_SCHEMA else "q_hand"
-        )
+        target.attrs["action_field"] = resolved_action_field
         target.attrs["action_dim"] = 16
         target.attrs["action_representation"] = "absolute_q"
         target.attrs["action_coordinate_space"] = "joint_position_rad"
@@ -434,6 +474,28 @@ def validate_palm_dp_file(path: Path) -> None:
                 raise KeyError(f"{path}: missing required palm-frame field {name!r}")
             if not np.isfinite(np.asarray(file[name])).all():
                 raise ValueError(f"{path}: non-finite values in {name}")
+        declared_action = str(file.attrs.get("action_field", "q_hand"))
+        if declared_action != "q_hand":
+            # The loader resolves supervision from this attribute alone, so a
+            # declared target that is absent, mis-shaped or non-finite would
+            # silently misalign training targets instead of failing loudly.
+            if declared_action not in file:
+                raise KeyError(
+                    f"{path}: action_field={declared_action!r} is declared but "
+                    "no such dataset is stored"
+                )
+            channel = np.asarray(file[declared_action])
+            live = np.asarray(file["q_hand"])
+            if channel.shape != live.shape:
+                raise ValueError(
+                    f"{path}: action_field={declared_action!r} shape "
+                    f"{channel.shape} does not match q_hand {live.shape}"
+                )
+            if not np.isfinite(channel).all():
+                raise ValueError(
+                    f"{path}: non-finite values in action_field "
+                    f"{declared_action!r}"
+                )
         if "fingertip_contact_pos_palm" in file:
             point = np.asarray(file["fingertip_contact_pos_palm"], dtype=np.float64)
             mask = np.asarray(file["fingertip_contact_mask"]) > 0.5
@@ -473,12 +535,31 @@ def main() -> None:
         "--planner-step-frames", type=int, default=DEFAULT_PLANNER_STEP_FRAMES
     )
     parser.add_argument("--motion-feature-step-frames", type=int, default=5)
+    parser.add_argument(
+        "--action-field",
+        default=None,
+        help=(
+            "Dataset holding the supervised future target. Defaults to q_hand, "
+            "which makes observation and label the same causal live state. "
+            "Pass q_prior to supervise the pre-MCC teacher trajectory instead; "
+            "it is stored as its own dataset so the observation contract is "
+            "unchanged."
+        ),
+    )
     args = parser.parse_args()
     if args.block_size <= 0:
         raise ValueError("--block-size must be positive")
     if args.motion_feature_step_frames <= 0:
         raise ValueError("--motion-feature-step-frames must be positive")
-    output = args.output or args.file.with_name(f"{args.file.stem}_palm_dp.h5")
+    if args.output is not None:
+        output = args.output
+    elif args.action_field and args.action_field != "q_hand":
+        # Never let a different target land on the historical filename.
+        output = args.file.with_name(
+            f"{args.file.stem}_{args.action_field}_palm_dp.h5"
+        )
+    else:
+        output = args.file.with_name(f"{args.file.stem}_palm_dp.h5")
     export(
         args.file,
         output,
@@ -487,6 +568,7 @@ def main() -> None:
         args.planner_waypoints,
         args.planner_step_frames,
         args.motion_feature_step_frames,
+        args.action_field,
     )
 
 

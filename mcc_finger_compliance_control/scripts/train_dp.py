@@ -40,6 +40,9 @@ from dp_dataset import (
     state_fields,
     state_schema,
 )
+from dp_fk_aux_loss import diffusion_with_fk_loss
+from torch_hand_fk import TorchHandFK
+from dp_action_contract import clips_unit_range, resolve_action_clip, enforce_target_range
 
 
 def build_policy(args: argparse.Namespace, device: torch.device) -> DiffusionPolicy:
@@ -74,11 +77,29 @@ def build_policy(args: argparse.Namespace, device: torch.device) -> DiffusionPol
         num_train_timesteps=args.diffusion_steps,
         beta_schedule="squaredcos_cap_v2",
         prediction_type="epsilon",
-        clip_sample=True,
+        clip_sample=clips_unit_range(args),
         clip_sample_range=1.0,
         num_inference_steps=args.inference_steps,
     )
-    return DiffusionPolicy(config).to(device)
+    architecture = getattr(args, 'policy_architecture', 'unet')
+    if architecture == 'act':
+        from chunk_policy_models import ACTPolicy
+        return ACTPolicy(config, args).to(device)
+    policy = DiffusionPolicy(config)
+    if architecture == 'transformer_diffusion':
+        from chunk_policy_models import transformer_diffusion
+        policy.diffusion = transformer_diffusion(policy.diffusion, args)
+    elif architecture != 'unet':
+        raise ValueError(f'Unknown policy architecture: {architecture}')
+    conditioning = getattr(args, "conditioning_architecture", "flat")
+    if conditioning == "finger_history":
+        from finger_history_dp import FingerHistoryDiffusionModel
+        if getattr(args, "state_schema", None) != "contact_geometry_planner_motion":
+            raise ValueError("finger_history requires contact_geometry_planner_motion")
+        policy.diffusion = FingerHistoryDiffusionModel(policy.diffusion)
+    elif conditioning != "flat":
+        raise ValueError(f"Unknown conditioning architecture: {conditioning}")
+    return policy.to(device)
 
 
 def _to_device(
@@ -90,6 +111,51 @@ def _to_device(
     }
 
 
+def load_fixed_episode_split(
+    manifest_path: Path, dataset_path: Path, episode_ids: set[int]
+) -> tuple[list[int], list[int], list[int], list[int]]:
+    """Validate a frozen plan-group split before training can use it."""
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if Path(payload["dp_h5"]).resolve() != dataset_path.resolve():
+        raise ValueError("fixed split manifest belongs to a different DP H5")
+    if payload.get("action_field") != "q_hand":
+        raise ValueError("fixed split manifest does not declare q_hand supervision")
+    split_ids: dict[str, list[int]] = {
+        name: [] for name in ("train", "val", "test", "excluded_unmapped")
+    }
+    group_splits: dict[str, set[str]] = {}
+    seen: set[int] = set()
+    for row in payload["episodes"]:
+        eid = int(row["episode_id"])
+        split = str(row["split"])
+        if split not in split_ids:
+            raise ValueError(f"unknown fixed split {split!r} for episode {eid}")
+        if eid in seen:
+            raise ValueError(f"duplicate episode {eid} in fixed split")
+        seen.add(eid)
+        split_ids[split].append(eid)
+        if split != "excluded_unmapped":
+            group = str(row["related_plan_group_id"])
+            group_splits.setdefault(group, set()).add(split)
+    if seen != episode_ids:
+        raise ValueError(
+            f"fixed split episode IDs differ from H5: "
+            f"missing={sorted(episode_ids - seen)[:8]}, "
+            f"extra={sorted(seen - episode_ids)[:8]}"
+        )
+    conflicts = {key: value for key, value in group_splits.items() if len(value) > 1}
+    if conflicts:
+        raise ValueError(f"related plan groups cross fixed splits: {conflicts}")
+    if not split_ids["train"] or not split_ids["val"]:
+        raise ValueError("fixed split needs non-empty train and val episodes")
+    return (
+        sorted(split_ids["train"]),
+        sorted(split_ids["val"]),
+        sorted(split_ids["test"]),
+        sorted(split_ids["excluded_unmapped"]),
+    )
+
+
 @torch.no_grad()
 def validation_loss(
     policy: DiffusionPolicy,
@@ -99,10 +165,15 @@ def validation_loss(
 ) -> float:
     policy.eval()
     losses = []
+    components = []
     for batch_index, batch in enumerate(loader):
         if batch_index >= max_batches:
             break
         losses.append(policy.diffusion.compute_loss(_to_device(batch, device)).item())
+        if hasattr(policy.diffusion, 'last_loss_components'):
+            components.append(dict(policy.diffusion.last_loss_components))
+    policy.diffusion.validation_components = ({k: float(np.mean([x[k] for x in components]))
+                                              for k in components[0]} if components else {})
     policy.train()
     return float(np.mean(losses)) if losses else float("nan")
 
@@ -139,8 +210,7 @@ def overfit_metrics(
         len(indices), global_cond=global_condition, generator=generator
     )
     target = batch["action"]
-    mean = torch.as_tensor(action_mean, device=device).view(1, 1, -1)
-    scale = torch.as_tensor(action_scale, device=device).view(1, 1, -1)
+    scale = torch.as_tensor(action_scale, device=device).unsqueeze(0)
     error = (prediction - target) * scale
     teacher_future = torch.as_tensor(
         np.stack([dataset.future_q(int(index)) for index in indices]),
@@ -233,8 +303,9 @@ def write_metrics(
             axes[0].plot(steps, val_loss, marker="o", label="val noise loss")
         axes[0].set_yscale("log")
         axes[0].set_xlabel("training step")
-        axes[0].set_ylabel("MSE")
-        axes[0].set_title("Diffusion noise prediction")
+        act = records[0].get('policy_architecture') == 'act'
+        axes[0].set_ylabel('L1 + weighted KL' if act else "MSE")
+        axes[0].set_title('ACT native objective (legacy noise_loss column)' if act else "Diffusion noise prediction")
         axes[0].grid(True, alpha=0.3)
         axes[0].legend()
 
@@ -272,6 +343,14 @@ def write_metrics(
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--file", type=Path, required=True)
+    parser.add_argument('--window-selection-manifest',type=Path,default=None,
+        help='Reviewed window anchors with dataset/split hashes; preserves original histories and future labels.')
+    parser.add_argument(
+        "--episode-split-manifest",
+        type=Path,
+        default=None,
+        help="Frozen grouped train/val/test split; test episodes are never trained or selected on.",
+    )
     parser.add_argument(
         "--exclude-episode-ids",
         type=int,
@@ -304,14 +383,35 @@ def main() -> None:
         default=0.10,
         help=(
             "Abort when more than this fraction of DAgger normalized action "
-            "scalars exceed [-1,1]. Use a negative value only for diagnostics."
+            "scalars exceed [-1,1] in legacy_unit mode. In none mode this is "
+            "a diagnostic statistic only, not an action bound."
         ),
     )
-    parser.add_argument(
+    parser.add_argument('--action-sample-clip', choices=('legacy_unit', 'none'), default=None,
+        help='none removes the data-derived normalized [-1,1] sampling bound; '
+             'normalization remains affine and execution limits remain unchanged. '
+             'Omitted: inherit checkpoint setting, or legacy_unit for an old/new unspecified run.')
+    checkpoint_group = parser.add_mutually_exclusive_group()
+    checkpoint_group.add_argument(
         "--resume",
         type=Path,
         default=None,
         help="Initialize policy weights from an existing compatible checkpoint.",
+    )
+    checkpoint_group.add_argument(
+        "--init-checkpoint", type=Path, default=None,
+        help=("Initialize model and its physical normalization on a new fixed "
+              "grouped dataset split; reset optimizer and training-step count. "
+              "Never inherit the source checkpoint's numeric episode IDs."),
+    )
+    parser.add_argument(
+        "--resume-optimizer",
+        action="store_true",
+        help=(
+            "Continue model and AdamW state from --resume, interpreting --steps "
+            "as the total target step. Data-loader and AMP scaler state are not "
+            "restored, so this is not a bit-exact continuation."
+        ),
     )
     parser.add_argument(
         "--preserve-checkpoint-split",
@@ -333,6 +433,20 @@ def main() -> None:
     )
     parser.add_argument("--output", type=Path, default=None)
     parser.add_argument("--device", default="cuda:0")
+    parser.add_argument('--policy-architecture', choices=('unet','act','transformer_diffusion'), default='unet')
+    parser.add_argument('--transformer-dim', type=int, default=768)
+    parser.add_argument('--transformer-heads', type=int, default=8)
+    parser.add_argument('--transformer-encoder-layers', type=int, default=4)
+    parser.add_argument('--transformer-decoder-layers', type=int, default=4)
+    parser.add_argument('--act-posterior-layers', type=int, default=2)
+    parser.add_argument('--act-latent-dim', type=int, default=32)
+    parser.add_argument('--act-kl-weight', type=float, default=10.)
+    parser.add_argument('--balance-object-groups', action='store_true',
+        help='Equal object/initial-group/episode sampling of admitted train windows; requires a fixed split.')
+    parser.add_argument('--balance-source-episodes', action='store_true',
+                        help='Equal cohort probability, equal episode within cohort; requires manifest cohort labels')
+    parser.add_argument("--conditioning-architecture", choices=("flat", "finger_history"),
+                        default="flat", help="Shared per-finger temporal encoding or legacy flat history")
     parser.add_argument("--steps", type=int, default=100_000)
     parser.add_argument("--batch-size", type=int, default=256)
     parser.add_argument("--lr", type=float, default=3.0e-4)
@@ -341,12 +455,14 @@ def main() -> None:
     parser.add_argument("--pred-horizon", type=int, default=32)
     parser.add_argument(
         "--input-profile",
-        choices=("B2", "B0"),
+        choices=("B2", "B0", "B2_no_q_velocity"),
         default="B2",
         help=(
             "B2 uses every exported dual-track-v3 channel. B0 keeps only "
             "the 84-D execution-observation subset while retaining the same "
-            "242-D network interface; disabled normalized channels are zero."
+            "242-D network interface; disabled normalized channels are zero. "
+            "B2_no_q_velocity is a motion96 anchored-delta ablation: mask only "
+            "explicit q velocity, retain q history and every other B2 channel."
         ),
     )
     parser.add_argument(
@@ -357,7 +473,8 @@ def main() -> None:
             "absolute_q (default) predicts future joint positions directly and "
             "avoids integrating DP bias; kinematic_residual_q predicts a local "
             "constant-velocity correction but reconstructs absolute q before "
-            "execution; delta_q is retained only for legacy A/B."
+            "execution; anchored_delta_q is the current-q-anchored H16 "
+            "experiment; delta_q is retained only for legacy A/B."
         ),
     )
     parser.add_argument(
@@ -381,6 +498,18 @@ def main() -> None:
         "tip_delta_tangent_palm). Defaults to the H5 attrs.",
     )
     parser.add_argument("--diffusion-steps", type=int, default=100)
+    parser.add_argument('--near-q-loss-weight',type=float,default=0.,
+        help='Optional low-noise physical joint Huber auxiliary; no recovery labels added.')
+    parser.add_argument('--near-q-max-noise-timestep',type=int,default=24)
+    parser.add_argument('--near-q-prefix',type=int,default=7)
+    parser.add_argument(
+        "--fk-loss-weight", type=float, default=0.0,
+        help="Optional fingertip FK loss weight (loss unit: mm squared); 0 is Q0.",
+    )
+    parser.add_argument(
+        "--fk-max-noise-timestep", type=int, default=24,
+        help="Apply FK loss only at diffusion training timesteps up to this index.",
+    )
     parser.add_argument("--inference-steps", type=int, default=100)
     parser.add_argument("--noise-scheduler", choices=("DDPM", "DDIM"), default="DDPM")
     parser.add_argument("--down-dims", type=int, nargs="+", default=(256, 512, 1024))
@@ -451,16 +580,51 @@ def main() -> None:
         help="Training-window trajectories sampled after each checkpoint; 0 disables.",
     )
     args = parser.parse_args()
+    if args.window_selection_manifest is not None:
+        if args.episode_split_manifest is None or args.dagger_file or args.exclude_episode_ids:
+            raise ValueError('Window admission requires a fixed grouped split and no DAgger overlay/episode deletion')
+        if args.action_representation!='anchored_delta_q':
+            raise ValueError('Reviewed window admission currently supports anchored_delta_q')
+
+    if args.resume_optimizer and args.resume is None:
+        parser.error("--resume-optimizer requires --resume")
+
+    if args.episode_split_manifest is not None and (
+        args.dagger_file or args.exclude_episode_ids
+    ):
+        raise ValueError(
+            "--episode-split-manifest is incompatible with --dagger-file and --exclude-episode-ids"
+        )
+
+    if args.fk_loss_weight < 0.0:
+        raise ValueError("--fk-loss-weight must be nonnegative")
+    if args.near_q_loss_weight < 0 or args.near_q_prefix < 1:
+        raise ValueError('Invalid near-q auxiliary configuration')
+    if args.near_q_loss_weight > 0:
+        if args.fk_loss_weight > 0 or args.action_representation != 'anchored_delta_q':
+            raise ValueError('Near-q ablation requires anchored_delta_q and no FK auxiliary')
+        if not 0 <= args.near_q_max_noise_timestep < args.diffusion_steps:
+            raise ValueError('Near-q noise timestep out of range')
+    if args.fk_loss_weight > 0.0 and not 0 <= args.fk_max_noise_timestep < args.diffusion_steps:
+        raise ValueError("--fk-max-noise-timestep must be within the diffusion schedule")
 
     if not 0.0 <= args.dagger_sample_ratio < 1.0:
         raise ValueError("--dagger-sample-ratio must be in [0, 1)")
     if args.dagger_sample_ratio > 0.0 and not args.dagger_file:
         raise ValueError("A positive --dagger-sample-ratio requires --dagger-file")
+    if args.init_checkpoint is not None:
+        if args.episode_split_manifest is None:
+            raise ValueError('--init-checkpoint requires an explicit new grouped split manifest')
+        if not args.reuse_checkpoint_normalization:
+            raise ValueError('Weight initialization must preserve checkpoint normalization for physical decoding parity')
+    initialization_path = args.resume or args.init_checkpoint
     resume_checkpoint = (
-        torch.load(args.resume, map_location="cpu", weights_only=False)
-        if args.resume is not None
+        torch.load(initialization_path, map_location="cpu", weights_only=False, mmap=True)
+        if initialization_path is not None
         else None
     )
+    args.action_sample_clip = resolve_action_clip(args.action_sample_clip,
+        None if resume_checkpoint is None else resume_checkpoint['config'])
 
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
@@ -485,6 +649,13 @@ def main() -> None:
             f"2**len(down_dims)={downsampling_factor}"
         )
 
+    if args.policy_architecture != 'unet' and (args.conditioning_architecture != 'flat'
+            or args.fk_loss_weight or args.near_q_loss_weight):
+        raise ValueError('Architecture comparison requires flat full-information conditioning and no auxiliary losses')
+    if args.transformer_dim % args.transformer_heads or args.transformer_dim % 2:
+        raise ValueError('Transformer width must be even and divisible by head count')
+    if args.act_kl_weight < 0:
+        raise ValueError('ACT KL weight must be nonnegative')
     episodes = load_episodes(
         args.file, args.stride, args.action_field, args.action_dim
     )
@@ -511,6 +682,9 @@ def main() -> None:
             bound_normalized_action = bool(
                 dagger_file.attrs.get("bound_normalized_action", False)
             )
+        if bound_normalized_action and not clips_unit_range(args):
+            raise ValueError('Unbounded DAgger must use unmodified expert labels; '
+                             're-export sources declaring bound_normalized_action instead of silently reusing bounded data')
         dagger_episodes = load_episodes(
             dagger_path, args.stride, args.action_field, args.action_dim
         )
@@ -541,6 +715,14 @@ def main() -> None:
         )
     args.action_dim = dataset_action_dim
     args.action_field = dataset_action_field
+    if args.episode_split_manifest is not None and dataset_action_field != "q_hand":
+        raise ValueError("The frozen single-point split requires q_hand labels")
+    if args.fk_loss_weight > 0.0 and (
+        dataset_action_field != "q_hand"
+        or dataset_action_dim != ACTION_DIM
+        or args.action_representation != "absolute_q"
+    ):
+        raise ValueError("FK auxiliary loss requires absolute 16-D q_hand targets")
     cartesian_action_fields = (
         "tip_delta_tangent_palm",
         "tip_motion_tangent_palm",
@@ -575,6 +757,12 @@ def main() -> None:
     args.environment_state_dim = environment_state_dim
     args.state_dim = state_dim
     args.state_schema = dataset_state_schema
+    if args.conditioning_architecture == "finger_history":
+        from finger_history_dp import STATE_FIELDS
+        if tuple(map(tuple, dataset_state_fields)) != STATE_FIELDS:
+            raise ValueError("finger_history input field order differs from the motion96 contract")
+        if args.input_profile != "B2":
+            raise ValueError("finger_history comparison must retain all B2 inputs")
     args.control_dt = dataset_control_dt
     args.action_waypoint_dt = args.stride * dataset_control_dt
     field_slices: dict[str, slice] = {}
@@ -607,6 +795,10 @@ def main() -> None:
                 f"B0 contract must expose exactly 84 dimensions, got "
                 f"{int(state_input_mask.sum())}"
             )
+    elif args.input_profile == "B2_no_q_velocity":
+        from dp_observation_profiles import without_explicit_q_velocity
+        state_input_mask = without_explicit_q_velocity(
+            field_slices, state_dim, dataset_state_schema, args.action_representation)
     active_input_fields = [
         name
         for name, field_slice in field_slices.items()
@@ -627,6 +819,10 @@ def main() -> None:
         args.motion_feature_step_frames = int(dataset_motion_config["step_frames"])
         args.motion_feature_dt = float(dataset_motion_config["feature_dt"])
     if resume_checkpoint is not None:
+        if resume_checkpoint['config'].get('policy_architecture', 'unet') != args.policy_architecture:
+            raise ValueError('Cannot resume a different policy architecture')
+        if resume_checkpoint["config"].get("conditioning_architecture", "flat") != args.conditioning_architecture:
+            raise ValueError("Cannot resume across conditioning architectures; train the new encoder from scratch")
         compatibility = {
             "state_dim": (int(resume_checkpoint["state_dim"]), state_dim),
             "robot_state_dim": (
@@ -649,19 +845,55 @@ def main() -> None:
         }
         if mismatched:
             raise ValueError(f"Resume checkpoint is incompatible: {mismatched}")
+        if args.init_checkpoint is not None:
+            old_fields=[tuple(field) for field in resume_checkpoint['state_fields']]
+            if old_fields!=[tuple(field) for field in dataset_state_fields]:
+                raise ValueError('Initialization checkpoint observation layout changed')
+            for field in ('obs_horizon','pred_horizon','stride'):
+                if int(resume_checkpoint['config'][field])!=int(getattr(args,field)):
+                    raise ValueError(f'Initialization checkpoint {field} changed')
     episode_domain = episode_domains(args.file)
+    fixed_split = (
+        load_fixed_episode_split(
+            args.episode_split_manifest, args.file, clean_episode_ids
+        )
+        if args.episode_split_manifest is not None
+        else None
+    )
     with h5py.File(args.file, "r") as split_file:
         train_only_domains = set(
             json.loads(str(split_file.attrs.get("train_only_domains_json", "[]")))
         )
-    if resume_checkpoint is not None and args.preserve_checkpoint_split:
+    test_ids: list[int] = []
+    excluded_ids: list[int] = []
+    if fixed_split is not None:
+        if resume_checkpoint is not None and args.init_checkpoint is None:
+            prior_manifest = resume_checkpoint['config'].get('episode_split_manifest')
+            if prior_manifest is None:
+                raise ValueError('fixed-split continuation requires a checkpoint trained with a grouped manifest')
+            prior = json.loads(Path(prior_manifest).read_text())
+            current = json.loads(args.episode_split_manifest.read_text())
+            previous_groups = {r['related_plan_group_id']:r['split'] for r in prior['episodes']}
+            current_groups = {r['related_plan_group_id']:r['split'] for r in current['episodes']}
+            changed = [g for g,s in previous_groups.items() if current_groups.get(g)!=s]
+            if changed:
+                raise ValueError(f'continuation changed or removed existing grouped splits: {changed[:8]}')
+        train_ids, val_ids, test_ids, excluded_ids = fixed_split
+        split_strategy = "fixed_grouped_manifest"
+    elif resume_checkpoint is not None and args.preserve_checkpoint_split:
         checkpoint_train = {
             int(value) for value in resume_checkpoint["train_episode_ids"]
         }
         checkpoint_val = {
             int(value) for value in resume_checkpoint["val_episode_ids"]
         }
-        unknown = clean_episode_ids - checkpoint_train - checkpoint_val
+        checkpoint_test = {
+            int(value) for value in resume_checkpoint.get("test_episode_ids", [])
+        }
+        checkpoint_excluded = clean_episode_ids - checkpoint_train - checkpoint_val - checkpoint_test
+        unknown = (
+            set() if args.resume_optimizer else checkpoint_excluded
+        )
         if unknown:
             raise ValueError(
                 "The clean H5 contains episodes absent from the resume checkpoint "
@@ -669,6 +901,13 @@ def main() -> None:
             )
         train_ids = sorted((clean_episode_ids & checkpoint_train) | dagger_episode_ids)
         val_ids = sorted(clean_episode_ids & checkpoint_val)
+        if args.resume_optimizer:
+            if Path(resume_checkpoint["config"]["file"]).resolve() != args.file.resolve():
+                raise ValueError("Optimizer continuation requires the original H5")
+            if dagger_episode_ids:
+                raise ValueError("Optimizer continuation cannot add DAgger episodes")
+            test_ids = sorted(checkpoint_test)
+            excluded_ids = sorted(checkpoint_excluded)
         split_strategy = "resume_checkpoint_clean_split_plus_dagger_train_only"
     elif episode_domain:
         # Split every object independently.  A global shuffle can move the
@@ -698,6 +937,20 @@ def main() -> None:
             list(episodes), args.val_ratio, args.seed
         )
         split_strategy = "random_episode"
+    window_selection=None
+    window_selection_audit=None
+    args.window_selection_sha256=None
+    if args.window_selection_manifest is not None:
+        from teacher_window_selection import load_selection, selected_normalization, apply_selection, action_range
+        if dataset_action_field!='q_hand' or dataset_action_dim!=16:
+            raise ValueError('Reviewed teacher windows require measured 16D q_hand labels')
+        window_selection,window_selection_audit=load_selection(
+            args.window_selection_manifest,args.file,args.episode_split_manifest,episodes,
+            args.obs_horizon,args.pred_horizon,args.stride)
+        args.window_selection_sha256=window_selection_audit['manifest_sha256']
+    if args.resume_optimizer:
+        if resume_checkpoint['config'].get('window_selection_sha256')!=args.window_selection_sha256:
+            raise ValueError('Optimizer continuation must preserve the reviewed window selection')
     if resume_checkpoint is not None and args.reuse_checkpoint_normalization:
         checkpoint_normalization = resume_checkpoint["normalization"]
         normalization = Normalization(
@@ -714,6 +967,9 @@ def main() -> None:
                 checkpoint_normalization["action_std"], dtype=np.float32
             ),
         )
+    elif window_selection is not None:
+        normalization=selected_normalization(episodes,train_ids,window_selection,
+            args.obs_horizon,args.pred_horizon,dataset_state_schema)
     else:
         normalization = compute_normalization(
             episodes,
@@ -784,6 +1040,20 @@ def main() -> None:
         )
         for domain in sorted(set(episode_domain.values()))
     }
+    if window_selection is not None:
+        maximum=action_range(episodes,train_ids,window_selection,args.pred_horizon,normalization)
+        window_selection_audit['train_normalized_action_abs_max']=maximum
+        enforce_target_range(maximum, args.action_sample_clip)
+        window_selection_audit['action_sample_clip'] = args.action_sample_clip
+        window_selection_audit['train']=apply_selection(train_set,window_selection)
+        window_selection_audit['val']=apply_selection(val_set,window_selection)
+        window_selection_audit['validation_domains']={
+            domain:apply_selection(dataset,window_selection) for domain,dataset in validation_sets_by_domain.items()}
+        window_selection_audit['checkpoint_normalization_reused']=bool(
+            resume_checkpoint is not None and args.reuse_checkpoint_normalization)
+        if window_selection_audit['checkpoint_normalization_reused']:
+            window_selection_audit['normalization_scope']='Reused checkpoint normalization; no refit to selected labels'
+        if not val_set:raise ValueError('No admitted validation windows')
     if not train_set:
         raise ValueError("No training windows for the selected horizons")
 
@@ -806,6 +1076,8 @@ def main() -> None:
             "abs_p95": float(np.percentile(absolute_actions, 95)),
             "abs_max": float(np.max(absolute_actions)),
         }
+        if not np.isfinite(absolute_actions).all():
+            raise ValueError('Nonfinite DAgger action labels')
         print(
             "[DAGGER] normalized action "
             f"outside={100.0 * outside_fraction:.2f}% "
@@ -813,7 +1085,8 @@ def main() -> None:
             f"max={dagger_action_stats['abs_max']:.3f}"
         )
         if (
-            args.max_dagger_action_outside_fraction >= 0.0
+            clips_unit_range(args)
+            and args.max_dagger_action_outside_fraction >= 0.0
             and outside_fraction > args.max_dagger_action_outside_fraction
         ):
             raise ValueError(
@@ -854,6 +1127,8 @@ def main() -> None:
             "dagger_action_stats": dagger_action_stats,
             "train_episode_ids": train_ids,
             "val_episode_ids": val_ids,
+            "test_episode_ids": test_ids,
+            "excluded_episode_ids": excluded_ids,
             "train_windows": len(train_set),
             "val_windows": len(val_set),
             "planner": dataset_planner_config,
@@ -861,6 +1136,7 @@ def main() -> None:
             "episode_domains": episode_domain,
             "train_only_domains": sorted(train_only_domains),
             "split_strategy": split_strategy,
+            "window_selection": window_selection_audit,
             "contact_normal_polarity": dataset_normal_polarity,
         },
     }
@@ -874,6 +1150,26 @@ def main() -> None:
         f"windows={len(train_set)}/{len(val_set)} state={state_dim}d"
     )
     train_sampler = None
+    if args.balance_object_groups:
+        if args.balance_source_episodes or args.dagger_file or args.episode_split_manifest is None:
+            raise ValueError('Object-group balancing requires a fixed split and no source balancing or DAgger overlay')
+        from teacher_window_selection import object_group_weights
+        payload = json.loads(args.episode_split_manifest.read_text())
+        weights, sampling_audit = object_group_weights(train_set.windows, payload['episodes'])
+        (output/'sampling_audit.json').write_text(json.dumps(sampling_audit, indent=2))
+        train_sampler = WeightedRandomSampler(torch.as_tensor(weights, dtype=torch.double),
+            num_samples=len(train_set), replacement=True,
+            generator=torch.Generator().manual_seed(args.seed+7000))
+    if args.balance_source_episodes:
+        if args.dagger_file or args.episode_split_manifest is None:
+            raise ValueError('Balanced source sampling requires a fixed manifest and no DAgger overlay')
+        from policy_comparison_sampling import balanced_weights
+        payload = json.loads(args.episode_split_manifest.read_text())
+        weights, sampling_audit = balanced_weights(train_set.windows, payload['episodes'])
+        (output/'sampling_audit.json').write_text(json.dumps(sampling_audit, indent=2))
+        train_sampler = WeightedRandomSampler(torch.as_tensor(weights, dtype=torch.double),
+            num_samples=len(train_set), replacement=True,
+            generator=torch.Generator().manual_seed(args.seed+7000))
     if dagger_episode_ids and args.dagger_sample_ratio > 0.0:
         clean_count = int(np.sum(~dagger_window))
         dagger_count = int(np.sum(dagger_window))
@@ -912,17 +1208,59 @@ def main() -> None:
     )
 
     policy = build_policy(args, device)
+    (output/'model_summary.json').write_text(json.dumps(dict(
+        architecture=args.policy_architecture, parameters=sum(p.numel() for p in policy.parameters()),
+        training_objective='L1+KL' if args.policy_architecture=='act' else 'epsilon_MSE',
+        inference='z=0 deterministic' if args.policy_architecture=='act' else args.noise_scheduler,
+        scheduler='unchanged', contact_inputs='full existing state history'), indent=2))
+    fk = TorchHandFK().to(device) if args.fk_loss_weight > 0.0 else None
+    action_mean_tensor = torch.as_tensor(
+        normalization.action_mean, dtype=torch.float32, device=device
+    )
+    action_scale_tensor = torch.as_tensor(
+        normalization.action_std, dtype=torch.float32, device=device
+    )
+    near_q_scale=None
+    if args.near_q_loss_weight > 0:
+        from dp_near_q_loss import fit_error_scale,diffusion_with_near_q_loss
+        fitted=fit_error_scale(episodes,train_ids,args.obs_horizon,args.pred_horizon)
+        near_q_scale=torch.as_tensor(fitted,device=device)
+        np.savez_compressed(output/'near_q_error_scale.npz',scale_rad=fitted,
+            train_episode_ids=train_ids,quantile=.95,floor_rad=.001745329252)
     if resume_checkpoint is not None:
         policy.load_state_dict(resume_checkpoint["model"], strict=True)
-        print(f"[DP] initialized model from {args.resume}")
+        print(f"[DP] initialized model from {initialization_path}")
     optimizer = torch.optim.AdamW(
         policy.parameters(), lr=args.lr, weight_decay=1.0e-5
     )
+    start_step = 1
+    if args.resume_optimizer:
+        if "optimizer" not in resume_checkpoint:
+            raise ValueError("Resume checkpoint has no optimizer state")
+        optimizer.load_state_dict(resume_checkpoint["optimizer"])
+        for group in optimizer.param_groups:
+            group["lr"] = args.lr
+        start_step = int(resume_checkpoint["step"]) + 1
+        if start_step > args.steps:
+            raise ValueError(
+                f"Resume checkpoint is already at step {start_step - 1}, "
+                f"beyond target --steps={args.steps}"
+            )
+        print(f"[DP] continuing AdamW from step {start_step - 1}")
     scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda")
     iterator = iter(train_loader)
-    progress = tqdm(range(1, args.steps + 1), dynamic_ncols=True, desc="LeRobot DP")
-    best_metric = float("inf")
+    progress = tqdm(range(start_step, args.steps + 1), dynamic_ncols=True, desc="LeRobot DP")
+    best_metric = (
+        float(resume_checkpoint.get("trajectory_metrics", {}).get("record", {}).get(
+            "val_sample_mae_rad", float("inf")
+        ))
+        if args.resume_optimizer else float("inf")
+    )
     metric_records: list[dict[str, float | int]] = []
+    if resume_checkpoint is not None and Path(resume_checkpoint['config']['file']).resolve()!=args.file.resolve():
+        # Validation data changed; select the expanded model within its own
+        # evaluation set while preserving the original DP0 checkpoint.
+        best_metric = float('inf')
 
     def save(step: int, loss: float, metrics: dict[str, float], name: str) -> None:
         torch.save(
@@ -932,7 +1270,9 @@ def main() -> None:
                 "optimizer": optimizer.state_dict(),
                 "normalization": asdict(normalization),
                 "config": vars(args),
-                "architecture": "lerobot_diffusion_conditional_unet1d",
+                "architecture": ("lerobot_diffusion_finger_history_unet1d"
+                                 if args.conditioning_architecture == "finger_history"
+                                 else "lerobot_diffusion_conditional_unet1d"),
                 "state_dim": state_dim,
                 "robot_state_dim": robot_state_dim,
                 "environment_state_dim": environment_state_dim,
@@ -948,6 +1288,7 @@ def main() -> None:
                 "contact_normal_polarity": dataset_normal_polarity,
                 "train_episode_ids": train_ids,
                 "val_episode_ids": val_ids,
+                "test_episode_ids": test_ids,
                 "noise_loss": loss,
                 "trajectory_metrics": metrics,
             },
@@ -962,8 +1303,29 @@ def main() -> None:
             batch = next(iterator)
         batch = _to_device(batch, device)
         optimizer.zero_grad(set_to_none=True)
+        near_q_loss=batch['action'].new_zeros(())
         with torch.autocast(device_type=device.type, enabled=device.type == "cuda"):
-            loss = policy.diffusion.compute_loss(batch)
+            if near_q_scale is not None:
+                loss,noise_loss,near_q_loss=diffusion_with_near_q_loss(policy,batch,
+                    action_scale=action_scale_tensor,error_scale=near_q_scale,
+                    weight=args.near_q_loss_weight,max_timestep=args.near_q_max_noise_timestep,
+                    prefix=args.near_q_prefix)
+                fk_loss_mm2=loss.new_zeros(())
+            elif fk is None:
+                loss = policy.diffusion.compute_loss(batch)
+                noise_loss = loss
+                fk_loss_mm2 = loss.new_zeros(())
+            else:
+                loss, noise_loss, fk_loss_mm2 = diffusion_with_fk_loss(
+                    policy, batch, fk=fk,
+                    action_mean=action_mean_tensor,
+                    action_scale=action_scale_tensor,
+                    fk_weight=args.fk_loss_weight,
+                    fk_max_noise_timestep=args.fk_max_noise_timestep,
+                )
+        if not torch.isfinite(loss).item():
+            raise RuntimeError(f'Nonfinite {args.policy_architecture} training loss at step {step}')
+        train_components = dict(getattr(policy.diffusion, 'last_loss_components', {}))
         scaler.scale(loss).backward()
         scaler.unscale_(optimizer)
         nn.utils.clip_grad_norm_(policy.parameters(), 1.0)
@@ -1001,7 +1363,16 @@ def main() -> None:
             )
             record: dict[str, float | int] = {
                 "step": step,
-                "train_noise_loss": float(loss.item()),
+                'policy_architecture': args.policy_architecture,
+                'train_act_reconstruction_l1': train_components.get('reconstruction_l1', 0.),
+                'train_act_kl': train_components.get('kl', 0.),
+                'val_act_reconstruction_l1': getattr(policy.diffusion, 'validation_components', {}).get('reconstruction_l1', 0.),
+                'val_act_kl': getattr(policy.diffusion, 'validation_components', {}).get('kl', 0.),
+                "train_noise_loss": float(noise_loss.item()),
+                "train_near_q_loss":float(near_q_loss.item()),
+                "train_weighted_near_q_loss":float(args.near_q_loss_weight*near_q_loss.item()),
+                "train_fk_loss_mm2": float(fk_loss_mm2.item()),
+                "train_total_loss": float(loss.item()),
                 "val_noise_loss": val_noise_loss,
                 "train_sample_mae_rad": train_metrics.get(
                     "sample_mae_rad", float("nan")
@@ -1119,6 +1490,7 @@ def main() -> None:
         "contact_normal_polarity": dataset_normal_polarity,
         "action_representation": args.action_representation,
         "architecture": "LeRobot DiffusionPolicy / conditional 1-D U-Net",
+        "conditioning_architecture": args.conditioning_architecture,
         "input": {
             "observation.state": {
                 name: size for name, size in robot_state_fields
@@ -1131,7 +1503,7 @@ def main() -> None:
         "output": {
             (
                 "future_q_hand_delta"
-                if args.action_representation == "delta_q"
+                if args.action_representation in ("delta_q", "anchored_delta_q")
                 else (
                     "future_q_hand_kinematic_residual_reconstructed_absolute"
                     if args.action_representation == "kinematic_residual_q"

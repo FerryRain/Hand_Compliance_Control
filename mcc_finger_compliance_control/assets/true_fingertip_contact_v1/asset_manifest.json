@@ -1,0 +1,13 @@
+{
+  "schema": "true_fingertip_contact_assets_v1",
+  "origin": "/tmp/Hand_Compliance_Control_pad_tactile_v1/mcc_finger_compliance_control/assets/pad_tactile_v1",
+  "files": {
+    "fingertip_two_part/connector_convex.obj": "65e17c83261c30baf4387148d0fd60863e4ae1ce22110052bd5b5865d2d96f6b",
+    "fingertip_two_part/split_manifest.json": "305357d9a08865dc1fc08fdaa5be2b71053465133dc78ce4dd6ec9cd6a85ae53",
+    "fingertip_two_part/pad_convex.obj": "02d323c6d0edeafb7bfe22f2de4d168f7ca03b556ff0f68b2be03e9febac6431",
+    "thumb_fingertip_two_part/connector_convex.obj": "eca6e37017935fd5f835fbb8e83060d89d8e0ba0be8330ce0945cce1b46b8f7f",
+    "thumb_fingertip_two_part/split_manifest.json": "c41ed717b3d53da5885d5f50bd8c089c148556a1cc4e301840a199f866b3ab24",
+    "thumb_fingertip_two_part/pad_convex.obj": "ef853207c7ec92770afe1ef98d61c34c219d6a7945b5dac19b1b7f42af7eb6a9"
+  },
+  "scope": "Previously interactively accepted ordinary/thumb fingertip versus connector split. Evaluation geometry only; no collision/material changes."
+}

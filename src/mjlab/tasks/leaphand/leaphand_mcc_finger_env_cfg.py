@@ -26,11 +26,23 @@ from mjlab.sim import MujocoCfg, SimulationCfg
 from mjlab.terrains import TerrainEntityCfg
 from mjlab.viewer import ViewerConfig
 from mjlab.utils.lab_api.math import quat_apply_inverse
-from mcc_finger_compliance_control.scripts.object_catalog import (
-    ObjectConfig,
-    add_object_body,
-    load_object_config,
-)
+# ``object_catalog`` ships with the main repo AND with the standalone
+# recovery_data_collect bundle (recovery_standalone/scripts/), which adds its
+# own scripts directory to sys.path. Prefer whichever copy is already on
+# sys.path and fall back to the main repo package, so this shared task
+# definition works from either tree without duplicating the file here.
+try:
+    from object_catalog import (
+        ObjectConfig,
+        add_object_body,
+        load_object_config,
+    )
+except ImportError:
+    from mcc_finger_compliance_control.scripts.object_catalog import (
+        ObjectConfig,
+        add_object_body,
+        load_object_config,
+    )
 
 _LEAPHAND_XML = (
     Path(__file__).resolve().parents[2]

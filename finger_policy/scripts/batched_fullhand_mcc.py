@@ -1,0 +1,1 @@
+../../mcc_finger_compliance_control/scripts/batched_fullhand_mcc.py

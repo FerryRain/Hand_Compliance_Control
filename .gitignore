@@ -36,3 +36,14 @@ CLAUDE.md
 /.runtime_tmp/
 /.runtime_debug/
 /.runtime_tmpdebug/
+
+# Local backups and archived experiment files (at any depth).
+backup/
+backups/
+
+# Generated surface resources and local release staging.
+/releases/
+/mcc_finger_compliance_control/assets/irregular_surface_candidates*/
+/mcc_finger_compliance_control/assets/local_curvature_candidates*/
+/mcc_finger_compliance_control/assets/grasp_surface_candidates*/
+/mcc_finger_compliance_control/assets/grasp_surface_expansion*/

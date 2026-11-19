@@ -358,14 +358,15 @@ def load_object_config(object_id: str) -> ObjectConfig:
 
 
 class MeshNormalOracle:
-    """Smooth contact normals from the high-resolution source OBJ vertices.
+    """Continuous contact normals from the undecomposed source mesh.
 
     MuJoCo contacts collide against the convex-decomposed collision parts,
-    whose seams introduce artificial normal discontinuities (measured up to
-    ~90 deg across seams).  This oracle ignores the collision mesh for
-    normals: it re-samples the contact point on the visual mesh point cloud
-    and fits a local least-squares plane (PCA) inside a fixed radius, which
-    both removes seam jumps and low-pass filters the discrete face normals.
+    whose seams introduce artificial normal discontinuities.  A collision
+    point is only a query anchor: it is projected to the exact closest
+    triangle of the original mesh and the three source vertex normals are
+    barycentrically interpolated there.  This avoids the old radius-PCA
+    ambiguity, which could mix opposite walls and flip by 180 degrees when a
+    convex proxy contact lay between nearby source-surface branches.
     """
 
     def __init__(
@@ -382,6 +383,13 @@ class MeshNormalOracle:
         ]
         if not meshes:
             raise ValueError("MeshNormalOracle requires at least one mesh geom")
+        self.mesh = trimesh.util.concatenate(meshes)
+        # Materialize once.  Trimesh derives these from the consistently
+        # wound original faces and shares normals across adjacent triangles,
+        # giving a continuous field inside each smooth source patch.
+        self.vertex_normals = np.asarray(
+            self.mesh.vertex_normals, dtype=np.float64
+        ).copy()
         self.vertices = np.vstack([mesh.vertices for mesh in meshes])
         self.tree = cKDTree(self.vertices)
         # Outward sign reference: the source mesh's own (consistently wound)
@@ -417,60 +425,38 @@ class MeshNormalOracle:
         return cls(mesh_geoms, scale=scale, radius_m=radius_m)
 
     def query_object_frame(self, points: np.ndarray) -> np.ndarray:
-        """Estimate outward normals for points given in the object frame."""
+        """Return interpolated source-mesh outward normals in object frame."""
+
+        return self.query_surface_object_frame(points)[1]
+
+    def query_surface_object_frame(
+        self, points: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Project anchors to the source mesh and return point/normal/distance."""
 
         points = np.asarray(points, dtype=np.float64)
         single = points.ndim == 1
         batch = points[None, :] if single else points
-        normals = np.zeros_like(batch)
-        for index, point in enumerate(batch):
-            neighbours = self.tree.query_ball_point(point, self.radius_m)
-            if len(neighbours) < self.min_neighbours:
-                # Sparse source-mesh patch: grow the query to a fixed k
-                # neighbours so the plane fit stays well-posed.
-                _, nearest = self.tree.query(point, k=self.min_neighbours)
-                neighbours = nearest.tolist()
-            local = self.vertices[neighbours]
-            if len(neighbours) >= 3:
-                # Distance-weighted least-squares plane fit: near vertices
-                # dominate so ridges and adjacent walls cannot tilt the fit,
-                # and the fitted normal stays a genuine local surface normal.
-                deltas = local - point
-                dist2 = np.einsum("ij,ij->i", deltas, deltas)
-                # k-neighbour fallback grows the neighbourhood beyond the
-                # radius; widen sigma with it so weights never underflow.
-                sigma = max(self.radius_m, 0.5 * np.sqrt(dist2.max()))
-                weights = np.exp(-0.5 * dist2 / sigma**2)
-                if not np.isfinite(weights).all() or weights.sum() <= 0.0:
-                    weights = np.ones_like(dist2)
-                weights /= weights.sum()
-                weighted_mean = weights @ local
-                centered = local - weighted_mean
-                covariance = (centered * weights[:, None]).T @ centered
-                _, eigenvectors = np.linalg.eigh(covariance)
-                normal = eigenvectors[:, 0]
-            else:
-                normal = local[0] - point
-            if np.linalg.norm(normal) < 1.0e-12:
-                normal = np.array([0.0, 0.0, 1.0])
-            normal = normal / np.linalg.norm(normal)
-            # Outward sign: majority vote of the nearest source-mesh face
-            # normals (the source OBJ is consistently wound, unlike the
-            # collision parts).  A point-center rule breaks on horizontal
-            # bands whose outward normal is perpendicular to the radial ray.
-            _, nearest_faces = self.face_tree.query(point, k=5)
-            dots = self.face_normals[nearest_faces] @ normal
-            if np.max(np.abs(dots)) < 0.35:
-                # PCA fit degenerate here (normal nearly tangential to every
-                # local face -- sparse neck patches, double-walled regions):
-                # fall back to the nearest face normal, which is already
-                # outward by the mesh winding.
-                normal = self.face_normals[nearest_faces[0]].copy()
-            else:
-                if np.sum(dots > 0.0) < 2.5:
-                    normal = -normal
-            normals[index] = normal
-        return normals[0] if single else normals
+        closest, distance, triangle_id = trimesh.proximity.closest_point(
+            self.mesh, batch
+        )
+        triangles = self.mesh.triangles[triangle_id]
+        barycentric = trimesh.triangles.points_to_barycentric(
+            triangles, closest
+        )
+        vertex_ids = self.mesh.faces[triangle_id]
+        corner_normals = self.vertex_normals[vertex_ids]
+        normals = np.einsum("ij,ijk->ik", barycentric, corner_normals)
+        normal_norm = np.linalg.norm(normals, axis=-1, keepdims=True)
+        degenerate = normal_norm[:, 0] < 1.0e-10
+        normals /= np.maximum(normal_norm, 1.0e-10)
+        if np.any(degenerate):
+            normals[degenerate] = self.mesh.face_normals[
+                triangle_id[degenerate]
+            ]
+        if single:
+            return closest[0], normals[0], np.asarray(distance[0])
+        return closest, normals, np.asarray(distance)
 
     def query_curvature_object_frame(
         self, points: np.ndarray
@@ -585,6 +571,32 @@ class MeshNormalOracle:
         )
         normals_object = self.query_object_frame(points_object)
         return np.einsum("ij,ijk->ik", normals_object, rotmats)
+
+    def query_surface_world(
+        self,
+        points_world: np.ndarray,
+        object_pos_world: np.ndarray,
+        object_quat_world: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Project anchors to the original mesh in world coordinates."""
+
+        quats = np.asarray(object_quat_world, dtype=np.float64).reshape(-1, 4)
+        rotmats = Rotation.from_quat(quats[:, [1, 2, 3, 0]]).as_matrix()
+        object_pos_world = np.asarray(object_pos_world, dtype=np.float64)
+        points_object = np.einsum(
+            "ij,ikj->ik",
+            np.asarray(points_world, dtype=np.float64) - object_pos_world,
+            rotmats,
+        )
+        closest_object, normals_object, distance = (
+            self.query_surface_object_frame(points_object)
+        )
+        closest_world = (
+            np.einsum("ij,ijk->ik", closest_object, rotmats)
+            + object_pos_world
+        )
+        normals_world = np.einsum("ij,ijk->ik", normals_object, rotmats)
+        return closest_world, normals_world, distance
 
 
 def _load_scaled_mesh(

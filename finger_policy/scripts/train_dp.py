@@ -1,0 +1,1 @@
+../../mcc_finger_compliance_control/scripts/train_dp.py

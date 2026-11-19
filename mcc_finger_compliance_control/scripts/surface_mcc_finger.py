@@ -1151,6 +1151,9 @@ class FullHandMCCFingerConfig:
     contact_on_force: float = 0.15
     contact_off_force: float = 0.08
     max_normal_offset: float = 0.003
+    # Separate outward authority from inward pressing. None preserves the
+    # original symmetric bound; collection may permit a larger retreat.
+    force_servo_max_outward_offset: float | None = None
     thumb_max_inward_offset: float | None = None
     thumb_max_outward_offset: float | None = None
     max_normal_speed: float = 0.020
@@ -1175,6 +1178,7 @@ class FullHandMCCFingerConfig:
     flexion_synergy_max_step: float = 0.03
     normal_synergy_control: bool = False
     normal_synergy_max_step: float = 0.035
+    normal_synergy_max_outward_step: float | None = None
     # Continuous inward offset of the planned fingertip target.  This is
     # separate from force-servo state: it keeps a loaded grasp inside the
     # surface instead of merely touching the nearest mesh point.
@@ -1224,6 +1228,13 @@ class FullHandMCCFingerConfig:
     qp_lateral_axis_palm: tuple[float, float, float] = (0.0, 1.0, 0.0)
     contact_point_jacobian_regularization: float = 1.0e-5
     use_direct_force_servo: bool = True
+    # Optional force dead-zone for the execution layer.  When both limits are
+    # set, the servo presses inward below the lower limit, holds its current
+    # local offset inside the band, and retreats above the upper limit.  This
+    # preserves q_hand as the task/contact reference while adding only the
+    # normal displacement needed to maintain a stable load.
+    force_servo_min_force: float | None = None
+    force_servo_max_force: float | None = None
     force_servo_integral_gain: float = 0.005
     force_servo_deadband: float = 0.05
     force_servo_max_step: float = 0.00008
@@ -1239,6 +1250,7 @@ class FullHandMCCFingerConfig:
     # ``recover_surface_contacts``) and therefore has no arbitrary distance
     # cap.  Only velocity and physical joint limits bound that recovery.
     enable_loss_state_machine: bool = False
+    enable_recovery_handover: bool = False
     transient_loss_frames: int = 6
     recovery_contact_confirm_frames: int = 4
     transient_search_step: float = 0.00020
@@ -1251,6 +1263,12 @@ class FullHandMCCFingerConfig:
     # contact centre may differ from the fixed MCC site, but not by tens of
     # centimetres.
     contact_anchor_max_site_distance: float = 0.05
+    # Deployment MCC is a local execution layer, not a second posture
+    # planner.  Bound every joint correction around the external nominal q so
+    # a repeated force/Jacobian update cannot fold a finger onto a different
+    # kinematic branch.  ``None`` preserves collection/planning behavior.
+    nominal_joint_correction_limit: float | None = None
+    thumb_nominal_joint_correction_limit: float | None = None
     # Contacts behind the middle of the distal mesh are not tactile-pad
     # contacts.  Treat them as lost contacts so recovery opens/repositions the
     # finger instead of increasing force on its back shell.
@@ -1266,6 +1284,13 @@ class FullHandMCCFingerConfig:
     overforce_recovery_step: float = 0.00002
     overforce_max_offset: float = 0.020
     overforce_recontact_hold_frames: int = 3
+    # Preventive solver-contact barrier.  The tactile/source-mesh normal is
+    # used by ordinary MCC, while this highest-priority projection uses the
+    # actual collision solver normal so the next command cannot deepen the
+    # contact represented by MuJoCo.
+    solver_contact_safety: bool = True
+    solver_contact_safety_force_ratio: float = 1.0
+    solver_contact_escape_step: float = 0.00010
     grasp_closure_q: tuple[float, ...] = tuple(DEFAULT_GRASP_CLOSURE_Q)
     open_grasp_q: tuple[float, ...] = tuple(DEFAULT_OPEN_Q)
 
@@ -1285,6 +1310,10 @@ class FullHandMCCFingerController:
     def __init__(self, config: FullHandMCCFingerConfig | None = None) -> None:
         self.config = config or FullHandMCCFingerConfig()
         cfg = self.config
+        if cfg.enable_recovery_handover and (
+            not cfg.enable_loss_state_machine or not cfg.use_direct_force_servo
+        ):
+            raise ValueError("Recovery handover requires the loss state machine and direct force servo")
         if cfg.enable_loss_state_machine:
             if cfg.transient_loss_frames < 0:
                 raise ValueError("transient_loss_frames cannot be negative")
@@ -1431,6 +1460,8 @@ class FullHandMCCFingerController:
         self.loss_streak = np.zeros(4, dtype=np.int32)
         self.recontact_streak = np.zeros(4, dtype=np.int32)
         self.transient_search_offset = np.zeros(4, dtype=np.float64)
+        self.recovery_owned = np.zeros(4, dtype=bool)
+        self.recovery_handover = np.zeros(4, dtype=bool)
 
     def reset(self) -> None:
         self.admittance.reset()
@@ -1457,12 +1488,15 @@ class FullHandMCCFingerController:
         self.loss_streak[:] = 0
         self.recontact_streak[:] = 0
         self.transient_search_offset[:] = 0.0
+        self.recovery_owned[:] = False
+        self.recovery_handover[:] = False
 
     def _update_contact_recovery_state(self, found: np.ndarray) -> None:
         """Advance the contact/loss state without integrating a stale target."""
 
         cfg = self.config
         found = np.asarray(found, dtype=bool).reshape(4)
+        previous_phase = self.contact_phase.copy()
         missing = ~found
         self.loss_streak[missing] += 1
         self.loss_streak[found] = 0
@@ -1475,6 +1509,23 @@ class FullHandMCCFingerController:
             1,
             2,
         )
+        if cfg.enable_recovery_handover:
+            # A single grazing contact does not end persistent recovery.
+            # Until confirmation, renewed loss resumes phase2 immediately.
+            self.recovery_owned |= self.contact_phase == 2
+            self.contact_phase[missing & self.recovery_owned] = 2
+            self.recovery_handover[:] = (
+                found & self.recovery_owned & (previous_phase != 3)
+            )
+            start = self.recovery_handover
+            # Rebase the normal target at the last executed recovery command
+            # below. The old offset was expressed at a different posture and
+            # must not pull a newly acquired contact away from the surface.
+            self.force_servo_offset[start] = -float(cfg.nominal_surface_preload)
+            self.force_servo_velocity[start] = 0.
+            self.force_servo_filter_valid[start] = False
+            self.force_servo_contact_active[start] = False
+            self.transient_search_offset[start] = 0.
         newly_confirming = found & np.isin(self.contact_phase, (1, 2, 3))
         self.contact_phase[newly_confirming] = 3
         confirmed = found & (
@@ -1482,6 +1533,8 @@ class FullHandMCCFingerController:
             >= max(1, int(cfg.recovery_contact_confirm_frames))
         )
         self.contact_phase[confirmed] = 0
+        if cfg.enable_recovery_handover:
+            self.recovery_owned[confirmed] = False
 
         # The transient offset is bounded by the duration of phase 1 rather
         # than an arbitrary spatial recovery cap.  Persistent phase 2 freezes
@@ -1550,6 +1603,8 @@ class FullHandMCCFingerController:
         self.loss_streak[mask] = 0
         self.recontact_streak[mask] = 0
         self.transient_search_offset[mask] = 0.0
+        self.recovery_owned[mask] = False
+        self.recovery_handover[mask] = False
         if not preserve_offset:
             self.force_servo_offset[mask] = 0.0
 
@@ -1571,12 +1626,19 @@ class FullHandMCCFingerController:
         self._set_q(self.data, q_action_order)
         return self.data.site_xpos[self.tip_ids].copy()
 
+    def tip_rotations_palm(self, q_action_order: np.ndarray) -> np.ndarray:
+        """Return the four fixed fingertip-site rotations in the palm frame."""
+
+        self._set_q(self.data, q_action_order)
+        return self.data.site_xmat[self.tip_ids].reshape(4, 3, 3).copy()
+
     def solve_fingertip_targets(
         self,
         target_points_palm: np.ndarray,
         seed_q: np.ndarray,
         *,
         target_normals_palm: np.ndarray | None = None,
+        target_rotations_palm: np.ndarray | None = None,
         nominal_q: np.ndarray | None = None,
         max_iterations: int = 40,
         tolerance: float = 7.5e-4,
@@ -1603,11 +1665,20 @@ class FullHandMCCFingerController:
         """
 
         targets = np.asarray(target_points_palm, dtype=np.float64).reshape(4, 3)
+        if target_normals_palm is not None and target_rotations_palm is not None:
+            raise ValueError(
+                "target_normals_palm and target_rotations_palm are alternatives"
+            )
         normals = None
         if target_normals_palm is not None:
             normals = _normalize(
                 np.asarray(target_normals_palm, dtype=np.float64).reshape(4, 3)
             )
+        target_rotations = None
+        if target_rotations_palm is not None:
+            target_rotations = np.asarray(
+                target_rotations_palm, dtype=np.float64
+            ).reshape(4, 3, 3)
         q = self.clamp_joint_positions(
             np.asarray(seed_q, dtype=np.float64).reshape(16)
         ).astype(np.float64)
@@ -1648,32 +1719,59 @@ class FullHandMCCFingerController:
                 position_jacobian = jac_pos[:, self.dof_indices[block]]
                 task_jacobian = position_jacobian
                 task_error = targets[finger] - current[finger]
-                if normals is not None and float(orientation_weight) > 0.0:
+                if (
+                    (normals is not None or target_rotations is not None)
+                    and float(orientation_weight) > 0.0
+                ):
                     current_rotation = self.data.site_xmat[
                         int(self.tip_ids[finger])
                     ].reshape(3, 3)
-                    target_rotation = self._pad_normal_target(
-                        current_rotation, normals[finger]
+                    target_rotation = (
+                        target_rotations[finger]
+                        if target_rotations is not None
+                        else self._pad_normal_target(
+                            current_rotation, normals[finger]
+                        )
                     )
                     rotation_error = (
                         R.from_matrix(target_rotation)
                         * R.from_matrix(current_rotation).inv()
                     ).as_rotvec()
-                    angle = float(np.linalg.norm(rotation_error))
-                    if angle > 1.0e-9:
-                        axis = rotation_error / angle
-                    else:
-                        axis = np.asarray((1.0, 0.0, 0.0), dtype=np.float64)
-                    rotation_row = axis @ jac_rot[:, self.dof_indices[block]]
-                    task_jacobian = np.vstack(
-                        (
-                            position_jacobian,
-                            float(orientation_weight) * rotation_row[None, :],
+                    if target_rotations is not None:
+                        task_jacobian = np.vstack(
+                            (
+                                position_jacobian,
+                                float(orientation_weight)
+                                * jac_rot[:, self.dof_indices[block]],
+                            )
                         )
-                    )
-                    task_error = np.concatenate(
-                        (task_error, (float(orientation_weight) * angle,))
-                    )
+                        task_error = np.concatenate(
+                            (
+                                task_error,
+                                float(orientation_weight) * rotation_error,
+                            )
+                        )
+                    else:
+                        angle = float(np.linalg.norm(rotation_error))
+                        if angle > 1.0e-9:
+                            axis = rotation_error / angle
+                        else:
+                            axis = np.asarray(
+                                (1.0, 0.0, 0.0), dtype=np.float64
+                            )
+                        rotation_row = (
+                            axis @ jac_rot[:, self.dof_indices[block]]
+                        )
+                        task_jacobian = np.vstack(
+                            (
+                                position_jacobian,
+                                float(orientation_weight)
+                                * rotation_row[None, :],
+                            )
+                        )
+                        task_error = np.concatenate(
+                            (task_error, (float(orientation_weight) * angle,))
+                        )
                 regularized = (
                     task_jacobian @ task_jacobian.T
                     + float(damping) ** 2
@@ -2381,6 +2479,96 @@ class FullHandMCCFingerController:
         block = slice(4 * finger, 4 * finger + 4)
         return jacobian[:, self.dof_indices[block]].copy()
 
+    def project_solver_contact_safety(
+        self,
+        q_live: np.ndarray,
+        q_candidate: np.ndarray,
+        palm_pose_world: np.ndarray,
+        contact_points_world: np.ndarray,
+        collision_normals_outward_world: np.ndarray,
+        force_world: np.ndarray,
+        found: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Project a command onto per-contact non-penetrating half-spaces.
+
+        This is deliberately based on the solver contact normal rather than
+        the source-mesh tactile normal.  It is the final command arbitration
+        layer, so its linearized contact constraint has priority over both
+        force regulation and DP tracking.
+        """
+
+        cfg = self.config
+        q = np.asarray(q_live, dtype=np.float64).reshape(16)
+        command = np.asarray(q_candidate, dtype=np.float64).reshape(16).copy()
+        contact_found = np.asarray(found, dtype=bool).reshape(4)
+        forces = np.linalg.norm(
+            np.asarray(force_world, dtype=np.float64).reshape(4, 3), axis=-1
+        )
+        # A finger that has lost contact arrives with a zero solver normal.
+        # That is a state the per-finger guard below is written to skip, and a
+        # normalized vector can never come out under its 0.5 threshold, so the
+        # rows without a direction have to survive normalization as zeros for
+        # that guard to do its job.  _normalize rejects them outright, which
+        # turned ordinary contact loss into a crash.
+        outward_raw = np.asarray(
+            self.vectors_world_to_palm(
+                collision_normals_outward_world, palm_pose_world
+            ),
+            dtype=np.float64,
+        )
+        outward_norms = np.linalg.norm(outward_raw, axis=-1, keepdims=True)
+        outward = np.divide(
+            outward_raw,
+            outward_norms,
+            out=np.zeros_like(outward_raw),
+            where=outward_norms > 1.0e-9,
+        )
+        self._set_q(self.data, q)
+        self.update_contact_point_anchors(
+            q, palm_pose_world, contact_points_world, contact_found
+        )
+        corrected_normal_step = np.full(4, np.nan, dtype=np.float64)
+        for finger in range(4):
+            if not contact_found[finger] or np.linalg.norm(outward[finger]) < 0.5:
+                continue
+            engage = (
+                forces[finger]
+                >= cfg.solver_contact_safety_force_ratio
+                * self.force_setpoint[finger]
+            )
+            hard = (
+                forces[finger]
+                >= (
+                    cfg.thumb_overforce_hard_ratio
+                    if finger == 3 and cfg.thumb_overforce_hard_ratio is not None
+                    else cfg.overforce_hard_ratio
+                )
+                * self.force_setpoint[finger]
+            )
+            if not engage and not hard:
+                continue
+            block = slice(4 * finger, 4 * finger + 4)
+            jacobian = self._finger_control_point_jacobian(finger)
+            jacobian_normal = outward[finger] @ jacobian
+            denominator = float(
+                jacobian_normal @ jacobian_normal
+                + cfg.contact_point_jacobian_regularization
+            )
+            if denominator <= 0.0:
+                continue
+            delta = command[block] - q[block]
+            normal_step = float(jacobian_normal @ delta)
+            minimum_step = float(cfg.solver_contact_escape_step) if hard else 0.0
+            if normal_step < minimum_step:
+                delta += (
+                    (minimum_step - normal_step)
+                    / denominator
+                    * jacobian_normal
+                )
+                command[block] = q[block] + delta
+                corrected_normal_step[finger] = float(jacobian_normal @ delta)
+        return self.clamp_joint_positions(command), corrected_normal_step
+
     def clamp_joint_positions(self, q_action_order: np.ndarray) -> np.ndarray:
         """Clamp a hand command to the physical 16-DOF joint limits."""
         clipped = np.clip(
@@ -3019,10 +3207,16 @@ class FullHandMCCFingerController:
                 * nullspace
                 @ posture_error
             )
+            recovery_step = float(cfg.persistent_recovery_max_joint_step)
+            # This is a live-relative position target, not an integrated
+            # reference trajectory. Replacing its offset cap with qdot*dt
+            # reduces the position servo's available contact-recovery effort.
+            # Preserve the existing search operator; limit adjacent actuator
+            # targets only during the subsequent contact-confirmation phase.
             correction = np.clip(
                 correction,
-                -float(cfg.persistent_recovery_max_joint_step),
-                float(cfg.persistent_recovery_max_joint_step),
+                -recovery_step,
+                recovery_step,
             )
             delta_q[block] = correction
             # Persistent recovery owns this finger.  Basing it on live q
@@ -3053,12 +3247,14 @@ class FullHandMCCFingerController:
         nominal_posture_q: np.ndarray | None = None,
         force_magnitude_only: bool = False,
         contact_points_world: np.ndarray | None = None,
+        collision_normals_outward_world: np.ndarray | None = None,
         use_contact_point_jacobian: bool = False,
         manage_contact_state: bool = True,
         contact_observed: np.ndarray | None = None,
     ) -> tuple[np.ndarray, dict[str, np.ndarray]]:
         cfg = self.config
         q_live = np.asarray(q_live, dtype=np.float64).reshape(16)
+        self.recovery_handover[:] = False
         raw_found = np.asarray(found, dtype=bool).reshape(4)
         pad_contact_valid = raw_found.copy()
         contact_point_tip_local = np.full((4, 3), np.nan, dtype=np.float64)
@@ -3136,12 +3332,38 @@ class FullHandMCCFingerController:
             self.force_servo_contact_active[:] = np.where(
                 self.force_servo_contact_active, stay_on, turn_on
             )
+            # Retain the conventional setpoint error for diagnostics even
+            # when control uses the explicit lower/upper force band below.
             force_error = self.force_setpoint - self.force_servo_filtered
-            effective_error = np.where(
-                np.abs(force_error) <= cfg.force_servo_deadband,
-                0.0,
-                force_error,
-            )
+            if (
+                cfg.force_servo_min_force is not None
+                and cfg.force_servo_max_force is not None
+            ):
+                min_force = float(cfg.force_servo_min_force)
+                max_force = float(cfg.force_servo_max_force)
+                if not 0.0 <= min_force < max_force:
+                    raise ValueError(
+                        "force_servo_min_force must satisfy "
+                        "0 <= min_force < max_force"
+                    )
+                # Positive error moves the contact target inward; negative
+                # error retreats it.  Zero inside [min_force, max_force]
+                # retains the accumulated offset and avoids threshold chatter.
+                effective_error = np.where(
+                    self.force_servo_filtered < min_force,
+                    min_force - self.force_servo_filtered,
+                    np.where(
+                        self.force_servo_filtered > max_force,
+                        max_force - self.force_servo_filtered,
+                        0.0,
+                    ),
+                )
+            else:
+                effective_error = np.where(
+                    np.abs(force_error) <= cfg.force_servo_deadband,
+                    0.0,
+                    force_error,
+                )
             offset_step = (
                 cfg.force_servo_integral_gain
                 * effective_error
@@ -3230,6 +3452,8 @@ class FullHandMCCFingerController:
                 -hard_step[collision_overforce],
             )
             lower_offset = np.full(4, -cfg.max_normal_offset)
+            if cfg.force_servo_max_outward_offset is not None:
+                lower_offset[:] = -cfg.force_servo_max_outward_offset
             if cfg.thumb_max_outward_offset is not None:
                 lower_offset[3] = -cfg.thumb_max_outward_offset
             upper_offset = np.full(4, cfg.max_normal_offset)
@@ -3243,6 +3467,10 @@ class FullHandMCCFingerController:
                 cfg.max_normal_offset,
                 cfg.overforce_max_offset,
             )
+            if cfg.force_servo_max_outward_offset is not None:
+                # Do not snap an emergency retreat back to the ordinary
+                # bound when its short hold expires. Re-enter at servo rate.
+                lower_offset = np.minimum(lower_offset, self.force_servo_offset)
             self.force_servo_offset[:] = np.clip(
                 self.force_servo_offset + offset_step,
                 lower_offset,
@@ -3285,10 +3513,19 @@ class FullHandMCCFingerController:
         # nominal q only to resolve fingertip IK redundancy; never integrate a
         # force correction into that nominal posture.
         nominal_q = (
-            q_live
+            q_live.copy()
             if nominal_posture_q is None
-            else np.asarray(nominal_posture_q, dtype=np.float64).reshape(16)
+            else np.asarray(nominal_posture_q, dtype=np.float64).reshape(16).copy()
         )
+        if cfg.enable_recovery_handover:
+            anchor = q_live if self.previous_command is None else self.previous_command
+            for finger in np.flatnonzero(self.recovery_handover):
+                block = slice(4*finger, 4*finger+4)
+                nominal_q[block] = anchor[block]
+                if self.normal_task_reference_q is not None:
+                    self.normal_task_reference_q[block] = anchor[block]
+                if self.previous_nominal_q is not None:
+                    self.previous_nominal_q[block] = nominal_q[block]
         if use_contact_point_jacobian:
             if contact_points_world is None:
                 raise ValueError(
@@ -3445,11 +3682,11 @@ class FullHandMCCFingerController:
                         correction = (
                             normal_distance / normal_per_fraction
                         ) * synergy
-                        correction = np.clip(
-                            correction,
-                            -cfg.normal_synergy_max_step,
-                            cfg.normal_synergy_max_step,
-                        )
+                        correction_limit = cfg.normal_synergy_max_step
+                        if (normal_distance > 0.
+                                and cfg.normal_synergy_max_outward_step is not None):
+                            correction_limit = cfg.normal_synergy_max_outward_step
+                        correction = np.clip(correction, -correction_limit, correction_limit)
                     else:
                         correction = (
                             normal_distance
@@ -3516,6 +3753,14 @@ class FullHandMCCFingerController:
                 self.configuration.integrate_inplace(velocity, cfg.control_dt)
             q_command = self.configuration.data.qpos[self.qpos_indices].copy()
         safety_command = np.asarray(q_command, dtype=np.float64).copy()
+        # Highest-priority collision response: remove the actuator's inward
+        # position error instead of guessing an escape direction from a
+        # possibly inconsistent source/proxy normal.  Commanding the measured
+        # posture gives the contact solver room to separate the bodies without
+        # an active joint servo continuing to load the penetration.
+        for finger in np.flatnonzero(collision_safety_active):
+            block = slice(4 * finger, 4 * finger + 4)
+            safety_command[block] = q_live[block]
         q_command, flexion_synergy_spread = self.regularize_flexion_synergy(
             q_command, nominal_q
         )
@@ -3525,6 +3770,33 @@ class FullHandMCCFingerController:
         for finger in np.flatnonzero(collision_safety_active):
             block = slice(4 * finger, 4 * finger + 4)
             q_command[block] = safety_command[block]
+        joint_correction_limits: np.ndarray | None = None
+        if cfg.nominal_joint_correction_limit is not None:
+            correction_limit = float(cfg.nominal_joint_correction_limit)
+            if correction_limit <= 0.0:
+                raise ValueError(
+                    "nominal_joint_correction_limit must be positive"
+                )
+            joint_correction_limits = np.full(16, correction_limit)
+            if cfg.thumb_nominal_joint_correction_limit is not None:
+                thumb_limit = float(
+                    cfg.thumb_nominal_joint_correction_limit
+                )
+                if thumb_limit <= 0.0:
+                    raise ValueError(
+                        "thumb_nominal_joint_correction_limit must be positive"
+                    )
+                joint_correction_limits[12:16] = thumb_limit
+            bounded_command = nominal_q + np.clip(
+                q_command - nominal_q,
+                -joint_correction_limits,
+                joint_correction_limits,
+            )
+            for finger in range(4):
+                if collision_safety_active[finger]:
+                    continue
+                block = slice(4 * finger, 4 * finger + 4)
+                q_command[block] = bounded_command[block]
         if self.previous_command is None:
             self.previous_command = q_live.copy()
         q_command = self.previous_command + np.clip(
@@ -3540,6 +3812,12 @@ class FullHandMCCFingerController:
         filtered_command = self.previous_command + alpha * (
             q_command - self.previous_command
         )
+        if cfg.enable_recovery_handover:
+            step_limit = min(cfg.action_rate_limit, cfg.qp_max_joint_velocity * cfg.control_dt)
+            for finger in np.flatnonzero(self.contact_phase == 3):
+                block = slice(4*finger, 4*finger+4)
+                filtered_command[block] = self.previous_command[block] + np.clip(
+                    filtered_command[block]-self.previous_command[block], -step_limit, step_limit)
         # Do not make an emergency retreat wait for a stale inward actuator
         # target or the cosmetic EMA.  It remains bounded by the same joint
         # rate limit, but that bound is applied from the measured posture.
@@ -3550,7 +3828,40 @@ class FullHandMCCFingerController:
                 -cfg.action_rate_limit,
                 cfg.action_rate_limit,
             )
+        # Keep ordinary MCC output inside the nominal tube.  A hard collision
+        # escape is deliberately exempt: projecting it back around an already
+        # infeasible DP nominal would keep the actuator driving penetration.
+        if joint_correction_limits is not None:
+            bounded_command = nominal_q + np.clip(
+                filtered_command - nominal_q,
+                -joint_correction_limits,
+                joint_correction_limits,
+            )
+            for finger in range(4):
+                if collision_safety_active[finger]:
+                    continue
+                block = slice(4 * finger, 4 * finger + 4)
+                filtered_command[block] = bounded_command[block]
         q_command = filtered_command
+        solver_safety_normal_step = np.full(4, np.nan, dtype=np.float64)
+        if (
+            cfg.solver_contact_safety
+            and contact_points_world is not None
+            and collision_normals_outward_world is not None
+        ):
+            q_command, solver_safety_normal_step = (
+                self.project_solver_contact_safety(
+                    q_live=q_live,
+                    q_candidate=q_command,
+                    palm_pose_world=palm_pose_world,
+                    contact_points_world=contact_points_world,
+                    collision_normals_outward_world=(
+                        collision_normals_outward_world
+                    ),
+                    force_world=force_world,
+                    found=raw_found,
+                )
+            )
         self.previous_command = q_command.copy()
         self._set_q(self.configuration.data, q_command)
         tip_ik = self.configuration.data.site_xpos[self.tip_ids].copy()
@@ -3567,6 +3878,9 @@ class FullHandMCCFingerController:
             "pad_contact_valid": pad_contact_valid.copy(),
             "raw_collision_found": raw_found.copy(),
             "collision_safety_active": self.overforce_active.copy(),
+            "solver_safety_normal_step": solver_safety_normal_step.astype(
+                np.float32
+            ),
             "reference_speed": np.abs(
                 normal_velocity_debug
             ).astype(np.float32),
@@ -3582,6 +3896,8 @@ class FullHandMCCFingerController:
             "loss_streak": self.loss_streak.copy(),
             "recontact_streak": self.recontact_streak.copy(),
             "persistent_loss": (self.contact_phase == 2),
+            "recovery_handover": self.recovery_handover.copy(),
+            "handover_reference_q": nominal_q.astype(np.float32),
             "normal_velocity": normal_velocity_debug.astype(np.float32),
             "normal_acceleration": normal_acceleration_debug.astype(np.float32),
             "raw_force_magnitude": np.linalg.norm(

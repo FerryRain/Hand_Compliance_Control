@@ -69,6 +69,11 @@ SELECTED_RAW_FIELDS = (
     "fingertip_contact_normal_world",
 )
 SELECTED_RAW_OPTIONAL_FIELDS = (
+    "true_fingertip_contact_valid",
+    "fingertip_body_collision_found",
+    "fingertip_connector_found",
+    "fingertip_connector_force_world",
+    "contact_safety_peak_force_n",
     # FullHandMCC records its smooth outward normal from the undecomposed
     # source mesh.  Keep it when every selected input provides it; this is a
     # much better tactile-normal teacher than V-HACD contact-face normals.
@@ -339,10 +344,19 @@ def invert(input_path: Path, output_path: Path) -> None:
                 & (force_norm >= contact_threshold)
                 & plausible_point
             )
-            rear_shell_contact = _rear_shell_contact(
-                contact_pos_tip, loaded_contact
-            )
-            valid = loaded_contact & ~rear_shell_contact
+            if bool(source.attrs.get('split_fingertip_collision', False)):
+                if source.attrs.get('collision_geometry') != 'true_fingertip_contact_v1_split':
+                    raise ValueError('unsupported split collision geometry')
+                if 'true_fingertip_contact_valid' not in source:
+                    raise ValueError('split data requires the same-frame whole true-tip mask')
+                valid = (collision_found
+                    & np.isfinite(contact_pos_world).all(-1) & np.isfinite(force_world).all(-1)
+                    & (np.asarray(source['true_fingertip_contact_valid']) > .5))
+                if np.any(valid & (force_norm < contact_threshold-1e-6)):
+                    raise ValueError('recorded whole-tip mask contradicts the recorded force threshold')
+            else:
+                rear_shell_contact = _rear_shell_contact(contact_pos_tip, loaded_contact)
+                valid = loaded_contact & ~rear_shell_contact
             target.create_dataset(
                 "fingertip_contact",
                 data=valid.astype(np.float32),
@@ -452,13 +466,18 @@ def invert(input_path: Path, output_path: Path) -> None:
         target.attrs["contact_mask_source"] = (
             "same_frame_collision_force_and_tip_surface_geometry"
         )
+        target.attrs['contact_region_semantics'] = ('whole_true_fingertip_split_collision_geom'
+            if bool(source.attrs.get('split_fingertip_collision', False)) else 'legacy_front_and_side_mesh_filter')
         target.attrs["contact_point_radius_limit_m"] = (
             CONTACT_POINT_RADIUS_LIMIT_M
         )
         target.attrs["back_contact_x_limit_m"] = BACK_CONTACT_X_LIMIT_M
         target.attrs["back_contact_classifier"] = (
-            "positive_site_x_and_nearest_original_mesh_normal_dominant_positive_x"
+            "disabled_whole_true_tip_geom" if bool(source.attrs.get('split_fingertip_collision',False))
+            else "positive_site_x_and_nearest_original_mesh_normal_dominant_positive_x"
         )
+        target.attrs['back_contact_filter_enabled'] = not bool(source.attrs.get('split_fingertip_collision',False))
+        target.attrs['contact_point_radius_filter_enabled'] = not bool(source.attrs.get('split_fingertip_collision',False))
         target.attrs["back_contact_normal_min_x"] = BACK_NORMAL_MIN_X
         target.attrs["side_contact_allowed"] = True
         target.attrs["palm_twist"] = "causal_backward_difference_in_object_frame"
@@ -504,8 +523,13 @@ def _bundle_selected_raw(
     object_ids: list[str] = []
     layouts: dict[str, tuple[tuple[int, ...], np.dtype]] = {}
     first_attrs: dict[str, object] = {}
+    collision_scopes = set()
     for path_index, path in enumerate(paths):
         with h5py.File(path, "r") as source:
+            collision_scopes.add((bool(source.attrs.get('split_fingertip_collision',False)),
+                str(source.attrs.get('collision_geometry','legacy_merged'))))
+            if len(collision_scopes)>1:
+                raise ValueError('cannot mix split-tip and legacy collision data in one dataset')
             if path_index == 0:
                 first_attrs = dict(source.attrs)
             if "q_hand" not in source:

@@ -361,7 +361,10 @@ class ContactSensor(Sensor[ContactData]):
     normal = data.normal
     tangent = data.tangent
     tangent2 = torch.cross(normal, tangent, dim=-1)
-    R = torch.stack([tangent, tangent2, normal], dim=-1)
+    # MuJoCo contact-force order is [normal, tangent1, tangent2]. Warp
+    # applies the primary/secondary sign to tangent2 in the sensor payload;
+    # normal and tangent1 already carry that sign in their basis vectors.
+    R = torch.stack([normal, tangent, tangent2], dim=-1)
 
     has_contact = torch.norm(normal, dim=-1, keepdim=True) > 1e-8
 
