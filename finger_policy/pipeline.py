@@ -149,6 +149,18 @@ def protocol():
     return value
 
 
+def evaluation_protocol(catalog=None):
+    """Prefer the local experiment protocol, or use the unpacked evaluation inputs."""
+    if catalog is None:
+        if (PROTOCOLS / "training.json").is_file():
+            return protocol()
+        catalog = DATA / "evaluation_inputs" / "catalog.json"
+    value = read(catalog)
+    for entry in value["request_templates"].values():
+        entry["request"] = str(catalog.parent / entry["request"])
+    return value
+
+
 def append_exported(manifest, extra_paths):
     """Extend the frozen split with approved measured rollouts."""
     known = {row["record_key"] for row in manifest["records"]}
@@ -251,7 +263,7 @@ def evaluate(args):
     sys.path[:0] = [str(SCRIPTS), str(SHARED), str(REPO / "src")]
     from evaluate_expanded_independent_job import evaluate as run_evaluation
 
-    p = protocol()
+    p = evaluation_protocol(args.catalog)
     if args.reference not in p["request_templates"]:
         raise ValueError("Unknown reference. See reference-list.")
     if args.checkpoint is None:
@@ -280,7 +292,8 @@ def main():
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("verify", help="Verify packaged inputs and checkpoints.")
     commands.add_parser("collection-list", help="List captured collection recipe names.")
-    commands.add_parser("reference-list", help="List deployment evaluation references.")
+    p = commands.add_parser("reference-list", help="List deployment evaluation references.")
+    p.add_argument("--catalog", type=absolute, help="Use an unpacked evaluation catalog.")
     p = commands.add_parser("collect", help="Execute or stage a fixed mocap collection recipe.")
     p.add_argument("recipe", choices=("single_region", "single_banana", "multi", "whole"))
     p.add_argument("--run", type=run_id, required=True)
@@ -306,6 +319,7 @@ def main():
     p.add_argument("--seed", type=int, default=DEFAULT_SEED)
     p.add_argument("--run", type=run_id, required=True)
     p.add_argument("--reference", required=True)
+    p.add_argument("--catalog", type=absolute, help="Use an unpacked evaluation catalog.")
     p.add_argument("--checkpoint", type=absolute)
     p.add_argument("--canary", action="store_true")
     p = commands.add_parser("render", help="Record a 1x measured-state replay.")
@@ -318,7 +332,7 @@ def main():
     elif args.command == "collection-list":
         list_collection()
     elif args.command == "reference-list":
-        for name in protocol()["request_templates"]:
+        for name in evaluation_protocol(args.catalog)["request_templates"]:
             print(name)
     elif args.command == "collect":
         collect(args)

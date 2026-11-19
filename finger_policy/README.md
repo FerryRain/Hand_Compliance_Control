@@ -4,7 +4,7 @@ LEAP Hand 的 Diffusion Policy 工作流，包含 mocap 数据采集、实测关
 
 ## 1. 下载和准备
 
-在 [Google Drive 交付目录](https://drive.google.com/drive/folders/1XMBF-VGcsxUDkoRjZV8JFCfsbjyNh9ep?usp=drive_link) 下载需要的文件。部署现有模型先取前两个 ZIP。
+在 [Google Drive 交付目录](https://drive.google.com/drive/folders/1XMBF-VGcsxUDkoRjZV8JFCfsbjyNh9ep?usp=drive_link) 下载需要的文件。部署现有模型先取前两个 ZIP 和评估输入，评估输入的解压步骤见第 5 节。
 
 | 文件 | 内容和用途 |
 | --- | --- |
@@ -12,6 +12,8 @@ LEAP Hand 的 Diffusion Policy 工作流，包含 mocap 数据采集、实测关
 | `ycb-collision-and-runtime-20261119.zip` | 七个部署物体的 YAML、连续表面 OBJ 和预分解凸碰撞件，并附已有的采集几何。 |
 | `ycb-all-object-surfaces-20261119.zip` | YCB 标准表面网格、纹理和已有点云，用于查看源几何或新增物体。 |
 | `ycb-highres-surfaces-20261119.zip` | 碗、手电钻和大夹钳的高精度扫描网格，用于几何检查或重做分解。 |
+| `finger-policy-evaluation-inputs-20261119.zip` | 29 个闭环评估请求、手掌参考 HDF5 和初态。 |
+| `finger-policy-evaluation-bootstrap-20261119.zip.part-001` 至 `part-004` | 评估入口初始化共用执行链时读取的基础 checkpoint。 |
 
 ZIP 内路径以 **仓库根目录** 为起点。下面的命令从仓库内任意目录运行。先将 `DOWNLOADS` 改成下载目录。仅下载部分 ZIP 时，校验会检查已下载的文件。
 
@@ -38,10 +40,10 @@ python pipeline.py --help
 | --- | --- |
 | 采集 | `data/protocols/collection/recipes.json` 和任务协议。按协议准备对象池的 `objects/`、`object_manifest.json`、部分任务的初态和轨迹文件，以及协议指定的碰撞后端。 |
 | 训练 | `data/old222/single_finger_frames.npz`、`data/old222/episode_split.json`、`data/expanded/manifest.json` 和分指 NPZ、`data/protocols/training.json`、`data/integrity.json`。 |
-| 闭环评估 | `data/protocols/training.json` 的参考索引、`data/protocols/evaluation/<reference>.json`、对应的命令 HDF5、初态 HDF5 和请求中的底层加载器 checkpoint。 |
+| 闭环评估 | 云盘评估包解压到 `data/evaluation_inputs/` 后，提供参考索引、请求、命令 HDF5、初态 HDF5 和基础 checkpoint。原工作区也可继续使用 `data/protocols/`。 |
 | 回放 | 一次闭环评估的结果 JSON、同名 `.request.json` 和结果所引用的实测轨迹 NPZ。 |
 
-**Git 提供源码，云盘提供三组权重和 YCB 几何。** 复现原实验还需要上表中的协议、轨迹或训练数据，目前保存在原实验工作区。迁移到其他机器时，按机器上的实际位置恢复协议引用的路径。部署和训练使用 CUDA，视频回放使用 EGL。命令假定当前环境已经安装本仓库的 mjlab 和相关依赖。
+**Git 提供源码，云盘提供三组权重、YCB 几何和闭环评估输入。** 采集协议和完整训练数据仍保存在原实验工作区。迁移采集和训练任务时，按新机器的实际位置恢复原协议引用的路径。部署和训练使用 CUDA，视频回放使用 EGL。命令假定当前环境已经安装本仓库的 mjlab 和相关依赖。
 
 ## 2. 模型和训练数据
 
@@ -104,13 +106,29 @@ python pipeline.py train --group single_all --seed 20261116 --run single_all_ban
 
 ## 5. 部署评估和原速回放
 
-每条参考的请求 JSON 指定手掌参考、初态和环境配置。评估器从请求的 `dataset` 读取 `teachers_inverted.h5` 和 `teachers_commanded_palm.h5`，从 `rows[].source` 读取初始化数据。请求中的 `checkpoint` 供基础部署链初始化，选定的 `--group` 或 `--checkpoint` 给实际预测手指动作的 provider。两者都需可读取。`--seed` 用于选择打包模型的训练种子，仿真随机种子来自参考请求。
+下载评估输入 ZIP、基础 checkpoint 的四个分卷和 `EVALUATION_SHA256SUMS.txt`，放在第 1 节的下载目录。在同一个终端执行以下命令。
 
 ```bash
-python pipeline.py reference-list
-python pipeline.py evaluate --group single_all --reference long_natural \
+(
+  cd "$DOWNLOADS" &&
+  cat finger-policy-evaluation-bootstrap-20261119.zip.part-* > finger-policy-evaluation-bootstrap-20261119.zip &&
+  sha256sum -c EVALUATION_SHA256SUMS.txt
+)
+unzip "$DOWNLOADS/finger-policy-evaluation-inputs-20261119.zip" -d "$REPO"
+unzip "$DOWNLOADS/finger-policy-evaluation-bootstrap-20261119.zip" -d "$REPO"
+cd "$REPO/finger_policy"
+```
+
+29 条参考覆盖原 Mustard 20 条、Mustard 连续长参考和 8 条其他 YCB 参考。每条请求 JSON 指定手掌参考、初态和环境。评估器从 `dataset` 读取 `teachers_inverted.h5` 和 `teachers_commanded_palm.h5`，从 `rows[].source` 读取初始手指目标。请求中的 `checkpoint` 供基础部署链初始化，`--group` 或 `--checkpoint` 选择实际预测指动作的策略。`--seed` 选择打包模型的训练种子，仿真随机种子由请求指定。
+
+当前 29 个请求的 DAgger 教师纠偏和 residual 均关闭。闭环仍运行 MCC 和请求配置的重抓握。历史 DAgger 教师代码与示范数据属于独立训练实验，本评估入口无需加载。
+
+```bash
+EVAL_CATALOG=data/evaluation_inputs/catalog.json
+python pipeline.py reference-list --catalog "$EVAL_CATALOG"
+python pipeline.py evaluate --catalog "$EVAL_CATALOG" --group single_all --reference long_natural \
   --run mustard_review
-python pipeline.py evaluate --group single_all --reference long_natural \
+python pipeline.py evaluate --catalog "$EVAL_CATALOG" --group single_all --reference long_natural \
   --run mustard_new --checkpoint checkpoints/runs/single_all_new/best.pt
 
 python pipeline.py render \
@@ -118,7 +136,7 @@ python pipeline.py render \
   --output data/evaluation_runs/mustard_review/replay --title "Mustard | single_all"
 ```
 
-已有请求时，`--canary` 可先测 200 个参考帧。其他长参考包括 `ycb_016_pear_forward`、`ycb_021_bleach_cleanser`、`ycb_003_cracker_box` 和 `ycb_002_master_chef_can`。部署保留对应请求的 MCC 和恢复设置，记录完成度、严格真指尖接触率、found、关节裕量和过力。回放读取实测状态，保留实际终止帧，输出 `deployment_review.mp4`。
+已有请求时，追加 `--canary` 可先测 200 个参考帧。其他长参考包括 `ycb_016_pear_forward`、`ycb_021_bleach_cleanser`、`ycb_003_cracker_box` 和 `ycb_002_master_chef_can`。评估记录完成度、严格真指尖接触率、found、关节裕量和过力。回放读取实测状态，保留实际终止帧，输出 `deployment_review.mp4`。
 
 [evaluate_expanded_independent_job.py](scripts/evaluate_expanded_independent_job.py) 构造请求并汇总，[evaluate_controlled_policy_ablation.py](scripts/evaluate_controlled_policy_ablation.py) 接入所选策略，仿真使用共用的 [deploy_b_gpu_serial_parity.py](../mcc_finger_compliance_control/scripts/deploy_b_gpu_serial_parity.py) 和 MCC。[render_focused_policy_video.py](scripts/render_focused_policy_video.py) 负责渲染。
 
