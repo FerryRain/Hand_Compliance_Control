@@ -47,8 +47,8 @@ deformed_world = reference_world + displacement_world.cpu().numpy()
 | 新开发项 | 输入与产出 | 可复用的基础 |
 | --- | --- | --- |
 | 多指节贴合教师 | 给定腕部轨迹，只调 16 个手指关节。用各可达指节的接触面积、压入和双向关节余量生成示范，包括指尖卸压、中节重新贴上。 | [I04-B 有界关节求解器](../Module/i04_geometric_traversal/whole_hand_step_solver.py) |
-| 整手同步采集与导出 | 在同一试次、同一时刻记录全手形变、实测关节角和速度、双向余量及当时已发布的腕指令。用历史 16 帧作为条件，未来 16 步实测关节角均减去同一当前实测角作为动作标签。 | [现有切窗与同步采样](../finger_policy/scripts/expanded_policy_data.py) |
+| 整手同步采集与导出 | 每帧同步记录全手形变、四指腹物理接触点、向内法向、有效位、掌/物体位姿、实测关节状态、双向余量和已发布腕指令，另存 MCC 使用的力。重建原策略需要的掌系接触位置和变化量，未来 16 步实测关节角减同一当前实测角作为动作标签。 | [原指尖观测重建](../finger_policy/scripts/reconstruct_contact_wm_dp_observation.py) · [逐指投影](../finger_policy/scripts/single_finger_dp.py) |
 | 形变编码器和 DP 输入 | 先做分区接触面积、压入量基线，再用 PointNet++ 编码本指和整手形变特征。保留手指身份、关节状态与掌运动，按策略版本接入逐指或全手联合动作模型。 | [现有 DP 条件与去噪损失](../finger_policy/scripts/controlled_policy_ablation.py) |
 | 全手闭环部署与评价 | 操作者给腕指令，策略滚动输出手指参考。按指节统计贴合时长、过深压入、策略自主恢复接触的时间和关节余量。 | [动作调度器](../mcc_finger_compliance_control/scripts/dp_chunk_scheduler.py) · [三个策略版本与完整开发流程](../deformation_policy/README.md) |
 
-第一条新示范使用 I04-B 已有的 Mustard。让腕沿瓶身平移并轻微倾转，同步观察指尖卸载、中节复触、指腹三维力和接触法向，以及教师实际执行的关节运动。原 `deformation()` 只标记大于零且小于 2 mm 的直接压入，适配器还要记录更深的压入，并把连续瓶面与现有碰撞模型对齐。两种动作结构、两种触觉输入及常规与泛化测试的完整流程在主库根部的专用目录中维护。[Mustard 四组对照开发交接](../deformation_policy/README.md)
+第一条新示范使用 I04-B 的 Mustard。沿同一时间轴观察腕倾转时指尖卸载、中节复触、四个指腹的掌系接触位置和法向、掌侧形变以及实测关节动作。原 `deformation()` 只标记大于零且小于 2 mm 的直接压入，适配器还要记录更深的压入，并将连续瓶面与碰撞模型对齐。原 `finger_policy` 与形变策略的配对训练、闭环性能和泛化测试统一在主库根部的专用目录维护。[Mustard 四组开发交接](../deformation_policy/README.md)

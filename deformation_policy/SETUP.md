@@ -99,6 +99,6 @@ python -B -c "import h5py, torch; from lerobot.policies.diffusion.modeling_diffu
 | I04-B Mustard 表面、凸件、规划、初态与种子 | 主库和 Git LFS 提供本期启动输入。用这些输入生成新的多指节教师试次。仅在按原记录重放 I04-B 完整历史运动时才需其 Drive 包。[Mustard 资产](../assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/README.md) · [代码与启动输入](../Module/I04_AB_RETAINED.md) · [历史数据索引](../data/i04/README.md) |
 | 旧指尖 DP 的参考权重与训练包 | 重现历史结果时可按主库指南获取 `FingerPolicy_Data`。本期四组从同一批新 Mustard 双模态试次训练，使用新清单即可开展工作，Expanded 留待以后。[历史权重与数据下载](../finger_policy/README.md) |
 | 旧项目的闭环参考和协议 | `data/evaluation/` 和旧采集配方可用于追溯原指尖策略。本期的初态、腕指令、划分和控制预算统一由 `deformation_policy/` 的 Mustard 实验配置给出。[原实验输入清单](../finger_policy/README.md) |
-| 新的触觉数据与策略 | 本项目交付三档点表、同步记录形变和指腹力/法向的 Mustard 试次、多指节教师、四组 DP 和两套测试结果。[开发顺序与比较协议](README.md) |
+| 新的触觉数据与策略 | 交付三档点表、多指节教师、同帧记录全手形变和四指原版接触输入的 Mustard 试次、四组 DP 及两套测试结果。原始指腹力另供 MCC 和评价。[开发顺序与比较协议](README.md) |
 
-训练前检查四组的训练清单、母轨迹、窗口 ID 和动作标签一致，物体均为 Mustard。旧 `--group` 会影响采样及网络，新的 `architecture`、`observation` 两项只选择模型结构和触觉列。`single_all` 保留为以后 Mustard + Expanded 的逐指配置。[三个版本与四组训练](README.md#三个策略版本) · [力与法向字段](../mcc_finger_compliance_control/scripts/dp_dataset.py)
+训练前检查四组的 Mustard 母轨迹、窗口 ID 和标签一致。`force_normal` 是实验中的原 `finger_policy` 组，读取各指接触点在掌系的位置、向内法向、有效位和两种变化量，并按原代码组装 45 维逐指输入或 144 维整手输入。以原始记录回算，核对离线和在线逐字段一致性。`single_all` 留待 Mustard + Expanded 阶段。[三个版本与四组训练](README.md#三个策略版本) · [基线实际字段](../finger_policy/scripts/single_finger_dp.py) · [原模型组装](../finger_policy/scripts/controlled_policy_ablation.py)
