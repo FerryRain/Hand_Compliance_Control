@@ -15,7 +15,7 @@ from object_catalog import add_object_body
 
 
 class SplitHullGeometry:
-    def __init__(self, config, scale=1.):
+    def __init__(self, config, scale=1., housing_collision=None):
         spec = mujoco.MjSpec.from_file(str(HAND_XML))
         spec.option.ccd_iterations = 200
         for ex in list(spec.excludes):
@@ -29,6 +29,9 @@ class SplitHullGeometry:
             if site not in present: spec.body(body).add_site(name=site, pos=pos, size=(.004, 0, 0))
         native = [(np.array(spec.geom(name).pos), _quat_wxyz_to_matrix(np.array(spec.geom(name).quat))) for name in GEOMS]
         replace_tip_collision(spec)
+        if housing_collision is not None:
+            from housing_collision_probe import replace_housing_collision
+            replace_housing_collision(spec,housing_collision)
         add_object_body(spec, config, body_name='waypoint_target', mocap=True, scale=scale)
         self.model = spec.compile(); self.data = mujoco.MjData(self.model)
         self.hand_qpos = np.asarray([self.model.jnt_qposadr[
@@ -87,7 +90,9 @@ class SplitHullGeometry:
         mujoco.mj_kinematics(self.model, self.data)
         return r
 
-    def evaluate(self, q, palm_pose, self_collision=False, non_tip_clearance=False):
+    def evaluate(self, q, palm_pose, self_collision=False, non_tip_clearance=False, clearance_witness=False):
+        if clearance_witness and not non_tip_clearance:
+            raise ValueError('Clearance witnesses require non-tip clearance queries')
         r = self.position(q,palm_pose)
         distances, connector_dist, points, top, cap, normals = [], [], [], [], [], []
         hand_points_palm = []
@@ -117,10 +122,13 @@ class SplitHullGeometry:
                     best = d
                     if witness: best_line = line.copy()
             return best, best_line
+        connector_lines = []
         for f in range(4):
             best, best_line = nearest(self.pads[f], witness=True)
             distances.append(best)
-            connector_dist.append(nearest(self.connectors[f])[0])
+            connector_gap, connector_line = nearest(self.connectors[f], witness=clearance_witness)
+            connector_dist.append(connector_gap)
+            connector_lines.append(connector_line)
             bid = int(self.model.geom_bodyid[self.pads[f]])
             br = self.data.xmat[bid].reshape(3, 3)
             body = br.T @ (best_line[:3]-self.data.xpos[bid])
@@ -151,10 +159,14 @@ class SplitHullGeometry:
         if non_tip_clearance:
             # Reuse the four connector queries; all other links receive the
             # same exact active-object decomposition distance calculation.
-            connectors = dict(zip(self.connectors, connector_dist))
-            result['non_tip_distance'] = np.asarray([
-                connectors[int(g)] if int(g) in connectors else nearest(int(g))[0]
-                for g in self.non_tip_geoms])
+            connectors = dict(zip(self.connectors, zip(connector_dist, connector_lines)))
+            pairs = [connectors[int(g)] if int(g) in connectors else nearest(int(g), witness=clearance_witness)
+                     for g in self.non_tip_geoms]
+            result['non_tip_distance'] = np.asarray([v[0] for v in pairs])
+            if clearance_witness:
+                lines = np.asarray([v[1] for v in pairs])
+                result['non_tip_hand_points_palm'] = lines[:, :3].copy()
+                result['non_tip_object_points_palm'] = lines[:, 3:].copy()
         return result
 
 

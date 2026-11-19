@@ -1,0 +1,1 @@
+../../mcc_finger_compliance_control/scripts/evaluate_adaptive_regrasp.py

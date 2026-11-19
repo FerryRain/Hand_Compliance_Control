@@ -128,7 +128,7 @@ def run(batch: int, episode: int, frames: int, device: str, seed: int,
         initial_joint_velocity: Any = None,
         initial_joint_target: Any = None,
         stop_when_all_inactive: bool = False,
-        palm_driver: Any = None) -> dict:
+        palm_driver: Any = None, object_id: str = 'ycb_mustard') -> dict:
     from mjlab.envs import ManagerBasedRlEnv
 
     torch_device = torch.device(device)
@@ -154,7 +154,7 @@ def run(batch: int, episode: int, frames: int, device: str, seed: int,
 
     cfg = replay_env_cfg(num_envs=batch, hand_stiffness=35.0, hand_damping=2.5,
                          hand_effort_limit=35.0,
-                         object_config=load_object_config("ycb_mustard"))
+                         object_config=load_object_config(object_id))
     if palm_driver is not None:
         palm_driver.configure(cfg)
     if getattr(chain_factory, 'needs_stabilizer_diagnostics', False):
@@ -249,7 +249,7 @@ def run(batch: int, episode: int, frames: int, device: str, seed: int,
             # serial run corrects every contact normal against the undecomposed
             # source mesh before DP and MCC see it.
             chain.mesh_oracle = TorchMeshNormalOracle(
-                load_object_config("ycb_mustard"), scale=1.0, device=device)
+                load_object_config(object_id), scale=1.0, device=device)
             print("[MESH-ORACLE] source-mesh normal correction enabled", flush=True)
         chain.prime(q0, repeats=30)
         chain.begin_settle(q0, settle_steps)
@@ -285,9 +285,12 @@ def run(batch: int, episode: int, frames: int, device: str, seed: int,
         torch.cuda.synchronize(torch_device)
         started = time.perf_counter()
 
-        for step_index in range(n + settle_steps):
+        step_index = 0
+        while step_index < n + settle_steps:
             settling = step_index < settle_steps
             frame = 0 if settling else step_index - settle_steps
+            if not settling and hasattr(chain, 'before_diagnostic_frame'):
+                chain.before_diagnostic_frame(env, frame)
             newly_stopped = torch.zeros(batch, device=device, dtype=torch.bool)
             # warm-up is recorded under negative frame numbers: the serial
             # report has no such rows, but its force trace is the thing the
@@ -297,12 +300,19 @@ def run(batch: int, episode: int, frames: int, device: str, seed: int,
                 chain.trace.frame_offset = -(settle_steps - step_index)
 
             pose = palm_path[frame].expand(batch, -1).clone()
+            execution_reference = None
+            if not settling and hasattr(chain, 'select_execution_reference'):
+                execution_reference = chain.select_execution_reference(
+                    frame, palm_path, twist_path, command_path)
+                pose = execution_reference[0].clone()
             pose[:, :3] += origins
             if per_env_safety and not settling:
                 pose = torch.where(active[:, None], pose, hold_pose)
             # _set_palm: the prescribed root twist is zeroed only while settling
             twist = (torch.zeros((batch, 6), device=device) if settling
                      else twist_path[frame].expand(batch, -1).clone())
+            if execution_reference is not None:
+                twist = execution_reference[1].clone()
             if per_env_safety and not settling:
                 twist = torch.where(active[:, None], twist, torch.zeros_like(twist))
             palm_root[0] = torch.cat((pose, twist), dim=1)
@@ -363,6 +373,8 @@ def run(batch: int, episode: int, frames: int, device: str, seed: int,
 
             q = robot.data.joint_pos[:, -16:]
             command = command_path[frame].expand(batch, -1)
+            if execution_reference is not None:
+                command = execution_reference[2]
             bootstrap_nominal = (
                 (1.0 - _smoothstep(frame, bootstrap_end))
                 * torch.as_tensor(data["q_hand"][0], device=device)
@@ -431,6 +443,16 @@ def run(batch: int, episode: int, frames: int, device: str, seed: int,
                 completed += 1
                 if stop_when_all_inactive and not bool(active.any()):
                     break
+                if hasattr(chain, 'after_diagnostic_frame'):
+                    restart = chain.after_diagnostic_frame(env, frame)
+                    if restart is not None:
+                        step_index = settle_steps + restart
+                        completed = restart
+                        continue
+                if getattr(chain, 'execution_finished', False):
+                    reason = 'execution_supervisor_finished'
+                    break
+            step_index += 1
 
         torch.cuda.synchronize(torch_device)
         duration_s = time.perf_counter() - started

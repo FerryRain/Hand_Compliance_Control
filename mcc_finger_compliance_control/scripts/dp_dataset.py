@@ -345,6 +345,12 @@ def load_episodes(
             raise ValueError(
                 f"Unsupported DP state schema/frame: {schema!r}/{frame!r}"
             ) from error
+        contact_memory_contract = str(file.attrs.get("contact_memory_contract", "legacy_fill"))
+        materialized_stride = file.attrs.get("materialized_sampling_stride")
+        if materialized_stride is not None and int(materialized_stride) != stride:
+            raise ValueError(f"Dataset materialized at stride {materialized_stride}, requested {stride}")
+        if contact_memory_contract not in ("legacy_fill", "causal_100hz_batched_b_observation_v1"):
+            raise ValueError(f"Unknown contact memory contract: {contact_memory_contract}")
         episode_id = np.asarray(file["episode_id"]).reshape(-1).astype(np.int64)
         q_hand = _flat_feature(file, "q_hand", ACTION_DIM)
         if action_field is None:
@@ -360,7 +366,7 @@ def load_episodes(
     for eid in np.unique(episode_id):
         mask = episode_id == eid
         episode_state = state[mask][::stride].copy()
-        if schema in GEOMETRY_STATE_SCHEMAS:
+        if schema in GEOMETRY_STATE_SCHEMAS and contact_memory_contract == "legacy_fill":
             offsets: dict[str, slice] = {}
             cursor = 0
             for name, size in fields:
@@ -462,8 +468,9 @@ def compute_normalization(
             raise ValueError("anchored_delta_q requires 16-D joint actions")
         # One observed q anchors the whole future chunk.  A separate bound
         # for each waypoint/joint prevents the 50 ms target from being scaled
-        # by an unrelated 800 ms displacement.  Exact training maxima keep
-        # every training target inside the sampler's [-1, 1] clip interval.
+        # by an unrelated 800 ms displacement. These fitted values are affine
+        # numerical scales. Only the legacy sampler treats +/-1 as bounds;
+        # the explicit unbounded contract allows targets beyond these scales.
         action_mean = np.zeros((pred_horizon, action_dim), dtype=np.float64)
         action_std = np.full((pred_horizon, action_dim), 1.0e-4, dtype=np.float64)
         for eid in train_ids:
@@ -763,7 +770,7 @@ class FingertipDiffusionDataset(Dataset):
             action - self.normalization.action_mean
         ) / self.normalization.action_std
         if eid in self.bounded_action_episode_ids:
-            # The deployed LeRobot sampler clips normalized actions to this
+            # Legacy-only mode: the sampler clips normalized actions to this
             # interval.  A DAgger teacher farther away than one representable
             # step must therefore supply a bounded teacher-directed recovery
             # command; repeated replans complete the return instead of asking

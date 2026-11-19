@@ -72,16 +72,19 @@ class StableSplitHullGeometry(SplitHullGeometry):
             mujoco.mj_kinematics(self.model,self.data)
         return rotation
 
-    def evaluate(self,q,palm_pose,self_collision=False,non_tip_clearance=False):
+    def evaluate(self,q,palm_pose,self_collision=False,non_tip_clearance=False,clearance_witness=False):
         values=[]
         from scipy.spatial.transform import Rotation
         rotation=Rotation.from_quat(np.asarray(palm_pose)[[4,5,6,3]]).as_matrix()
         try:
             for origin in self.origins:
                 self.origin=origin
-                value=super().evaluate(q,palm_pose,self_collision,non_tip_clearance)
+                value=super().evaluate(q,palm_pose,self_collision,non_tip_clearance,clearance_witness)
                 value['object_points']-=rotation @ origin
                 value['hand_points_palm']-=origin
+                if clearance_witness:
+                    value['non_tip_hand_points_palm']-=origin
+                    value['non_tip_object_points_palm']-=origin
                 values.append(value)
         finally:
             self.origin=np.zeros(3)
@@ -95,7 +98,12 @@ class StableSplitHullGeometry(SplitHullGeometry):
         result['self_penetration']=max(v['self_penetration'] for v in values)
         result['distance_origin_spread_m']=np.ptp(gaps,axis=0)
         if non_tip_clearance:
-            result['non_tip_distance']=np.min([v['non_tip_distance'] for v in values],axis=0)
+            clearances=np.stack([v['non_tip_distance'] for v in values])
+            selected_non_tip=np.argmin(clearances,axis=0)
+            result['non_tip_distance']=clearances[selected_non_tip,np.arange(clearances.shape[1])]
+            if clearance_witness:
+                for key in ('non_tip_hand_points_palm','non_tip_object_points_palm'):
+                    result[key]=np.stack([v[key] for v in values])[selected_non_tip,np.arange(clearances.shape[1])]
         return result
 
 
@@ -136,12 +144,13 @@ def directional_capacity(jacobian, directions, lower_step, upper_step):
 
 
 class HealthyGraspPlanner:
-    def __init__(self, object_id='ycb_mustard', scale=1., bank=DEFAULT_BANK, config=None):
+    def __init__(self, object_id='ycb_mustard', scale=1., bank=DEFAULT_BANK, config=None,housing_collision=None,
+                 object_config=None):
         self.config=config or HealthConfig()
         self.base=FullHandMCCFingerController(FullHandMCCFingerConfig())
         self.maps=self.base._kinematic_health_maps()
-        self.geometry=StableSplitHullGeometry(load_object_config(object_id),scale)
-        object_config=load_object_config(object_id)
+        object_config=load_object_config(object_id) if object_config is None else object_config
+        self.geometry=StableSplitHullGeometry(object_config,scale,housing_collision=housing_collision)
         self.oracle=GeometrySurfaceOracle(object_config,scale=scale,
             mesh_normal_oracle=MeshNormalOracle.from_config(object_config,scale=scale))
         self.dofs=np.asarray([self.geometry.model.jnt_dofadr[mujoco.mj_name2id(
@@ -200,9 +209,10 @@ class HealthyGraspPlanner:
             result.append(jac[:,self.dofs[4*f:4*f+4]])
         return np.asarray(result)
 
-    def state(self,q,pose,capacity=False):
+    def state(self,q,pose,capacity=False,clearance_budget_rad=None,clearance_padding_m=.0005):
         q=np.asarray(q,float)
-        g=self.geometry.evaluate(q,pose,self_collision=True,non_tip_clearance=True)
+        g=self.geometry.evaluate(q,pose,self_collision=True,non_tip_clearance=True,
+                                 clearance_witness=clearance_budget_rad is not None)
         tip=self.base.tip_positions_palm(q)
         eta_mu=np.array([self.base._finger_kinematic_health(f,tip[f],self.maps[f]) for f in range(4)])
         jacobians=self.witness_jacobians(g)
@@ -210,6 +220,14 @@ class HealthyGraspPlanner:
         health=np.array([eta_mu[:,0],eta_mu[:,1],sigma])
         result=dict(geometry=g,health=health,
             joint_margin_rad=np.minimum(q-self.lower,self.upper-q),jacobians=np.asarray(jacobians))
+        if clearance_budget_rad is not None:
+            radius=np.broadcast_to(np.asarray(clearance_budget_rad,float),(16,))
+            if not np.isfinite(radius).all() or (radius<0).any() or not np.isfinite(clearance_padding_m) or clearance_padding_m<0:
+                raise ValueError('Invalid planning correction budget')
+            gradient=self.clearance_jacobians(g)
+            budget=abs(gradient)@radius+clearance_padding_m
+            g.update(non_tip_distance_jacobian=gradient,mcc_clearance_budget_m=budget,
+                     robust_non_tip_distance=g['non_tip_distance']-budget)
         if capacity:
             normal=self.oracle.normals_at_world(g['object_points'])
             from scipy.spatial.transform import Rotation
@@ -226,6 +244,30 @@ class HealthyGraspPlanner:
                 capacities.append(directional_capacity(jacobians[f],[n,t1,-t1,t2,-t2],lo,hi)
                     if (lo<=0).all() and (hi>=0).all() else np.zeros(5))
             result.update(capacity_m=np.asarray(capacities),normal_object=normal)
+        return result
+
+    def clearance_jacobians(self,geometry):
+        """Local signed-distance sensitivity at each active non-tip witness.
+
+        This is a linearized planning allowance, not a proof that the final
+        MCC command stays in the box. Actual commands/forces are audited.
+        """
+        mujoco.mj_comPos(self.geometry.model,self.geometry.data)
+        result=np.zeros((len(self.geometry.non_tip_geoms),16))
+        for k,geom_id in enumerate(self.geometry.non_tip_geoms):
+            a=geometry['non_tip_hand_points_palm'][k]
+            b=geometry['non_tip_object_points_palm'][k]
+            norm=np.linalg.norm(a-b)
+            if norm<1e-10:
+                if abs(geometry['non_tip_distance'][k])<.03:
+                    raise ValueError('Missing near non-tip clearance witness')
+                continue
+            normal=(a-b)/norm
+            if geometry['non_tip_distance'][k]<0:normal=-normal
+            jac=np.zeros((3,self.geometry.model.nv))
+            body=int(self.geometry.model.geom_bodyid[int(geom_id)])
+            mujoco.mj_jac(self.geometry.model,self.geometry.data,jac,None,a,body)
+            result[k]=normal@jac[:,self.dofs]
         return result
 
     def constraints(self,s):

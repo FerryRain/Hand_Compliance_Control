@@ -42,6 +42,7 @@ from dp_dataset import (
 )
 from dp_fk_aux_loss import diffusion_with_fk_loss
 from torch_hand_fk import TorchHandFK
+from dp_action_contract import clips_unit_range, resolve_action_clip, enforce_target_range
 
 
 def build_policy(args: argparse.Namespace, device: torch.device) -> DiffusionPolicy:
@@ -76,11 +77,20 @@ def build_policy(args: argparse.Namespace, device: torch.device) -> DiffusionPol
         num_train_timesteps=args.diffusion_steps,
         beta_schedule="squaredcos_cap_v2",
         prediction_type="epsilon",
-        clip_sample=True,
+        clip_sample=clips_unit_range(args),
         clip_sample_range=1.0,
         num_inference_steps=args.inference_steps,
     )
+    architecture = getattr(args, 'policy_architecture', 'unet')
+    if architecture == 'act':
+        from chunk_policy_models import ACTPolicy
+        return ACTPolicy(config, args).to(device)
     policy = DiffusionPolicy(config)
+    if architecture == 'transformer_diffusion':
+        from chunk_policy_models import transformer_diffusion
+        policy.diffusion = transformer_diffusion(policy.diffusion, args)
+    elif architecture != 'unet':
+        raise ValueError(f'Unknown policy architecture: {architecture}')
     conditioning = getattr(args, "conditioning_architecture", "flat")
     if conditioning == "finger_history":
         from finger_history_dp import FingerHistoryDiffusionModel
@@ -155,10 +165,15 @@ def validation_loss(
 ) -> float:
     policy.eval()
     losses = []
+    components = []
     for batch_index, batch in enumerate(loader):
         if batch_index >= max_batches:
             break
         losses.append(policy.diffusion.compute_loss(_to_device(batch, device)).item())
+        if hasattr(policy.diffusion, 'last_loss_components'):
+            components.append(dict(policy.diffusion.last_loss_components))
+    policy.diffusion.validation_components = ({k: float(np.mean([x[k] for x in components]))
+                                              for k in components[0]} if components else {})
     policy.train()
     return float(np.mean(losses)) if losses else float("nan")
 
@@ -288,8 +303,9 @@ def write_metrics(
             axes[0].plot(steps, val_loss, marker="o", label="val noise loss")
         axes[0].set_yscale("log")
         axes[0].set_xlabel("training step")
-        axes[0].set_ylabel("MSE")
-        axes[0].set_title("Diffusion noise prediction")
+        act = records[0].get('policy_architecture') == 'act'
+        axes[0].set_ylabel('L1 + weighted KL' if act else "MSE")
+        axes[0].set_title('ACT native objective (legacy noise_loss column)' if act else "Diffusion noise prediction")
         axes[0].grid(True, alpha=0.3)
         axes[0].legend()
 
@@ -327,6 +343,8 @@ def write_metrics(
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--file", type=Path, required=True)
+    parser.add_argument('--window-selection-manifest',type=Path,default=None,
+        help='Reviewed window anchors with dataset/split hashes; preserves original histories and future labels.')
     parser.add_argument(
         "--episode-split-manifest",
         type=Path,
@@ -365,9 +383,14 @@ def main() -> None:
         default=0.10,
         help=(
             "Abort when more than this fraction of DAgger normalized action "
-            "scalars exceed [-1,1]. Use a negative value only for diagnostics."
+            "scalars exceed [-1,1] in legacy_unit mode. In none mode this is "
+            "a diagnostic statistic only, not an action bound."
         ),
     )
+    parser.add_argument('--action-sample-clip', choices=('legacy_unit', 'none'), default=None,
+        help='none removes the data-derived normalized [-1,1] sampling bound; '
+             'normalization remains affine and execution limits remain unchanged. '
+             'Omitted: inherit checkpoint setting, or legacy_unit for an old/new unspecified run.')
     checkpoint_group = parser.add_mutually_exclusive_group()
     checkpoint_group.add_argument(
         "--resume",
@@ -410,6 +433,18 @@ def main() -> None:
     )
     parser.add_argument("--output", type=Path, default=None)
     parser.add_argument("--device", default="cuda:0")
+    parser.add_argument('--policy-architecture', choices=('unet','act','transformer_diffusion'), default='unet')
+    parser.add_argument('--transformer-dim', type=int, default=768)
+    parser.add_argument('--transformer-heads', type=int, default=8)
+    parser.add_argument('--transformer-encoder-layers', type=int, default=4)
+    parser.add_argument('--transformer-decoder-layers', type=int, default=4)
+    parser.add_argument('--act-posterior-layers', type=int, default=2)
+    parser.add_argument('--act-latent-dim', type=int, default=32)
+    parser.add_argument('--act-kl-weight', type=float, default=10.)
+    parser.add_argument('--balance-object-groups', action='store_true',
+        help='Equal object/initial-group/episode sampling of admitted train windows; requires a fixed split.')
+    parser.add_argument('--balance-source-episodes', action='store_true',
+                        help='Equal cohort probability, equal episode within cohort; requires manifest cohort labels')
     parser.add_argument("--conditioning-architecture", choices=("flat", "finger_history"),
                         default="flat", help="Shared per-finger temporal encoding or legacy flat history")
     parser.add_argument("--steps", type=int, default=100_000)
@@ -420,12 +455,14 @@ def main() -> None:
     parser.add_argument("--pred-horizon", type=int, default=32)
     parser.add_argument(
         "--input-profile",
-        choices=("B2", "B0"),
+        choices=("B2", "B0", "B2_no_q_velocity"),
         default="B2",
         help=(
             "B2 uses every exported dual-track-v3 channel. B0 keeps only "
             "the 84-D execution-observation subset while retaining the same "
-            "242-D network interface; disabled normalized channels are zero."
+            "242-D network interface; disabled normalized channels are zero. "
+            "B2_no_q_velocity is a motion96 anchored-delta ablation: mask only "
+            "explicit q velocity, retain q history and every other B2 channel."
         ),
     )
     parser.add_argument(
@@ -543,6 +580,11 @@ def main() -> None:
         help="Training-window trajectories sampled after each checkpoint; 0 disables.",
     )
     args = parser.parse_args()
+    if args.window_selection_manifest is not None:
+        if args.episode_split_manifest is None or args.dagger_file or args.exclude_episode_ids:
+            raise ValueError('Window admission requires a fixed grouped split and no DAgger overlay/episode deletion')
+        if args.action_representation!='anchored_delta_q':
+            raise ValueError('Reviewed window admission currently supports anchored_delta_q')
 
     if args.resume_optimizer and args.resume is None:
         parser.error("--resume-optimizer requires --resume")
@@ -581,6 +623,8 @@ def main() -> None:
         if initialization_path is not None
         else None
     )
+    args.action_sample_clip = resolve_action_clip(args.action_sample_clip,
+        None if resume_checkpoint is None else resume_checkpoint['config'])
 
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
@@ -605,6 +649,13 @@ def main() -> None:
             f"2**len(down_dims)={downsampling_factor}"
         )
 
+    if args.policy_architecture != 'unet' and (args.conditioning_architecture != 'flat'
+            or args.fk_loss_weight or args.near_q_loss_weight):
+        raise ValueError('Architecture comparison requires flat full-information conditioning and no auxiliary losses')
+    if args.transformer_dim % args.transformer_heads or args.transformer_dim % 2:
+        raise ValueError('Transformer width must be even and divisible by head count')
+    if args.act_kl_weight < 0:
+        raise ValueError('ACT KL weight must be nonnegative')
     episodes = load_episodes(
         args.file, args.stride, args.action_field, args.action_dim
     )
@@ -631,6 +682,9 @@ def main() -> None:
             bound_normalized_action = bool(
                 dagger_file.attrs.get("bound_normalized_action", False)
             )
+        if bound_normalized_action and not clips_unit_range(args):
+            raise ValueError('Unbounded DAgger must use unmodified expert labels; '
+                             're-export sources declaring bound_normalized_action instead of silently reusing bounded data')
         dagger_episodes = load_episodes(
             dagger_path, args.stride, args.action_field, args.action_dim
         )
@@ -741,6 +795,10 @@ def main() -> None:
                 f"B0 contract must expose exactly 84 dimensions, got "
                 f"{int(state_input_mask.sum())}"
             )
+    elif args.input_profile == "B2_no_q_velocity":
+        from dp_observation_profiles import without_explicit_q_velocity
+        state_input_mask = without_explicit_q_velocity(
+            field_slices, state_dim, dataset_state_schema, args.action_representation)
     active_input_fields = [
         name
         for name, field_slice in field_slices.items()
@@ -761,6 +819,8 @@ def main() -> None:
         args.motion_feature_step_frames = int(dataset_motion_config["step_frames"])
         args.motion_feature_dt = float(dataset_motion_config["feature_dt"])
     if resume_checkpoint is not None:
+        if resume_checkpoint['config'].get('policy_architecture', 'unet') != args.policy_architecture:
+            raise ValueError('Cannot resume a different policy architecture')
         if resume_checkpoint["config"].get("conditioning_architecture", "flat") != args.conditioning_architecture:
             raise ValueError("Cannot resume across conditioning architectures; train the new encoder from scratch")
         compatibility = {
@@ -877,6 +937,20 @@ def main() -> None:
             list(episodes), args.val_ratio, args.seed
         )
         split_strategy = "random_episode"
+    window_selection=None
+    window_selection_audit=None
+    args.window_selection_sha256=None
+    if args.window_selection_manifest is not None:
+        from teacher_window_selection import load_selection, selected_normalization, apply_selection, action_range
+        if dataset_action_field!='q_hand' or dataset_action_dim!=16:
+            raise ValueError('Reviewed teacher windows require measured 16D q_hand labels')
+        window_selection,window_selection_audit=load_selection(
+            args.window_selection_manifest,args.file,args.episode_split_manifest,episodes,
+            args.obs_horizon,args.pred_horizon,args.stride)
+        args.window_selection_sha256=window_selection_audit['manifest_sha256']
+    if args.resume_optimizer:
+        if resume_checkpoint['config'].get('window_selection_sha256')!=args.window_selection_sha256:
+            raise ValueError('Optimizer continuation must preserve the reviewed window selection')
     if resume_checkpoint is not None and args.reuse_checkpoint_normalization:
         checkpoint_normalization = resume_checkpoint["normalization"]
         normalization = Normalization(
@@ -893,6 +967,9 @@ def main() -> None:
                 checkpoint_normalization["action_std"], dtype=np.float32
             ),
         )
+    elif window_selection is not None:
+        normalization=selected_normalization(episodes,train_ids,window_selection,
+            args.obs_horizon,args.pred_horizon,dataset_state_schema)
     else:
         normalization = compute_normalization(
             episodes,
@@ -963,6 +1040,20 @@ def main() -> None:
         )
         for domain in sorted(set(episode_domain.values()))
     }
+    if window_selection is not None:
+        maximum=action_range(episodes,train_ids,window_selection,args.pred_horizon,normalization)
+        window_selection_audit['train_normalized_action_abs_max']=maximum
+        enforce_target_range(maximum, args.action_sample_clip)
+        window_selection_audit['action_sample_clip'] = args.action_sample_clip
+        window_selection_audit['train']=apply_selection(train_set,window_selection)
+        window_selection_audit['val']=apply_selection(val_set,window_selection)
+        window_selection_audit['validation_domains']={
+            domain:apply_selection(dataset,window_selection) for domain,dataset in validation_sets_by_domain.items()}
+        window_selection_audit['checkpoint_normalization_reused']=bool(
+            resume_checkpoint is not None and args.reuse_checkpoint_normalization)
+        if window_selection_audit['checkpoint_normalization_reused']:
+            window_selection_audit['normalization_scope']='Reused checkpoint normalization; no refit to selected labels'
+        if not val_set:raise ValueError('No admitted validation windows')
     if not train_set:
         raise ValueError("No training windows for the selected horizons")
 
@@ -985,6 +1076,8 @@ def main() -> None:
             "abs_p95": float(np.percentile(absolute_actions, 95)),
             "abs_max": float(np.max(absolute_actions)),
         }
+        if not np.isfinite(absolute_actions).all():
+            raise ValueError('Nonfinite DAgger action labels')
         print(
             "[DAGGER] normalized action "
             f"outside={100.0 * outside_fraction:.2f}% "
@@ -992,7 +1085,8 @@ def main() -> None:
             f"max={dagger_action_stats['abs_max']:.3f}"
         )
         if (
-            args.max_dagger_action_outside_fraction >= 0.0
+            clips_unit_range(args)
+            and args.max_dagger_action_outside_fraction >= 0.0
             and outside_fraction > args.max_dagger_action_outside_fraction
         ):
             raise ValueError(
@@ -1042,6 +1136,7 @@ def main() -> None:
             "episode_domains": episode_domain,
             "train_only_domains": sorted(train_only_domains),
             "split_strategy": split_strategy,
+            "window_selection": window_selection_audit,
             "contact_normal_polarity": dataset_normal_polarity,
         },
     }
@@ -1055,6 +1150,26 @@ def main() -> None:
         f"windows={len(train_set)}/{len(val_set)} state={state_dim}d"
     )
     train_sampler = None
+    if args.balance_object_groups:
+        if args.balance_source_episodes or args.dagger_file or args.episode_split_manifest is None:
+            raise ValueError('Object-group balancing requires a fixed split and no source balancing or DAgger overlay')
+        from teacher_window_selection import object_group_weights
+        payload = json.loads(args.episode_split_manifest.read_text())
+        weights, sampling_audit = object_group_weights(train_set.windows, payload['episodes'])
+        (output/'sampling_audit.json').write_text(json.dumps(sampling_audit, indent=2))
+        train_sampler = WeightedRandomSampler(torch.as_tensor(weights, dtype=torch.double),
+            num_samples=len(train_set), replacement=True,
+            generator=torch.Generator().manual_seed(args.seed+7000))
+    if args.balance_source_episodes:
+        if args.dagger_file or args.episode_split_manifest is None:
+            raise ValueError('Balanced source sampling requires a fixed manifest and no DAgger overlay')
+        from policy_comparison_sampling import balanced_weights
+        payload = json.loads(args.episode_split_manifest.read_text())
+        weights, sampling_audit = balanced_weights(train_set.windows, payload['episodes'])
+        (output/'sampling_audit.json').write_text(json.dumps(sampling_audit, indent=2))
+        train_sampler = WeightedRandomSampler(torch.as_tensor(weights, dtype=torch.double),
+            num_samples=len(train_set), replacement=True,
+            generator=torch.Generator().manual_seed(args.seed+7000))
     if dagger_episode_ids and args.dagger_sample_ratio > 0.0:
         clean_count = int(np.sum(~dagger_window))
         dagger_count = int(np.sum(dagger_window))
@@ -1093,6 +1208,11 @@ def main() -> None:
     )
 
     policy = build_policy(args, device)
+    (output/'model_summary.json').write_text(json.dumps(dict(
+        architecture=args.policy_architecture, parameters=sum(p.numel() for p in policy.parameters()),
+        training_objective='L1+KL' if args.policy_architecture=='act' else 'epsilon_MSE',
+        inference='z=0 deterministic' if args.policy_architecture=='act' else args.noise_scheduler,
+        scheduler='unchanged', contact_inputs='full existing state history'), indent=2))
     fk = TorchHandFK().to(device) if args.fk_loss_weight > 0.0 else None
     action_mean_tensor = torch.as_tensor(
         normalization.action_mean, dtype=torch.float32, device=device
@@ -1203,6 +1323,9 @@ def main() -> None:
                     fk_weight=args.fk_loss_weight,
                     fk_max_noise_timestep=args.fk_max_noise_timestep,
                 )
+        if not torch.isfinite(loss).item():
+            raise RuntimeError(f'Nonfinite {args.policy_architecture} training loss at step {step}')
+        train_components = dict(getattr(policy.diffusion, 'last_loss_components', {}))
         scaler.scale(loss).backward()
         scaler.unscale_(optimizer)
         nn.utils.clip_grad_norm_(policy.parameters(), 1.0)
@@ -1240,6 +1363,11 @@ def main() -> None:
             )
             record: dict[str, float | int] = {
                 "step": step,
+                'policy_architecture': args.policy_architecture,
+                'train_act_reconstruction_l1': train_components.get('reconstruction_l1', 0.),
+                'train_act_kl': train_components.get('kl', 0.),
+                'val_act_reconstruction_l1': getattr(policy.diffusion, 'validation_components', {}).get('reconstruction_l1', 0.),
+                'val_act_kl': getattr(policy.diffusion, 'validation_components', {}).get('kl', 0.),
                 "train_noise_loss": float(noise_loss.item()),
                 "train_near_q_loss":float(near_q_loss.item()),
                 "train_weighted_near_q_loss":float(args.near_q_loss_weight*near_q_loss.item()),

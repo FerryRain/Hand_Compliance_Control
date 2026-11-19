@@ -1,0 +1,1 @@
+../../mcc_finger_compliance_control/scripts/audit_smooth_regrasp.py

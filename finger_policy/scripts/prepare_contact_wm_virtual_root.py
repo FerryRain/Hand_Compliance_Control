@@ -1,0 +1,1 @@
+../../mcc_finger_compliance_control/scripts/prepare_contact_wm_virtual_root.py

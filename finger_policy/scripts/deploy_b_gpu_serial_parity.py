@@ -1,0 +1,1 @@
+../../mcc_finger_compliance_control/scripts/deploy_b_gpu_serial_parity.py

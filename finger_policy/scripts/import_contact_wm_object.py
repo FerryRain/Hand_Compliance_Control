@@ -1,0 +1,1 @@
+../../mcc_finger_compliance_control/scripts/import_contact_wm_object.py

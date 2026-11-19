@@ -343,7 +343,9 @@ class BatchedBControlChain:
     def _orchestrate(self, *, q: torch.Tensor, pose: torch.Tensor,
                      force: torch.Tensor, found: torch.Tensor,
                      control_outward_world: torch.Tensor,
-                     nominal: torch.Tensor) -> torch.Tensor:
+                     nominal: torch.Tensor,
+                     intent_unloading: torch.Tensor | None = None,
+                     intent_search_gain: torch.Tensor | None = None) -> torch.Tensor:
         """Loss/recovery state machine, ported from the serial live_dp loop.
 
         The serial deployment does not hand the scheduler's nominal straight to
@@ -383,6 +385,15 @@ class BatchedBControlChain:
         self.loss_streak = torch.where(
             recovered, torch.zeros_like(self.loss_streak), self.loss_streak)
 
+        if intent_unloading is not None:
+            # Do not accumulate a hidden search offset while an upper layer
+            # deliberately unloads. The opt-in MCC bounds command handover.
+            self.loss_streak = torch.where(intent_unloading, 0, self.loss_streak)
+            self.recovery_active &= ~intent_unloading
+            self.recovery_confirm_streak = torch.where(intent_unloading, 0, self.recovery_confirm_streak)
+            self.runtime_recovery_offset = torch.where(
+                intent_unloading.repeat_interleave(4, -1), 0., self.runtime_recovery_offset)
+
         force_supported = ((~self.recovery_active) & found
                            & (force_mag >= self.recovery_decay_force_ratio * force_setpoint))
         self.runtime_recovery_offset = torch.where(
@@ -398,6 +409,8 @@ class BatchedBControlChain:
                 missing=self.recovery_active,
                 inward_step=self.search_cartesian_step_m,
                 max_joint_step=self.search_joint_step_rad)
+            if intent_search_gain is not None:
+                search = search * intent_search_gain[..., None]
             # search is (batch,4,4) per finger; the integrator is (batch,16)
             self.runtime_recovery_offset = (
                 self.runtime_recovery_offset + search.reshape(self.batch, 16)).clamp(
@@ -445,6 +458,10 @@ class BatchedBControlChain:
             found=found, palm_twist_world=palm_twist_world.to(self.device),
             planner_command_palm=planner_command_palm.to(self.device),
             mesh_oracle=self.mesh_oracle)
+        policy_memory=getattr(self,'policy_memory',None)
+        if policy_memory is not None:
+            policy_memory.push(self.observation)
+            policy_memory.before_scheduler_observe(self.scheduler,self.previous_nominal)
         # The accepted deployment observes the previously issued nominal
         # trajectory before installing a new chunk, not the MCC-corrected q.
         self.scheduler.observe(self.previous_nominal)
@@ -476,6 +493,11 @@ class BatchedBControlChain:
             and (self.control_frame - self.bootstrap_end)
             % self.scheduler.config.replan_interval == 0
             and self.observation.history_ready)
+        policy_active=None if policy_memory is None else policy_memory.active_mask()
+        if policy_active is not None:
+            if self.async_planner is not None:
+                raise ValueError('Reset policy history currently requires synchronous DP')
+            replanned=replanned and bool(policy_active.any())
         if settling:
             # Serial pins the posture command to clamp(bootstrap_q), which is
             # clamp(q_hand[0]) for every warm-up frame (t stays 0).
@@ -518,7 +540,7 @@ class BatchedBControlChain:
                                     prediction=plan.prediction,chunk=plan.chunk,anchor=plan.anchor,
                                     drop_index=drop,path=self.scheduler.path,observation=plan.observation)
             elif replanned:
-                history = self.observation.history()
+                history = (self.observation if policy_memory is None else policy_memory).history()
                 normalized = (history - self.state_mean) / self.state_std * self.state_mask
                 if self.chunk_provider is None:
                     condition = self.runtime.policy.diffusion._prepare_global_conditioning({
@@ -548,13 +570,43 @@ class BatchedBControlChain:
                 # nominal, with normal live MCC feedback and moving physics.
                 nominal = self.previous_nominal.clone()
             else:
-                nominal = self.scheduler.next_command()
+                if policy_active is not None and not bool(policy_active.any()):
+                    nominal=self.previous_nominal.clone()
+                else:
+                    nominal = self.scheduler.next_command()
+                    if policy_active is not None:
+                        nominal=torch.where(policy_active[:,None],nominal,self.previous_nominal)
         self.previous_nominal = nominal.clone()
+        intent_request = None
+        load_request = None
         if not settling and not bootstrapping and self.residual_policy is not None:
             residual = self.residual_policy(q, nominal, self.observation.states[:, -1])
             if residual.shape != nominal.shape or not torch.isfinite(residual).all():
                 raise ValueError("residual policy must return finite [batch,16] joint offsets")
             nominal = nominal + residual
+            intent_request = getattr(self.residual_policy, 'unload_request', None)
+            load_request = getattr(self.residual_policy, 'load_request', None)
+        intent_options = {}
+        if not settling and not bootstrapping and hasattr(self, 'command_supervisor'):
+            nominal, load_request = self.command_supervisor.apply_nominal(q, nominal, load_request)
+            # Observe the task reference actually owned by the supervisor.
+            # DP history still contains measured states; no teacher history reset.
+            self.previous_nominal = nominal.clone()
+        if hasattr(self.mcc, 'prepare_load_authority'):
+            if intent_request is not None:
+                raise ValueError('Load authority requires load_request, not Boolean unload_request')
+            self.mcc.prepare_load_authority(load_request)
+            self.mcc.set_palm_motion(palm_twist_world.to(self.device))
+            intent_options = dict(intent_unloading=getattr(self.mcc,'recovery_unloading',self.mcc.intent_unloading),
+                                  intent_search_gain=getattr(self.mcc,'recovery_search_gain',self.mcc.intent_inward_gain))
+        elif load_request is not None:
+            raise ValueError('load_request requires a load-authority MCC controller')
+        elif hasattr(self.mcc, 'prepare_contact_intent'):
+            self.mcc.prepare_contact_intent(intent_request, found, force)
+            intent_options = dict(intent_unloading=self.mcc.intent_unloading,
+                                  intent_search_gain=self.mcc.intent_inward_gain)
+        elif intent_request is not None:
+            raise ValueError('Unload intent requires an intent-aware MCC controller')
         # Serial feeds the hybrid direction the CORRECTED normal, not the raw
         # sensor one (deploy_dp_inverse.py:2485 uses `live_normals`, which is
         # the mesh-oracle output).
@@ -568,7 +620,7 @@ class BatchedBControlChain:
             # Serial gates the recovery orchestrator on `t > bootstrap_end`.
             nominal = self._orchestrate(q=q, pose=pose, force=force, found=found,
                                         control_outward_world=recovery_normal,
-                                        nominal=nominal)
+                                        nominal=nominal, **intent_options)
         if independent_admittance:
             surface_points = points  # the admittance uses the measured contact Jacobian
         else:
@@ -642,6 +694,17 @@ class BatchedDPChunkScheduler:
         self.history[:, -1].copy_(q)
         self.count = min(self.count + 1, self.capacity)
 
+    def restart_lanes(self,mask,q_nominal):
+        """Discard stale lane-local DTW/path context after stable recontact.
+
+        Initial splice has zero historical velocity, then final MCC slew and
+        force preload still own actuator continuity. Other lanes are untouched.
+        """
+        self.history[mask]=q_nominal[mask,None].to(self.history)
+        if self.path is not None:self.path[mask]=q_nominal[mask,None].to(self.path)
+        self.last_drop_index=torch.where(mask,0,self.last_drop_index)
+        self.restart_mask=mask.clone() if not hasattr(self,'restart_mask') else self.restart_mask|mask
+
     @staticmethod
     def _velocity(path: torch.Tensor, dt: float) -> torch.Tensor:
         result = torch.zeros_like(path)
@@ -703,6 +766,9 @@ class BatchedDPChunkScheduler:
             raise RuntimeError("No executed trajectory is available")
         cfg = self.config
         drop = self._drop(prediction)
+        if hasattr(self,'restart_mask'):
+            drop=torch.where(self.restart_mask,0,drop)
+            self.restart_mask.zero_()
         self.last_drop_index = drop
         requested_frames = cfg.replan_interval if execution_frames is None else int(execution_frames)
         if requested_frames < 1:

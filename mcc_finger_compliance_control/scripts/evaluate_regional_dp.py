@@ -40,6 +40,12 @@ def sha(path):
     return result.hexdigest()
 
 
+def wall_noise_seed(seed, frame):
+    """Evaluation-only common noise, independent of skipped DP calls."""
+    key=f'{int(seed)}:{int(frame)}:dp_wall_noise_v1'.encode()
+    return int.from_bytes(hashlib.blake2b(key,digest_size=8).digest(),'little')%(2**63-1)
+
+
 def pad_episode(array, length):
     array = np.asarray(array)
     if len(array) > length or len(array) < 1:
@@ -80,6 +86,13 @@ def _worker(request):
     rows = task['rows']
     batch = len(rows)
     frames = max(r['frames'] for r in rows)
+    if task.get('palm_reset') is not None:
+        learned_reset=(task.get('fast_feedback') and task.get('residual_mode')=='frozen'
+                       and task['palm_reset'].get('posture_strategy')=='cached_measured'
+                       and task['palm_reset'].get('dp_history_mode')=='freeze_rebuild')
+        if task.get('load_branches') or task.get('scripted_load') or task.get('causal_trace') or (task.get('residual_mode','off')!='off' and not learned_reset):
+            raise ValueError('Palm reset requires standalone DP or frozen feedback with cached measured recovery/history rebuild')
+        frames += int(task['palm_reset'].get('extra_frames',1500))
     dataset = Path(task['dataset'])
     reference = [load_episode(dataset/'teachers_inverted.h5', r['episode_id'],
                               include_teacher_tactile=False) for r in rows]
@@ -99,9 +112,14 @@ def _worker(request):
                     for r in rows]
     data['planner_palm_delta_pose_palm_commanded'] = np.stack(commands, axis=2)
     initial_target = []
+    object_ids = set()
     for row in rows:
         with h5py.File(row['source']) as h:
             initial_target.append(h['q_cmd'][0, 0])
+            object_ids.add(str(h.attrs['object_id']))
+    if len(object_ids) != 1:
+        raise ValueError('Batch must use one collision model; group evaluation by object_id')
+    object_id = next(iter(object_ids))
     device = 'cuda:0'
     tensors = dict(strict=torch.zeros((frames,batch,4), device=device, dtype=torch.bool),
                    found=torch.zeros((frames,batch,4), device=device, dtype=torch.bool),
@@ -115,8 +133,12 @@ def _worker(request):
         tensors.update(substep_tip_force_world=torch.zeros((frames,10,batch,4,3),device=device),
                        substep_tip_found=torch.zeros((frames,10,batch,4),device=device,dtype=torch.bool),
                        substep_q=torch.zeros((frames,10,batch,16),device=device))
+    if task.get('pose_trace',False):
+        tensors.update(measured_palm_pose_world=torch.zeros((frames,batch,7),device=device),
+                       measured_object_pose_world=torch.zeros((frames,batch,7),device=device))
     substep_count = torch.zeros(frames, dtype=torch.long, device=device)
     noise = []
+    mcc_snapshots = []
     initialization_trace=[]
     config = task['mcc_config']
     residual_mode=task.get('residual_mode','off')
@@ -124,8 +146,24 @@ def _worker(request):
     residual_state=None
     agent=None
     dppo=None
+    fast_feedback=task.get('fast_feedback',False)
+    if task.get('self_contact_trace',False):
+        tensors['self_force']=torch.zeros((frames,batch),device=device)
+    regional=False
     shadow_errors=dict(action=0.,nominal=0.,command=0.,observation=0.)
-    if residual_mode!='off':
+    if fast_feedback:
+        if task.get('dppo'):
+            raise ValueError('Fast feedback freezes DP/MCC')
+        if residual_mode not in ('zero','frozen','train'):raise ValueError('Feedback mode')
+        from fast_history_feedback import FastHistoryFeedback,restore_feedback
+        residual_state=torch.load(task['residual_checkpoint'],map_location='cpu',weights_only=False)
+        agent=restore_feedback(residual_state,training)
+        regional=True
+        tensors.update(residual_offset=torch.zeros((frames,batch,16),device=device),
+                       residual_target=torch.zeros((frames,batch,16),device=device),
+                       feedback_load=torch.ones((frames,batch,4),device=device),
+                       self_force=torch.zeros((frames,batch),device=device))
+    elif residual_mode!='off':
         if residual_mode not in ('zero','frozen','train'):
             raise ValueError(f'Unknown residual mode: {residual_mode}')
         from train_rl0 import RL0PPO,RL0Residual
@@ -188,8 +226,20 @@ def _worker(request):
     deployment.replay_env_cfg = env_cfg
     teacher = torch.as_tensor(data['q_hand'],device=device)
     aggregate = None
+    reset_report = None
+    optimizer_teacher_report = None
+    single_finger_report = None
 
     class Chain(BatchedBControlChain):
+        def _orchestrate(self, **kwargs):
+            if task.get('causal_trace', False) or task.get('recovery_search_branches'):
+                self.pre_recovery_nominal = kwargs['nominal'].clone()
+            result = super()._orchestrate(**kwargs)
+            if hasattr(self, 'search_branch_experiment'):
+                result = self.search_branch_experiment.filter_command(kwargs['nominal'], result)
+            if hasattr(getattr(self, 'command_supervisor', None), 'filter_recovery'):
+                result = self.command_supervisor.filter_recovery(kwargs['nominal'], result)
+            return result
         def __init__(self, *args, **kwargs):
             kwargs['mcc_config'] = FullHandMCCFingerConfig(**config)
             super().__init__(*args, **kwargs)
@@ -203,6 +253,27 @@ def _worker(request):
                     self.pending_admittance=candidate
                 else:
                     self.mcc=candidate
+            elif controller == 'normal_constrained_hold_v1':
+                from normal_constrained_hold import NormalConstrainedHoldMCC
+                self.mcc=NormalConstrainedHoldMCC(self.batch,self.device,FullHandMCCFingerConfig(**config))
+            elif controller == 'contact_intent_v1':
+                from contact_intent_mcc import ContactIntentMCC, HandoverConfig
+                self.mcc=ContactIntentMCC(self.batch,self.device,FullHandMCCFingerConfig(**config),
+                    HandoverConfig(**task.get('handover_config',{})))
+            elif controller in ('load_authority_v2','load_authority_v3','unified_command_v1'):
+                from load_authority_mcc import LoadAuthorityMCC, LoadAuthorityConfig
+                if controller=='unified_command_v1':
+                    from unified_command_mcc import UnifiedCommandMCC, UnifiedCommandConfig
+                    self.mcc=UnifiedCommandMCC(self.batch,self.device,FullHandMCCFingerConfig(**config),
+                        LoadAuthorityConfig(**task.get('load_authority_config',{})),
+                        unified=UnifiedCommandConfig(**task.get('unified_command_config',{})))
+                else:
+                    self.mcc=LoadAuthorityMCC(self.batch,self.device,FullHandMCCFingerConfig(**config),
+                        LoadAuthorityConfig(**task.get('load_authority_config',{})))
+                self.authority_unified_mode=controller=='unified_command_v1'
+                self.authority_matched_mode=controller!='load_authority_v2'
+                self.authority_guard_all=bool(task.get('matched_tip_guard_all',False))
+                self.authority_palm_compensation=bool(task.get('palm_motion_compensation',False))
             elif controller != 'legacy':
                 raise ValueError(f'Unknown MCC controller: {controller}')
             self.runtime.policy.diffusion.num_inference_steps = 10
@@ -217,14 +288,40 @@ def _worker(request):
             else:
                 original = self.runtime.policy.diffusion.conditional_sample
                 def sample(*args, **kwargs):
+                    frame_seed=None
+                    if task.get('dp_noise_clock')=='wall_frame_v1':
+                        frame_seed=wall_noise_seed(task['seed'],self.control_frame)
+                        kwargs['generator'].manual_seed(frame_seed)
                     before = hashlib.sha256(kwargs['generator'].get_state().numpy().tobytes()).hexdigest()
                     result = original(*args, **kwargs)
+                    if fast_feedback:self.feedback_prediction=result.detach().clone()
                     after = hashlib.sha256(kwargs['generator'].get_state().numpy().tobytes()).hexdigest()
-                    noise.append(dict(frame=self.control_frame, before=before, after=after))
+                    noise.append(dict(frame=self.control_frame, before=before, after=after,frame_seed=frame_seed))
                     return result
                 self.runtime.policy.diffusion.conditional_sample = sample
+            if task.get('single_finger_policy') is not None:
+                if task['chunk_source'] != 'dp' or agent is not None or dppo is not None or task.get('optimizer_teacher') or (task.get('palm_reset') and task.get('local_recovery') is None):
+                    raise ValueError('Single-finger pilot requires standalone DP chunks and frozen MCC')
+                from single_finger_dp import SingleFingerRuntime
+                if task['single_finger_policy'].get('dynamic_range', False):
+                    from range_conditioned_finger_dp import RangeFingerRuntime
+                    self.single_finger_runtime = RangeFingerRuntime(task['single_finger_policy'], device, task['seed'])
+                elif task['single_finger_policy'].get('mode', 'all') == 'all':
+                    self.single_finger_runtime = SingleFingerRuntime(task['single_finger_policy'], device, task['seed'])
+                else:
+                    from hybrid_finger_dp import HybridFingerRuntime, full_hand_chunk
+                    self.single_finger_runtime = HybridFingerRuntime(
+                        task['single_finger_policy'], device, task['seed'],
+                        lambda frame, q, history: full_hand_chunk(self, frame, q, history))
+                self.chunk_provider = self.single_finger_runtime
             if dppo is not None:
                 dppo.attach(self)
+            if task.get('optimizer_teacher') is not None:
+                if agent is not None or dppo is not None or task.get('palm_reset') or task.get('snapshot_branches') or task['chunk_source']!='dp':
+                    raise ValueError('Optimizer teacher is a standalone non-learning DP diagnostic')
+                from optimizer_teacher_chunk import OptimizerTeacherChunk
+                self.optimizer_teacher=OptimizerTeacherChunk(self,task['optimizer_teacher'],output)
+                self.chunk_provider=self.optimizer_teacher
             self.shadow=None
             if dppo is not None and dppo.probe:
                 self.shadow=BatchedBControlChain(*args,**kwargs)
@@ -234,16 +331,106 @@ def _worker(request):
             if agent is not None:
                 # Reuse the original actor preprocessing, history and limiter.
                 # The stored MCC profile is intentionally NOT transplanted.
-                residual_class=RegionalResidual if regional else RL0Residual
+                residual_class=FastHistoryFeedback if fast_feedback else (RegionalResidual if regional else RL0Residual)
                 extra=dict(lengths=[r['frames'] for r in rows]) if regional else {}
+                if fast_feedback and task.get('palm_reset') is not None:
+                    extra=dict(lengths=[frames]*batch)
                 self.residual_policy=residual_class(self,agent,observer,residual_state['bounds'],
                     residual_state['config'],zero=residual_mode=='zero' or task.get('zero_action',False),
                     evaluate=not training,**extra)
-                if residual_mode=='zero':
+                if residual_mode=='zero' and fast_feedback:
+                    import copy
+                    self.shadow=BatchedBControlChain(*args,**kwargs)
+                    self.shadow.mcc=copy.deepcopy(self.mcc)
+                    self.shadow.runtime.policy.diffusion.num_inference_steps=10
+                    self.shadow.scheduler.scale=self.scheduler.scale.clone()
+                    self.shadow.chunk_provider=lambda frame,q,history: self.feedback_prediction*self.action_std+self.action_mean+q[:,None]
+                if residual_mode=='zero' and not fast_feedback:
                     self.shadow=BatchedBControlChain(*args,**kwargs)
                     self.shadow.runtime.policy.diffusion.num_inference_steps=10
                     self.shadow.scheduler.scale=self.scheduler.scale.clone()
                     self.shadow.chunk_provider=lambda frame,q,history:self.residual_policy.latest_chunk
+            if task.get('scripted_intervention') is not None:
+                if agent is not None or dppo is not None:
+                    raise ValueError('Scripted diagnostics cannot be combined with learned residual/DPPO')
+                from local_intervention_probe import ScriptedOffset
+                self.residual_policy=ScriptedOffset(self,task['scripted_intervention'])
+            if task.get('scripted_unload') is not None:
+                if agent is not None or dppo is not None or task.get('scripted_intervention') or task.get('snapshot_branches'):
+                    raise ValueError('Scripted unload is a standalone diagnostic')
+                from scripted_contact_intent import ScriptedUnload
+                self.residual_policy=ScriptedUnload(self,task['scripted_unload'])
+            if task.get('scripted_load') is not None:
+                if (agent is not None or dppo is not None or task.get('scripted_intervention')
+                        or task.get('scripted_unload') or task.get('snapshot_branches')):
+                    raise ValueError('Scripted load authority is a standalone diagnostic')
+                from scripted_load_authority import ScriptedLoadAuthority
+                self.residual_policy=ScriptedLoadAuthority(self,task['scripted_load'])
+            if task.get('load_branches'):
+                if (not task.get('scripted_load') or task.get('snapshot_branches')
+                        or task.get('causal_trace') or agent is not None or dppo is not None):
+                    raise ValueError('Load branching requires standalone scripted_load without DP trace')
+                from load_authority_branches import LoadAuthorityBranches
+                self.load_branch_experiment=LoadAuthorityBranches(self,task['load_branches'],output,tensors,substep_count)
+                self.before_diagnostic_frame=self.load_branch_experiment.before
+                self.after_diagnostic_frame=self.load_branch_experiment.after
+            if task.get('palm_reset') is not None:
+                if controller!='unified_command_v1':
+                    raise ValueError('Palm reset requires unified final-command arbitration')
+                from palm_posture_reset import PalmPostureReset
+                if task.get('local_recovery') is not None:
+                    from local_contact_recovery import LocalContactRecovery
+                    if task.get('local_contact_search') is not None:
+                        from local_contact_search import LocalContactSearch
+                        self.command_supervisor=LocalContactSearch(self,[r['frames'] for r in rows],task['palm_reset'],task['local_recovery'],np.stack(initial_target),task['local_contact_search'])
+                    else:
+                        self.command_supervisor=LocalContactRecovery(self,[r['frames'] for r in rows],task['palm_reset'],task['local_recovery'],np.stack(initial_target))
+                elif task.get('thumb_workspace') is not None:
+                    if task.get('thumb_tangent_follow') is not None:
+                        from thumb_tangent_follow import ThumbTangentFollow
+                        self.command_supervisor=ThumbTangentFollow(self,[r['frames'] for r in rows],task['palm_reset'],task['thumb_workspace'],task['thumb_tangent_follow'])
+                    else:
+                        from thumb_workspace_supervisor import ThumbWorkspaceSupervisor
+                        self.command_supervisor=ThumbWorkspaceSupervisor(self,[r['frames'] for r in rows],task['palm_reset'],task['thumb_workspace'])
+                else:
+                    self.command_supervisor=PalmPostureReset(self,[r['frames'] for r in rows],task['palm_reset'])
+                self.select_execution_reference=self.command_supervisor.select_reference
+                self.after_diagnostic_frame=self.command_supervisor.after_frame
+            if task.get('mcc_snapshot_frames'):
+                original_update=self.mcc.update
+                def snapshot_update(**inputs):
+                    frame=self.context['frame']
+                    record=(not self.context['settling'] and frame in task['mcc_snapshot_frames'])
+                    if record:
+                        # Keep only lane0, before any in-place controller update.
+                        def cpu(value):
+                            return value[:1].detach().cpu().clone() if isinstance(value,torch.Tensor) and value.ndim and value.shape[0]==batch else value
+                        state={k:cpu(v) for k,v in vars(self.mcc).items() if isinstance(v,torch.Tensor) or v is None}
+                        sample=dict(frame=frame,state=state,inputs={k:cpu(v) for k,v in inputs.items()})
+                    result=original_update(**inputs)
+                    if record:
+                        sample['command']=result[0][:1].detach().cpu().clone()
+                        mcc_snapshots.append(sample)
+                    return result
+                self.mcc.update=snapshot_update
+            if task.get('snapshot_branches'):
+                if not task.get('scripted_intervention') or task.get('causal_trace') or agent is not None or dppo is not None:
+                    raise ValueError('Snapshot branching is a scripted diagnostic only; disable full DP trace')
+                from local_snapshot_branch import BranchExperiment
+                self.branch_experiment=BranchExperiment(self,task['snapshot_branches'],output,tensors,substep_count)
+                self.before_diagnostic_frame=self.branch_experiment.before
+                self.after_diagnostic_frame=self.branch_experiment.after
+            if task.get('recovery_search_branches'):
+                if (task.get('causal_trace') or agent is not None or dppo is not None
+                    or any(task.get(k) for k in ('load_branches', 'snapshot_branches',
+                        'optimizer_teacher', 'palm_reset', 'fast_feedback'))
+                    or residual_mode != 'off'):
+                    raise ValueError('Search ablation requires frozen standalone DP/MCC, no full DP trace')
+                from recovery_search_branches import RecoverySearchBranches
+                self.search_branch_experiment = RecoverySearchBranches(
+                    self, task['recovery_search_branches'], output, tensors, substep_count)
+                self.before_diagnostic_frame = self.search_branch_experiment.before
+                self.after_diagnostic_frame = self.search_branch_experiment.after
         def prime(self,q,repeats=30):
             super().prime(q,repeats)
             if self.shadow is not None:self.shadow.prime(q,repeats)
@@ -255,6 +442,9 @@ def _worker(request):
             if agent is not None:self.residual_policy.context=context
         def record_base_substep(self, env, target):
             self.env = env
+            if task.get('mobility_probe') and not getattr(self,'mobility_model_saved',False):
+                mujoco.mj_saveModel(env.sim.mj_model,str(output.with_suffix('.physics.mjb')),None)
+                self.mobility_model_saved=True
         def record_substep_force(self):
             nonlocal aggregate
             if self.context['settling']:
@@ -287,6 +477,14 @@ def _worker(request):
                                       if g else net.new_zeros(batch) for g in a['groups']],-1)
             torch.cuda.current_stream().wait_stream(stream)
             frame = self.context['frame']
+            if fast_feedback or task.get('self_contact_trace',False):
+                if not hasattr(self,'feedback_self_diagnostic'):
+                    from feedback_self_contact import SelfContactDiagnostic
+                    self.feedback_self_diagnostic=SelfContactDiagnostic(env,a['hand'].numpy())
+                own_force=self.feedback_self_diagnostic.read()
+                tensors['self_force'][frame]=torch.maximum(tensors['self_force'][frame],own_force)
+                if fast_feedback:
+                    self.residual_policy.self_force=tensors['self_force'][frame]
             tensors['force'][frame] = torch.maximum(tensors['force'][frame],parts)
             target_error=(env.scene['robot'].data.joint_pos_target[:, -16:]-self.expected_tick_target).abs().amax(-1)
             tensors['target_error'][frame]=torch.maximum(tensors['target_error'][frame],target_error)
@@ -302,6 +500,11 @@ def _worker(request):
             tensors['found'][frame] = x['pad_found'] | x['connector_found']
             tensors['q'][frame] = env.scene['robot'].data.joint_pos[:, -16:]
             tensors['observed'][frame] = True
+            if task.get('pose_trace',False) and self.tick_substeps==9:
+                # Offline geometry diagnostics only; never fed back into the
+                # actor or actuator. Record actual poses at the final substep.
+                tensors['measured_palm_pose_world'][frame]=env.scene['robot'].data.root_link_pose_w
+                tensors['measured_object_pose_world'][frame]=env.scene['target'].data.root_link_pose_w
             self.tick_substeps+=1
             if agent is not None and regional and self.tick_substeps==10:
                 self.residual_policy.post_physics(frame,env.scene['robot'].data.joint_pos[:, -16:],
@@ -311,6 +514,21 @@ def _worker(request):
                     self.context['palm_pose'],tensors['force'][frame])
         def step(self, **kwargs):
             self.tick_substeps=0
+            if hasattr(self.mcc,'set_measured_contact'):
+                self.mcc.trace_authority=bool(task.get('authority_trace',False))
+                if hasattr(self.mcc,'unified_enabled'):
+                    self.mcc.unified_enabled=(self.authority_unified_mode and not self.context['settling'] and self.context['frame']>=76)
+                x=observer.latest
+                self.mcc.use_matched_contact=self.authority_matched_mode
+                self.mcc.matched_guard_all=(self.authority_guard_all and not self.context['settling'] and self.context['frame']>=76)
+                self.mcc.compensate_palm_motion=(self.authority_palm_compensation and not self.context['settling'] and self.context['frame']>=76)
+                self.mcc.set_measured_contact(x['physical_normal_found'],x['physical_contact_point'],x['physical_normal_inward'])
+            if task.get('palm_reset') is not None and not self.context['settling'] and self.context['frame']>=76:
+                if self.context['frame']==task.get('palm_reset_test_request_frame'):
+                    self.command_supervisor.request_reset(torch.ones(self.batch,device=device,dtype=torch.bool))
+                self.command_supervisor.observe(kwargs['q'],kwargs['palm_pose_world'],observer.latest)
+            if task.get('scripted_unload') is not None or task.get('scripted_load') is not None:
+                self.residual_policy.inputs=kwargs
             if (getattr(self,'pending_admittance',None) is not None
                     and not self.context['settling'] and self.context['frame']>=76):
                 candidate=self.pending_admittance
@@ -334,6 +552,10 @@ def _worker(request):
                     action=action.detach().clone(),recovery_offset=self.runtime_recovery_offset.detach().clone(),
                     force_offset=self.mcc.force_offset.detach().clone()))
             if self.shadow is not None:
+                if fast_feedback:
+                    for key in ['unified_enabled','use_matched_contact','matched_guard_all','compensate_palm_motion','trace_authority']:
+                        setattr(self.shadow.mcc,key,getattr(self.mcc,key))
+                    self.shadow.mcc.set_measured_contact(*self.mcc.measured_contact)
                 self.shadow.mesh_oracle=self.mesh_oracle
                 for name,value in deployment.orchestration_config().items():setattr(self.shadow,name,value)
                 other,diag=self.shadow.step(**kwargs)
@@ -349,8 +571,37 @@ def _worker(request):
                 if agent is not None:
                     tensors['residual_offset'][frame]=self.residual_policy.offset
                     tensors['residual_target'][frame]=self.residual_policy.target
+                    if fast_feedback:tensors['feedback_load'][frame]=self.residual_policy.load_request
+                    if fast_feedback and task.get('feedback_debug_trace',False):
+                        for key,value in dict(feedback_raw_action=self.residual_policy.last_raw_action,
+                            feedback_executed_action=self.residual_policy.last_executed_action,
+                            feedback_load_applied=self.mcc.regulation_load_scale,
+                            feedback_actor_observation=self.residual_policy.latest_actor_observation).items():
+                            if value is None:continue  # actor starts only after bootstrap
+                            if key not in tensors:tensors[key]=torch.zeros((frames,*value.shape),device=device,dtype=value.dtype)
+                            tensors[key][frame]=value
                 tensors['nominal'][frame] = diagnostic['nominal_q']
                 tensors['command'][frame] = diagnostic['command_q']
+                if any(task.get(k) is not None for k in ('scripted_intervention','scripted_unload','scripted_load')):
+                    for key,value in dict(scripted_offset=self.residual_policy.offset,
+                                          scheduler_nominal=self.previous_nominal,
+                                          mcc_hold=self.mcc.hold,
+                                          mcc_force_offset=self.mcc.force_offset).items():
+                        if key not in tensors:tensors[key]=torch.zeros((frames,*value.shape),device=device,dtype=value.dtype)
+                        tensors[key][frame]=value
+                    for key,value in dict(intent_recovery_offset=self.runtime_recovery_offset,
+                                          intent_recovery_active=self.recovery_active).items():
+                        if key not in tensors:tensors[key]=torch.zeros((frames,*value.shape),device=device,dtype=value.dtype)
+                        tensors[key][frame]=value
+                if task.get('causal_trace', False) or task.get('recovery_search_branches'):
+                    extra = dict(pre_recovery_nominal=getattr(self, 'pre_recovery_nominal', diagnostic['nominal_q']),
+                                 recovery_offset=self.runtime_recovery_offset,
+                                 recovery_active=self.recovery_active,
+                                 force_offset=self.mcc.force_offset)
+                    for key, value in extra.items():
+                        if key not in tensors:
+                            tensors[key]=torch.zeros((frames,*value.shape),device=device,dtype=value.dtype)
+                        tensors[key][frame]=value
                 if task.get('contact_dynamics_trace',False):
                     for key,name in [('input_tip_force_world','contact_force_world'),
                                      ('input_tip_found','contact_found'),
@@ -359,8 +610,20 @@ def _worker(request):
                         value=kwargs[name]
                         if key not in tensors:tensors[key]=torch.zeros((frames,*value.shape),device=device,dtype=value.dtype)
                         tensors[key][frame]=value
+                    for key,value in dict(input_netforce_inward=kwargs['contact_normals_inward_world'],
+                        physical_tip_inward=observer.latest['physical_normal_inward'],
+                        physical_tip_points=observer.latest['physical_contact_point'],
+                        input_q_live=kwargs['q'],input_palm_twist_world=kwargs['palm_twist_world'],
+                        physical_tip_found=observer.latest['physical_normal_found']).items():
+                        if key not in tensors:tensors[key]=torch.zeros((frames,*value.shape),device=device,dtype=value.dtype)
+                        tensors[key][frame]=value
                 for key,value in diagnostic.items():
-                    if key.startswith('admittance_'):
+                    if key.startswith(('admittance_','hold_','intent_')):
+                        if key not in tensors:
+                            tensors[key]=torch.zeros((frames,*value.shape),device=device,dtype=value.dtype)
+                        tensors[key][frame]=value
+                if task.get('palm_reset') is not None:
+                    for key,value in self.command_supervisor.diagnostics().items():
                         if key not in tensors:
                             tensors[key]=torch.zeros((frames,*value.shape),device=device,dtype=value.dtype)
                         tensors[key][frame]=value
@@ -368,7 +631,15 @@ def _worker(request):
                     print(f'[REGIONAL-EVAL] {task["arm"]} frame={frame}/{frames} batch={batch}',flush=True)
             return action, diagnostic
         def close(self):
-            nonlocal trained_residual
+            nonlocal trained_residual, reset_report, optimizer_teacher_report, single_finger_report
+            if hasattr(self,'single_finger_runtime'):
+                single_finger_report=self.single_finger_runtime.report()
+                if hasattr(self.single_finger_runtime,'close'):
+                    self.single_finger_runtime.close()
+            if hasattr(self,'optimizer_teacher'):
+                optimizer_teacher_report=self.optimizer_teacher.finish()
+            if task.get('palm_reset') is not None:
+                reset_report=self.command_supervisor.report()
             if agent is not None:trained_residual=self.residual_policy
             super().close()
 
@@ -379,10 +650,13 @@ def _worker(request):
         meta = deployment.run(batch, rows[0]['episode_id'], frames, device, task['seed'],
             settle_steps=100, max_safe_force_n=0., per_env_safety=False,
             episode_data=data, chain_factory=Chain, contact_observer=observer,
-            initial_joint_target=np.stack(initial_target))
+            initial_joint_target=np.stack(initial_target), object_id=object_id,
+            dp_trace_h5=output.with_suffix('.dp_trace.h5') if task.get('causal_trace',False) else None)
     finally:
         restore_targets()
     values = {k: v.cpu().numpy() for k,v in tensors.items()}
+    if mcc_snapshots:
+        torch.save(dict(config=config,samples=mcc_snapshots),output.with_suffix('.mcc_snapshots.pt'))
     if initialization_trace:
         np.savez_compressed(output.with_suffix('.initialization.npz'),
             **{k:torch.stack([r[k] for r in initialization_trace]).cpu().numpy() for k in initialization_trace[0]})
@@ -390,9 +664,16 @@ def _worker(request):
     lanes = []
     for lane, row in enumerate(rows):
         length = row['frames']
+        if task.get('palm_reset') is not None:
+            done=np.flatnonzero((values['reset_reference_frame'][:,lane]==row['frames']-1)
+                               & np.isin(values['reset_phase'][:,lane],[0,8]))
+            observed_length=int(values['observed'][:,lane].sum())
+            length=min(int(done[0]+1),observed_length) if len(done) else observed_length
         target_error=float(values['target_error'][:length,lane].max())
         complete = bool(values['observed'][:length,lane].all() and np.all(counts[:length]==10)
                         and target_error<1e-6)
+        if task.get('palm_reset') is not None:
+            complete=complete and reset_report['final_phase'][lane]=='done'
         report = dict(episode_id=row['episode_id'],branch=row['branch'],
                       parent=row['related_plan_group_id'],family=row['family'],frames=length,
                       complete=complete,held_target_max_error_rad=target_error)
@@ -416,7 +697,32 @@ def _worker(request):
                   deployment=meta,noise=noise,trace=str(trace) if trace else None,checkpoint=task['checkpoint'],
                   contact_definition=definition,source_config=task['mcc_config'],
                   actuator_contract='One absolute target held over all10physics substeps')
+    if reset_report is not None:
+        result['palm_reset']=reset_report
+        result['reference_progress_semantics']='Rows specify native spatial reference length. Trace index is wall-control time including all resets; reset_reference_frame records progress. No contact loss is masked.'
     result['mcc_controller']=task.get('mcc_controller','legacy')
+    if single_finger_report is not None:
+        result['single_finger_policy']=single_finger_report
+    if optimizer_teacher_report is not None:
+        result['optimizer_teacher']=optimizer_teacher_report
+    if task.get('scripted_intervention') is not None:
+        result['scripted_intervention']=task['scripted_intervention']
+    if task.get('scripted_unload') is not None:
+        result['scripted_unload']=task['scripted_unload']
+    if result['mcc_controller']=='contact_intent_v1':
+        from dataclasses import asdict
+        from contact_intent_mcc import HandoverConfig
+        result['handover_config']=asdict(HandoverConfig(**task.get('handover_config',{})))
+    if result['mcc_controller'] in ('load_authority_v2','load_authority_v3','unified_command_v1'):
+        from dataclasses import asdict
+        from load_authority_mcc import LoadAuthorityConfig
+        result['load_authority_config']=asdict(LoadAuthorityConfig(**task.get('load_authority_config',{})))
+        result['scripted_load']=task.get('scripted_load')
+        result['matched_tip_guard_all']=task.get('matched_tip_guard_all',False)
+        result['palm_motion_compensation']=task.get('palm_motion_compensation',False)
+        if result['mcc_controller']=='unified_command_v1':
+            from unified_command_mcc import UnifiedCommandConfig
+            result['unified_command_config']=asdict(UnifiedCommandConfig(**task.get('unified_command_config',{})))
     result['admittance_after_bootstrap']=task.get('admittance_after_bootstrap',False)
     if result['mcc_controller']=='finger_admittance_v1':
         from dataclasses import asdict
@@ -433,11 +739,23 @@ def _worker(request):
             max_applied_offset_rad=float(np.abs(values['residual_offset']).max()),
             rms_applied_offset_rad=float(np.sqrt(np.square(values['residual_offset']).mean())),
             zero_shadow_errors=shadow_errors if residual_mode=='zero' else None)
+        if fast_feedback:
+            result['residual']['kind']='fast_history_feedback_v1'
+            freeze=trained_residual.freeze_status()
+            if not all(freeze[k] for k in ['explicit_no_grad','no_parameter_mutation','no_dp_gradients']):
+                raise AssertionError('Frozen DP was modified during feedback execution')
+            result['residual']['freeze_status']=freeze
+            result['residual']['reward_component_absolute_sums']={k:float(v.cpu()) for k,v in trained_residual.component_abs.items()}
+            result['residual']['reward_component_sums']={k:float(v.cpu()) for k,v in trained_residual.sums.items()}
+            result['residual']['episode_returns']=trained_residual.return_per_lane.cpu().tolist()
+            result['residual']['history_lags_control_frames']=residual_state['config']['history_lags']
+            result['residual']['self_force_peak_n']=float(values['self_force'].max())
         if not training and (agent.actor_updates or agent.updates or agent.rows):
             raise AssertionError('Evaluation changed the residual learner')
     if training:
         from regional_residual_training import save_agent
-        expected=sum((r['frames']-76+4)//5 for r in rows)
+        period=residual_state['config']['decision_frames'] if fast_feedback else 5
+        expected=sum((r['frames']-76+period-1)//period for r in rows)
         collected=sum(len(r['lane']) for r in agent.rows)
         if collected!=expected:
             raise ValueError(f'Variable-length PPO transitions differ: {collected} vs {expected}')
@@ -451,10 +769,18 @@ def _worker(request):
         result['training']['ppo']=agent.finish_rollout(value_only=task.get('critic_only',False))
         result['training'].update(actor_updates=agent.actor_updates,critic_updates=agent.updates,
             finite_parameters=all(torch.isfinite(p).all().item() for module in (agent.actor,agent.value) for p in module.parameters()))
+        if fast_feedback:
+            from fast_history_feedback import save_feedback
+            save_agent=save_feedback
         save_agent(task['learner_output'],agent,residual_state['config'],residual_state['bounds'],
                    residual_state.get('rollouts',0)+1)
     save(output,result)
-    if meta['stop_reason'] is not None or not all(r['complete'] for r in lanes):
+    # A reset timeout is an evaluated failure outcome, not a crashed worker.
+    # The budget includes optional overhead, so completing the reference early
+    # is also an expected supervisor termination. Never label it PASSED here.
+    expected_supervisor_end=(reset_report is not None and meta['stop_reason']=='execution_supervisor_finished')
+    if ((meta['stop_reason'] is not None and not expected_supervisor_end)
+            or (reset_report is None and not all(r['complete'] for r in lanes))):
         raise RuntimeError(f'Incomplete deployment: {meta}')
     print('[REGIONAL-EVAL] complete', task['arm'],
           {k:float(np.mean([r['post_bootstrap'][k] for r in lanes]))

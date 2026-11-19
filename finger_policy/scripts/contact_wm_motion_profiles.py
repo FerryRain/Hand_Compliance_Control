@@ -1,0 +1,1 @@
+../../mcc_finger_compliance_control/scripts/contact_wm_motion_profiles.py
