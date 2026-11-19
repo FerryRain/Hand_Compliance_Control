@@ -1,0 +1,100 @@
+[
+  {
+    "name": "A_startup",
+    "command": [
+      "D:/Environment/Anaconda/envs/handcomp/python.exe",
+      "-u",
+      "-m",
+      "Module.i04_geometric_traversal.retained_ab",
+      "run",
+      "--method",
+      "A",
+      "--seconds",
+      "0.02",
+      "--output",
+      "D:\\\u6587\u6863\\Hand_Compliance_Control\\.tmp\\i04_ab_cleanup_20261119\\before_A_startup"
+    ],
+    "returncode": 0,
+    "wall_seconds": 12.000651300069876,
+    "log": "D:\\\u6587\u6863\\Hand_Compliance_Control\\.tmp\\i04_ab_cleanup_20261119\\before_A_startup.log"
+  },
+  {
+    "name": "A_replay",
+    "command": [
+      "D:/Environment/Anaconda/envs/handcomp/python.exe",
+      "D:\\\u6587\u6863\\Hand_Compliance_Control\\i04_experiment_repo\\Module\\i04_geometric_traversal\\trajectory_replay.py",
+      "--case",
+      "A",
+      "--check"
+    ],
+    "returncode": 0,
+    "wall_seconds": 1.1988920000148937,
+    "log": "D:\\\u6587\u6863\\Hand_Compliance_Control\\.tmp\\i04_ab_cleanup_20261119\\before_A_replay.log"
+  },
+  {
+    "name": "A_native",
+    "command": [
+      "D:/Environment/Anaconda/envs/handcomp/python.exe",
+      "-u",
+      "-m",
+      "Module.i04_geometric_traversal.retained_ab",
+      "smoke",
+      "--method",
+      "A",
+      "--states",
+      "500"
+    ],
+    "returncode": 0,
+    "wall_seconds": 18.20980110007804,
+    "log": "D:\\\u6587\u6863\\Hand_Compliance_Control\\.tmp\\i04_ab_cleanup_20261119\\before_A_native.log"
+  },
+  {
+    "name": "B_startup",
+    "command": [
+      "D:/Environment/Anaconda/envs/handcomp/python.exe",
+      "-u",
+      "-m",
+      "Module.i04_geometric_traversal.retained_ab",
+      "run",
+      "--method",
+      "B",
+      "--seconds",
+      "0.02",
+      "--output",
+      "D:\\\u6587\u6863\\Hand_Compliance_Control\\.tmp\\i04_ab_cleanup_20261119\\before_B_startup"
+    ],
+    "returncode": 0,
+    "wall_seconds": 7.7472219000337645,
+    "log": "D:\\\u6587\u6863\\Hand_Compliance_Control\\.tmp\\i04_ab_cleanup_20261119\\before_B_startup.log"
+  },
+  {
+    "name": "B_replay",
+    "command": [
+      "D:/Environment/Anaconda/envs/handcomp/python.exe",
+      "D:\\\u6587\u6863\\Hand_Compliance_Control\\i04_experiment_repo\\Module\\i04_geometric_traversal\\trajectory_replay.py",
+      "--case",
+      "B",
+      "--check"
+    ],
+    "returncode": 0,
+    "wall_seconds": 1.3307740000309423,
+    "log": "D:\\\u6587\u6863\\Hand_Compliance_Control\\.tmp\\i04_ab_cleanup_20261119\\before_B_replay.log"
+  },
+  {
+    "name": "B_native",
+    "command": [
+      "D:/Environment/Anaconda/envs/handcomp/python.exe",
+      "-u",
+      "-m",
+      "Module.i04_geometric_traversal.retained_ab",
+      "smoke",
+      "--method",
+      "B",
+      "--states",
+      "500"
+    ],
+    "returncode": 0,
+    "wall_seconds": 19.94376239995472,
+    "log": "D:\\\u6587\u6863\\Hand_Compliance_Control\\.tmp\\i04_ab_cleanup_20261119\\before_B_native.log"
+  }
+]

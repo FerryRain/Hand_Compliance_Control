@@ -1,0 +1,31 @@
+Loading published geometry-only pose seeds; zero inherited coverage
+RESULT {"stop_reason": "SIMULATION_BUDGET", "executed_s": 0.020000000000000004, "full_surface_complete": false, "coverage_fraction": 0.0, "visited_vertices": 0, "total_vertices": 8192, "visited_goals": 0, "total_goals": 388, "native_states": 10, "routes": 0, "necessary_lifts": 0, "peak_force_n": 0.0, "force_releases": 0, "geometry_backtracks": 0, "force_releases_scope": "Whole trajectory", "coverage_inherited": false, "fresh_single_version": true, "resume": null, "trace_chunks": [{"file": "trace_0000.npz", "states": 10, "start_s": 0.0, "end_s": 0.018000000000000002, "sha256": "c04148e1256a150137cac49f99eb8591aacbe537a1e274d39fa31013642ad574"}]}
+{
+  "stop_reason": "SIMULATION_BUDGET",
+  "executed_s": 0.020000000000000004,
+  "full_surface_complete": false,
+  "coverage_fraction": 0.0,
+  "visited_vertices": 0,
+  "total_vertices": 8192,
+  "visited_goals": 0,
+  "total_goals": 388,
+  "native_states": 10,
+  "routes": 0,
+  "necessary_lifts": 0,
+  "peak_force_n": 0.0,
+  "force_releases": 0,
+  "geometry_backtracks": 0,
+  "force_releases_scope": "Entire fresh single-version trajectory",
+  "coverage_inherited": false,
+  "fresh_single_version": true,
+  "resume": null,
+  "protocol": "i04.a.frozen-b-supervisor.mcc.v1",
+  "method": "A-MCC",
+  "frozen_b_supervisor": true,
+  "wall_elapsed_s": 6.961890000035055,
+  "surface_sweep_stop": "SIMULATION_BUDGET",
+  "force_warning_observations": 0,
+  "strict_original_coverage": true,
+  "planning_calls": 5,
+  "nominal_wrist_reference_sha256": "537a27c9ac40ac3d1158f8ac9190c5796ce891ff2dec946522dc5968ea901db4"
+}

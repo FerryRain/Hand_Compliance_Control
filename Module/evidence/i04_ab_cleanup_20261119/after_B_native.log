@@ -1,0 +1,24 @@
+{
+  "status": "PASSED_RELOCATED_B_NATIVE_SMOKE",
+  "states": 500,
+  "assets": {
+    "model_assets": 290,
+    "case_assets": 257,
+    "case_assets_relocated": 257,
+    "model_sha256": "aece150721d7ba4a971dd82d9937b502a78f5e63ab6df6b111f5b77ce6aab282",
+    "all_assets_resolved": true
+  },
+  "errors": {
+    "qpos": 0.0,
+    "qvel": 0.0,
+    "previous_command": 0.0
+  },
+  "geometry_guard": {
+    "file": "trace_0000.npz",
+    "sha256": "15acef22dd57ce67d75fba981af9e7567b2f960127a04c1109df7cf5d7383ec2",
+    "commands": 500,
+    "reference_guards": 500
+  },
+  "full_trajectory_reaudited": false,
+  "method": "B"
+}

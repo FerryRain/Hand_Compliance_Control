@@ -1,5 +1,24 @@
 # 主任务记录：分模块验证与完整系统实验路线
 
+## 2026-11-19 · 用户授权的 I04 精简
+
+用户要求保留可完整摸物体的代码、最终 B 及最佳 A 数据，清理其余 I04。当前交付入口和事实边界见 `I04_AB_RETAINED.md`。保留 `i04b_palm_recovery02_20261027` 及 `i04a_frozen_b01_20261021`，后者 14.67% 未完成；二者不是同碰撞模型的配对实验。旧 Active/GPIS 工作停止，不继续推进。必要模型、种子和共享 DP/E05 依赖保留。下方历史“全部保留”要求已被本次用户清理授权替代，旧记录不代表路径仍存在。
+
+## 2026-10-27 · 掌部穿模修复
+
+旧 B 的掌部与安装件碰撞掩码为零，原生审计复现了该遗漏，不能据此证明全手无穿模。
+原 100% 仅保留为该模型下的指腹测地邻域覆盖记录。旧发布文件按字节保留。
+新协议 `i04.b.palm-collision.mcc.v1` 在编译前启用原六个刚性部件，并使初始/目标拟合、
+换面候选和双命令守护考虑掌部；实际状态以 500Hz 独立记录间隙并设置 1mm 底线。
+首轮新 B `generated/i04b_palm_safe01_20261027` 从零覆盖到98.3816%，在仍有0.992mm正间隙时保护停止，
+2887394个已记录状态独立核验通过。随后 `palm_safe_recovery` 增加120ms实际速度预测、主动退让和调姿重规划。
+接续案 `generated/i04b_palm_recovery02_20261027` 保留相同已核验前缀，明确记录5774.600s版本边界；
+6918.226s完成8192/8192顶点、388/388目标和末端接触保持，3459113个状态及全部双命令守护连续核验通过。
+最小已记录掌部间隙1.315mm，13次主动退让成功；不称为新的单版本从零试验。
+局部相同危险状态的92ms主动退让及46个原生状态独立核验通过，最低间隙3.822mm。
+见[修复说明](I04_PALM_COLLISION_FIX.md)和[新报告](generated/palm_collision_fix_review_20261027/review.html)。
+本次物理条件改变，旧 A 与新 B 不能作为新的同条件对照；MCC-only、DP 延后安排保留。
+
 ## 2026-10-21 · 冻结B调度的A-MCC对照
 
 2026-10-21 · 冻结B调度：按用户选择，保留成功B的外层几何调度、预计接触人数和参考手指门槛，
@@ -524,17 +543,17 @@ B-MCC 为 14.536–34.988 s，平均面积覆盖 7.284%，包含全指失联。
 | 项目 | 当前值 |
 | --- | --- |
 | 计划版本 | `v4.2` |
-| 最近更新 | `2026-10-19` |
+| 最近更新 | `2026-10-27` |
 | 授权状态 | `I04B_GOAL_ADOPTED / AB_COMMON_CONDITIONS_REQUIRED / MCC_ONLY` |
-| 实施状态 | `GOALS_DEFINED / SHARED_RUNTIME_ALIGNMENT_PENDING` |
-| 当前活动模块 | `I04_AB_WHOLE_HAND_ALIGNMENT` |
-| 当前 Gate | `I04B_DEVELOPMENT_COVERAGE_VERIFIED / NEW_PAIRED_EVALUATION_NOT_RUN / DP_DEFERRED` |
+| 实施状态 | `PALM_REPAIR_AND_ACTIVE_RETREAT_VALIDATED / VERSIONED_CONTINUATION` |
+| 当前活动模块 | `I04_PALM_COLLISION_REPAIR` |
+| 当前 Gate | `PALM_SAFE_FULL_COVERAGE_AUDITED / NEW_MATCHED_PAIR_PENDING / DP_DEFERRED` |
 | 固定环境 | `handcomp` |
 | 本轮 Python | `D:\Environment\Anaconda\envs\handcomp\python.exe` |
 
 下文 2026-08 的 Mx、Explicit I04、G2/G3 状态和 Python/Linux 命令保留为历史证据；
-新 I04 的目标与A/B共同条件以顶部2026-10-19更新及 `I04_AB_WHOLE_HAND_PROTOCOL.md` 为准；
-已有运行的结论仍以其原协议和对应case原始证据为准。
+新 I04 的目标与A/B共同条件以顶部最新更正及 `I04_AB_WHOLE_HAND_PROTOCOL.md` 为准；
+已有运行的数据按原协议保留，结论须同时遵守2026-10-27掌部碰撞遗漏的更正。
 
 本轮已完成 M0–M3 的 FR3+Leap Hand 扩展、M04 的 MCC 控制链和 central-palm mount 修正。
 FR3+Leap 模型为 `7 arm + 16 finger = 23 DoF`；MCC 初始 hand q 精确取自原 DP 视频

@@ -1,5 +1,17 @@
 # Module：FR3 + LEAP Hand 模块化控制实验
 
+2026-11-19 · 当前 I04 以 [A/B 保留说明](I04_AB_RETAINED.md) 为准。统一入口为 `scripts/run_i04_ab.ps1`，仅保留最佳可回放 A、掌部修复后的完成 B 及必要代码和依赖。旧 Active/GPIS 和开发实验已列入本轮清理，历史链接不代表文件仍在。
+
+2026-10-27 · 掌部穿模修复：旧模型禁用了六个刚性掌部/安装件的物体碰撞，原 B 的 100% 指腹覆盖
+不能作为全手无穿模成功的证据。新模型启用原有几何，规划保留 6mm 间隙，命令检查 3mm，
+每 2ms 检查实际掌部距离并以 1mm 为停止底线。首轮98.38%时在正间隙内保护停止；
+新增120ms速度预测、主动退让及重规划的接续版已完成全覆盖与完整核验，历史 A/B 原文件保留。
+见[修复说明](I04_PALM_COLLISION_FIX.md)、[新报告与完整视频](generated/palm_collision_fix_review_20261027/review.html)
+及[交互回放命令](I04_TRAJECTORY_REPLAY.md)。旧 A 不能直接作为新物理模型的同条件对照。
+
+接续版6918.226s完成8192/8192顶点和388/388目标；3459113个原生状态及全部双命令守护连续独立核验通过。
+最小已记录掌部间隙1.315mm，13次成功主动退让。该案例明确记录5774.600s版本交接，不称为新的单版本从零试验。
+
 2026-10-21 · 冻结B调度：按用户选择，保留成功B的外层几何调度、预计接触人数和参考手指门槛，
 仅隔离A名义参考中的逐指表面目标与手指规划。成功B的599个发布文件、50份运行源码和原完整视频不变。
 新A从共同完整初态、零覆盖执行2025.236秒，严格面积覆盖14.6668%，
@@ -90,7 +102,7 @@ traversal 尚未完成，DPRef 分支也未开始。当前结果只能解释为�
 | I02 Bunny prefix | `EVALUATED / NOT_MET` | LONG/SHORT 均 3/3 pass；误差 `1.476/1.467 mm`，未达冻结改善阈值 |
 | I03 Bunny viability | `EVALUATED / MET` | Beam/Shadow dead end `3/0`；支持距离中位数 `7.111/101.125 mm` |
 | I04 Oracle next-point traversal | `EXPLICIT DEV IMPLEMENTED / FULL TRAVERSAL INCOMPLETE` | 274 个 required goals；三轮回归最多 7 个，当前阻塞在 two-anchor WRIST optimization |
-| 新I04 Mustard整手表面遍历 | `FULL_MEASURED_BELLY_SURFACE / AUDITED` | 2026-10-19开发接续案：8192/8192、388/388；完整原生核验通过，最长有效断触146.156s |
+| 新I04 Mustard整手表面遍历 | `PALM_SAFE_FULL_COVERAGE / NATIVE_AUDITED / VERSIONED_CONTINUATION` | 修复后接续版8192/8192、388/388；3459113状态核验通过，最小掌部间隙1.315mm；旧模型结论按顶部更正解读 |
 | I04A/B整手共同协议 | `SHARED_MCC_IMPLEMENTED / SINGLE_SEED_AUDITED / INCOMPLETE` | 新首轮共同前212.316s覆盖A 5.5667%、B 17.6220%；B高力停止，A最终搜索耗尽；多种子待完成 |
 | G3 | `NO_GO` | I02 未 MET；不进入 GPIS |
 

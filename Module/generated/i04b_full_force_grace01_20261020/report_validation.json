@@ -1,8 +1,0 @@
-{
-  "status": "PASSED_STATIC_REPORT_REFERENCES",
-  "local_references": 20,
-  "full_video_elements": 2,
-  "chapter_links": 6,
-  "browser_click_test": false,
-  "browser_click_test_limitation": "Browser URL policy rejected local file protocol; no workaround attempted"
-}

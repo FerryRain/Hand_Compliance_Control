@@ -1,0 +1,41 @@
+Loading published geometry-only pose seeds; zero inherited coverage
+RESULT {"stop_reason": "SIMULATION_BUDGET", "executed_s": 0.020000000000000004, "full_surface_complete": false, "coverage_fraction": 0.0, "visited_vertices": 0, "total_vertices": 8192, "visited_goals": 0, "total_goals": 388, "native_states": 10, "routes": 0, "necessary_lifts": 0, "peak_force_n": 0.0, "force_releases": 0, "geometry_backtracks": 0, "force_releases_scope": "Whole trajectory", "coverage_inherited": false, "fresh_single_version": true, "resume": null, "trace_chunks": [{"file": "trace_0000.npz", "states": 10, "start_s": 0.0, "end_s": 0.018000000000000002, "sha256": "254e9b8f9ce0eb670b9f3ba45130a9c17d3de1415bee4662e98b60a26d9ccff5"}]}
+FULL_B_RESULT {"stop_reason": "SIMULATION_BUDGET", "executed_s": 0.020000000000000004, "full_surface_complete": false, "coverage_fraction": 0.0, "visited_vertices": 0, "total_vertices": 8192, "visited_goals": 0, "total_goals": 388, "native_states": 10, "routes": 0, "necessary_lifts": 0, "peak_force_n": 0.0, "force_releases": 0, "geometry_backtracks": 0, "force_releases_scope": "Entire fresh single-version trajectory", "coverage_inherited": false, "fresh_single_version": true, "resume": null, "protocol": "i04.b.full-mcc.force-grace.v1", "method": "B-MCC", "wall_elapsed_s": 6.054052800056525, "surface_sweep_stop": "SIMULATION_BUDGET", "force_warning_observations": 0, "strict_original_coverage": true}
+PALM_RECOVERY_RESULT {"stop_reason": "SIMULATION_BUDGET", "executed_s": 0.020000000000000004, "full_surface_complete": false, "coverage_fraction": 0.0, "visited_vertices": 0, "total_vertices": 8192, "visited_goals": 0, "total_goals": 388, "native_states": 10, "routes": 0, "necessary_lifts": 0, "peak_force_n": 0.0, "force_releases": 0, "geometry_backtracks": 0, "force_releases_scope": "Entire fresh single-version trajectory", "coverage_inherited": false, "fresh_single_version": true, "resume": null, "protocol": "i04.b.palm-collision-recovery.mcc.v2", "method": "B-MCC", "wall_elapsed_s": 6.054052800056525, "surface_sweep_stop": "SIMULATION_BUDGET", "force_warning_observations": 0, "strict_original_coverage": true, "minimum_palm_clearance_m": 0.006, "palm_collision_parts": ["fr3_leap_mount_adapter", "palm_lower_collision", "palm_1_fsr_geom", "palm_2_fsr_geom", "palm_3_fsr_geom", "palm_4_fsr_geom"], "historical_b_modified": false, "palm_retreats": 0}
+{
+  "stop_reason": "SIMULATION_BUDGET",
+  "executed_s": 0.020000000000000004,
+  "full_surface_complete": false,
+  "coverage_fraction": 0.0,
+  "visited_vertices": 0,
+  "total_vertices": 8192,
+  "visited_goals": 0,
+  "total_goals": 388,
+  "native_states": 10,
+  "routes": 0,
+  "necessary_lifts": 0,
+  "peak_force_n": 0.0,
+  "force_releases": 0,
+  "geometry_backtracks": 0,
+  "force_releases_scope": "Entire fresh single-version trajectory",
+  "coverage_inherited": false,
+  "fresh_single_version": true,
+  "resume": null,
+  "protocol": "i04.b.palm-collision-recovery.mcc.v2",
+  "method": "B-MCC",
+  "wall_elapsed_s": 6.054052800056525,
+  "surface_sweep_stop": "SIMULATION_BUDGET",
+  "force_warning_observations": 0,
+  "strict_original_coverage": true,
+  "minimum_palm_clearance_m": 0.006,
+  "palm_collision_parts": [
+    "fr3_leap_mount_adapter",
+    "palm_lower_collision",
+    "palm_1_fsr_geom",
+    "palm_2_fsr_geom",
+    "palm_3_fsr_geom",
+    "palm_4_fsr_geom"
+  ],
+  "historical_b_modified": false,
+  "palm_retreats": 0
+}

@@ -1,0 +1,4 @@
+Loading recorded trajectory: i04b_palm_recovery02_20261027
+Loading verified model (single compiler thread, low-memory rendering)...
+i04b_palm_recovery02_20261027: 348 chunks; 0.000..6918.224 s
+{"status": "PASSED_REPLAY_STATE_LOAD_CHECK", "samples": [0.0, 19.999999999999794, 3459.1120002459643, 6918.224000491929], "checked_chunks": 4, "native_physics_steps": 0, "viewer_window_tested": false, "case_files_written": 0}

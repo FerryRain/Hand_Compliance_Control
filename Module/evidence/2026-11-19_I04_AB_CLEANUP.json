@@ -1,0 +1,210 @@
+{
+  "date": "2026-11-19",
+  "timezone": "Asia/Shanghai",
+  "status": "CLEANUP_COMPLETE_RETAINED_AB_VERIFIED",
+  "scope": "I04 artifacts in this repository only; DP/E05/shared assets and git history preserved",
+  "cases": {
+    "i04a_frozen_b01_20261021": {
+      "path": "Module/generated/i04a_frozen_b01_20261021",
+      "coverage_fraction": 0.14666773216813744,
+      "complete": false,
+      "native_states": 1012618,
+      "native_trace_chunks": 103,
+      "native_seconds": 2025.2359999659334,
+      "audit_status": "PASSED_NATIVE_EVIDENCE_AUDIT",
+      "current_runtime_matches_all_archived_sources": true,
+      "source_files": 53,
+      "model_sha256": "1f780e791c696772c23932658f36150c0267cc9a320855de385d2b66ad6a808d",
+      "proof_sha256": "9bf8fa89de4c3182d99555550c3dfdcef10ede9b708f1d6e4b63d7525568003d"
+    },
+    "i04b_palm_recovery02_20261027": {
+      "path": "Module/generated/i04b_palm_recovery02_20261027",
+      "coverage_fraction": 1.0000000000000002,
+      "complete": true,
+      "native_states": 3459113,
+      "native_trace_chunks": 348,
+      "native_seconds": 6918.226000491929,
+      "audit_status": "PASSED_NATIVE_EVIDENCE_AUDIT",
+      "current_runtime_matches_all_archived_sources": true,
+      "source_files": 53,
+      "model_sha256": "aece150721d7ba4a971dd82d9937b502a78f5e63ab6df6b111f5b77ce6aab282",
+      "proof_sha256": "0a1ce3d4fc8c58c54ef5bed454e973dd6f64897780783074dd299b651c29e84c"
+    }
+  },
+  "original_traces_unchanged": true,
+  "full_new_experiment_rerun": false,
+  "old_A_100_percent_native_trajectories_were_already_deleted_on": "2026-10-28",
+  "A_selection": "Best remaining complete native palmar-contact recording. A is incomplete, not a full traversal success.",
+  "B_coverage_definition": "Original 25mm mesh-geodesic neighborhood coverage; not exhaustive direct tactile area or unknown-object GPIS completion.",
+  "comparison_limit": "A retains disabled rigid-palm collision model; B enables palm collisions. Not a same-physics paired AB comparison.",
+  "B_versioned_continuation_s": 5774.600000258942,
+  "deleted_logical_files": 4535739,
+  "deleted_logical_bytes_with_hardlink_duplicates": 4963627719825,
+  "deleted_roots": 847,
+  "free_before_bytes": 13629997056,
+  "free_after_bytes": 148642197504,
+  "observed_volume_space_released_bytes": 135012200448,
+  "removed_incomplete_selected_B_exports": 10,
+  "retained_source_and_test_files": 96,
+  "retained_dependency_files": 530,
+  "native_checks": [
+    {
+      "name": "A_startup",
+      "command": [
+        "D:/Environment/Anaconda/envs/handcomp/python.exe",
+        "-u",
+        "-m",
+        "Module.i04_geometric_traversal.retained_ab",
+        "run",
+        "--method",
+        "A",
+        "--seconds",
+        "0.02",
+        "--output",
+        "D:\\文档\\Hand_Compliance_Control\\.tmp\\i04_ab_cleanup_20261119\\after_A_startup"
+      ],
+      "returncode": 0,
+      "wall_seconds": 6.690391500014812,
+      "log": "Module/evidence/i04_ab_cleanup_20261119/after_A_startup.log",
+      "original_log": "D:\\文档\\Hand_Compliance_Control\\.tmp\\i04_ab_cleanup_20261119\\after_A_startup.log"
+    },
+    {
+      "name": "A_replay",
+      "command": [
+        "D:/Environment/Anaconda/envs/handcomp/python.exe",
+        "D:\\文档\\Hand_Compliance_Control\\i04_experiment_repo\\Module\\i04_geometric_traversal\\trajectory_replay.py",
+        "--case",
+        "A",
+        "--check"
+      ],
+      "returncode": 0,
+      "wall_seconds": 1.1935964999720454,
+      "log": "Module/evidence/i04_ab_cleanup_20261119/after_A_replay.log",
+      "original_log": "D:\\文档\\Hand_Compliance_Control\\.tmp\\i04_ab_cleanup_20261119\\after_A_replay.log"
+    },
+    {
+      "name": "A_native",
+      "command": [
+        "D:/Environment/Anaconda/envs/handcomp/python.exe",
+        "-u",
+        "-m",
+        "Module.i04_geometric_traversal.retained_ab",
+        "smoke",
+        "--method",
+        "A",
+        "--states",
+        "500"
+      ],
+      "returncode": 0,
+      "wall_seconds": 18.04366600001231,
+      "log": "Module/evidence/i04_ab_cleanup_20261119/after_A_native.log",
+      "original_log": "D:\\文档\\Hand_Compliance_Control\\.tmp\\i04_ab_cleanup_20261119\\after_A_native.log"
+    },
+    {
+      "name": "B_startup",
+      "command": [
+        "D:/Environment/Anaconda/envs/handcomp/python.exe",
+        "-u",
+        "-m",
+        "Module.i04_geometric_traversal.retained_ab",
+        "run",
+        "--method",
+        "B",
+        "--seconds",
+        "0.02",
+        "--output",
+        "D:\\文档\\Hand_Compliance_Control\\.tmp\\i04_ab_cleanup_20261119\\after_B_startup"
+      ],
+      "returncode": 0,
+      "wall_seconds": 7.739027800038457,
+      "log": "Module/evidence/i04_ab_cleanup_20261119/after_B_startup.log",
+      "original_log": "D:\\文档\\Hand_Compliance_Control\\.tmp\\i04_ab_cleanup_20261119\\after_B_startup.log"
+    },
+    {
+      "name": "B_replay",
+      "command": [
+        "D:/Environment/Anaconda/envs/handcomp/python.exe",
+        "D:\\文档\\Hand_Compliance_Control\\i04_experiment_repo\\Module\\i04_geometric_traversal\\trajectory_replay.py",
+        "--case",
+        "B",
+        "--check"
+      ],
+      "returncode": 0,
+      "wall_seconds": 1.2852956999558955,
+      "log": "Module/evidence/i04_ab_cleanup_20261119/after_B_replay.log",
+      "original_log": "D:\\文档\\Hand_Compliance_Control\\.tmp\\i04_ab_cleanup_20261119\\after_B_replay.log"
+    },
+    {
+      "name": "B_native",
+      "command": [
+        "D:/Environment/Anaconda/envs/handcomp/python.exe",
+        "-u",
+        "-m",
+        "Module.i04_geometric_traversal.retained_ab",
+        "smoke",
+        "--method",
+        "B",
+        "--states",
+        "500"
+      ],
+      "returncode": 0,
+      "wall_seconds": 19.516459500067867,
+      "log": "Module/evidence/i04_ab_cleanup_20261119/after_B_native.log",
+      "original_log": "D:\\文档\\Hand_Compliance_Control\\.tmp\\i04_ab_cleanup_20261119\\after_B_native.log"
+    }
+  ],
+  "regression": {
+    "command": [
+      "D:/Environment/Anaconda/envs/handcomp/python.exe",
+      "-m",
+      "unittest",
+      "-v",
+      "Module.tests.test_i04_belly_bounded_step",
+      "Module.tests.test_i04_belly_contact",
+      "Module.tests.test_i04_b_full_mcc",
+      "Module.tests.test_i04_contact_recovery",
+      "Module.tests.test_i04_finger_reconfiguration_planner",
+      "Module.tests.test_i04_frozen_b_a",
+      "Module.tests.test_i04_full_surface",
+      "Module.tests.test_i04_geometric_traversal",
+      "Module.tests.test_i04_matched_mcc",
+      "Module.tests.test_i04_matched_mcc_review",
+      "Module.tests.test_i04_natural_arm_buffer",
+      "Module.tests.test_i04_natural_belly_traversal",
+      "Module.tests.test_i04_palm_collision",
+      "Module.tests.test_i04_whole_hand_belly",
+      "Module.tests.test_i04_whole_hand_recovery",
+      "Module.tests.test_i04_whole_hand_surface"
+    ],
+    "returncode": 0,
+    "wall_seconds": 20.07855929993093,
+    "test_modules": 16,
+    "tests_run": 94,
+    "log": "Module/evidence/i04_ab_cleanup_20261119/retained_regression.log"
+  },
+  "detail_directory": "Module/evidence/i04_ab_cleanup_20261119",
+  "source_restore": {
+    "file": "Module/i04_geometric_traversal/palm_safe_mcc.py",
+    "previous_sha256": "0cf88e89e33dccf004371df5539b712698ddb04f1134948b683fd6b20af6e9b1",
+    "restored_successful_sha256": "faf9f48eda263f5f5450a8723440727d01208fc0c2c7d690c3048c8ab8c6137b"
+  },
+  "new_entry": "scripts/run_i04_ab.ps1",
+  "remaining_deletion_targets": [],
+  "missing_dependencies": [],
+  "regenerated_bytecode_caches_from_verification": [
+    "Module/i04_geometric_traversal/__pycache__",
+    "Module/i04_oracle_next_point/__pycache__"
+  ],
+  "cleanup_implementation_sha256": {
+    "make_plan.py": "0af110d510411ce50a306b55c0763fd9a4a00e52cac8b130a1812a500d55f85a",
+    "apply_cleanup.ps1": "672b9c81005b48fcf28405fb2ac5f03f2b153f7e83b2bb8b429541319b039d1f",
+    "resume_cleanup_parallel.ps1": "142b92b8bb79f0b048d32f3c9bd603f6b69c3f4004ba82d24c012b710cf1dcb4"
+  },
+  "launcher_verification": {
+    "command": ".\\scripts\\run_i04_ab.ps1 verify",
+    "status": "PASSED_RETAINED_FILE_INTEGRITY",
+    "files": 2105,
+    "full_physics_reaudit": false
+  },
+  "temporary_verification_outputs_removed": true
+}

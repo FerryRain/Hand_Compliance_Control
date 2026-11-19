@@ -1,0 +1,5 @@
+A is the retained partial result with its original collision model; it is not a palm-repaired full-coverage result.
+Loading recorded trajectory: i04a_frozen_b01_20261021
+Loading verified model (single compiler thread, low-memory rendering)...
+i04a_frozen_b01_20261021: 103 chunks; 0.000..2025.234 s
+{"status": "PASSED_REPLAY_STATE_LOAD_CHECK", "samples": [0.0, 19.999999999999794, 1012.6169999829667, 2025.2339999659334], "checked_chunks": 4, "native_physics_steps": 0, "viewer_window_tested": false, "case_files_written": 0}

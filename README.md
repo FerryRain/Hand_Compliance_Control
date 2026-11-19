@@ -1,5 +1,30 @@
 # FR3 + LEAP Hand 模块化柔顺控制
 
+2026-11-19 · I04 已按要求清理为保留版。当前运行与回放入口、A/B 实际结论和依赖清单见 [I04 A/B 保留说明](Module/I04_AB_RETAINED.md)。B 保留掌部修复后的完成数据；A 保留完整原生记录中最佳的 14.67% 部分结果。下方旧 I04 链接属于历史记录，部分实验文件已删除。
+
+I04 快速使用（先按上述说明下载 Git LFS 文件并安装 Python 3.10 依赖）：
+
+```powershell
+python -m pip install -r Module/requirements-i04-whole-hand.txt
+.\scripts\run_i04_ab.ps1 -Python python verify --code-only
+# 回放前按 data/i04/README.md 从 Google Drive 下载并解压历史数据
+.\scripts\run_i04_ab.ps1 -Python python replay --method B --speed 12
+# 重新仿真，输出目录必须是新目录
+.\scripts\run_i04_ab.ps1 -Python python run --method B --output Module/generated/my_b_run --seconds 9000
+```
+
+选择 `--method A` 运行或回放 A。视频和历史数据在 [Google Drive 下载说明](data/i04/README.md)；新实验所需模型、初态和种子库随代码保留。B 的 100% 指原协议的 25 mm 测地邻域覆盖；A/B 保留结果不是同碰撞模型下的严格配对实验。完整安装、审核和命令参数见 [使用说明](Module/I04_AB_RETAINED.md)。
+
+2026-10-27 · 掌部穿模修复：旧模型禁用了掌座、四个掌部外壳及安装件的物体碰撞，
+旧 B 的 100% 指腹覆盖不能作为全手无穿模成功的证据。新入口启用这些实际几何，
+在初始拟合、贴面规划、换面及逐步控制中检查掌部间隙，另起新 B 案例重新验证；历史 A/B 原始文件保留。
+见[修复说明](Module/I04_PALM_COLLISION_FIX.md)、[新测试报告与视频](Module/generated/palm_collision_fix_review_20261027/review.html)
+及[低内存交互回放](Module/I04_TRAJECTORY_REPLAY.md)。修复后的 B 与旧 A 不构成同物理条件的新对照。
+
+修复后接续版在 6918.226s 完成 8192/8192 顶点和 388/388 目标，3459113 个原生状态及全部双命令守护
+连续独立核验通过；全量记录最小掌部间隙 1.315mm。新增13次成功主动退让，原始力和覆盖判据保留。
+该开发案明确记录5774.600s控制版本交接，不称为从零执行的单一版本实验。原生回放使用 `--case B-safe`。
+
 2026-10-21 · 冻结B调度：按用户选择，保留成功B的外层几何调度、预计接触人数和参考手指门槛，
 仅隔离A名义参考中的逐指表面目标与手指规划。成功B的599个发布文件、50份运行源码和原完整视频不变。
 新A从共同完整初态、零覆盖执行2025.236秒，严格面积覆盖14.6668%，

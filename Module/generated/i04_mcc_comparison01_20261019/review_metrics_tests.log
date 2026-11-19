@@ -1,7 +1,0 @@
-test_full_timeline_contact_denominator_includes_empty_and_partial_contact (Module.tests.test_i04_matched_mcc_review.MatchedReviewChecks) ... ok
-test_initial_acquisition_and_terminal_censorship_are_not_successful_recovery (Module.tests.test_i04_matched_mcc_review.MatchedReviewChecks) ... ok
-
-----------------------------------------------------------------------
-Ran 2 tests in 0.010s
-
-OK

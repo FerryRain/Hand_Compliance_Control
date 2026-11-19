@@ -1,0 +1,12 @@
+{
+  "scope": "Un-timed geometry-only pose library; no native trajectory, coverage or GP observations",
+  "libraries": {
+    "completion": {
+      "file": "retained_completion_ik_seeds.npz",
+      "sha256": "aec940ed2aabcbf8b43bba67500c65ac86c540fca8814860b369756e70509439",
+      "source_metadata": "summary.json",
+      "source_metadata_sha256": "6ca8fff86388c247a36d00655f071bf12b3197d14e38f8d745d3302fa4f95a69",
+      "poses": 54718
+    }
+  }
+}

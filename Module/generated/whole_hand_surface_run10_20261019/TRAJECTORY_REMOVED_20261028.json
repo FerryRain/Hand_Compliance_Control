@@ -1,0 +1,11 @@
+{
+  "status": "OLD_NATIVE_TRAJECTORY_REMOVED_BY_USER_REQUEST",
+  "retained_cases": [
+    "D:\\文档\\Hand_Compliance_Control\\i04_experiment_repo\\Module\\generated\\i04b_er_gpis_recovery_v14_long_20261028",
+    "D:\\文档\\Hand_Compliance_Control\\i04_experiment_repo\\Module\\generated\\i04b_palm_recovery02_20261027",
+    "D:\\文档\\Hand_Compliance_Control\\i04_experiment_repo\\Module\\generated\\i04a_frozen_b01_20261021"
+  ],
+  "logical_bytes_removed": 2878731279,
+  "record": "Module/evidence/2026-10-28_TRAJECTORY_RETENTION.json",
+  "reports_and_nontrajectory_assets_preserved": true
+}

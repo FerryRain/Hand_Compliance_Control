@@ -1,0 +1,13 @@
+{
+  "scope": "Un-timed geometry-only pose library; no native trajectory, coverage or GP observations",
+  "libraries": {
+    "surface": {
+      "file": "retained_surface_ik_seeds.npz",
+      "sha256": "fbaab0ac811eb9334828b2266056de599311b9527e51634e30719bd6f6be8b6e",
+      "source_metadata": "independent_native_audit/audit.json",
+      "source_metadata_sha256": "f86cef357f5b0edf9470bff38d40898a8dadf9aa47df2d2a10d724cc7cee11c1",
+      "source_preview_sha256": "b83af133e73aeecb89ac2fac1c23634abfafe1e45457256072eeff73219e9842",
+      "poses": 14394
+    }
+  }
+}

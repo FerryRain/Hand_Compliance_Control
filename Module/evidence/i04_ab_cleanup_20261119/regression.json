@@ -1,0 +1,28 @@
+{
+  "command": [
+    "D:/Environment/Anaconda/envs/handcomp/python.exe",
+    "-m",
+    "unittest",
+    "-v",
+    "Module.tests.test_i04_belly_bounded_step",
+    "Module.tests.test_i04_belly_contact",
+    "Module.tests.test_i04_b_full_mcc",
+    "Module.tests.test_i04_contact_recovery",
+    "Module.tests.test_i04_finger_reconfiguration_planner",
+    "Module.tests.test_i04_frozen_b_a",
+    "Module.tests.test_i04_full_surface",
+    "Module.tests.test_i04_geometric_traversal",
+    "Module.tests.test_i04_matched_mcc",
+    "Module.tests.test_i04_matched_mcc_review",
+    "Module.tests.test_i04_natural_arm_buffer",
+    "Module.tests.test_i04_natural_belly_traversal",
+    "Module.tests.test_i04_palm_collision",
+    "Module.tests.test_i04_whole_hand_belly",
+    "Module.tests.test_i04_whole_hand_recovery",
+    "Module.tests.test_i04_whole_hand_surface"
+  ],
+  "returncode": 0,
+  "wall_seconds": 20.07855929993093,
+  "test_modules": 16,
+  "tests_run": 94
+}
