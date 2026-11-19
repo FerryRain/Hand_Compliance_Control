@@ -44,11 +44,14 @@ def check_hash(path, expected):
         raise ValueError(f"File differs from recorded SHA-256: {path}")
 
 
-def verify():
+def verify(training_data_only=False):
     integrity = read(DATA / "integrity.json")
-    checkpoints = read(CHECKPOINTS / "manifest.json")
     for name, expected in integrity.items():
         check_hash(HOME_DIR / name, expected)
+    if training_data_only:
+        print(f"Verified {len(integrity)} packaged input files")
+        return
+    checkpoints = read(CHECKPOINTS / "manifest.json")
     for info in checkpoints.values():
         check_hash(HOME_DIR / info["path"], info["sha256"])
     raw = read(DATA / "raw_collection" / "manifest.json")
@@ -152,9 +155,13 @@ def protocol():
 def evaluation_protocol(catalog=None):
     """Prefer the local experiment protocol, or use the unpacked evaluation inputs."""
     if catalog is None:
-        if (PROTOCOLS / "training.json").is_file():
+        expanded_catalog = DATA / "evaluation_inputs_full" / "catalog.json"
+        if expanded_catalog.is_file():
+            catalog = expanded_catalog
+        elif (PROTOCOLS / "training.json").is_file():
             return protocol()
-        catalog = DATA / "evaluation_inputs" / "catalog.json"
+        else:
+            catalog = DATA / "evaluation_inputs" / "catalog.json"
     value = read(catalog)
     for entry in value["request_templates"].values():
         entry["request"] = str(catalog.parent / entry["request"])
@@ -290,7 +297,9 @@ def absolute(value):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("verify", help="Verify packaged inputs and checkpoints.")
+    p = commands.add_parser("verify", help="Verify packaged inputs and checkpoints.")
+    p.add_argument("--training-data-only", action="store_true",
+                   help="Verify the training input bundle without checkpoints or raw links.")
     commands.add_parser("collection-list", help="List captured collection recipe names.")
     p = commands.add_parser("reference-list", help="List deployment evaluation references.")
     p.add_argument("--catalog", type=absolute, help="Use an unpacked evaluation catalog.")
@@ -328,7 +337,7 @@ def main():
     p.add_argument("--title", default="Finger policy")
     args = parser.parse_args()
     if args.command == "verify":
-        verify()
+        verify(args.training_data_only)
     elif args.command == "collection-list":
         list_collection()
     elif args.command == "reference-list":
