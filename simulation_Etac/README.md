@@ -51,4 +51,4 @@ deformed_world = reference_world + displacement_world.cpu().numpy()
 | 形变编码器和 DP 输入 | 先做分区接触面积、压入量基线，再用 PointNet++ 编码本指和整手形变特征。保留手指身份、关节状态与掌运动，按策略版本接入逐指或全手联合动作模型。 | [现有 DP 条件与去噪损失](../finger_policy/scripts/controlled_policy_ablation.py) |
 | 全手闭环部署与评价 | 操作者给腕指令，策略滚动输出手指参考。按指节统计贴合时长、过深压入、策略自主恢复接触的时间和关节余量。 | [动作调度器](../mcc_finger_compliance_control/scripts/dp_chunk_scheduler.py) · [三个策略版本与完整开发流程](../deformation_policy/README.md) |
 
-第一条目标示范是腕部沿方块平移并轻微倾转，在同一时间轴上读出指尖压入减轻、中节恢复接触，以及教师实际执行的关节运动。现有 `deformation()` 只把压入深度大于零且小于 2 mm 的节点标为直接受压。新采集器需要另行记录达到或超过这个深度的节点，才能区分过度压入和失触。扩展到芥末瓶等物体还需要为读取器接入与碰撞模型对齐的连续物体表面。
+第一条新示范使用 I04-B 已有的 Mustard。让腕沿瓶身平移并轻微倾转，同步观察指尖卸载、中节复触、指腹三维力和接触法向，以及教师实际执行的关节运动。原 `deformation()` 只标记大于零且小于 2 mm 的直接压入，适配器还要记录更深的压入，并把连续瓶面与现有碰撞模型对齐。两种动作结构、两种触觉输入及常规与泛化测试的完整流程在主库根部的专用目录中维护。[Mustard 四组对照开发交接](../deformation_policy/README.md)

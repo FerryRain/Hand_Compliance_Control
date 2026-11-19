@@ -62,7 +62,7 @@ python -B -c "from pathlib import Path; from simulation_Etac import blind_graspi
 python -B finger_policy/pipeline.py --help
 ```
 
-**需要运行基线时**，下面第一条会在 GPU 与 MuJoCo 上做方块接触检查，第二条打开图形查看器。它们使用原有密集节点。`check_windows` 用 ShadowHand 检查上游环境。LEAP 实验应使用 `check_leap`。
+**可选的设备诊断。** 下列旧示例用方块检查 GPU 和 MuJoCo 的密集读取器，第二条会打开图形查看器。`check_windows` 用 ShadowHand 检查上游环境。本期第一条采集试次直接使用步骤 3 的 Mustard 场景。
 
 ```sh
 python -m simulation_Etac.check_leap
@@ -71,7 +71,7 @@ python -m simulation_Etac.view_leap
 
 ## 3. 读取 I04-B 或训练 DP 时再装对应依赖
 
-**I04-B。** 从根目录用下面命令核对 Git 中的代码和启动输入，不需要下载历史轨迹。单独复跑旧 I04 时，可在独立环境安装它的 `requirements-i04-whole-hand.txt`，其中锁定了 NumPy、MuJoCo 等 CPU 仿真依赖。新方块教师可直接导入 `WholeHandStepSolver`，准备 NumPy 和 SciPy 即可使用求解器本身。[I04 依赖](../Module/requirements-i04-whole-hand.txt) · [保留版使用说明](../Module/I04_AB_RETAINED.md)
+**I04-B 与 Mustard。** 从根目录用下面命令核对 Git 中的代码和启动输入。`fixtures.load_fixture('mustard', output_dir)` 或场景内的 `handles.fixture` 提供连续瓶面和同坐标系的 256 个凸件。轨迹从已有初态与规划种子生成，几何派生文件写入新实验的 `runs/<run_id>/`。单独运行旧 I04 时可使用其锁定版本的依赖。新多指节教师复用 NumPy/SciPy 的 `WholeHandStepSolver`，物理执行仍需 MuJoCo。[I04 依赖](../Module/requirements-i04-whole-hand.txt) · [保留版使用说明](../Module/I04_AB_RETAINED.md) · [Mustard 场景](../Module/i04_geometric_traversal/fixtures.py)
 
 ```sh
 python -B -m Module.i04_geometric_traversal.retained_ab verify --code-only
@@ -94,11 +94,11 @@ python -B -c "import h5py, torch; from lerobot.policies.diffusion.modeling_diffu
 
 | 需要的东西 | 来源与用途 |
 | --- | --- |
-| LEAP XML / 网格、三份核心触觉代码、检查与查看器 | 来自主库。方块可直接由示例构建。主库已有四个指尖的指腹/连接件拆分，新项目自己补齐其余合格掌侧面的掩码。[LEAP 读取器](../simulation_Etac/mujoco_leap.py) · [指尖分件](../mcc_finger_compliance_control/assets/true_fingertip_contact_v1/asset_manifest.json) |
+| LEAP XML / 网格、触觉移植与诊断 | 主库已提供模型、三份核心触觉代码及原来的方块示例。固定点表可复用四个指尖已有的指腹/连接件拆分，其余掌侧合格面须标注。[LEAP 读取器](../simulation_Etac/mujoco_leap.py) · [指尖分件](../mcc_finger_compliance_control/assets/true_fingertip_contact_v1/asset_manifest.json) |
 | 传播权重、通用 ETac 类、定制几何库 | 来自步骤 1 的上游固定提交。`linear.pth` 是形变传播权重，和待训练的手指动作 checkpoint 用途不同。[ETac 上游权重](https://github.com/Crxus/ETac/tree/6dc00c5d3dc49a6915076a2e1c63b9cff02179b0/BlindGrasping/propagation-ckpt) |
-| I04-B 规划、模型、初态与紧凑种子 | 主库和 Git LFS 提供。重放旧完整轨迹才需要其 Drive 历史包，第一条方块试次可以自己生成。[代码与启动输入](../Module/I04_AB_RETAINED.md) · [历史数据下载](../data/i04/README.md) |
-| 原指尖 DP 的参考权重、Mustard 和 Expanded 数据 | 主库的下载指南指向 `FingerPolicy_Data`。`policy/` 提供三个历史权重，`data/training/mustard222/` 和 `data/training/expanded/` 提供相应的准备数据与原始记录。新实验可把资源放在 `deformation_policy/.deps/FingerPolicy_Data/`，由本目录配置引用。原数据用于核对来源及重建采集条件，新策略训练使用同步记录了掌侧形变的试次。[权重与训练数据下载](../finger_policy/README.md) |
-| 原物体几何、闭环参考和采集配方 | 下载目录的 `assets_3d/` 存储物体几何，`data/evaluation/` 提供参考、请求、初态和运行依赖。复跑旧采集还需对应的任务协议和对象池配置。新方块流程使用本目录自己的配置、试次和 manifest。[原实验输入清单](../finger_policy/README.md) |
-| 新触觉数据与策略 | 三档固定点表、整手形变试次、多指节教师、编码器、训练入口及新 checkpoint 都由新项目产出。现有方块演示、旧指尖权重及 I04-B 记录都不能替代这些交付物。[开发顺序和数据合同](README.md) |
+| I04-B Mustard 表面、凸件、规划、初态与种子 | 主库和 Git LFS 提供本期启动输入。用这些输入生成新的多指节教师试次。仅在按原记录重放 I04-B 完整历史运动时才需其 Drive 包。[Mustard 资产](../assets_external/ycb/collision/006_mustard_bottle/vhacd_256_scaled2p8_objstage/README.md) · [代码与启动输入](../Module/I04_AB_RETAINED.md) · [历史数据索引](../data/i04/README.md) |
+| 旧指尖 DP 的参考权重与训练包 | 重现历史结果时可按主库指南获取 `FingerPolicy_Data`。本期四组从同一批新 Mustard 双模态试次训练，使用新清单即可开展工作，Expanded 留待以后。[历史权重与数据下载](../finger_policy/README.md) |
+| 旧项目的闭环参考和协议 | `data/evaluation/` 和旧采集配方可用于追溯原指尖策略。本期的初态、腕指令、划分和控制预算统一由 `deformation_policy/` 的 Mustard 实验配置给出。[原实验输入清单](../finger_policy/README.md) |
+| 新的触觉数据与策略 | 本项目交付三档点表、同步记录形变和指腹力/法向的 Mustard 试次、多指节教师、四组 DP 和两套测试结果。[开发顺序与比较协议](README.md) |
 
-开始正式训练前，按配置检查数据来源。`single_common` 与 `flat_common` 都只读取 Mustard 训练试次，`single_all` 同时读取 Mustard 和 Expanded。旧入口的 `--group` 会选择网络与采样方式，当前实现对两个 `common` 组也会加入 Expanded 窗口。形变训练入口需要按新配置显式选择数据集。[三个版本与采样要求](README.md#三个策略版本)
+训练前检查四组的训练清单、母轨迹、窗口 ID 和动作标签一致，物体均为 Mustard。旧 `--group` 会影响采样及网络，新的 `architecture`、`observation` 两项只选择模型结构和触觉列。`single_all` 保留为以后 Mustard + Expanded 的逐指配置。[三个版本与四组训练](README.md#三个策略版本) · [力与法向字段](../mcc_finger_compliance_control/scripts/dp_dataset.py)
