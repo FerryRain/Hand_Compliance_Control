@@ -62,10 +62,12 @@ def verify(training_data_only=False):
 
 
 def runtime_environment():
-    paths = [str(SCRIPTS), str(SHARED), str(REPO / "src")]
+    paths = [str(SHARED), str(SCRIPTS), str(REPO / "src")]
     if os.environ.get("PYTHONPATH"):
         paths.append(os.environ["PYTHONPATH"])
-    return dict(os.environ, PYTHONPATH=os.pathsep.join(paths), MUJOCO_GL="egl")
+    environment = dict(os.environ, PYTHONPATH=os.pathsep.join(paths))
+    environment.setdefault("MUJOCO_GL", "glfw" if os.name == "nt" else "egl")
+    return environment
 
 
 def run_script(name, *args, stdout=None):
@@ -267,7 +269,7 @@ def train(args):
 
 def evaluate(args):
     os.environ.update(runtime_environment())
-    sys.path[:0] = [str(SCRIPTS), str(SHARED), str(REPO / "src")]
+    sys.path[:0] = [str(SHARED), str(SCRIPTS), str(REPO / "src")]
     from evaluate_expanded_independent_job import evaluate as run_evaluation
 
     p = evaluation_protocol(args.catalog)

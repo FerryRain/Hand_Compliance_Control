@@ -26,6 +26,7 @@ from mjlab.sim import MujocoCfg, SimulationCfg
 from mjlab.terrains import TerrainEntityCfg
 from mjlab.viewer import ViewerConfig
 from mjlab.utils.lab_api.math import quat_apply_inverse
+from mjlab.utils.xml import load_xml_spec
 # ``object_catalog`` ships with the main repo AND with the standalone
 # recovery_data_collect bundle (recovery_standalone/scripts/), which adds its
 # own scripts directory to sys.path. Prefer whichever copy is already on
@@ -164,7 +165,7 @@ def _load_mcc_leaphand_spec() -> mujoco.MjSpec:
     mjlab attachment tolerates it, but compiling the private observer model
     used by Mink does not, so it is removed here.
     """
-    spec = mujoco.MjSpec.from_file(str(_LEAPHAND_XML))
+    spec = load_xml_spec(_LEAPHAND_XML)
     for exclude in list(spec.excludes):
         if exclude.bodyname1 == "thumb_pip" and exclude.bodyname2 == "pip4":
             spec.delete(exclude)
@@ -234,7 +235,7 @@ def _load_fixed_palm_mcc_hand_spec() -> mujoco.MjSpec:
     All fingertip references in this model are expressed directly in the palm
     frame.  Consequently the arm/root world pose cannot leak into finger IK.
     """
-    spec = mujoco.MjSpec.from_file(str(_LEAPHAND_HAND_ONLY_XML))
+    spec = load_xml_spec(_LEAPHAND_HAND_ONLY_XML)
     for exclude in list(spec.excludes):
         if exclude.bodyname1 == "thumb_pip" and exclude.bodyname2 == "pip4":
             spec.delete(exclude)
@@ -256,7 +257,7 @@ def _load_palm_free_leaphand_spec() -> mujoco.MjSpec:
     the palm's absolute world pose).  Hand joints 0..15 keep the MCC soft
     servo dynamics; a ``palm_control_site`` is added as in the arm version.
     """
-    spec = mujoco.MjSpec.from_file(str(_LEAPHAND_HAND_ONLY_XML))
+    spec = load_xml_spec(_LEAPHAND_HAND_ONLY_XML)
     for exclude in list(spec.excludes):
         if exclude.bodyname1 == "thumb_pip" and exclude.bodyname2 == "pip4":
             spec.delete(exclude)

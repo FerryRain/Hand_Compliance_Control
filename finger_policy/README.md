@@ -6,6 +6,8 @@ LEAP Hand 的 Diffusion Policy 工作流，包含 mocap 数据采集、实测关
 
 下载完整的 `FingerPolicy_Data` 文件夹（约 **3.38 GB**），保留目录结构。文件夹顶层有 `policy/`、`assets_3d/`、`data/`，以及 `link_data.py`、`GUIDE.md`、`INVENTORY.md` 和校验清单。[Google Drive 下载入口](https://drive.google.com/drive/folders/1XMBF-VGcsxUDkoRjZV8JFCfsbjyNh9ep?usp=drive_link)
 
+`policy/single_all.pt` 是默认的手指策略。`data/evaluation/protocol/requests/` 中的每个 JSON 指定物体、初态和参考帧数。`data/evaluation/planned_long/<参考名>/teachers_inverted.h5` 中的 `palm_pose_object` 给出手掌相对物体的逐帧位姿，`teachers_commanded_palm.h5` 中的 `planner_palm_delta_pose_palm` 给出掌坐标系下的运动命令。初态位于 `data/evaluation/protocol/initial/`，仿真启动权重位于 `data/evaluation/runtime/`。目录映射和部署命令见云盘指南。[已展开的交付目录](https://drive.google.com/drive/folders/1CqJufuqGCQaUHmx4obu6j3tIXJ5oTeU5) · [使用指南](https://drive.google.com/file/d/1-gExyn5YEHnro0TfYv1fz2ZOKheksh9z/view)
+
 | 下载目录 | 用途 |
 | --- | --- |
 | `policy/` | 三个可选权重，均为训练种子 20261116。部署时用 `--group` 选择 |
@@ -137,7 +139,21 @@ python pipeline.py render \
   --output data/evaluation_runs/mustard_review/replay --title "Mustard | single_all"
 ```
 
+Windows 本地部署后，在仓库根目录用 PowerShell 运行同一评估入口。下面的命令使用芥末瓶的完整参考。将 `long_natural` 换成 `ycb_016_pear_forward` 可测训练时留出的梨。
+
+```powershell
+.\.venv\Scripts\python.exe finger_policy\pipeline.py evaluate --group single_all --reference long_natural --run mustard_local
+```
+
 已有请求时，追加 `--canary` 可先测 200 个参考帧。其他长参考包括 `ycb_016_pear_forward`、`ycb_021_bleach_cleanser`、`ycb_003_cracker_box` 和 `ycb_002_master_chef_can`。评估记录完成度、严格真指尖接触率、found、关节裕量和过力。回放读取实测状态，保留实际终止帧，输出 `deployment_review.mp4`。
+
+已记录 `pose_trace` 和 `contact_dynamics_trace` 的固定物体试次可离线计算接触轨迹的表面覆盖率。在仓库根目录输入对应的评估结果 JSON，脚本读取配套请求和原始 NPZ。它将有效指腹接触投影到物体表面，合并 5、10 和 25 mm 网格测地邻域，再按物体总表面积归一化。
+
+```powershell
+.\.venv\Scripts\python.exe finger_policy\scripts\measure_contact_surface_coverage.py --result finger_policy\data\evaluation_runs\site_dp_ablation\evaluation\single_all_seed20261116\long_natural.json
+```
+
+结果 JSON 的 `deployment.duration_s` 是闭环主循环的墙钟耗时，包含初始稳定阶段，模型加载和导出轨迹单独执行。用 `deployment.env_control_steps_per_second` 查看控制帧吞吐，用 `single_finger_policy.calls` 查看策略调用次数。发布的长参考每个控制帧代表 0.01 秒，包含十个物理子步。比较速度时应保持物体、参考长度、权重、去噪步数和同卡并发数一致。
 
 [evaluate_expanded_independent_job.py](scripts/evaluate_expanded_independent_job.py) 构造请求并汇总，[evaluate_controlled_policy_ablation.py](scripts/evaluate_controlled_policy_ablation.py) 接入所选策略，仿真使用共用的 [deploy_b_gpu_serial_parity.py](../mcc_finger_compliance_control/scripts/deploy_b_gpu_serial_parity.py) 和 MCC。[render_focused_policy_video.py](scripts/render_focused_policy_video.py) 负责渲染。
 

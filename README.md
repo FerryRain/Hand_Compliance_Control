@@ -1,135 +1,21 @@
-# FR3 + LEAP Hand 模块化柔顺控制
+# LEAP Hand 触觉探索实验
 
-**Finger Policy 数据与复现** · [下载权重、连接训练数据、运行闭环评估](finger_policy/README.md)。
+实验以灵巧手触觉实验档案为准。站点收录五种物体的 Finger Policy 闭环结果、三种 DP 策略消融、腕部贴合实验 `i01-a` 和 `i01-b`、历史 I04-A/B 回放，以及 Active 实验计划。[灵巧手触觉实验档案](https://tactile-hand-experiment-atlas.spunky-brook-2549.chatgpt.site)
 
-[I04 A/B 运行与回放](Module/I04_AB_RETAINED.md)和[全手 MCC 控制](Module/module_4_whole_hand_mcc/README.md)使用仓库中的 FR3、LEAP 手和物体模型。Finger Policy 的训练与闭环评估复用 `mcc_finger_compliance_control/` 和 `src/mjlab/`。
+- `i01-a` 待验证，评估独立生成腕轨时 Finger Policy 能否维持指尖贴合。[i01-a 计划](Module/MASTER_PLAN.md#i01-a-独立腕部规划下的贴合)
+- `i01-b` 已运行，使用腕指联合规划得到的腕轨。完整任务和锁定同一腕轨各做两次配对，另有 100 Hz 节拍试验。原始文件使用 `I04-c` 名称。[计时、重建与复现说明](Module/I04_C_END_TO_END.md)
+- Finger Policy 提供训练数据、三组策略权重、闭环评估和回放入口。[Finger Policy 使用说明](finger_policy/README.md)
+- I04-A/B 保留历史原生轨迹、回放、审核和模型。[历史 I04-A/B](Module/I04_AB_RETAINED.md)
+- Active 计划包含腕部 Active＋逐指 DP、Aude＋MCC、腕部 Active＋MCC 和补充消融。[当前实验计划](Module/MASTER_PLAN.md)
 
-待开发的掌侧触觉和形变策略分别见 [simulation_Etac](simulation_Etac/README.md) 和 [deformation_policy](deformation_policy/README.md)。
+## 复现入口
 
-2026-11-19 · I04 已按要求清理为保留版。当前运行与回放入口、A/B 实际结论和依赖清单见 [I04 A/B 保留说明](Module/I04_AB_RETAINED.md)。B 保留掌部修复后的完成数据；A 保留完整原生记录中最佳的 14.67% 部分结果。下方旧 I04 链接属于历史记录，部分实验文件已删除。
-
-I04 快速使用（先按上述说明下载 Git LFS 文件并安装 Python 3.10 依赖）：
+`Module` 记录实验协议和仿真代码。安装、模型资产和原始数据获取方式见各实验的说明。
 
 ```powershell
-python -m pip install -r Module/requirements-i04-whole-hand.txt
+.\scripts\run_i04_c.ps1 benchmark --help
 .\scripts\run_i04_ab.ps1 -Python python verify --code-only
-# 回放前按 data/i04/README.md 从 Google Drive 下载并解压历史数据
-.\scripts\run_i04_ab.ps1 -Python python replay --method B --speed 12
-# 重新仿真，输出目录必须是新目录
-.\scripts\run_i04_ab.ps1 -Python python run --method B --output Module/generated/my_b_run --seconds 9000
+python finger_policy/pipeline.py --help
 ```
 
-选择 `--method A` 运行或回放 A。视频和历史数据在 [Google Drive 下载说明](data/i04/README.md)；新实验所需模型、初态和种子库随代码保留。B 的 100% 指原协议的 25 mm 测地邻域覆盖；A/B 保留结果不是同碰撞模型下的严格配对实验。完整安装、审核和命令参数见 [使用说明](Module/I04_AB_RETAINED.md)。
-
-2026-10-27 · 掌部穿模修复：旧模型禁用了掌座、四个掌部外壳及安装件的物体碰撞，
-旧 B 的 100% 指腹覆盖不能作为全手无穿模成功的证据。新入口启用这些实际几何，
-在初始拟合、贴面规划、换面及逐步控制中检查掌部间隙，另起新 B 案例重新验证；历史 A/B 原始文件保留。
-见[修复说明](Module/I04_PALM_COLLISION_FIX.md)、[新测试报告与视频](Module/generated/palm_collision_fix_review_20261027/review.html)
-及[低内存交互回放](Module/I04_TRAJECTORY_REPLAY.md)。修复后的 B 与旧 A 不构成同物理条件的新对照。
-
-修复后接续版在 6918.226s 完成 8192/8192 顶点和 388/388 目标，3459113 个原生状态及全部双命令守护
-连续独立核验通过；全量记录最小掌部间隙 1.315mm。新增13次成功主动退让，原始力和覆盖判据保留。
-该开发案明确记录5774.600s控制版本交接，不称为从零执行的单一版本实验。原生回放使用 `--case B-safe`。
-
-2026-10-21 · 冻结B调度：按用户选择，保留成功B的外层几何调度、预计接触人数和参考手指门槛，
-仅隔离A名义参考中的逐指表面目标与手指规划。成功B的599个发布文件、50份运行源码和原完整视频不变。
-新A从共同完整初态、零覆盖执行2025.236秒，严格面积覆盖14.6668%，
-1389/8192顶点、60/388目标，停止于`COMPLETION_SEARCH_EXHAUSTED`。
-B保留4859.048秒100%结果。A的1,012,618个原生状态及全部双几何检查通过独立连续重放。
-同前2025.236秒A/B覆盖为14.6668% / 70.7677%。
-本轮是冻结B外层调度的单种子消融，不冒称符合旧版禁止预测调度信息的严格A协议。
-见[完整AB视频与对照报告](Module/generated/i04_ab_frozen_b_20261021/review.html)、
-[运行说明](Module/I04_FROZEN_B_AB_RUNBOOK.md)和[本次实验记录](Module/evidence/2026-10-21_I04_FROZEN_B_AB.md)。
-
-当前项目唯一入口是 [`Module/`](Module/README.md)。所有当前实现、协议、测试和新增产物均位于
-`Module/`；仓库其他目录属于历史或并行工作，不作为本项目的默认入口。
-
-## 当前架构
-
-```text
-Wrist trajectory / planner -> Wrist MCC -> FR3
-
-hand/contact history + future wrist plan
- -> Finger DP Reference Generator
- -> nominal finger trajectory + role intention
- -> coordinated Finger MCC
- -> LEAP Hand
-```
-
-Finger DP 当前定位为多指 nominal trajectory/role generator，而不是高频低层力控制器。Wrist MCC
-负责 collective/resultant compliance，Finger MCC 负责 local/internal compliance。
-
-## 当前实验状态
-
-- 2026-10-20归档：恢复后的B以单一冻结版本从零完成整瓶遍历，4859.048秒达到100%，
-  8192/8192顶点、388/388目标全部覆盖，2,429,524个原生状态连续独立重放通过。
-  仿真高力停止放宽至40N/200ms，原严格覆盖保持；本次力峰9.0952N，最长全手断触62.808秒。
-  [完整报告与视频](Module/generated/i04b_full_force_grace01_20261020/review.html)：正常速度80分59秒、12倍速6分45秒。
-  [B运行说明](Module/I04_B_FULL_RUNBOOK.md) · [本次记录](Module/evidence/2026-10-20_I04_B_FULL.md)。
-  采用修复后相同执行条件的新A尚未重跑。
-
-- 2026-10-20复查确认新MCC对照入口改变了B的执行行为，目标重投影跳变已局部重现高力停止。
-  原100%遍历数据保留；修复后的完整配对实验尚未完成。
-  [诊断记录](Module/evidence/2026-10-20_I04_MCC_REGRESSION.md) · [A/B正常速度全程视频](Module/generated/i04_mcc_regression_review_20261020/review.html)。
-
-- 2026-10-19目标更新：[I04A/B新目标与共同条件](Module/I04_AB_WHOLE_HAND_PROTOCOL.md)。
-  I04B采用手掌与四指联合规划、主动指腹接触和整瓶遍历；I04A保持wrist-only任务输入。
-  新公共MCC入口已完成首轮单种子对照及独立核验：A搜索耗尽，新B高力保护停止，均未完成整瓶。
-  [新对照结果](Module/evidence/2026-10-19_I04_MATCHED_MCC.md) · [如何运行](Module/I04_MATCHED_MCC_RUNBOOK.md)。多种子评测待完成，DPRef暂缓。
-
-- 2026-10-19：Mustard 四指协同整瓶遍历完成，8192/8192顶点、388/388目标覆盖；2,638,518个原生状态连续独立重放通过。
-  [运行与下载说明](Module/I04_WHOLE_HAND_RUNBOOK.md) · [更新日志](Module/CHANGELOG.md) ·
-  [中文报告](Module/generated/whole_hand_surface_run10_20261019/review.html) ·
-  [实验记录](Module/evidence/2026-10-19_I04_WHOLE_HAND_SURFACE.md)。报告、视频和完整轨迹随分支发布，大文件请用 `git lfs pull` 下载。
-  本轮是v4→v6→v7→v8连续开发接续，仅MCC、固定Mustard、零重力；最长全手有效接触中断146.156秒，换面连续性仍需优化。
-
-- 2026-10-13历史记录：新 I04 已完成 mustard 的 18 次 MCC + 共享接触恢复运行：允许短暂失联，恢复后继续探索；DPRef 延后。
-  hold 撤离对照恢复开/关为 3/3、0/3，完整表面覆盖未完成。
-  见 [mustard 报告](Module/generated/new_i04_mustard_recovery_review_20261013/index.html) 和
-  [冻结协议](Module/I04_MUSTARD_RECOVERY_PROTOCOL.md)。旧 Bunny 首轮数字另存历史证据。
-
-- M0–M3：FR3+LEAP robot、Oracle SurfaceModel、Fingertip MCC 和 Runtime Guards 已实现；
-- Exp.1：`Whole-hand MCC vs. DP-direct` 已完成，作为低层 controller replacement 消融；
-- Exp.2：`Plain MCC / Passive / Reactive / DPRef+MCC` 已完成接触优先重评；
-- E05 只报告性能与诊断指标，不给策略设置 `PASS/FAIL`；
-- MuJoCo fingertip force 只作持续高力、多指同时高力和 penetration 诊断，单个瞬时峰值不决定
-  策略优劣；
-- Exp.3 不属于固定 wrist 的 E05，位于 I05 后作为最终 active-planner ablation。
-
-Exp.2 三条件 aggregate 中，普通 Plain MCC 是绝对接触保持参考；在严格共享执行栈的
-Passive/Reactive/DPRef 三者中，DPRef 的 contact continuity、平均接触数与
-`N_c>=2` supported traversal 最好，但第四指参与和四指同时接触仍需改善。
-
-## 首要审阅入口
-
-- [Exp.1 + Exp.2 统一网页](Module/generated/e05_exp1_exp2_review/index.html)
-- [当前接触优先重评证据](Module/evidence/2026-08-25_EXP2_CONTACT_PRIORITY_RERUN.md)
-- [完整模块结构与复现说明](Module/README.md)
-- [主任务与实验顺序](Module/MASTER_PLAN.md)
-
-## 环境与复现
-
-固定使用 `handcomp`：
-
-```bash
-cd /home/ferry/data/Code2/Research/hand_comliance_control
-PY=/home/ferry/data/Anaconda/envs/handcomp/bin/python
-
-# 当前相关回归
-$PY -m unittest Module.tests.test_e05_strategy_review \
-  Module.tests.test_e05_mcc_full_robot \
-  Module.tests.test_finger_dp_core -v
-
-# Exp.2：DPRef inference 必须使用 CUDA
-$PY -m Module.module_4_finger_dp.exp2_benchmark --device cuda:0
-
-# GPU/EGL 可视化重建
-MUJOCO_GL=egl MUJOCO_EGL_DEVICE_ID=0 \
-  $PY -m Module.module_4_finger_dp.exp2_visual
-
-# 重建统一网页
-$PY -m Module.e05_strategy_review
-```
-
-DPRef 训练与推理禁止 CPU fallback；MuJoCo physics 本身仍使用其 physics backend。完整文件结构、
-各模块独立复现方式和适用范围以 [`Module/README.md`](Module/README.md) 为准。
+完整结果、原始文件和依赖索引见 [Module](Module/README.md)。

@@ -39,6 +39,7 @@ import time
 from pathlib import Path
 import numpy as np
 import torch
+import dp_checkpoint_pickle
 from batched_b_control_chain import BatchedBControlChain, ZeroResidualPolicy  # noqa: E402
 from deploy_dp_inverse import (                                   # noqa: E402
     DPRuntime, attach_commanded_planner_features, load_episode)
@@ -194,6 +195,7 @@ def run(batch: int, episode: int, frames: int, device: str, seed: int,
             robot.set_joint_position_target(torch.as_tensor(initial_joint_target,device=device,dtype=torch.float32).expand_as(q0))
             robot.write_data_to_sim()
 
+        joint_path = torch.as_tensor(data["q_hand"][:n], device=device)
         palm_path = torch.as_tensor(data["palm_pose_object"][:n], device=device)
         twist_path = torch.as_tensor(data["palm_twist_object"][:n], device=device)
         command_path = torch.as_tensor(
@@ -202,6 +204,7 @@ def run(batch: int, episode: int, frames: int, device: str, seed: int,
         # --- _set_palm / step_with_palm_recenter (serial 1698-1740, 1338) ----
         origins = env.scene.env_origins
         palm_root = [None]
+        substep_contact_reader = None
 
         def recentered_step() -> None:
             env.sim.step_orig()
@@ -209,7 +212,10 @@ def run(batch: int, episode: int, frames: int, device: str, seed: int,
                 chain.record_base_substep(env, palm_root[0])
             if hasattr(chain, 'record_substep_force'):
                 env.sim.sense()
-                read_sensors()
+                if substep_contact_reader is None:
+                    read_sensors()
+                else:
+                    substep_contact_reader(read_sensors)
                 chain.record_substep_force()
             if palm_root[0] is not None and (palm_driver is None or palm_driver.recenter_substeps):
                 write_palm_root(palm_root[0])
@@ -242,6 +248,7 @@ def run(batch: int, episode: int, frames: int, device: str, seed: int,
         chain = (chain_factory or BatchedBControlChain)(model, batch, torch_device,
                                      seed=seed, mcc_config=mcc_config(),
                                      max_safe_force_n=(0.0 if per_env_safety else max_safe_force_n))
+        substep_contact_reader = getattr(chain, 'read_substep_contacts', None)
         for key, value in orchestration_config().items():
             setattr(chain, key, value)
         if runtime.state_schema is not None:
@@ -377,9 +384,9 @@ def run(batch: int, episode: int, frames: int, device: str, seed: int,
                 command = execution_reference[2]
             bootstrap_nominal = (
                 (1.0 - _smoothstep(frame, bootstrap_end))
-                * torch.as_tensor(data["q_hand"][0], device=device)
+                * joint_path[0]
                 + _smoothstep(frame, bootstrap_end)
-                * torch.as_tensor(data["q_hand"][frame], device=device)
+                * joint_path[frame]
             ).expand(batch, -1)
             try:
                 if hasattr(chain, "set_training_context"):
@@ -577,7 +584,7 @@ def _read_checkpoint_meta(path: Path) -> dict[str, Any]:
     released as soon as this returns.
     """
     try:
-        blob = torch.load(path, map_location="cpu", weights_only=False, mmap=True)
+        blob = torch.load(path, map_location="cpu", pickle_module=dp_checkpoint_pickle, weights_only=False, mmap=True)
     except Exception:
         return {}
 

@@ -17,7 +17,7 @@ from mjlab.sensor import BuiltinSensor, RayCastSensor, Sensor, SensorCfg
 from mjlab.sensor.camera_sensor import CameraSensor
 from mjlab.sensor.sensor_context import SensorContext
 from mjlab.terrains.terrain_entity import TerrainEntity, TerrainEntityCfg
-from mjlab.utils.xml import fix_spec_xml, strip_buffer_textures
+from mjlab.utils.xml import fix_spec_xml, load_xml_spec, strip_buffer_textures
 
 _SCENE_XML = Path(__file__).parent / "scene.xml"
 
@@ -60,7 +60,7 @@ class Scene:
     self._default_env_origins: torch.Tensor | None = None
     self._sensor_context: SensorContext | None = None
 
-    self._spec = mujoco.MjSpec.from_file(str(_SCENE_XML))
+    self._spec = load_xml_spec(_SCENE_XML)
     if self._cfg.extent is not None:
       self._spec.stat.extent = self._cfg.extent
     self._add_terrain()

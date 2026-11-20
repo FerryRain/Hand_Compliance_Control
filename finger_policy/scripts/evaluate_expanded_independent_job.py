@@ -1,18 +1,27 @@
 """One expanded evaluation job. Evaluation body copied unchanged from frozen queue."""
 import argparse,contextlib,io,json,os,subprocess,sys
+import tempfile
 from pathlib import Path
+from filelock import FileLock
 import numpy as np
-from controlled_policy_ablation import save,sha
-from audit_smooth_regrasp import audit
+from single_finger_dp import save, sha
 ROOT=Path(__file__).resolve().parents[2]
 def run(script,args,log,timeout):
     log.parent.mkdir(parents=True,exist_ok=True)
-    with log.open('x') as s:
+    environment = os.environ.copy()
+    environment.setdefault('MUJOCO_GL', 'glfw' if os.name == 'nt' else 'egl')
+    environment.setdefault('MPLCONFIGDIR', str(Path(tempfile.gettempdir()) / 'mpl-expanded-policy'))
+    with log.open('a') as s:
         subprocess.run([sys.executable,'-u',str(Path(__file__).with_name(script)),*map(str,args)],cwd=ROOT,
-            env=dict(os.environ,MUJOCO_GL='egl',MPLCONFIGDIR='/tmp/mpl-expanded-policy'),stdout=s,stderr=subprocess.STDOUT,check=True,timeout=timeout)
+            env=environment,stdout=s,stderr=subprocess.STDOUT,check=True,timeout=timeout)
 
 def evaluate(out,p,group,seed,ckpt,name,canary=False,*,denoise_steps=10,record_latency=False):
     folder=out/('canary_deployment' if canary else 'evaluation')/f'{group}_seed{seed}';folder.mkdir(parents=True,exist_ok=True)
+    with FileLock(str(folder / (name + '.evaluation.lock'))):
+        return _evaluate_locked(folder,p,group,seed,ckpt,name,canary,denoise_steps,record_latency)
+
+
+def _evaluate_locked(folder,p,group,seed,ckpt,name,canary,denoise_steps,record_latency):
     target=folder/(name+'.json');reportpath=folder/(name+'.comparison_audit.json')
     task=json.loads(Path(p['request_templates'][name]['request']).read_text());arm='flat' if group=='flat_common' else 'single'
     task.update(arm=f'{group}_seed{seed}_{name}',single_finger_policy=dict(mode='all',comparison_checkpoint=str(ckpt.resolve())),
@@ -22,18 +31,24 @@ def evaluate(out,p,group,seed,ckpt,name,canary=False,*,denoise_steps=10,record_l
         task['single_finger_policy'].update(denoise_steps=denoise_steps,record_latency=record_latency)
     if canary:task['rows'][0]['frames']=200;task['palm_reset']['extra_frames']=500;task['reference_prefix_only']=True
     request=folder/(name+'.request.json')
-    if reportpath.exists():
-        if not target.is_file() or json.loads(request.read_text())!=task:
+    if request.exists():
+        if json.loads(request.read_text()) != task:
             raise ValueError('Saved evaluation does not match the requested run')
+    elif target.exists() or reportpath.exists():
+        raise ValueError('Saved evaluation is missing its request')
+    else:
+        save(request,task)
+    if reportpath.exists():
+        if not target.is_file():
+            raise ValueError('Saved evaluation is missing its result')
         cached=json.loads(reportpath.read_text());assert cached['checkpoint_sha256']==sha(ckpt)
         return cached
-    if target.exists():
-        assert json.loads(request.read_text())==task,'Saved request mismatch'
-    else:
-        save(request,task);run('evaluate_controlled_policy_ablation.py',[request],folder/(name+'.log'),14400)
+    if not target.exists():
+        run('evaluate_controlled_policy_ablation.py',[request],folder/(name+'.log'),14400)
     result=json.loads(target.read_text());info=result['single_finger_policy']
     assert info['sha256']==sha(ckpt) and info['arm']==arm and info['calls']>0
     assert info.get('denoise_steps', 10)==denoise_steps
+    from audit_smooth_regrasp import audit
     with contextlib.redirect_stdout(io.StringIO()):report=audit(target)
     with np.load(result['trace']) as z:
         n=result['lanes'][0]['frames'];assert n>100

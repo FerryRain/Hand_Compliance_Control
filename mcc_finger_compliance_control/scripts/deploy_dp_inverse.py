@@ -37,6 +37,7 @@ from dp_motion_features import (
     causal_motion_features,
     kinematic_q_baseline,
 )
+import dp_checkpoint_pickle
 from dp_chunk_scheduler import DPChunkScheduler, DPChunkSchedulerConfig
 from fingertip_impedance import (
     FingertipImpedanceConfig,
@@ -356,7 +357,7 @@ class DPRuntime:
         samples: int = 1,
     ):
         checkpoint = torch.load(
-            checkpoint_path, map_location=device, weights_only=False
+            checkpoint_path, map_location=device, pickle_module=dp_checkpoint_pickle, weights_only=False
         )
         config = dict(checkpoint["config"])
         if inference_steps is not None:

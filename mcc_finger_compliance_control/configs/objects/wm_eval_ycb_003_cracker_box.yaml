@@ -1,0 +1,89 @@
+body:
+  initial_pos:
+  - 0.7007
+  - 0.0003
+  - 0.8
+  initial_rot:
+  - 0.70710678
+  - 0.0
+  - 0.70710678
+  - 0.0
+  mocap: true
+  name: target_ball
+  total_mass_kg: 0.45
+collection:
+  pregrasp_q:
+  - 0.958
+  - -0.18
+  - 0.6895
+  - 0.838
+  - 0.958
+  - 0.0
+  - 0.6895
+  - 0.838
+  - 0.958
+  - 0.18
+  - 0.6895
+  - 0.838
+  - 0.85
+  - 1.3
+  - 0.7
+  - 0.44
+  size_scale_range:
+  - 1.0
+  - 1.0
+display_name: ycb_003_cracker_box (collection scale)
+family: smooth_convex
+geoms:
+- collision_backend: convex_decomposition
+  collision_dir: mcc_finger_compliance_control/data/contact_wm_review_20261110/physics_contract_v1/ycb_policy_stress_v1/ycb_003_cracker_box/collision
+  file: mcc_finger_compliance_control/data/contact_wm_review_20261110/ycb_expansion_v2/objects/ycb_003_cracker_box/surface.obj
+  pos:
+  - 0
+  - 0
+  - 0
+  size:
+  - 1
+  - 1
+  - 1
+  type: mesh
+id: wm_eval_ycb_003_cracker_box
+motion:
+  orbit:
+    angle_range_deg:
+    - 60.0
+    - 100.0
+    angular_speed_range_rad_s:
+    - 0.04
+    - 0.07
+  rotation:
+    allowed_axes:
+    - principal_x
+    - principal_y
+    - principal_z
+    angle_range_deg:
+    - 60.0
+    - 140.0
+    angular_speed_range_rad_s:
+    - 0.06
+    - 0.12
+    contact_gated: false
+  translation:
+    absolute_max_m: 0.02
+    allowed_axes:
+    - principal_x
+    - principal_y
+    - principal_z
+    contact_gated: false
+    distance_mode: object_extent_ratio
+    distance_ratio_range:
+    - 0.04
+    - 0.1
+    speed_range_m_s:
+    - 0.002
+    - 0.005
+rgba:
+- 0.96
+- 0.72
+- 0.08
+- 1.0

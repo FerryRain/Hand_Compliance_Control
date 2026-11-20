@@ -2,9 +2,22 @@
 
 from __future__ import annotations
 
+import os
 import xml.etree.ElementTree as ET
+from pathlib import Path
 
 import mujoco
+
+
+def load_xml_spec(path: Path) -> mujoco.MjSpec:
+  """Load a model even when its checkout is under a Unicode directory on Windows."""
+  if os.name == "nt" and path.is_absolute() and not str(path).isascii():
+    # The Windows MuJoCo file API can open the same ASCII path relative to cwd.
+    if path.drive.casefold() == Path.cwd().drive.casefold():
+      relative = os.path.relpath(path)
+      if relative.isascii():
+        return mujoco.MjSpec.from_file(relative)
+  return mujoco.MjSpec.from_file(str(path))
 
 
 def strip_buffer_textures(spec: mujoco.MjSpec) -> None:

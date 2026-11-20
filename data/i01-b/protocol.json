@@ -1,0 +1,53 @@
+{
+  "experiment": "I04-c matched end-to-end time to a written R-GPIS mesh",
+  "date": "2026-11-20",
+  "clock": "Parent monotonic perf_counter_ns immediately before creating a fresh process; child shared monotonic acknowledgement after the mesh and reconstruction evidence close",
+  "quality_gate": {
+    "coverage_10mm": 0.7,
+    "coverage_25mm": 0.95,
+    "fscore_5mm": 0.4
+  },
+  "main_repeats": 2,
+  "repeat_seeds": [
+    20261109,
+    20261110
+  ],
+  "fixed_wrist": "Module/generated/i01b-reference/common_wrist.npz",
+  "fixed_wrist_sha256": "d33b359002a64abbfcc3eee221577bf1632998155eebec56534fa13517680ee6",
+  "offline_physics": "Native MuJoCo 3.6 CPU with 2 ms integration; fastest available progress, no pacing",
+  "mcc_tick_s": 0.01,
+  "offline_high_load": "Projected full scan for fixed trajectories records overload and continues in simulation; diagnostics accompany scoring",
+  "compute_resources": {
+    "cpu": "Intel Core i7-13700",
+    "gpu": "NVIDIA GeForce RTX 4090 D",
+    "cpu_threads_per_numeric_kernel": 1,
+    "full_mcc_cpu_affinity": "OS default",
+    "fixed_mcc_cpu_affinity": [
+      8,
+      9,
+      10,
+      11
+    ],
+    "dp_cpu_affinity": [
+      4,
+      5,
+      6,
+      7
+    ],
+    "only_one_dp_gpu_trial_active": true
+  },
+  "primary": [
+    "full-mcc",
+    "full-dp",
+    "fixed-mcc",
+    "fixed-dp"
+  ],
+  "secondary_realtime": {
+    "task": "fixed wrist first 60 s, same initial pose and seed",
+    "target_control_s": 0.01,
+    "command_gap_definition_s": 0.02,
+    "over_budget_definition_s": 0.01
+  },
+  "reconstruction": "Same R-GPIS implementation and known workspace query box; per-run training from actual fingertips only",
+  "scoring": "Offline after the stopwatch; coverage is area-weighted geodesic dilation and R-GPIS point-cloud F-score."
+}

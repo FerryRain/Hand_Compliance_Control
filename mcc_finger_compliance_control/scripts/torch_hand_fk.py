@@ -63,20 +63,16 @@ class TorchHandFK(nn.Module):
 
     @staticmethod
     def _axis_angle(axis: torch.Tensor, angle: torch.Tensor) -> torch.Tensor:
-        axis = axis / torch.linalg.vector_norm(axis)
-        x, y, z = axis.unbind()
+        """Rodrigues rotations for all sixteen hinge axes and each batch lane."""
+        axis = axis / torch.linalg.vector_norm(axis, dim=-1, keepdim=True)
+        x, y, z = axis.unbind(dim=-1)
         zero = torch.zeros_like(x)
-        skew = torch.stack(
-            (
-                torch.stack((zero, -z, y)),
-                torch.stack((z, zero, -x)),
-                torch.stack((-y, x, zero)),
-            )
-        )
+        skew = torch.stack((zero, -z, y, z, zero, -x, -y, x, zero), dim=-1)
+        skew = skew.reshape(*axis.shape[:-1], 3, 3)
         eye = torch.eye(3, device=angle.device, dtype=angle.dtype)
         cosine = torch.cos(angle)[..., None, None]
         sine = torch.sin(angle)[..., None, None]
-        outer = axis[:, None] * axis[None, :]
+        outer = axis.unsqueeze(-1) * axis.unsqueeze(-2)
         return cosine * eye + (1.0 - cosine) * outer + sine * skew
 
     def forward(self, q: torch.Tensor) -> torch.Tensor:
@@ -87,6 +83,7 @@ class TorchHandFK(nn.Module):
         value = q.float()
         prefix = value.shape[:-1]
         batch = value.reshape(-1, 4, 4)
+        joint_rotations = self._axis_angle(self.joint_axes, batch)
         result = []
         for finger in range(4):
             rotation = torch.eye(3, dtype=value.dtype, device=value.device).expand(
@@ -99,9 +96,7 @@ class TorchHandFK(nn.Module):
                 rotation = (
                     rotation
                     @ self.body_rotations[finger, joint]
-                    @ self._axis_angle(
-                        self.joint_axes[finger, joint], batch[:, finger, joint]
-                    )
+                    @ joint_rotations[:, finger, joint]
                 )
             tip = position + torch.einsum(
                 "bij,j->bi", rotation, self.site_positions[finger]
@@ -125,6 +120,7 @@ class TorchHandFK(nn.Module):
             raise ValueError(f"expected [N,16], got {tuple(q.shape)}")
         value = q.float().reshape(-1, 4, 4)
         batch = value.shape[0]
+        joint_rotations = self._axis_angle(self.joint_axes, value)
         sites, site_rots, origins, body_rots, jacobians = [], [], [], [], []
         for finger in range(4):
             rotation = torch.eye(3, dtype=value.dtype, device=value.device).expand(batch, 3, 3)
@@ -135,9 +131,7 @@ class TorchHandFK(nn.Module):
                 fixed_rotation = rotation @ self.body_rotations[finger, joint]
                 joint_origins.append(position)
                 joint_axes.append(torch.einsum("bij,j->bi", fixed_rotation, self.joint_axes[finger, joint]))
-                rotation = fixed_rotation @ self._axis_angle(
-                    self.joint_axes[finger, joint], value[:, finger, joint]
-                )
+                rotation = fixed_rotation @ joint_rotations[:, finger, joint]
             site = position + torch.einsum("bij,j->bi", rotation, self.site_positions[finger])
             if anchor_body_local is not None and anchor_valid is not None:
                 anchor = position + torch.einsum(

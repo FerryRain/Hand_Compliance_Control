@@ -191,6 +191,16 @@ def _worker(request):
                 data['palm_pose_object'][row['frames']:,lane,2]+=2.
 
     class Observer(CollectionForceObserver):
+        def read_pad_trace(self, env):
+            """Read the two pad fields saved between controller observations."""
+            pads = []
+            for name in self.pad_names:
+                sensor = env.scene[name]
+                sensor.update(0.0)
+                pads.append(sensor.data)
+            return dict(pad_force=torch.stack([pad.force.sum(1) for pad in pads], 1),
+                        pad_found=torch.stack([(pad.found > 0).any(1) for pad in pads], 1))
+
         def configure(self, cfg):
             # Transfer the collection's robot contact materials before splitting
             # the distal geoms, as in the accepted long-palm transfer audit.
@@ -303,6 +313,7 @@ def _worker(request):
                 if task['chunk_source'] != 'dp' or agent is not None or dppo is not None or task.get('optimizer_teacher') or (task.get('palm_reset') and task.get('local_recovery') is None):
                     raise ValueError('Single-finger pilot requires standalone DP chunks and frozen MCC')
                 from single_finger_dp import SingleFingerRuntime
+                self.read_substep_contacts = self._read_policy_substep_contacts
                 if task['single_finger_policy'].get('dynamic_range', False):
                     from range_conditioned_finger_dp import RangeFingerRuntime
                     self.single_finger_runtime = RangeFingerRuntime(task['single_finger_policy'], device, task['seed'])
@@ -445,6 +456,15 @@ def _worker(request):
             if task.get('mobility_probe') and not getattr(self,'mobility_model_saved',False):
                 mujoco.mj_saveModel(env.sim.mj_model,str(output.with_suffix('.physics.mjb')),None)
                 self.mobility_model_saved=True
+        def _read_policy_substep_contacts(self, read_full):
+            # The policy and supervisor consume complete contacts at control ticks.
+            # The nine interior physics substeps only log the pad force and presence.
+            if self.context['settling'] or self.tick_substeps == 9:
+                read_full()
+                self.substep_pad = observer.latest
+            elif task.get('contact_substep_trace', False):
+                self.substep_pad = observer.read_pad_trace(self.env)
+
         def record_substep_force(self):
             nonlocal aggregate
             if self.context['settling']:
@@ -457,11 +477,18 @@ def _worker(request):
                 groups = [[g for g,n in enumerate(names) if n.startswith('robot/') and region(n)==part]
                           for part in PARTS]
                 with wp.ScopedDevice(env.sim.wp_device):
-                    aggregate = dict(groups=groups,
+                    stream = torch.cuda.ExternalStream(wp.get_stream(env.sim.wp_device).cuda_stream)
+                    # Reusing device indices avoids a synchronous upload for each hand
+                    # part on every physics substep.
+                    with torch.cuda.stream(stream):
+                        group_ids = [torch.tensor(g, dtype=torch.long, device=device) for g in groups]
+                    aggregate = dict(groups=group_ids, stream=stream,
                         objects=wp.array(np.asarray([n.startswith('target/') for n in names],dtype=np.int32),dtype=wp.int32),
                         hand=wp.array(np.asarray([n.startswith('robot/') for n in names],dtype=np.int32),dtype=wp.int32),
                         net=wp.zeros((batch,m.ngeom),dtype=wp.vec3),
                         point=wp.zeros((batch,m.ngeom),dtype=float))
+                    aggregate['net_tensor'] = wp.to_torch(aggregate['net'])
+                    aggregate['point_tensor'] = wp.to_torch(aggregate['point'])
             a = aggregate
             with wp.ScopedDevice(env.sim.wp_device):
                 a['net'].zero_(); a['point'].zero_()
@@ -469,13 +496,15 @@ def _worker(request):
                     d.contact.frame,d.contact.friction,d.contact.dim,d.contact.efc_address,d.efc.force,
                     d.njmax,d.nacon,d.contact.geom,d.contact.worldid,a['objects'],a['hand']],
                     outputs=[a['net'],a['point']])
-            stream = torch.cuda.ExternalStream(wp.get_stream(env.sim.wp_device).cuda_stream)
+            stream = a['stream']
             with torch.cuda.stream(stream):
-                net = wp.to_torch(a['net']).norm(dim=-1)
-                point = wp.to_torch(a['point'])
-                parts = torch.stack([torch.maximum(net[:,g].amax(-1),point[:,g].amax(-1))
-                                      if g else net.new_zeros(batch) for g in a['groups']],-1)
-            torch.cuda.current_stream().wait_stream(stream)
+                net = a['net_tensor'].norm(dim=-1)
+                point = a['point_tensor']
+                parts = torch.stack([torch.maximum(net.index_select(1,g).amax(-1),point.index_select(1,g).amax(-1))
+                                      if g.numel() else net.new_zeros(batch) for g in a['groups']],-1)
+            consumer = torch.cuda.current_stream()
+            consumer.wait_stream(stream)
+            parts.record_stream(consumer)
             frame = self.context['frame']
             if fast_feedback or task.get('self_contact_trace',False):
                 if not hasattr(self,'feedback_self_diagnostic'):
@@ -489,17 +518,18 @@ def _worker(request):
             target_error=(env.scene['robot'].data.joint_pos_target[:, -16:]-self.expected_tick_target).abs().amax(-1)
             tensors['target_error'][frame]=torch.maximum(tensors['target_error'][frame],target_error)
             substep_count[frame] += 1
-            # The final call in the tick overwrites earlier contact states.
             x = observer.latest
             if task.get('contact_substep_trace',False):
-                tensors['substep_tip_force_world'][frame,self.tick_substeps]=x['pad_force']
-                tensors['substep_tip_found'][frame,self.tick_substeps]=x['pad_found']
+                pad = getattr(self, 'substep_pad', x)
+                tensors['substep_tip_force_world'][frame,self.tick_substeps]=pad['pad_force']
+                tensors['substep_tip_found'][frame,self.tick_substeps]=pad['pad_found']
                 tensors['substep_q'][frame,self.tick_substeps]=env.scene['robot'].data.joint_pos[:, -16:]
-            tensors['strict'][frame] = (x['pad_found'] & torch.isfinite(x['pad_points']).all(-1)
-                & torch.isfinite(x['pad_force']).all(-1) & (x['pad_force'].norm(dim=-1)>=.05))
-            tensors['found'][frame] = x['pad_found'] | x['connector_found']
-            tensors['q'][frame] = env.scene['robot'].data.joint_pos[:, -16:]
-            tensors['observed'][frame] = True
+            if self.tick_substeps == 9 or not hasattr(self, 'read_substep_contacts'):
+                tensors['strict'][frame] = (x['pad_found'] & torch.isfinite(x['pad_points']).all(-1)
+                    & torch.isfinite(x['pad_force']).all(-1) & (x['pad_force'].norm(dim=-1)>=.05))
+                tensors['found'][frame] = x['pad_found'] | x['connector_found']
+                tensors['q'][frame] = env.scene['robot'].data.joint_pos[:, -16:]
+                tensors['observed'][frame] = True
             if task.get('pose_trace',False) and self.tick_substeps==9:
                 # Offline geometry diagnostics only; never fed back into the
                 # actor or actuator. Record actual poses at the final substep.
@@ -789,11 +819,10 @@ def _worker(request):
 
 def worker(request):
     """Prevent duplicate CUDA rollouts when the two coordinators catch up."""
-    import fcntl
+    from filelock import FileLock
     task=json.loads(Path(request).read_text())
     output=Path(task['output'])
-    with output.with_suffix('.lock').open('a') as lock:
-        fcntl.flock(lock,fcntl.LOCK_EX)
+    with FileLock(str(output.with_suffix('.lock'))):
         if output.exists():
             saved=json.loads(output.read_text())
             if saved['checkpoint']!=task['checkpoint'] or not all(r['complete'] for r in saved['lanes']):

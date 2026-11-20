@@ -1,7 +1,10 @@
 """Kinematic visualization of recorded deployment states; never rerun physics."""
-import argparse,json,os
+import argparse,json,os,sys
 from pathlib import Path
-os.environ.setdefault('MUJOCO_GL','egl')
+os.environ.setdefault('MUJOCO_GL','glfw' if os.name == 'nt' else 'egl')
+# On Windows Git may check the links in this directory out as plain text.
+shared_scripts = Path(__file__).resolve().parents[2] / 'mcc_finger_compliance_control' / 'scripts'
+sys.path.insert(0, str(shared_scripts))
 import numpy as np,mujoco,imageio_ffmpeg
 from PIL import Image,ImageDraw,ImageFont
 from mjlab.scene import Scene
@@ -42,7 +45,10 @@ for i in range(m.ngeom):
    if m.geom_matid[i]>=0:m.mat_rgba[m.geom_matid[i],3]=.30
 m.vis.global_.offwidth=960;m.vis.global_.offheight=540;m.vis.headlight.ambient[:]=.5
 renderer=mujoco.Renderer(m,height=410,width=480);opt=mujoco.MjvOption();opt.geomgroup[:]=[1,1,0,0,0,0];opt.sitegroup[:]=0
-font=ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',18)
+try:
+ font=ImageFont.truetype('segoeui.ttf' if os.name == 'nt' else 'DejaVuSans.ttf',18)
+except OSError:
+ font=ImageFont.load_default()
 cam=mujoco.MjvCamera();cam.type=mujoco.mjtCamera.mjCAMERA_FREE
 points=np.concatenate([z['measured_object_pose_world'][:,0,:3],z['measured_palm_pose_world'][:,0,:3]])
 fixed=(points.min(0)+points.max(0))/2
@@ -52,7 +58,7 @@ indices=np.arange(0,n,5)
 indices[-1]=n-1
 if a.preview_only:indices=np.array([0,n//2,n-1])
 segments=[('Full evaluation / 1x simulation speed',indices,1)]
-writer=None if a.preview_only else imageio_ffmpeg.write_frames(str(out/'deployment_review.mp4'),(960,540),fps=20,codec='libx264',quality=7,output_params=['-movflags','+faststart'])
+writer=None if a.preview_only else imageio_ffmpeg.write_frames(str(out/'deployment_review.mp4'),(960,540),fps=20,codec='libx264',quality=7,macro_block_size=2,output_params=['-movflags','+faststart'])
 if writer is not None:writer.send(None)
 try:
  for title,indices,speed in segments:
