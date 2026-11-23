@@ -1,0 +1,25 @@
+{
+  "study_sha256": "ce5e0a1f1639eaa7f15cd35545bd39c4171ed3464ef966af3d73a78d570a4264",
+  "cpu_and_grid_sha256": "6cf5b4bff05958dcd314066f752876321ce0a21fc7dfc5eff1c68efada056341",
+  "cuda_sha256": "fad231fdf207fbecb1d674fbc16beec5f8f7ff1b6fb239f88bf4d15574590550",
+  "benchmark_sha256": "54e3dea0899d9ac97ed444c82b09f2091ddd8916b4887f2654bb2d517179ce3d",
+  "windows_s": [
+    60,
+    120,
+    240,
+    600
+  ],
+  "hardware": "NVIDIA GeForce RTX 4090 D",
+  "torch_version": "2.8.0+cu129",
+  "gpytorch_version": "1.15.2",
+  "dtype": "float64",
+  "cpu_torch_threads": 1,
+  "parity": {
+    "max_abs_f5": 0.001,
+    "max_pair_p95_mm": 0.1,
+    "max_pair_distance_mm": 0.5
+  },
+  "primary_speed": "Mean complete time from reading recorded touches through PLY export across the ten 600 s outputs, CPU and CUDA in alternating order. Device discovery precedes timing. The first CUDA model and prediction are timed in its checkpoint.",
+  "geometry": "Conservative bidirectional surface check: nearest of opposing vertices and triangle centroids, pooled within each direction; report the larger directional p95 and maximum.",
+  "inputs": "Native measured fingertips; all five region loads below 8 N. Identical representatives, signed labels, covariance, regularization, length, 4 mm grid, support mask and zero-surface extraction."
+}

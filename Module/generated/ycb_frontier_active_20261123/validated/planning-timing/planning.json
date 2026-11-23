@@ -1,0 +1,1119 @@
+{
+  "protocol_sha256": "914128660ffc9f1185332269c16fe7841bd35c5fb89f0a869128a581b901ba20",
+  "scores_sha256": "6ec7e8d2b79e1bed7b9043096b789f794283ae550357f9583818c049ca051342",
+  "measurement_program_sha256": "c680b449a1627c748d681fd7bfc0e73de5491d7751a68812d38428656db0aa05",
+  "control_dt_s": 0.01,
+  "shared_followup_s": 0.18,
+  "timing_protocol": "One 600 s unpaced rollout at a time, alternating the first system in each pair. The full-system exploration time starts at the first planning request and stops at the last acquired physical control frame. It includes online tactile mapping and local GPIS, target planning, finger control, interpolation, feedback control and simulated motion. Actual wall time counts concurrent work once. Aude outer and local planning calls have separate timers. System preparation precedes the first request. Final visualization and reference scoring follow exploration.",
+  "device_note": "The local GPIS uses a double-precision GPyTorch Matérn kernel on CPU tensors followed by NumPy and SciPy computation. The wrist system runs the frozen single_all finger policy on CUDA.",
+  "gain_protocol": "Sum GP increments for (apply_tick, next_apply_tick], with every zero and the clipped terminal interval in the native mean. Fixed followup averages the first 18 ticks after each applied target with a complete observation window. Outer proposals last 90 ticks and typically span five local segments.",
+  "aggregation": "Information and system times use equal-object means. Duration statistics pool the relevant calls across all five objects. Each object contributes the same number of native target updates for its method. Conditional solver counts depend on measured contact and load.",
+  "objects": {
+    "pear": {
+      "name": "梨",
+      "start": "active-02",
+      "arms": {
+        "wrist-dp": {
+          "windows": {
+            "60": {
+              "plans": 300,
+              "full_shared": 300,
+              "total_nat": 1321.16106296569,
+              "nat_per_tick": 0.22019351049428168,
+              "nat_per_plan": 4.403870209885634,
+              "nat_per_shared": 3.9893901422851634
+            },
+            "240": {
+              "plans": 1200,
+              "full_shared": 1200,
+              "total_nat": 3466.029596408211,
+              "nat_per_tick": 0.14441789985034212,
+              "nat_per_plan": 2.8883579970068425,
+              "nat_per_shared": 2.623310593715213
+            },
+            "600": {
+              "plans": 3000,
+              "full_shared": 3000,
+              "total_nat": 5549.676889195383,
+              "nat_per_tick": 0.09249461481992306,
+              "nat_per_plan": 1.8498922963984612,
+              "nat_per_shared": 1.6728482706807979
+            }
+          },
+          "clock": {
+            "online_240_s": 73.3933965000324,
+            "online_600_s": 196.90272699994966,
+            "online_ms_per_tick": 3.281712116665828
+          },
+          "duration_ms": {
+            "all": {
+              "n": 3000,
+              "mean": 8.562461166875437,
+              "p50": 7.649350038263947,
+              "p95": 14.57311501144431
+            },
+            "local": {
+              "n": 3000,
+              "mean": 8.562461166875437,
+              "p50": 7.649350038263947,
+              "p95": 14.57311501144431
+            }
+          },
+          "control_interval_ms": {
+            "n": 60000,
+            "mean": 3.281712116665828,
+            "p50": 2.6095499633811414,
+            "p95": 7.053010037634521
+          },
+          "matched_frames": 60001,
+          "matched_fields": [
+            "finger_nominal",
+            "normals_outward",
+            "pad_force_n",
+            "pad_valid",
+            "palm_command",
+            "phase",
+            "points_m",
+            "published_preview",
+            "qpos",
+            "region_load_n"
+          ],
+          "trace_sha256": "d01a4bd4be8a6f21041384a9301c1e1d825b3410ae32aa10f7add450c76b9626",
+          "mesh_sha256": "0e3d7cf9d175923b375df25b4133c4bf4ea1f72f572ded7833a71535f64c6575",
+          "measurement_sha256": "90306486b5241534cda605789689a33f1bf221f9d35797afc3cfc236d40032d3"
+        },
+        "native-aude": {
+          "windows": {
+            "60": {
+              "plans": 334,
+              "full_shared": 333,
+              "total_nat": 875.8562399975565,
+              "nat_per_tick": 0.14597603999959274,
+              "nat_per_plan": 2.6223240718489715,
+              "nat_per_shared": 2.626862702231764,
+              "outer_proposals": 67,
+              "nat_per_outer_proposal_interval": 13.072481193993381
+            },
+            "240": {
+              "plans": 1334,
+              "full_shared": 1333,
+              "total_nat": 2399.4167150667768,
+              "nat_per_tick": 0.0999756964611157,
+              "nat_per_plan": 1.7986632046977338,
+              "nat_per_shared": 1.8000125394349413,
+              "outer_proposals": 267,
+              "nat_per_outer_proposal_interval": 8.986579457178939
+            },
+            "600": {
+              "plans": 3334,
+              "full_shared": 3333,
+              "total_nat": 4626.294884151184,
+              "nat_per_tick": 0.07710491473585307,
+              "nat_per_plan": 1.387610943056744,
+              "nat_per_shared": 1.3880272679721526,
+              "outer_proposals": 667,
+              "nat_per_outer_proposal_interval": 6.935974339057248
+            }
+          },
+          "clock": {
+            "online_240_s": 102.57578309997916,
+            "online_600_s": 262.6494717000751,
+            "online_ms_per_tick": 4.377491195001252
+          },
+          "duration_ms": {
+            "all": {
+              "n": 3334,
+              "mean": 13.267239322135572,
+              "p50": 6.63705,
+              "p95": 73.45029999999997
+            },
+            "local": {
+              "n": 3334,
+              "mean": 6.2421706658668255,
+              "p50": 6.39645,
+              "p95": 9.328515
+            },
+            "proposal": {
+              "n": 667,
+              "mean": 35.11481094452774,
+              "p50": 0.0658,
+              "p95": 151.62976999999967
+            },
+            "with_proposal": {
+              "n": 667,
+              "mean": 41.22596806596702,
+              "p50": 7.982499999999999,
+              "p95": 156.60070999999962
+            },
+            "without_proposal": {
+              "n": 2667,
+              "mean": 6.27493633295838,
+              "p50": 6.4239,
+              "p95": 9.326489999999998
+            },
+            "local_with_joint_projection": {
+              "n": 3048,
+              "mean": 6.625949245406823,
+              "p50": 6.6389,
+              "p95": 9.43572
+            },
+            "outer_with_ik": {
+              "n": 280,
+              "mean": 83.55447785714286,
+              "p50": 71.44030000000001,
+              "p95": 196.34174500000003
+            },
+            "full_update_with_ik": {
+              "n": 280,
+              "mean": 89.70862642857142,
+              "p50": 77.76925,
+              "p95": 203.75288500000002
+            }
+          },
+          "control_interval_ms": {
+            "n": 60000,
+            "mean": 4.377491195001252,
+            "p50": 3.182550019118935,
+            "p95": 8.513025089632718
+          },
+          "matched_frames": 60001,
+          "matched_fields": [
+            "aude_joint_nominal",
+            "finger_command",
+            "finger_nominal",
+            "mode",
+            "normals_outward",
+            "pad_force_n",
+            "pad_valid",
+            "palm_proximity_drive_n",
+            "points_m",
+            "qpos",
+            "region_load_n",
+            "wrist_command",
+            "wrist_nominal",
+            "wrist_offset",
+            "wrist_wrench_feedback"
+          ],
+          "trace_sha256": "aae75c1def66fbe40492705aea15ddf42bf2f7e806c2e4e9fe791eca0ceaa338",
+          "mesh_sha256": "8c8cd476b05af4d9e0d928d89ff03d2a74b1ce11bb23181bb4166210f0219022",
+          "measurement_sha256": "e204473f22e76fb32dfdfd81fcbebee3a9e5235d150d98d9dae25b10474661e1"
+        }
+      }
+    },
+    "mustard": {
+      "name": "芥末瓶",
+      "start": "start-01",
+      "arms": {
+        "wrist-dp": {
+          "windows": {
+            "60": {
+              "plans": 300,
+              "full_shared": 300,
+              "total_nat": 2274.791154249707,
+              "nat_per_tick": 0.3791318590416178,
+              "nat_per_plan": 7.582637180832356,
+              "nat_per_shared": 6.960876904370419
+            },
+            "240": {
+              "plans": 1200,
+              "full_shared": 1200,
+              "total_nat": 5806.885245865362,
+              "nat_per_tick": 0.24195355191105675,
+              "nat_per_plan": 4.839071038221135,
+              "nat_per_shared": 4.425438694906802
+            },
+            "600": {
+              "plans": 3000,
+              "full_shared": 3000,
+              "total_nat": 8550.870709190987,
+              "nat_per_tick": 0.14251451181984978,
+              "nat_per_plan": 2.850290236396996,
+              "nat_per_shared": 2.605284395615822
+            }
+          },
+          "clock": {
+            "online_240_s": 124.0772183999652,
+            "online_600_s": 258.07240750000346,
+            "online_ms_per_tick": 4.301206791666725
+          },
+          "duration_ms": {
+            "all": {
+              "n": 3000,
+              "mean": 10.235706934744181,
+              "p50": 4.434450005646795,
+              "p95": 36.87375997542403
+            },
+            "local": {
+              "n": 3000,
+              "mean": 10.235706934744181,
+              "p50": 4.434450005646795,
+              "p95": 36.87375997542403
+            }
+          },
+          "control_interval_ms": {
+            "n": 60000,
+            "mean": 4.301206791666725,
+            "p50": 3.675099986139685,
+            "p95": 8.059919910738234
+          },
+          "matched_frames": 60001,
+          "matched_fields": [
+            "finger_nominal",
+            "normals_outward",
+            "pad_force_n",
+            "pad_valid",
+            "palm_command",
+            "phase",
+            "points_m",
+            "published_preview",
+            "qpos",
+            "region_load_n"
+          ],
+          "trace_sha256": "65f446ade27ef2c45b02291151e15917a30db7b8aad301560e97918378b8e8c9",
+          "mesh_sha256": "c28fb30221ef372c5456370570b9b94bfac83323af3e7376c380e4faca930814",
+          "measurement_sha256": "1f15075ed99097659cfe452bfdf1098dc78d66c8aa9656a2c52821a4585f2f4a"
+        },
+        "native-aude": {
+          "windows": {
+            "60": {
+              "plans": 334,
+              "full_shared": 333,
+              "total_nat": 797.4787977294953,
+              "nat_per_tick": 0.13291313295491589,
+              "nat_per_plan": 2.3876610710463932,
+              "nat_per_shared": 2.385641596741908,
+              "outer_proposals": 67,
+              "nat_per_outer_proposal_interval": 11.902668622828289
+            },
+            "240": {
+              "plans": 1334,
+              "full_shared": 1333,
+              "total_nat": 1811.0147530492975,
+              "nat_per_tick": 0.07545894804372073,
+              "nat_per_plan": 1.357582273650148,
+              "nat_per_shared": 1.3586007149657147,
+              "outer_proposals": 267,
+              "nat_per_outer_proposal_interval": 6.782826790446807
+            },
+            "600": {
+              "plans": 3334,
+              "full_shared": 3333,
+              "total_nat": 3302.068344282684,
+              "nat_per_tick": 0.0550344724047114,
+              "nat_per_plan": 0.990422418801045,
+              "nat_per_shared": 0.9905361601344378,
+              "outer_proposals": 667,
+              "nat_per_outer_proposal_interval": 4.950627202822615
+            }
+          },
+          "clock": {
+            "online_240_s": 105.17366400000174,
+            "online_600_s": 273.7782182999654,
+            "online_ms_per_tick": 4.562970304999423
+          },
+          "duration_ms": {
+            "all": {
+              "n": 3334,
+              "mean": 13.703420335932814,
+              "p50": 5.06595,
+              "p95": 79.95999999999998
+            },
+            "local": {
+              "n": 3334,
+              "mean": 5.077177324535093,
+              "p50": 4.96195,
+              "p95": 8.006884999999999
+            },
+            "proposal": {
+              "n": 667,
+              "mean": 43.118282158920536,
+              "p50": 0.0794,
+              "p95": 186.94655999999986
+            },
+            "with_proposal": {
+              "n": 667,
+              "mean": 48.19124332833584,
+              "p50": 6.3111,
+              "p95": 193.48378999999997
+            },
+            "without_proposal": {
+              "n": 2667,
+              "mean": 5.078231758530183,
+              "p50": 4.9582,
+              "p95": 8.009779999999997
+            },
+            "local_with_joint_projection": {
+              "n": 3095,
+              "mean": 5.41232801292407,
+              "p50": 5.1137999999999995,
+              "p95": 8.073599999999999
+            },
+            "outer_with_ik": {
+              "n": 293,
+              "mean": 98.07028498293514,
+              "p50": 78.3128,
+              "p95": 205.17394
+            },
+            "full_update_with_ik": {
+              "n": 293,
+              "mean": 103.8773071672355,
+              "p50": 83.0395,
+              "p95": 211.27956
+            }
+          },
+          "control_interval_ms": {
+            "n": 60000,
+            "mean": 4.562970304999423,
+            "p50": 3.1789999920874834,
+            "p95": 8.254119986668227
+          },
+          "matched_frames": 60001,
+          "matched_fields": [
+            "aude_joint_nominal",
+            "finger_command",
+            "finger_nominal",
+            "mode",
+            "normals_outward",
+            "pad_force_n",
+            "pad_valid",
+            "palm_proximity_drive_n",
+            "points_m",
+            "qpos",
+            "region_load_n",
+            "wrist_command",
+            "wrist_nominal",
+            "wrist_offset",
+            "wrist_wrench_feedback"
+          ],
+          "trace_sha256": "fba380325f8ebc5e2846d6e47324d3f18e894e4162ad6625de279ed7ebf582d8",
+          "mesh_sha256": "c7778f2d34e84edd21b9e381df7c3af946276698781e4ada9ed2ae9a6fc10a26",
+          "measurement_sha256": "e7c429b8f48bb595a0a892a0810283db887bbbf797909f1c25aadd5aa7ee5439"
+        }
+      }
+    },
+    "cracker": {
+      "name": "饼干盒",
+      "start": "start-01",
+      "arms": {
+        "wrist-dp": {
+          "windows": {
+            "60": {
+              "plans": 300,
+              "full_shared": 300,
+              "total_nat": 1998.2068419663556,
+              "nat_per_tick": 0.33303447366105926,
+              "nat_per_plan": 6.660689473221185,
+              "nat_per_shared": 6.0823189459669145
+            },
+            "240": {
+              "plans": 1200,
+              "full_shared": 1200,
+              "total_nat": 4752.563733751954,
+              "nat_per_tick": 0.1980234889063314,
+              "nat_per_plan": 3.9604697781266283,
+              "nat_per_shared": 3.6150618749456878
+            },
+            "600": {
+              "plans": 3000,
+              "full_shared": 3000,
+              "total_nat": 7408.46509497622,
+              "nat_per_tick": 0.12347441824960366,
+              "nat_per_plan": 2.469488364992073,
+              "nat_per_shared": 2.248174094842906
+            }
+          },
+          "clock": {
+            "online_240_s": 64.33425670000724,
+            "online_600_s": 161.33699649991468,
+            "online_ms_per_tick": 2.6889499416652445
+          },
+          "duration_ms": {
+            "all": {
+              "n": 3000,
+              "mean": 6.412284833999972,
+              "p50": 3.139949985779822,
+              "p95": 22.155164898140352
+            },
+            "local": {
+              "n": 3000,
+              "mean": 6.412284833999972,
+              "p50": 3.139949985779822,
+              "p95": 22.155164898140352
+            }
+          },
+          "control_interval_ms": {
+            "n": 60000,
+            "mean": 2.6889499416652445,
+            "p50": 2.335999975912273,
+            "p95": 5.201805027900264
+          },
+          "matched_frames": 60001,
+          "matched_fields": [
+            "finger_nominal",
+            "normals_outward",
+            "pad_force_n",
+            "pad_valid",
+            "palm_command",
+            "phase",
+            "points_m",
+            "published_preview",
+            "qpos",
+            "region_load_n"
+          ],
+          "trace_sha256": "e59db09d670500bd81f363c7cea2c2a205658b385af170fbfff177b45f026994",
+          "mesh_sha256": "d7daebe145e15f0a57ab199ab659accc1f2d98109f6039bf611c7752cec00a1f",
+          "measurement_sha256": "b85c3e9f24b08f40e623e60f04bdaa8c04e23a10a35e6d2257561412b8bd8b3c"
+        },
+        "native-aude": {
+          "windows": {
+            "60": {
+              "plans": 334,
+              "full_shared": 333,
+              "total_nat": 801.69190662467,
+              "nat_per_tick": 0.13361531777077834,
+              "nat_per_plan": 2.40027516953494,
+              "nat_per_shared": 2.407483203077087,
+              "outer_proposals": 67,
+              "nat_per_outer_proposal_interval": 11.965550845144328
+            },
+            "240": {
+              "plans": 1334,
+              "full_shared": 1333,
+              "total_nat": 3782.7616762827392,
+              "nat_per_tick": 0.15761506984511414,
+              "nat_per_plan": 2.835653430496806,
+              "nat_per_shared": 2.8363474902080323,
+              "outer_proposals": 267,
+              "nat_per_outer_proposal_interval": 14.167646727650709
+            },
+            "600": {
+              "plans": 3334,
+              "full_shared": 3333,
+              "total_nat": 6636.091655343378,
+              "nat_per_tick": 0.1106015275890563,
+              "nat_per_plan": 1.9904294107208693,
+              "nat_per_shared": 1.9910265992629397,
+              "outer_proposals": 667,
+              "nat_per_outer_proposal_interval": 9.949162901564286
+            }
+          },
+          "clock": {
+            "online_240_s": 115.89407239994034,
+            "online_600_s": 307.7656445999164,
+            "online_ms_per_tick": 5.129427409998607
+          },
+          "duration_ms": {
+            "all": {
+              "n": 3334,
+              "mean": 23.778711757648473,
+              "p50": 8.235949999999999,
+              "p95": 96.74032999999999
+            },
+            "local": {
+              "n": 3334,
+              "mean": 7.482664907018596,
+              "p50": 7.434699999999999,
+              "p95": 11.066209999999998
+            },
+            "proposal": {
+              "n": 667,
+              "mean": 81.4558023988006,
+              "p50": 74.313,
+              "p95": 206.18639999999996
+            },
+            "with_proposal": {
+              "n": 667,
+              "mean": 89.02795397301348,
+              "p50": 82.2698,
+              "p95": 213.33830999999995
+            },
+            "without_proposal": {
+              "n": 2667,
+              "mean": 7.460284851893514,
+              "p50": 7.4224,
+              "p95": 11.085109999999997
+            },
+            "local_with_joint_projection": {
+              "n": 3317,
+              "mean": 7.507694724148326,
+              "p50": 7.461399999999999,
+              "p95": 11.070939999999998
+            },
+            "outer_with_ik": {
+              "n": 551,
+              "mean": 98.59080362976405,
+              "p50": 78.05579999999999,
+              "p95": 210.9812
+            },
+            "full_update_with_ik": {
+              "n": 551,
+              "mean": 106.37846660617059,
+              "p50": 86.55659999999999,
+              "p95": 216.84645
+            }
+          },
+          "control_interval_ms": {
+            "n": 60000,
+            "mean": 5.129427409998607,
+            "p50": 3.2241499866358936,
+            "p95": 9.388775011757382
+          },
+          "matched_frames": 60001,
+          "matched_fields": [
+            "aude_joint_nominal",
+            "finger_command",
+            "finger_nominal",
+            "mode",
+            "normals_outward",
+            "pad_force_n",
+            "pad_valid",
+            "palm_proximity_drive_n",
+            "points_m",
+            "qpos",
+            "region_load_n",
+            "wrist_command",
+            "wrist_nominal",
+            "wrist_offset",
+            "wrist_wrench_feedback"
+          ],
+          "trace_sha256": "609ec0874d1b67baad26ab8266fe431fb34a67cb2b6645963a6409157805eba0",
+          "mesh_sha256": "43a30dce773471d015f9ee6cbcf3ebef49f810e405b82c4e9abf103c4b199daf",
+          "measurement_sha256": "217d99d1a36438cc3bf40ede644f451bda090f1d7f14be32f08f692f5828dce5"
+        }
+      }
+    },
+    "bleach": {
+      "name": "漂白清洁剂瓶",
+      "start": "start-01",
+      "arms": {
+        "wrist-dp": {
+          "windows": {
+            "60": {
+              "plans": 300,
+              "full_shared": 300,
+              "total_nat": 1760.7075572511114,
+              "nat_per_tick": 0.2934512595418519,
+              "nat_per_plan": 5.869025190837038,
+              "nat_per_shared": 5.406573313148121
+            },
+            "240": {
+              "plans": 1200,
+              "full_shared": 1200,
+              "total_nat": 3938.973551553593,
+              "nat_per_tick": 0.1641238979813997,
+              "nat_per_plan": 3.282477959627994,
+              "nat_per_shared": 3.0178943286873015
+            },
+            "600": {
+              "plans": 3000,
+              "full_shared": 3000,
+              "total_nat": 6952.830944608174,
+              "nat_per_tick": 0.11588051574346957,
+              "nat_per_plan": 2.317610314869391,
+              "nat_per_shared": 2.1196745838534943
+            }
+          },
+          "clock": {
+            "online_240_s": 66.71634250006173,
+            "online_600_s": 166.5119436000241,
+            "online_ms_per_tick": 2.7751990600004017
+          },
+          "duration_ms": {
+            "all": {
+              "n": 3000,
+              "mean": 6.809851832416219,
+              "p50": 3.0875999946147203,
+              "p95": 25.491235026856877
+            },
+            "local": {
+              "n": 3000,
+              "mean": 6.809851832416219,
+              "p50": 3.0875999946147203,
+              "p95": 25.491235026856877
+            }
+          },
+          "control_interval_ms": {
+            "n": 60000,
+            "mean": 2.7751990600004017,
+            "p50": 2.438400057144463,
+            "p95": 5.277910025324672
+          },
+          "matched_frames": 60001,
+          "matched_fields": [
+            "finger_nominal",
+            "normals_outward",
+            "pad_force_n",
+            "pad_valid",
+            "palm_command",
+            "phase",
+            "points_m",
+            "published_preview",
+            "qpos",
+            "region_load_n"
+          ],
+          "trace_sha256": "bb26a32ac82a9499c1a9b73d9ea447ccfc65328ca3998a9b3d0f7ce5f336bcd8",
+          "mesh_sha256": "903c2509ee8f10a27bcfac481acc7dccca0724ac9e655b4ae413ec1b342b42ff",
+          "measurement_sha256": "136f17b4cb871edf82d6fddb980a29bd649056230f59441b86c843d37b7879aa"
+        },
+        "native-aude": {
+          "windows": {
+            "60": {
+              "plans": 334,
+              "full_shared": 333,
+              "total_nat": 1231.9280865649782,
+              "nat_per_tick": 0.2053213477608297,
+              "nat_per_plan": 3.688407444805324,
+              "nat_per_shared": 3.699483743438373,
+              "outer_proposals": 67,
+              "nat_per_outer_proposal_interval": 18.386986366641466
+            },
+            "240": {
+              "plans": 1334,
+              "full_shared": 1333,
+              "total_nat": 4019.5904006385713,
+              "nat_per_tick": 0.16748293335994047,
+              "nat_per_plan": 3.0131862073752407,
+              "nat_per_shared": 3.0154466621444644,
+              "outer_proposals": 267,
+              "nat_per_outer_proposal_interval": 15.054645695275548
+            },
+            "600": {
+              "plans": 3334,
+              "full_shared": 3333,
+              "total_nat": 5996.319890460964,
+              "nat_per_tick": 0.09993866484101607,
+              "nat_per_plan": 1.7985362598863122,
+              "nat_per_shared": 1.7990758747257618,
+              "outer_proposals": 667,
+              "nat_per_outer_proposal_interval": 8.989984843269811
+            }
+          },
+          "clock": {
+            "online_240_s": 123.60974700003862,
+            "online_600_s": 311.96753490006085,
+            "online_ms_per_tick": 5.199458915001014
+          },
+          "duration_ms": {
+            "all": {
+              "n": 3334,
+              "mean": 24.39352372525495,
+              "p50": 7.38105,
+              "p95": 134.83544999999995
+            },
+            "local": {
+              "n": 3334,
+              "mean": 7.008392951409717,
+              "p50": 6.72015,
+              "p95": 10.416695
+            },
+            "proposal": {
+              "n": 667,
+              "mean": 86.8995892053973,
+              "p50": 71.75529999999999,
+              "p95": 196.15211999999997
+            },
+            "with_proposal": {
+              "n": 667,
+              "mean": 93.91315427286357,
+              "p50": 79.1305,
+              "p95": 203.8204999999999
+            },
+            "without_proposal": {
+              "n": 2667,
+              "mean": 7.007099437570304,
+              "p50": 6.7189,
+              "p95": 10.430119999999997
+            },
+            "local_with_joint_projection": {
+              "n": 3312,
+              "mean": 7.040015368357487,
+              "p50": 6.7315,
+              "p95": 10.418655
+            },
+            "outer_with_ik": {
+              "n": 574,
+              "mean": 100.96774006968641,
+              "p50": 75.09694999999999,
+              "p95": 198.81678999999997
+            },
+            "full_update_with_ik": {
+              "n": 574,
+              "mean": 108.12269634146341,
+              "p50": 82.89025,
+              "p95": 206.393405
+            }
+          },
+          "control_interval_ms": {
+            "n": 60000,
+            "mean": 5.199458915001014,
+            "p50": 3.299349977169186,
+            "p95": 8.748699910938731
+          },
+          "matched_frames": 60001,
+          "matched_fields": [
+            "aude_joint_nominal",
+            "finger_command",
+            "finger_nominal",
+            "mode",
+            "normals_outward",
+            "pad_force_n",
+            "pad_valid",
+            "palm_proximity_drive_n",
+            "points_m",
+            "qpos",
+            "region_load_n",
+            "wrist_command",
+            "wrist_nominal",
+            "wrist_offset",
+            "wrist_wrench_feedback"
+          ],
+          "trace_sha256": "f17fd1154020ffb5d9033190bd5da47e2d160bccfe5e738120f25ec78f982ce8",
+          "mesh_sha256": "849c5bf47659c5bb6c54b7322b13194f9164ac1f2fe627a6852c045cd74f8b14",
+          "measurement_sha256": "f553cb9bc3c1460bfcca5c0073c616d3ecfbc9f0cdb58f3316332048801801f9"
+        }
+      }
+    },
+    "coffee": {
+      "name": "咖啡罐",
+      "start": "start-01",
+      "arms": {
+        "wrist-dp": {
+          "windows": {
+            "60": {
+              "plans": 300,
+              "full_shared": 300,
+              "total_nat": 2774.6502704484246,
+              "nat_per_tick": 0.4624417117414041,
+              "nat_per_plan": 9.248834234828083,
+              "nat_per_shared": 8.525445136525077
+            },
+            "240": {
+              "plans": 1200,
+              "full_shared": 1200,
+              "total_nat": 5627.494248199603,
+              "nat_per_tick": 0.2344789270083168,
+              "nat_per_plan": 4.689578540166336,
+              "nat_per_shared": 4.295806681980883
+            },
+            "600": {
+              "plans": 3000,
+              "full_shared": 3000,
+              "total_nat": 9222.061625211401,
+              "nat_per_tick": 0.15370102708685668,
+              "nat_per_plan": 3.074020541737134,
+              "nat_per_shared": 2.8118939169136983
+            }
+          },
+          "clock": {
+            "online_240_s": 63.433945600059815,
+            "online_600_s": 163.85499200003687,
+            "online_ms_per_tick": 2.730916533333948
+          },
+          "duration_ms": {
+            "all": {
+              "n": 3000,
+              "mean": 8.145678498471776,
+              "p50": 3.0305499676615,
+              "p95": 32.48739497503264
+            },
+            "local": {
+              "n": 3000,
+              "mean": 8.145678498471776,
+              "p50": 3.0305499676615,
+              "p95": 32.48739497503264
+            }
+          },
+          "control_interval_ms": {
+            "n": 60000,
+            "mean": 2.730916533333948,
+            "p50": 2.3476999485865235,
+            "p95": 5.161815066821872
+          },
+          "matched_frames": 60001,
+          "matched_fields": [
+            "finger_nominal",
+            "normals_outward",
+            "pad_force_n",
+            "pad_valid",
+            "palm_command",
+            "phase",
+            "points_m",
+            "published_preview",
+            "qpos",
+            "region_load_n"
+          ],
+          "trace_sha256": "ebe894db348d31c3bd5eaaee48c3ce9c9efbd5db5b615a78e953cfa5a387124d",
+          "mesh_sha256": "ce91f23bd984f031d8ba1756e894c6b7301a9e77bf4a8a9dcd5059fd3634414a",
+          "measurement_sha256": "42da9c7f8994d4f631bf49bbc2e3a23f9f64740ff4b21ddd36a360faecec98dd"
+        },
+        "native-aude": {
+          "windows": {
+            "60": {
+              "plans": 334,
+              "full_shared": 333,
+              "total_nat": 1704.2040943367635,
+              "nat_per_tick": 0.2840340157227939,
+              "nat_per_plan": 5.102407468074142,
+              "nat_per_shared": 5.113565985397531,
+              "outer_proposals": 67,
+              "nat_per_outer_proposal_interval": 25.435882005026322
+            },
+            "240": {
+              "plans": 1334,
+              "full_shared": 1333,
+              "total_nat": 5051.259166262924,
+              "nat_per_tick": 0.21046913192762182,
+              "nat_per_plan": 3.7865510991476192,
+              "nat_per_shared": 3.788544922949903,
+              "outer_proposals": 267,
+              "nat_per_outer_proposal_interval": 18.918573656415447
+            },
+            "600": {
+              "plans": 3334,
+              "full_shared": 3333,
+              "total_nat": 8875.97582937666,
+              "nat_per_tick": 0.147932930489611,
+              "nat_per_plan": 2.6622602967536477,
+              "nat_per_shared": 2.6627817742510937,
+              "outer_proposals": 667,
+              "nat_per_outer_proposal_interval": 13.307310089020481
+            }
+          },
+          "clock": {
+            "online_240_s": 126.41789049992803,
+            "online_600_s": 316.97895089990925,
+            "online_ms_per_tick": 5.282982514998488
+          },
+          "duration_ms": {
+            "all": {
+              "n": 3334,
+              "mean": 27.636467396520697,
+              "p50": 9.63135,
+              "p95": 142.07202999999996
+            },
+            "local": {
+              "n": 3334,
+              "mean": 8.727526214757049,
+              "p50": 8.7713,
+              "p95": 12.429235
+            },
+            "proposal": {
+              "n": 667,
+              "mean": 94.51635667166417,
+              "p50": 77.75529999999999,
+              "p95": 205.18443999999997
+            },
+            "with_proposal": {
+              "n": 667,
+              "mean": 103.35053928035981,
+              "p50": 87.5243,
+              "p95": 214.16756999999996
+            },
+            "without_proposal": {
+              "n": 2667,
+              "mean": 8.700852118485189,
+              "p50": 8.7493,
+              "p95": 12.344599999999998
+            },
+            "local_with_joint_projection": {
+              "n": 3333,
+              "mean": 8.729713681368137,
+              "p50": 8.7724,
+              "p95": 12.42924
+            },
+            "outer_with_ik": {
+              "n": 608,
+              "mean": 103.68145427631579,
+              "p50": 79.68955,
+              "p95": 207.83300499999999
+            },
+            "full_update_with_ik": {
+              "n": 608,
+              "mean": 112.57904934210525,
+              "p50": 89.24289999999999,
+              "p95": 215.77758999999998
+            }
+          },
+          "control_interval_ms": {
+            "n": 60000,
+            "mean": 5.282982514998488,
+            "p50": 3.158099949359894,
+            "p95": 9.592434932710566
+          },
+          "matched_frames": 60001,
+          "matched_fields": [
+            "aude_joint_nominal",
+            "finger_command",
+            "finger_nominal",
+            "mode",
+            "normals_outward",
+            "pad_force_n",
+            "pad_valid",
+            "palm_proximity_drive_n",
+            "points_m",
+            "qpos",
+            "region_load_n",
+            "wrist_command",
+            "wrist_nominal",
+            "wrist_offset",
+            "wrist_wrench_feedback"
+          ],
+          "trace_sha256": "e78f603f3fd60013b0b6d75852b6486f9f0e84fe72e9f86933435c0c77cae7be",
+          "mesh_sha256": "b7d6849653aa1caeb6bbc72f7f83dd3171ebcd889ee571deffc0c70b5c4d8191",
+          "measurement_sha256": "4b0f72cdc2092cde54e87ec51986c4d12cf512a8c3ef428d7872e27f1342d07d"
+        }
+      }
+    }
+  },
+  "mean": {
+    "wrist-dp": {
+      "windows": {
+        "60": {
+          "plans": 300,
+          "full_shared": 300,
+          "total_nat": 2025.9033773762574,
+          "nat_per_tick": 0.33765056289604295,
+          "nat_per_plan": 6.753011257920859,
+          "nat_per_shared": 6.192920888459139
+        },
+        "240": {
+          "plans": 1200,
+          "full_shared": 1200,
+          "total_nat": 4718.389275155745,
+          "nat_per_tick": 0.19659955313148933,
+          "nat_per_plan": 3.9319910626297867,
+          "nat_per_shared": 3.5955024348471776
+        },
+        "600": {
+          "plans": 3000,
+          "full_shared": 3000,
+          "total_nat": 7536.781052636434,
+          "nat_per_tick": 0.12561301754394055,
+          "nat_per_plan": 2.512260350878811,
+          "nat_per_shared": 2.291575052381344
+        }
+      },
+      "duration_ms": {
+        "all": {
+          "n": 15000,
+          "mean": 8.033196653301518,
+          "p50": 3.599849995225668,
+          "p95": 28.382529935333867
+        },
+        "local": {
+          "n": 15000,
+          "mean": 8.033196653301518,
+          "p50": 3.599849995225668,
+          "p95": 28.382529935333867
+        }
+      },
+      "control_interval_ms": {
+        "n": 300000,
+        "mean": 3.1555968886664294,
+        "p50": 2.5061999913305044,
+        "p95": 6.190504989353939
+      },
+      "clock": {
+        "online_240_s": 78.39103194002527,
+        "online_600_s": 189.33581331998576,
+        "online_ms_per_tick": 3.1555968886664294
+      }
+    },
+    "native-aude": {
+      "windows": {
+        "60": {
+          "plans": 334,
+          "full_shared": 333,
+          "total_nat": 1082.2318250506928,
+          "nat_per_tick": 0.18037197084178214,
+          "nat_per_plan": 3.240215045061954,
+          "nat_per_shared": 3.2466074461773324,
+          "outer_proposals": 67,
+          "nat_per_outer_proposal_interval": 16.15271380672676
+        },
+        "240": {
+          "plans": 1334,
+          "full_shared": 1333,
+          "total_nat": 3412.808542260062,
+          "nat_per_tick": 0.14220035592750258,
+          "nat_per_plan": 2.558327243073509,
+          "nat_per_shared": 2.559790465940611,
+          "outer_proposals": 267,
+          "nat_per_outer_proposal_interval": 12.78205446539349
+        },
+        "600": {
+          "plans": 3334,
+          "full_shared": 3333,
+          "total_nat": 5887.350120722974,
+          "nat_per_tick": 0.09812250201204957,
+          "nat_per_plan": 1.7658518658437234,
+          "nat_per_shared": 1.7662895352692771,
+          "outer_proposals": 667,
+          "nat_per_outer_proposal_interval": 8.826611875146888
+        }
+      },
+      "duration_ms": {
+        "all": {
+          "n": 16670,
+          "mean": 20.5558725074985,
+          "p50": 7.126799999999999,
+          "p95": 93.11167999999998
+        },
+        "local": {
+          "n": 16670,
+          "mean": 6.907586412717456,
+          "p50": 6.693899999999999,
+          "p95": 11.327995
+        },
+        "proposal": {
+          "n": 3335,
+          "mean": 68.22096827586208,
+          "p50": 67.67869999999999,
+          "p95": 197.59905999999995
+        },
+        "with_proposal": {
+          "n": 3335,
+          "mean": 75.14177178410795,
+          "p50": 75.16829999999999,
+          "p95": 204.92014999999992
+        },
+        "without_proposal": {
+          "n": 13335,
+          "mean": 6.904280899887514,
+          "p50": 6.689,
+          "p95": 11.310109999999998
+        },
+        "local_with_joint_projection": {
+          "n": 16105,
+          "mean": 7.0948611300838245,
+          "p50": 6.807799999999999,
+          "p95": 11.37192
+        },
+        "outer_with_ik": {
+          "n": 2306,
+          "mean": 98.63277844752818,
+          "p50": 77.38374999999999,
+          "p95": 205.58774999999997
+        },
+        "full_update_with_ik": {
+          "n": 2306,
+          "mean": 106.10559028620989,
+          "p50": 85.21105,
+          "p95": 212.404075
+        }
+      },
+      "control_interval_ms": {
+        "n": 300000,
+        "mean": 4.9104660679997565,
+        "p50": 3.2116000074893236,
+        "p95": 8.728439989499739
+      },
+      "clock": {
+        "online_240_s": 114.73423139997757,
+        "online_600_s": 294.6279640799854,
+        "online_ms_per_tick": 4.9104660679997565
+      }
+    }
+  },
+  "events_sha256": "fb7cb8f3909e07f2304fc3fb4538217279b035ab0fcaef6184b8d11e7cb21c08"
+}

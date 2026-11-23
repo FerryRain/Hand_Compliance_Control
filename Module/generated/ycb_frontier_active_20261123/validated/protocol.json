@@ -1,0 +1,226 @@
+{
+  "objects": {
+    "pear": [
+      "016",
+      "梨",
+      "active-02"
+    ],
+    "mustard": [
+      "006",
+      "芥末瓶",
+      "start-01"
+    ],
+    "cracker": [
+      "003",
+      "饼干盒",
+      "start-01"
+    ],
+    "bleach": [
+      "021",
+      "漂白清洁剂瓶",
+      "start-01"
+    ],
+    "coffee": [
+      "002",
+      "咖啡罐",
+      "start-01"
+    ]
+  },
+  "fixtures": {
+    "pear/active-02": {
+      "model.mjb": "f4c1ede82e6179c7fb914923aea11a17f1389f8b424c5fef3f030ea11c5233d9",
+      "initial.npz": "a0d4caefa669943500b9a999dfd32cd398aa4134b312637f33732ef497bd0b83",
+      "surface.obj": "9056fb93a4480100f2a44112549527a80342624a74d6b5580915e5cfec296183",
+      "integration_state": "427ea982d91cb59e42cfab0b243b0d6acc73cd48ebe34a0dbeb933d55ebfaec1",
+      "pad_force_n": [
+        0.9645098186821857,
+        0.9725200094898281,
+        0.9579953159781444,
+        0.9527224651842674
+      ],
+      "region_load_n": [
+        0.9645098186821857,
+        0.9725200094898281,
+        0.9579953159781444,
+        0.9527224651842674,
+        0.0
+      ],
+      "seed": 20261120,
+      "source": "Module/generated/active-02-a_20261121",
+      "origin": {
+        "method": "archived four-pad start"
+      }
+    },
+    "mustard/start-01": {
+      "model.mjb": "0233c76c93ed7b65df6fb575c827395eb73e4566b0419a71da1f8d17819b67ef",
+      "initial.npz": "ea391af03bc874dd8be153ede9ab2d56524668e990ae84282405f95d0e53cb04",
+      "surface.obj": "51f183ca21481cb7bbcad30e78db1ed65bafd7d4c7de4c4d71c000c34565069b",
+      "integration_state": "072a011357d39d1766ac125d7563df50962fd0652035959a95713f2370c8070c",
+      "pad_force_n": [
+        1.8127014285785155,
+        1.692262943985334,
+        1.252351941607727,
+        1.2305491460898246
+      ],
+      "region_load_n": [
+        1.8127014285785155,
+        1.692262943985334,
+        1.252351941607727,
+        1.2305491460898246,
+        0.0
+      ],
+      "seed": 20261121,
+      "source": "Module/generated/i01_a_policy_wrist_20261120/mustard/fixed-dp_r01",
+      "origin": {
+        "method": "archived four-pad start"
+      }
+    },
+    "cracker/start-01": {
+      "model.mjb": "60ad7bf15097b7c07c170b85e82360518b5dce5e6ed93634d0b343e2787e2f3b",
+      "initial.npz": "cdcd74420f2836a429086ed07e5c1d0c8e6a9125dbfc3fe731f89153544c945f",
+      "surface.obj": "4b865a76e2f09d6602a2ec27358e5babf8591533791e83b67f1d12642425d8e7",
+      "integration_state": "4713f152527115f67ea337b0f22009552b6192fad924ebfd33f955a8ab8abd6a",
+      "pad_force_n": [
+        0.8641908199782498,
+        0.8501819760425127,
+        0.7736791781760559,
+        0.7001969423145058
+      ],
+      "region_load_n": [
+        0.8641908199782498,
+        0.8501819760425127,
+        0.7736791781760559,
+        0.7001969423145058,
+        0.0
+      ],
+      "seed": 20261121,
+      "source": "Module/generated/i01_a_policy_wrist_20261120/cracker/fixed-dp_r01",
+      "origin": {
+        "method": "archived four-pad start"
+      }
+    },
+    "bleach/start-01": {
+      "model.mjb": "2ac934b6fd139560b8ade981de7ca847be6d2a7d347d38832f23ae184f868ee6",
+      "initial.npz": "44640ad41f1d3e0833997b8c80dc96d21be663ce59d744f7b9ad10f6e6fb8549",
+      "surface.obj": "1d5e91127f00ad7d00fb4bb1e20905b7145fbc8b2a61364c059082850301de70",
+      "integration_state": "3bdff6f9f639d8ef90981e76cb76a49d4c61ac538df7d69a91672846e60dc5d7",
+      "pad_force_n": [
+        0.7096465425298399,
+        0.6723978670526538,
+        0.6781904301025534,
+        0.6526217094965348
+      ],
+      "region_load_n": [
+        0.7096465425298399,
+        0.6723978670526538,
+        0.6781904301025534,
+        0.6526217094965348,
+        0.0
+      ],
+      "seed": 20261121,
+      "source": "Module/generated/ycb_active_efficiency_20261122/five-objects/fixtures/bleach",
+      "origin": {
+        "method": "first physically valid four-light-pad frame",
+        "frame": 0,
+        "record": "finger_policy/data/evaluation_runs/single_all_generalization/evaluation/single_all_seed20261116/ycb_021_bleach_cleanser.npz",
+        "record_sha256": "6c26d1f12c8617168f74640ea831c28b6c6d0410e9391946c21ff9c3481ca80d",
+        "object_id": "ycb_021_bleach_cleanser",
+        "parts": 128,
+        "forces_n": [
+          0.7096465425298399,
+          0.6723978670526538,
+          0.6781904301025534,
+          0.6526217094965348
+        ],
+        "region_load_n": [
+          0.7096465425298399,
+          0.6723978670526538,
+          0.6781904301025534,
+          0.6526217094965348,
+          0.0
+        ],
+        "scoring_mesh_sha256": "1d5e91127f00ad7d00fb4bb1e20905b7145fbc8b2a61364c059082850301de70"
+      }
+    },
+    "coffee/start-01": {
+      "model.mjb": "80c74be9ec4748aa6d76b3a2a739259f1507e0f620601702763d5a4a1c33e270",
+      "initial.npz": "831412269f4e72c857876e949add8e96f2e1bda396a2a13757132abe7d16a616",
+      "surface.obj": "ea0fc6014885a20342b627a108b5a374c710c677c5b3a1d1a046559902aaa602",
+      "integration_state": "d8256dcd580e9b43b4bbefc5fb8131e76ee14d6272b802bbf18ede358d6e1e5f",
+      "pad_force_n": [
+        0.4602533866370264,
+        0.4922238503579076,
+        0.49330638473378324,
+        0.3068746546794442
+      ],
+      "region_load_n": [
+        0.4602533866370264,
+        0.4922238503579076,
+        0.49330638473378324,
+        0.3068746546794442,
+        0.0
+      ],
+      "seed": 20261121,
+      "source": "Module/generated/ycb_active_efficiency_20261122/five-objects/fixtures/coffee",
+      "origin": {
+        "method": "first physically valid four-light-pad frame",
+        "frame": 0,
+        "record": "finger_policy/data/evaluation_runs/single_all_generalization/evaluation/single_all_seed20261116/ycb_002_master_chef_can.npz",
+        "record_sha256": "41bd6474d2dfdea0b6af36dcfa71dfc8dec18547de243c8fe526a2ccec4640e6",
+        "object_id": "ycb_002_master_chef_can",
+        "parts": 128,
+        "forces_n": [
+          0.4602533866370264,
+          0.4922238503579076,
+          0.49330638473378324,
+          0.3068746546794442
+        ],
+        "region_load_n": [
+          0.4602533866370264,
+          0.4922238503579076,
+          0.49330638473378324,
+          0.3068746546794442,
+          0.0
+        ],
+        "scoring_mesh_sha256": "ea0fc6014885a20342b627a108b5a374c710c677c5b3a1d1a046559902aaa602"
+      }
+    }
+  },
+  "checkpoint": "9fbe34c3c36fd9f74ad5630ccb15c6200dfd3b44bdbf97da86f8d9afbcc55ec4",
+  "primary": "600 simulation seconds, equal-weight mean of five whole-surface 10 mm measured coverage fractions.",
+  "thresholds": [
+    10,
+    20,
+    30,
+    40,
+    50,
+    70,
+    90,
+    95
+  ],
+  "controller": "FrontierWrist",
+  "release_sha256": "a23687677eecab8141e16739530a3999175b3ecb8f45a6002de8faf19896f7fc",
+  "budget_s": 600,
+  "primary_budget_s": 600,
+  "scope": "One paired original grasp per object. Five objects share identical planner parameters and finger weights; these starts were previously evaluated.",
+  "aggregate": "Object-level arithmetic mean; for each time threshold report hit count and mean min(time,600); non-hits contribute 600 seconds, never presented as hits.",
+  "code": {
+    "sweep.py": "113eb79f7e249c7e57d2ce1006494b2c10463db1db95805bf1629f0959f5f07a",
+    "buffered_fingers.py": "8c1805c7939e444d3067ed749e38b1c0356c5be0d5b8982d3c54c918bb8ec38d",
+    "wrist_worker.py": "a26aafbcb6385d22921a70a6ced00f18a8b4d90043031a60e24db6355a18f1a9",
+    "sweep_experiment.py": "d20ed36cc0e1c01d2103caf3bfeb804a18378aa1cdba8752b60ee075ab7d66fe",
+    "experiment.py": "2c1c9e9ad38ac92c000c1b889d50192dcbb69aa594a818f0004ed926ea3e77af",
+    "planner.py": "67bed7e2399b83e49d649cced8ff79c81cfb6044b278323dcdd4a459b4b0dbeb",
+    "face_wrist.py": "1f39da3bf83da61de32d522f38475c1494375d7ca0a658a7f9bafa6df758af97",
+    "load_guard.py": "a5c50d044c69d716d1bb7080739eda86ca39cd0b14b566e29adfcd4efc2d2e32",
+    "__main__.py": "a85b6df3ddc451d449f2e1aeebfdbdf93b2f06b4aadebb27dc40d5a7f2a635e9",
+    "controller": "FrontierWrist",
+    "revision": "92652cb24e906ee0d23c701b029540ec504522349d57db749c047332a379501b",
+    "config": "shared",
+    "footprint_source": "118f9c42e967d0d3ff36b3fc3a867e83e69349c4a89ae7647214ec7e0c594e46",
+    "frontier_source": "a23687677eecab8141e16739530a3999175b3ecb8f45a6002de8faf19896f7fc"
+  },
+  "previous_protocol_sha256": "bf9fe563687e5a5ea973bcb5e74caf87614eb3192251042b5dd55ae78e42521f",
+  "comparison": "Complete wrist Active + single_all + MCC and complete Active-02 Aude + MCC.",
+  "development": "Coffee can and bleach bottle guided development. A pear regression informed the unsupported-footprint speed safeguard."
+}

@@ -1,0 +1,1730 @@
+{
+  "protocol": {
+    "study_sha256": "ce5e0a1f1639eaa7f15cd35545bd39c4171ed3464ef966af3d73a78d570a4264",
+    "cpu_and_grid_sha256": "6cf5b4bff05958dcd314066f752876321ce0a21fc7dfc5eff1c68efada056341",
+    "cuda_sha256": "fad231fdf207fbecb1d674fbc16beec5f8f7ff1b6fb239f88bf4d15574590550",
+    "benchmark_sha256": "54e3dea0899d9ac97ed444c82b09f2091ddd8916b4887f2654bb2d517179ce3d",
+    "windows_s": [
+      60,
+      120,
+      240,
+      600
+    ],
+    "hardware": "NVIDIA GeForce RTX 4090 D",
+    "torch_version": "2.8.0+cu129",
+    "gpytorch_version": "1.15.2",
+    "dtype": "float64",
+    "cpu_torch_threads": 1,
+    "parity": {
+      "max_abs_f5": 0.001,
+      "max_pair_p95_mm": 0.1,
+      "max_pair_distance_mm": 0.5
+    },
+    "primary_speed": "Mean complete time from reading recorded touches through PLY export across the ten 600 s outputs, CPU and CUDA in alternating order. Device discovery precedes timing. The first CUDA model and prediction are timed in its checkpoint.",
+    "geometry": "Conservative bidirectional surface check: nearest of opposing vertices and triangle centroids, pooled within each direction; report the larger directional p95 and maximum.",
+    "inputs": "Native measured fingertips; all five region loads below 8 N. Identical representatives, signed labels, covariance, regularization, length, 4 mm grid, support mask and zero-surface extraction."
+  },
+  "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+  "all": {
+    "n": 40,
+    "cpu_s": 11.652037269994617,
+    "cuda_s": 0.9698311974963871,
+    "speedup": 12.014500358489471,
+    "cuda_faster": 40
+  },
+  "final": {
+    "n": 10,
+    "cpu_s": 13.867332209995947,
+    "cuda_s": 1.0789077499764972,
+    "speedup": 12.853121325987352,
+    "cuda_faster": 10
+  },
+  "matched": 40,
+  "same_ply": 0,
+  "max_abs_f5": 2.089291130613624e-05,
+  "worst_p95_mm": 7.450580596923828e-06,
+  "worst_max_mm": 0.0008493661880493164,
+  "accept_cuda": true,
+  "runs": [
+    {
+      "obj": "pear",
+      "arm": "wrist-dp",
+      "sim_s": 60,
+      "order": [
+        "cpu",
+        "cuda"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 6.805673799943179,
+        "read_and_select_s": 0.05693029996473342,
+        "posterior_and_surface_s": 6.741463700076565,
+        "ply_write_s": 0.007279799901880324,
+        "contacts": 1000,
+        "length_m": 0.010588568096273888,
+        "vertices": 13387,
+        "faces": 25978,
+        "f5": 0.7808848878720775,
+        "symmetric_mean_mm": 7.56146668246057
+      },
+      "cuda": {
+        "total_s": 1.6327429000521079,
+        "read_and_select_s": 0.055223300005309284,
+        "posterior_and_surface_s": 1.5752335999859497,
+        "ply_write_s": 0.0022860000608488917,
+        "contacts": 1000,
+        "length_m": 0.010588568096273888,
+        "vertices": 13387,
+        "faces": 25978,
+        "f5": 0.7808848878720775,
+        "symmetric_mean_mm": 7.561457670438884
+      },
+      "abs_f5_difference": 0.0,
+      "geometry": {
+        "p95_mm": 0.0,
+        "max_mm": 2.9802322387695312e-05,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "f53ab9ef391b503d4eb53c7885320979a0942c36853ff3b4f84b6f9f93b7f1b6",
+      "cuda_mesh_sha256": "bbdef740b344a8226357d657ee3d0c13498f02d485bf4c4e15309761e5e2028e"
+    },
+    {
+      "obj": "pear",
+      "arm": "wrist-dp",
+      "sim_s": 120,
+      "order": [
+        "cuda",
+        "cpu"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 9.251994199934416,
+        "read_and_select_s": 0.07523550000041723,
+        "posterior_and_surface_s": 9.175267399987206,
+        "ply_write_s": 0.0014912999467924237,
+        "contacts": 1000,
+        "length_m": 0.01834325766462571,
+        "vertices": 18840,
+        "faces": 37082,
+        "f5": 0.9450966775024274,
+        "symmetric_mean_mm": 2.0311601871157654
+      },
+      "cuda": {
+        "total_s": 1.0012983999913558,
+        "read_and_select_s": 0.07470140000805259,
+        "posterior_and_surface_s": 0.9250774999381974,
+        "ply_write_s": 0.001519500045105815,
+        "contacts": 1000,
+        "length_m": 0.01834325766462571,
+        "vertices": 18840,
+        "faces": 37082,
+        "f5": 0.9450966775024274,
+        "symmetric_mean_mm": 2.03116017285843
+      },
+      "abs_f5_difference": 0.0,
+      "geometry": {
+        "p95_mm": 0.0,
+        "max_mm": 2.9802322387695312e-05,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "da5058163d7fc0b1c41f31bff87be85b382c1cf60777fe9d742ae58d045b4089",
+      "cuda_mesh_sha256": "a34cbe6d53dd84fb5a3986b588985c474bfec133dd8b09426c92246ba04feadc"
+    },
+    {
+      "obj": "pear",
+      "arm": "wrist-dp",
+      "sim_s": 240,
+      "order": [
+        "cpu",
+        "cuda"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 10.178290999960154,
+        "read_and_select_s": 0.10069110000040382,
+        "posterior_and_surface_s": 10.0761314999545,
+        "ply_write_s": 0.0014684000052511692,
+        "contacts": 1000,
+        "length_m": 0.026223783371011153,
+        "vertices": 20553,
+        "faces": 40978,
+        "f5": 0.9910799297749974,
+        "symmetric_mean_mm": 1.2598196059204398
+      },
+      "cuda": {
+        "total_s": 1.0026365999365225,
+        "read_and_select_s": 0.10627139999996871,
+        "posterior_and_surface_s": 0.8946585999801755,
+        "ply_write_s": 0.0017065999563783407,
+        "contacts": 1000,
+        "length_m": 0.026223783371011153,
+        "vertices": 20553,
+        "faces": 40978,
+        "f5": 0.9910799297749974,
+        "symmetric_mean_mm": 1.2597764578482071
+      },
+      "abs_f5_difference": 0.0,
+      "geometry": {
+        "p95_mm": 1.2417634281947088e-06,
+        "max_mm": 2.9802322387695312e-05,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "63e75981f5d86c0750c596a1f42d4804fddcca22ffeb230a47d9b200e4ad71ba",
+      "cuda_mesh_sha256": "ea199098d35045205080885f4f0becf135b449cafabf24463e526fed284b1f00"
+    },
+    {
+      "obj": "pear",
+      "arm": "wrist-dp",
+      "sim_s": 600,
+      "order": [
+        "cuda",
+        "cpu"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 10.380425399984233,
+        "read_and_select_s": 0.17298480006866157,
+        "posterior_and_surface_s": 10.205743199912831,
+        "ply_write_s": 0.0016974000027403235,
+        "contacts": 1000,
+        "length_m": 0.031110351279079913,
+        "vertices": 20696,
+        "faces": 41387,
+        "f5": 0.9971089769433664,
+        "symmetric_mean_mm": 1.215517302395353
+      },
+      "cuda": {
+        "total_s": 1.057899700012058,
+        "read_and_select_s": 0.17016920004971325,
+        "posterior_and_surface_s": 0.8863393999636173,
+        "ply_write_s": 0.0013910999987274408,
+        "contacts": 1000,
+        "length_m": 0.031110351279079913,
+        "vertices": 20696,
+        "faces": 41387,
+        "f5": 0.9971089769433664,
+        "symmetric_mean_mm": 1.215526748161586
+      },
+      "abs_f5_difference": 0.0,
+      "geometry": {
+        "p95_mm": 0.0,
+        "max_mm": 2.9802322387695312e-05,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "0e3d7cf9d175923b375df25b4133c4bf4ea1f72f572ded7833a71535f64c6575",
+      "cuda_mesh_sha256": "9b617be6196ab18e8e7caff5a392db09bf3db9445f1a817b64aec091d5a3a1cb"
+    },
+    {
+      "obj": "pear",
+      "arm": "native-aude",
+      "sim_s": 60,
+      "order": [
+        "cuda",
+        "cpu"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 4.025356900063343,
+        "read_and_select_s": 0.02530109998770058,
+        "posterior_and_surface_s": 3.9986348000820726,
+        "ply_write_s": 0.001420999993570149,
+        "contacts": 755,
+        "length_m": 0.01,
+        "vertices": 10192,
+        "faces": 19620,
+        "f5": 0.6787894018768281,
+        "symmetric_mean_mm": 13.453068567048401
+      },
+      "cuda": {
+        "total_s": 0.5948335999855772,
+        "read_and_select_s": 0.024679500027559698,
+        "posterior_and_surface_s": 0.5688887999858707,
+        "ply_write_s": 0.0012652999721467495,
+        "contacts": 755,
+        "length_m": 0.01,
+        "vertices": 10192,
+        "faces": 19620,
+        "f5": 0.6787894018768281,
+        "symmetric_mean_mm": 13.453068565514492
+      },
+      "abs_f5_difference": 0.0,
+      "geometry": {
+        "p95_mm": 0.0,
+        "max_mm": 1.4901161193847656e-05,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "e8865ce206c6844ef18890171a885a5da22c458c3a6f200c7c1b12ae132d3f05",
+      "cuda_mesh_sha256": "90ed1db74e2a7860259c196e59d31d6d35c63635fa6808fd5361fee40622c668"
+    },
+    {
+      "obj": "pear",
+      "arm": "native-aude",
+      "sim_s": 120,
+      "order": [
+        "cpu",
+        "cuda"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 6.410975100006908,
+        "read_and_select_s": 0.04555969999637455,
+        "posterior_and_surface_s": 6.364194199908525,
+        "ply_write_s": 0.0012212001020088792,
+        "contacts": 1000,
+        "length_m": 0.01281185115882448,
+        "vertices": 12644,
+        "faces": 24753,
+        "f5": 0.7636258865204306,
+        "symmetric_mean_mm": 11.40069643204607
+      },
+      "cuda": {
+        "total_s": 0.7042990999761969,
+        "read_and_select_s": 0.04533920006360859,
+        "posterior_and_surface_s": 0.6575039000017568,
+        "ply_write_s": 0.0014559999108314514,
+        "contacts": 1000,
+        "length_m": 0.01281185115882448,
+        "vertices": 12644,
+        "faces": 24753,
+        "f5": 0.7636258865204306,
+        "symmetric_mean_mm": 11.400696428644345
+      },
+      "abs_f5_difference": 0.0,
+      "geometry": {
+        "p95_mm": 0.0,
+        "max_mm": 1.4901161193847656e-05,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "35fb5a208384c7e4933c12a83a09329b2f2f95901f4f0ee3664b48a96e6a3bf0",
+      "cuda_mesh_sha256": "ac4bf3b8ff7f93abbc024d059c41aa36ff74fc0f1b0ca610a3bf5186145f6510"
+    },
+    {
+      "obj": "pear",
+      "arm": "native-aude",
+      "sim_s": 240,
+      "order": [
+        "cuda",
+        "cpu"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 7.604410400032066,
+        "read_and_select_s": 0.05849660001695156,
+        "posterior_and_surface_s": 7.54452570003923,
+        "ply_write_s": 0.0013880999758839607,
+        "contacts": 1000,
+        "length_m": 0.02058963844680299,
+        "vertices": 15064,
+        "faces": 29804,
+        "f5": 0.8459983280990209,
+        "symmetric_mean_mm": 7.960203276921861
+      },
+      "cuda": {
+        "total_s": 0.7729224000358954,
+        "read_and_select_s": 0.05894120002631098,
+        "posterior_and_surface_s": 0.7042389999842271,
+        "ply_write_s": 0.009742200025357306,
+        "contacts": 1000,
+        "length_m": 0.02058963844680299,
+        "vertices": 15064,
+        "faces": 29804,
+        "f5": 0.8459983280990209,
+        "symmetric_mean_mm": 7.960203281347327
+      },
+      "abs_f5_difference": 0.0,
+      "geometry": {
+        "p95_mm": 0.0,
+        "max_mm": 2.9802322387695312e-05,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "a93d3fd3c213ecac63dd74d3538472bd541cb0207c90d7ad41721267d011d101",
+      "cuda_mesh_sha256": "b95cc635d808c06d3a91d9c043c7b5bb99010146015e572b646eba76f509238e"
+    },
+    {
+      "obj": "pear",
+      "arm": "native-aude",
+      "sim_s": 600,
+      "order": [
+        "cpu",
+        "cuda"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 10.189184800023213,
+        "read_and_select_s": 0.09811100002843887,
+        "posterior_and_surface_s": 10.089665799983777,
+        "ply_write_s": 0.001408000010997057,
+        "contacts": 1000,
+        "length_m": 0.029650722890735757,
+        "vertices": 20784,
+        "faces": 41564,
+        "f5": 0.9973991513936233,
+        "symmetric_mean_mm": 1.2977844537331762
+      },
+      "cuda": {
+        "total_s": 0.979017399949953,
+        "read_and_select_s": 0.0970320999622345,
+        "posterior_and_surface_s": 0.8711338000139222,
+        "ply_write_s": 0.010851499973796308,
+        "contacts": 1000,
+        "length_m": 0.029650722890735757,
+        "vertices": 20784,
+        "faces": 41564,
+        "f5": 0.9973991513936233,
+        "symmetric_mean_mm": 1.2978391967542047
+      },
+      "abs_f5_difference": 0.0,
+      "geometry": {
+        "p95_mm": 0.0,
+        "max_mm": 2.9802322387695312e-05,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "8c8cd476b05af4d9e0d928d89ff03d2a74b1ce11bb23181bb4166210f0219022",
+      "cuda_mesh_sha256": "cbd4ca94394929cd37e4ac8106ebf93a13948cbe22b041ba299d4ccf4fe06ad1"
+    },
+    {
+      "obj": "mustard",
+      "arm": "wrist-dp",
+      "sim_s": 60,
+      "order": [
+        "cuda",
+        "cpu"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 12.262468400062062,
+        "read_and_select_s": 0.06805100000929087,
+        "posterior_and_surface_s": 12.192864799988456,
+        "ply_write_s": 0.0015526000643149018,
+        "contacts": 1000,
+        "length_m": 0.018851821577641335,
+        "vertices": 24134,
+        "faces": 46690,
+        "f5": 0.8470634355285518,
+        "symmetric_mean_mm": 3.894012117660101
+      },
+      "cuda": {
+        "total_s": 1.0455388000700623,
+        "read_and_select_s": 0.05724790005479008,
+        "posterior_and_surface_s": 0.9865109999664128,
+        "ply_write_s": 0.0017799000488594174,
+        "contacts": 1000,
+        "length_m": 0.018851821577641335,
+        "vertices": 24134,
+        "faces": 46690,
+        "f5": 0.8470634355285518,
+        "symmetric_mean_mm": 3.8940057577450213
+      },
+      "abs_f5_difference": 0.0,
+      "geometry": {
+        "p95_mm": 0.0,
+        "max_mm": 5.9604644775390625e-05,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "9a6656e9a81fbfc9e6c6a9c049e5514d0108ab2093ff99fc3798dc72d795ef2e",
+      "cuda_mesh_sha256": "88ab089ea47210a694418e89f27618050414346d9cdf15bb68dbeda9da1f6701"
+    },
+    {
+      "obj": "mustard",
+      "arm": "wrist-dp",
+      "sim_s": 120,
+      "order": [
+        "cpu",
+        "cuda"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 14.015473300009035,
+        "read_and_select_s": 0.07986669999081641,
+        "posterior_and_surface_s": 13.932869800017215,
+        "ply_write_s": 0.002736800001002848,
+        "contacts": 1000,
+        "length_m": 0.028721922827094185,
+        "vertices": 27885,
+        "faces": 54696,
+        "f5": 0.9283539679503026,
+        "symmetric_mean_mm": 2.464671253721681
+      },
+      "cuda": {
+        "total_s": 1.1924731000326574,
+        "read_and_select_s": 0.08018020004965365,
+        "posterior_and_surface_s": 1.1103466999484226,
+        "ply_write_s": 0.0019462000345811248,
+        "contacts": 1000,
+        "length_m": 0.028721922827094185,
+        "vertices": 27885,
+        "faces": 54696,
+        "f5": 0.9283539679503026,
+        "symmetric_mean_mm": 2.464671254111081
+      },
+      "abs_f5_difference": 0.0,
+      "geometry": {
+        "p95_mm": 0.0,
+        "max_mm": 5.9604644775390625e-05,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "23cfba5dafed91140a239d56340a5b1869dba86a7927d4b7c0df80933ca88c87",
+      "cuda_mesh_sha256": "f821b0090de27e8ae815478bd65eb654f70f2030ca19df3c711e4893c6996fa6"
+    },
+    {
+      "obj": "mustard",
+      "arm": "wrist-dp",
+      "sim_s": 240,
+      "order": [
+        "cuda",
+        "cpu"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 15.632852400070988,
+        "read_and_select_s": 0.11065579997375607,
+        "posterior_and_surface_s": 15.520279600052163,
+        "ply_write_s": 0.001917000045068562,
+        "contacts": 1000,
+        "length_m": 0.03599633099988193,
+        "vertices": 30689,
+        "faces": 61149,
+        "f5": 0.989293375518043,
+        "symmetric_mean_mm": 1.7144998043697748
+      },
+      "cuda": {
+        "total_s": 1.261578399920836,
+        "read_and_select_s": 0.11206739989574999,
+        "posterior_and_surface_s": 1.1471968000987545,
+        "ply_write_s": 0.0023141999263316393,
+        "contacts": 1000,
+        "length_m": 0.03599633099988193,
+        "vertices": 30689,
+        "faces": 61149,
+        "f5": 0.989293375518043,
+        "symmetric_mean_mm": 1.7144516337640971
+      },
+      "abs_f5_difference": 0.0,
+      "geometry": {
+        "p95_mm": 4.96705373012607e-06,
+        "max_mm": 8.940696716308594e-05,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "347e22cd39319e7b6f631246d9754a7260107453bfd3aa7c27cc84a42891b4e4",
+      "cuda_mesh_sha256": "68c7f21d84348c42e2e87627af3dae1aa69500c93f290523c46f3cf52c49be73"
+    },
+    {
+      "obj": "mustard",
+      "arm": "wrist-dp",
+      "sim_s": 600,
+      "order": [
+        "cpu",
+        "cuda"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 15.813607199932449,
+        "read_and_select_s": 0.17112069996073842,
+        "posterior_and_surface_s": 15.64061080000829,
+        "ply_write_s": 0.0018756999634206295,
+        "contacts": 1000,
+        "length_m": 0.040104040999804275,
+        "vertices": 30558,
+        "faces": 61062,
+        "f5": 0.9948989948738567,
+        "symmetric_mean_mm": 1.6509896275421836
+      },
+      "cuda": {
+        "total_s": 1.294632500037551,
+        "read_and_select_s": 0.17181730002630502,
+        "posterior_and_surface_s": 1.1206625000340864,
+        "ply_write_s": 0.0021526999771595,
+        "contacts": 1000,
+        "length_m": 0.040104040999804275,
+        "vertices": 30558,
+        "faces": 61062,
+        "f5": 0.9948989948738567,
+        "symmetric_mean_mm": 1.6509896638932844
+      },
+      "abs_f5_difference": 0.0,
+      "geometry": {
+        "p95_mm": 4.967053733595517e-06,
+        "max_mm": 0.00012665987014770508,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "c28fb30221ef372c5456370570b9b94bfac83323af3e7376c380e4faca930814",
+      "cuda_mesh_sha256": "31a9e25302f4972873bf3d0e995b6ca0b00aabd48f311a1a93e0bda1b36005ae"
+    },
+    {
+      "obj": "mustard",
+      "arm": "native-aude",
+      "sim_s": 60,
+      "order": [
+        "cpu",
+        "cuda"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 4.488215099903755,
+        "read_and_select_s": 0.02208629995584488,
+        "posterior_and_surface_s": 4.464699500007555,
+        "ply_write_s": 0.001429299940355122,
+        "contacts": 646,
+        "length_m": 0.01,
+        "vertices": 12384,
+        "faces": 23357,
+        "f5": 0.5433532670415371,
+        "symmetric_mean_mm": 14.59678729152735
+      },
+      "cuda": {
+        "total_s": 0.8935173000209033,
+        "read_and_select_s": 0.022864399943500757,
+        "posterior_and_surface_s": 0.8694818000076339,
+        "ply_write_s": 0.0011711000697687268,
+        "contacts": 646,
+        "length_m": 0.01,
+        "vertices": 12384,
+        "faces": 23357,
+        "f5": 0.5433532670415371,
+        "symmetric_mean_mm": 14.59678728878571
+      },
+      "abs_f5_difference": 0.0,
+      "geometry": {
+        "p95_mm": 0.0,
+        "max_mm": 5.9604644775390625e-05,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "684214662b469689bf10b632aac1a73726dfdc5fec0b236d6dd178154cd2f4df",
+      "cuda_mesh_sha256": "61bfd6be79730487866cd6204f9b7c37b196ff72d2c3e9499f904401ab9756f0"
+    },
+    {
+      "obj": "mustard",
+      "arm": "native-aude",
+      "sim_s": 120,
+      "order": [
+        "cuda",
+        "cpu"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 10.469880799995735,
+        "read_and_select_s": 0.0466448999941349,
+        "posterior_and_surface_s": 10.421867699944414,
+        "ply_write_s": 0.0013682000571861863,
+        "contacts": 1000,
+        "length_m": 0.014204054750269446,
+        "vertices": 19971,
+        "faces": 38600,
+        "f5": 0.7522851889667784,
+        "symmetric_mean_mm": 7.546658665757175
+      },
+      "cuda": {
+        "total_s": 1.0574378999881446,
+        "read_and_select_s": 0.048640600056387484,
+        "posterior_and_surface_s": 1.007358399918303,
+        "ply_write_s": 0.0014389000134542584,
+        "contacts": 1000,
+        "length_m": 0.014204054750269446,
+        "vertices": 19971,
+        "faces": 38600,
+        "f5": 0.7522642960554723,
+        "symmetric_mean_mm": 7.546629804005821
+      },
+      "abs_f5_difference": 2.089291130613624e-05,
+      "geometry": {
+        "p95_mm": 0.0,
+        "max_mm": 5.9604644775390625e-05,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "e4c289f468f3c1939d821b757da07201445084f36c28a15d9446c8ee8e85ecf5",
+      "cuda_mesh_sha256": "f811201fbf65f00e2d74215761f8acc851de9957f3deaf6aa03b4fe013f76413"
+    },
+    {
+      "obj": "mustard",
+      "arm": "native-aude",
+      "sim_s": 240,
+      "order": [
+        "cpu",
+        "cuda"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 10.657016800018027,
+        "read_and_select_s": 0.04939560010097921,
+        "posterior_and_surface_s": 10.595990199944936,
+        "ply_write_s": 0.011630999972112477,
+        "contacts": 1000,
+        "length_m": 0.01513444513826663,
+        "vertices": 20057,
+        "faces": 38788,
+        "f5": 0.7537083679991883,
+        "symmetric_mean_mm": 7.490399048196157
+      },
+      "cuda": {
+        "total_s": 1.096342399949208,
+        "read_and_select_s": 0.0495732999406755,
+        "posterior_and_surface_s": 1.0455249999649823,
+        "ply_write_s": 0.0012441000435501337,
+        "contacts": 1000,
+        "length_m": 0.01513444513826663,
+        "vertices": 20057,
+        "faces": 38788,
+        "f5": 0.7537083679991883,
+        "symmetric_mean_mm": 7.490399048376722
+      },
+      "abs_f5_difference": 0.0,
+      "geometry": {
+        "p95_mm": 0.0,
+        "max_mm": 5.9604644775390625e-05,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "95e1d1d0a11db1db2257745dad703c9d11fe8144c84ce06f33a0a7f5de61b4f7",
+      "cuda_mesh_sha256": "f628f8c4371269a7cb418c028fa1ae57fe584e8ba7345c396d106144939a7e15"
+    },
+    {
+      "obj": "mustard",
+      "arm": "native-aude",
+      "sim_s": 600,
+      "order": [
+        "cuda",
+        "cpu"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 12.541740900021978,
+        "read_and_select_s": 0.07815159996971488,
+        "posterior_and_surface_s": 12.45325760007836,
+        "ply_write_s": 0.010331699973903596,
+        "contacts": 1000,
+        "length_m": 0.02595370021789844,
+        "vertices": 24097,
+        "faces": 47189,
+        "f5": 0.8582390451269338,
+        "symmetric_mean_mm": 5.171849846969981
+      },
+      "cuda": {
+        "total_s": 1.126979999942705,
+        "read_and_select_s": 0.0790745000122115,
+        "posterior_and_surface_s": 1.0460212000180036,
+        "ply_write_s": 0.0018842999124899507,
+        "contacts": 1000,
+        "length_m": 0.02595370021789844,
+        "vertices": 24097,
+        "faces": 47189,
+        "f5": 0.8582390451269338,
+        "symmetric_mean_mm": 5.171849856219102
+      },
+      "abs_f5_difference": 0.0,
+      "geometry": {
+        "p95_mm": 0.0,
+        "max_mm": 5.9604644775390625e-05,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "c7778f2d34e84edd21b9e381df7c3af946276698781e4ada9ed2ae9a6fc10a26",
+      "cuda_mesh_sha256": "c9355d182ea0360c52b30aed238d24fe6255ee50e2c973d66a0aaf08f3812060"
+    },
+    {
+      "obj": "cracker",
+      "arm": "wrist-dp",
+      "sim_s": 60,
+      "order": [
+        "cpu",
+        "cuda"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 11.396603900007904,
+        "read_and_select_s": 0.05652489990461618,
+        "posterior_and_surface_s": 11.329353700042702,
+        "ply_write_s": 0.010725300060585141,
+        "contacts": 1000,
+        "length_m": 0.016629913062365786,
+        "vertices": 19546,
+        "faces": 37150,
+        "f5": 0.8240714656424413,
+        "symmetric_mean_mm": 3.5485155660054613
+      },
+      "cuda": {
+        "total_s": 0.704226000001654,
+        "read_and_select_s": 0.056184499990195036,
+        "posterior_and_surface_s": 0.6465113000012934,
+        "ply_write_s": 0.0015302000101655722,
+        "contacts": 1000,
+        "length_m": 0.016629913062365786,
+        "vertices": 19546,
+        "faces": 37150,
+        "f5": 0.8240714656424413,
+        "symmetric_mean_mm": 3.548515582792489
+      },
+      "abs_f5_difference": 0.0,
+      "geometry": {
+        "p95_mm": 1.2417634351336027e-06,
+        "max_mm": 0.00016391277313232422,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "1abaea3a1ec22c76568bbcd34895992116a3ed155bc7ce218794ba2d058c5adb",
+      "cuda_mesh_sha256": "dd60b008cb9b5326d7daf206293fb6f7ab1aa8557279ac0de995aa8faeeb7be4"
+    },
+    {
+      "obj": "cracker",
+      "arm": "wrist-dp",
+      "sim_s": 120,
+      "order": [
+        "cuda",
+        "cpu"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 12.881031300057657,
+        "read_and_select_s": 0.07436299999244511,
+        "posterior_and_surface_s": 12.804755400051363,
+        "ply_write_s": 0.0019129000138491392,
+        "contacts": 1000,
+        "length_m": 0.024641227692073733,
+        "vertices": 22259,
+        "faces": 42931,
+        "f5": 0.8879004856125212,
+        "symmetric_mean_mm": 2.581813393738951
+      },
+      "cuda": {
+        "total_s": 0.7547042000805959,
+        "read_and_select_s": 0.07656720001250505,
+        "posterior_and_surface_s": 0.667506100027822,
+        "ply_write_s": 0.010630900040268898,
+        "contacts": 1000,
+        "length_m": 0.024641227692073733,
+        "vertices": 22259,
+        "faces": 42931,
+        "f5": 0.8879004856125212,
+        "symmetric_mean_mm": 2.5818134004525146
+      },
+      "abs_f5_difference": 0.0,
+      "geometry": {
+        "p95_mm": 1.862645149230957e-06,
+        "max_mm": 0.0002384185791015625,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "2cec1a96066c287b136fa13b846773089e4a5a0ced8d4a7c6ea24c0ff7f95df8",
+      "cuda_mesh_sha256": "5ac06b68d77bd797adf1afcb4c959501bb09934bace8e0438172d3a626f9a40f"
+    },
+    {
+      "obj": "cracker",
+      "arm": "wrist-dp",
+      "sim_s": 240,
+      "order": [
+        "cpu",
+        "cuda"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 14.271892699995078,
+        "read_and_select_s": 0.10033449996262789,
+        "posterior_and_surface_s": 14.169805799960159,
+        "ply_write_s": 0.0017524000722914934,
+        "contacts": 1000,
+        "length_m": 0.03264249783113636,
+        "vertices": 23529,
+        "faces": 46460,
+        "f5": 0.9757026032058377,
+        "symmetric_mean_mm": 1.7317757654508608
+      },
+      "cuda": {
+        "total_s": 0.8111466999398544,
+        "read_and_select_s": 0.10109350003767759,
+        "posterior_and_surface_s": 0.6988895999966189,
+        "ply_write_s": 0.01116359990555793,
+        "contacts": 1000,
+        "length_m": 0.03264249783113636,
+        "vertices": 23529,
+        "faces": 46460,
+        "f5": 0.9757026032058377,
+        "symmetric_mean_mm": 1.731785673950084
+      },
+      "abs_f5_difference": 0.0,
+      "geometry": {
+        "p95_mm": 3.725290298461914e-06,
+        "max_mm": 7.450580596923828e-05,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "e595a231427c62867b0caa85ab60e5bc8b1800197741a4e5a8eb44cb420a4c54",
+      "cuda_mesh_sha256": "484d548295da7f60a8bf48dbdc6d58221c6e6bc381bfb1651d15bc8efd689b56"
+    },
+    {
+      "obj": "cracker",
+      "arm": "wrist-dp",
+      "sim_s": 600,
+      "order": [
+        "cuda",
+        "cpu"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 14.194860300049186,
+        "read_and_select_s": 0.15695580001920462,
+        "posterior_and_surface_s": 14.036357300006784,
+        "ply_write_s": 0.0015472000231966376,
+        "contacts": 1000,
+        "length_m": 0.03732174390277133,
+        "vertices": 23256,
+        "faces": 46204,
+        "f5": 0.9982799322835276,
+        "symmetric_mean_mm": 1.5260171601162753
+      },
+      "cuda": {
+        "total_s": 0.8504570999648422,
+        "read_and_select_s": 0.15729740005917847,
+        "posterior_and_surface_s": 0.6915212000021711,
+        "ply_write_s": 0.0016384999034926295,
+        "contacts": 1000,
+        "length_m": 0.03732174390277133,
+        "vertices": 23256,
+        "faces": 46204,
+        "f5": 0.9982899269751274,
+        "symmetric_mean_mm": 1.526028564514304
+      },
+      "abs_f5_difference": 9.994691599790606e-06,
+      "geometry": {
+        "p95_mm": 4.967053733595517e-06,
+        "max_mm": 0.0006854534149169922,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "d7daebe145e15f0a57ab199ab659accc1f2d98109f6039bf611c7752cec00a1f",
+      "cuda_mesh_sha256": "d9d80a138b4cbdfab65c0d09760868f70c98e86eea2ef41f084d27908c6f372b"
+    },
+    {
+      "obj": "cracker",
+      "arm": "native-aude",
+      "sim_s": 60,
+      "order": [
+        "cuda",
+        "cpu"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 3.7766435999656096,
+        "read_and_select_s": 0.03244290000293404,
+        "posterior_and_surface_s": 3.742913799942471,
+        "ply_write_s": 0.0012869000202044845,
+        "contacts": 628,
+        "length_m": 0.01,
+        "vertices": 9905,
+        "faces": 18602,
+        "f5": 0.5590610946660405,
+        "symmetric_mean_mm": 16.313727803196468
+      },
+      "cuda": {
+        "total_s": 0.444059900008142,
+        "read_and_select_s": 0.03210159996524453,
+        "posterior_and_surface_s": 0.4005558000644669,
+        "ply_write_s": 0.01140249997843057,
+        "contacts": 628,
+        "length_m": 0.01,
+        "vertices": 9905,
+        "faces": 18602,
+        "f5": 0.5590610946660405,
+        "symmetric_mean_mm": 16.313727801157242
+      },
+      "abs_f5_difference": 0.0,
+      "geometry": {
+        "p95_mm": 0.0,
+        "max_mm": 2.9802322387695312e-05,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "f91fca21d2180624df034753f8d0fb60e9291cb1ae1417d3a6d9ae722445ee45",
+      "cuda_mesh_sha256": "c17c8cced0726f38a085422357cd7575c091c6f1e7166831c7effe59ae20914e"
+    },
+    {
+      "obj": "cracker",
+      "arm": "native-aude",
+      "sim_s": 120,
+      "order": [
+        "cpu",
+        "cuda"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 10.342804900021292,
+        "read_and_select_s": 0.05754389998037368,
+        "posterior_and_surface_s": 10.283807200030424,
+        "ply_write_s": 0.0014538000104948878,
+        "contacts": 1000,
+        "length_m": 0.016427793170677427,
+        "vertices": 17386,
+        "faces": 33737,
+        "f5": 0.7911237831967618,
+        "symmetric_mean_mm": 7.022022385112699
+      },
+      "cuda": {
+        "total_s": 0.6645650999853387,
+        "read_and_select_s": 0.057578900014050305,
+        "posterior_and_surface_s": 0.6056350000435486,
+        "ply_write_s": 0.001351199927739799,
+        "contacts": 1000,
+        "length_m": 0.016427793170677427,
+        "vertices": 17386,
+        "faces": 33737,
+        "f5": 0.7911237831967618,
+        "symmetric_mean_mm": 7.022022392892964
+      },
+      "abs_f5_difference": 0.0,
+      "geometry": {
+        "p95_mm": 0.0,
+        "max_mm": 5.9604644775390625e-05,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "7bbfba1f7594b8db3f002230da962bee761b4a13c2b1515351e21bc9e52588db",
+      "cuda_mesh_sha256": "7ebb4cd41064a6be8cd37ed91b565a9a91e864168aca165cd6f61fefe53ece84"
+    },
+    {
+      "obj": "cracker",
+      "arm": "native-aude",
+      "sim_s": 240,
+      "order": [
+        "cuda",
+        "cpu"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 13.66234469995834,
+        "read_and_select_s": 0.09055209998041391,
+        "posterior_and_surface_s": 13.57025310001336,
+        "ply_write_s": 0.0015394999645650387,
+        "contacts": 1000,
+        "length_m": 0.03027390093292507,
+        "vertices": 23027,
+        "faces": 45434,
+        "f5": 0.9762072171178645,
+        "symmetric_mean_mm": 1.760960052580109
+      },
+      "cuda": {
+        "total_s": 0.7634782999521121,
+        "read_and_select_s": 0.09080389991868287,
+        "posterior_and_surface_s": 0.6712054000236094,
+        "ply_write_s": 0.0014690000098198652,
+        "contacts": 1000,
+        "length_m": 0.03027390093292507,
+        "vertices": 23027,
+        "faces": 45434,
+        "f5": 0.9762072171178645,
+        "symmetric_mean_mm": 1.7609604467725835
+      },
+      "abs_f5_difference": 0.0,
+      "geometry": {
+        "p95_mm": 1.2417634351336027e-06,
+        "max_mm": 7.450580596923828e-05,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "6342b0092fd823b947c04952b6d2cba67720b515b7a43e6baf0a365eb8088bf5",
+      "cuda_mesh_sha256": "7cdbe5d7dc11c7f9521952f5e277afe09e480ce4930afb9c74fbf61a64a35dce"
+    },
+    {
+      "obj": "cracker",
+      "arm": "native-aude",
+      "sim_s": 600,
+      "order": [
+        "cpu",
+        "cuda"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 14.086781000019982,
+        "read_and_select_s": 0.1640212000347674,
+        "posterior_and_surface_s": 13.9189871000126,
+        "ply_write_s": 0.003772699972614646,
+        "contacts": 1000,
+        "length_m": 0.03701408024522755,
+        "vertices": 22721,
+        "faces": 45125,
+        "f5": 0.9992899774840136,
+        "symmetric_mean_mm": 1.4874582040184792
+      },
+      "cuda": {
+        "total_s": 0.8612104000058025,
+        "read_and_select_s": 0.16599760006647557,
+        "posterior_and_surface_s": 0.6934449999826029,
+        "ply_write_s": 0.0017677999567240477,
+        "contacts": 1000,
+        "length_m": 0.03701408024522755,
+        "vertices": 22721,
+        "faces": 45125,
+        "f5": 0.9992899774840136,
+        "symmetric_mean_mm": 1.487505299245345
+      },
+      "abs_f5_difference": 0.0,
+      "geometry": {
+        "p95_mm": 7.450580596923828e-06,
+        "max_mm": 0.00028312206268310547,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "43a30dce773471d015f9ee6cbcf3ebef49f810e405b82c4e9abf103c4b199daf",
+      "cuda_mesh_sha256": "34a5221eaa2ca74e05a486f4197bdca58b534e9a8945e72966fb6585fba03d1b"
+    },
+    {
+      "obj": "bleach",
+      "arm": "wrist-dp",
+      "sim_s": 60,
+      "order": [
+        "cuda",
+        "cpu"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 9.328083399916068,
+        "read_and_select_s": 0.053742599906399846,
+        "posterior_and_surface_s": 9.272976600099355,
+        "ply_write_s": 0.001364199910312891,
+        "contacts": 1000,
+        "length_m": 0.015292435160999792,
+        "vertices": 16583,
+        "faces": 32132,
+        "f5": 0.7941439496493963,
+        "symmetric_mean_mm": 6.956706307898785
+      },
+      "cuda": {
+        "total_s": 0.7472637000028044,
+        "read_and_select_s": 0.05508289998397231,
+        "posterior_and_surface_s": 0.6905982999596745,
+        "ply_write_s": 0.00158250005915761,
+        "contacts": 1000,
+        "length_m": 0.015292435160999792,
+        "vertices": 16583,
+        "faces": 32132,
+        "f5": 0.7941439496493963,
+        "symmetric_mean_mm": 6.956706308467185
+      },
+      "abs_f5_difference": 0.0,
+      "geometry": {
+        "p95_mm": 0.0,
+        "max_mm": 5.9604644775390625e-05,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "deda83c52fe95bb3eb20c669eb5a0e64cb03de0d4e939aad14772b3aad7a5e53",
+      "cuda_mesh_sha256": "e3fad03e1711571f23ed845083982451d4da9d636792de9beb25dc49756155b9"
+    },
+    {
+      "obj": "bleach",
+      "arm": "wrist-dp",
+      "sim_s": 120,
+      "order": [
+        "cpu",
+        "cuda"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 10.187805099994875,
+        "read_and_select_s": 0.0673841000534594,
+        "posterior_and_surface_s": 10.118869500001892,
+        "ply_write_s": 0.0015514999395236373,
+        "contacts": 1000,
+        "length_m": 0.02032288731122294,
+        "vertices": 18227,
+        "faces": 35520,
+        "f5": 0.8492712163038444,
+        "symmetric_mean_mm": 5.120008241329775
+      },
+      "cuda": {
+        "total_s": 0.8398715999210253,
+        "read_and_select_s": 0.06795459997374564,
+        "posterior_and_surface_s": 0.7704364999663085,
+        "ply_write_s": 0.0014804999809712172,
+        "contacts": 1000,
+        "length_m": 0.02032288731122294,
+        "vertices": 18227,
+        "faces": 35520,
+        "f5": 0.8492712163038444,
+        "symmetric_mean_mm": 5.120008244553469
+      },
+      "abs_f5_difference": 0.0,
+      "geometry": {
+        "p95_mm": 0.0,
+        "max_mm": 5.9604644775390625e-05,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "dfa38abf9d75e852edfccd2586f6cb5dc700e7c573d8bca69ef4f47456072c00",
+      "cuda_mesh_sha256": "a6d342b607c9d8584f92230ddbbec73c5a0091211cc9721e4d762a41423fbdbc"
+    },
+    {
+      "obj": "bleach",
+      "arm": "wrist-dp",
+      "sim_s": 240,
+      "order": [
+        "cuda",
+        "cpu"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 13.024428499978967,
+        "read_and_select_s": 0.09001069993246347,
+        "posterior_and_surface_s": 12.932932000025176,
+        "ply_write_s": 0.001485800021328032,
+        "contacts": 1000,
+        "length_m": 0.02942610389818923,
+        "vertices": 23659,
+        "faces": 46905,
+        "f5": 0.9583358512536388,
+        "symmetric_mean_mm": 1.8044014636451737
+      },
+      "cuda": {
+        "total_s": 0.9346287000225857,
+        "read_and_select_s": 0.09200860001146793,
+        "posterior_and_surface_s": 0.8317967000184581,
+        "ply_write_s": 0.010823399992659688,
+        "contacts": 1000,
+        "length_m": 0.02942610389818923,
+        "vertices": 23659,
+        "faces": 46905,
+        "f5": 0.9583358512536388,
+        "symmetric_mean_mm": 1.8044201852685733
+      },
+      "abs_f5_difference": 0.0,
+      "geometry": {
+        "p95_mm": 0.0,
+        "max_mm": 5.9604644775390625e-05,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "f92e372d60328dea0480e25179814dd860bb05f282b1bcdad122cf1f84636a3c",
+      "cuda_mesh_sha256": "4ba10666743f68f9c8d05c9332c7dd9850de385b376b45cb7c37f99dffb5bd27"
+    },
+    {
+      "obj": "bleach",
+      "arm": "wrist-dp",
+      "sim_s": 600,
+      "order": [
+        "cpu",
+        "cuda"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 13.463399200001732,
+        "read_and_select_s": 0.1539170000469312,
+        "posterior_and_surface_s": 13.307825699914247,
+        "ply_write_s": 0.0016565000405535102,
+        "contacts": 1000,
+        "length_m": 0.03526975846440549,
+        "vertices": 23474,
+        "faces": 46888,
+        "f5": 0.9911218048086528,
+        "symmetric_mean_mm": 1.5521256643126935
+      },
+      "cuda": {
+        "total_s": 1.009024899918586,
+        "read_and_select_s": 0.1531290999846533,
+        "posterior_and_surface_s": 0.8456605999963358,
+        "ply_write_s": 0.010235199937596917,
+        "contacts": 1000,
+        "length_m": 0.03526975846440549,
+        "vertices": 23474,
+        "faces": 46888,
+        "f5": 0.9911218048086528,
+        "symmetric_mean_mm": 1.5520995617910733
+      },
+      "abs_f5_difference": 0.0,
+      "geometry": {
+        "p95_mm": 3.725290298461914e-06,
+        "max_mm": 0.00010803341865539551,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "903c2509ee8f10a27bcfac481acc7dccca0724ac9e655b4ae413ec1b342b42ff",
+      "cuda_mesh_sha256": "1aeb8a514e596b93ebe1900c835cc44a302d53fa47fe55759756478869ca76a7"
+    },
+    {
+      "obj": "bleach",
+      "arm": "native-aude",
+      "sim_s": 60,
+      "order": [
+        "cpu",
+        "cuda"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 7.176852599950507,
+        "read_and_select_s": 0.049991299980320036,
+        "posterior_and_surface_s": 7.125689700013027,
+        "ply_write_s": 0.0011715999571606517,
+        "contacts": 1000,
+        "length_m": 0.01,
+        "vertices": 12488,
+        "faces": 24162,
+        "f5": 0.6866404150757647,
+        "symmetric_mean_mm": 20.516277385477103
+      },
+      "cuda": {
+        "total_s": 0.5903375999769196,
+        "read_and_select_s": 0.05231219995766878,
+        "posterior_and_surface_s": 0.5358106000348926,
+        "ply_write_s": 0.002214799984358251,
+        "contacts": 1000,
+        "length_m": 0.01,
+        "vertices": 12488,
+        "faces": 24162,
+        "f5": 0.6866404150757647,
+        "symmetric_mean_mm": 20.516277385339066
+      },
+      "abs_f5_difference": 0.0,
+      "geometry": {
+        "p95_mm": 0.0,
+        "max_mm": 2.9802322387695312e-05,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "c8f31d4c9ea147c2166fff8d575f1bfdceeab3f326d3fe834e9a5de1f834c79c",
+      "cuda_mesh_sha256": "3702fa462bce3234dd925ab1e866c50d2cc9252e0bcb23ec39242497eb539a40"
+    },
+    {
+      "obj": "bleach",
+      "arm": "native-aude",
+      "sim_s": 120,
+      "order": [
+        "cuda",
+        "cpu"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 9.331545499968342,
+        "read_and_select_s": 0.06829649989958853,
+        "posterior_and_surface_s": 9.260861700051464,
+        "ply_write_s": 0.0023873000172898173,
+        "contacts": 1000,
+        "length_m": 0.019578454694336278,
+        "vertices": 16072,
+        "faces": 31648,
+        "f5": 0.8237625205905572,
+        "symmetric_mean_mm": 13.821711491821286
+      },
+      "cuda": {
+        "total_s": 0.6719723000423983,
+        "read_and_select_s": 0.06946739996783435,
+        "posterior_and_surface_s": 0.6011216000188142,
+        "ply_write_s": 0.0013833000557497144,
+        "contacts": 1000,
+        "length_m": 0.019578454694336278,
+        "vertices": 16072,
+        "faces": 31648,
+        "f5": 0.8237625205905572,
+        "symmetric_mean_mm": 13.821711495641214
+      },
+      "abs_f5_difference": 0.0,
+      "geometry": {
+        "p95_mm": 0.0,
+        "max_mm": 2.9802322387695312e-05,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "0152a5c1bbb6ce83822fc56bb869228a8e42d77245933fbf6e30f98c4f5afdab",
+      "cuda_mesh_sha256": "90d0e925712fb62948e31ec94b46adb3df53d63523ef342e52b2ed684f2a4d34"
+    },
+    {
+      "obj": "bleach",
+      "arm": "native-aude",
+      "sim_s": 240,
+      "order": [
+        "cpu",
+        "cuda"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 13.13449570001103,
+        "read_and_select_s": 0.10067610000260174,
+        "posterior_and_surface_s": 13.03213099995628,
+        "ply_write_s": 0.0016886000521481037,
+        "contacts": 1000,
+        "length_m": 0.030079680343875207,
+        "vertices": 23668,
+        "faces": 47041,
+        "f5": 0.984890432628362,
+        "symmetric_mean_mm": 1.6125647495182232
+      },
+      "cuda": {
+        "total_s": 0.9399037000257522,
+        "read_and_select_s": 0.09699400002136827,
+        "posterior_and_surface_s": 0.8414601000258699,
+        "ply_write_s": 0.0014495999785140157,
+        "contacts": 1000,
+        "length_m": 0.030079680343875207,
+        "vertices": 23668,
+        "faces": 47041,
+        "f5": 0.984890432628362,
+        "symmetric_mean_mm": 1.6125616381287058
+      },
+      "abs_f5_difference": 0.0,
+      "geometry": {
+        "p95_mm": 2.4835268633283114e-06,
+        "max_mm": 0.0003948807716369629,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "e2cd16b4d906a876f40574d1738289d0bf32c97daa0fc7ce0c5096a10ac1e523",
+      "cuda_mesh_sha256": "a7c1a51ea22d6493e7d339e41af19e76b0dd30730f83acc347aaf25d25ab793d"
+    },
+    {
+      "obj": "bleach",
+      "arm": "native-aude",
+      "sim_s": 600,
+      "order": [
+        "cuda",
+        "cpu"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 13.365766700007953,
+        "read_and_select_s": 0.1582415000302717,
+        "posterior_and_surface_s": 13.206139800022356,
+        "ply_write_s": 0.0013853999553248286,
+        "contacts": 1000,
+        "length_m": 0.034803235455563415,
+        "vertices": 23320,
+        "faces": 46584,
+        "f5": 0.9924932932997481,
+        "symmetric_mean_mm": 1.5364853083743464
+      },
+      "cuda": {
+        "total_s": 0.9959603999741375,
+        "read_and_select_s": 0.15531020006164908,
+        "posterior_and_surface_s": 0.8390762999188155,
+        "ply_write_s": 0.001573899993672967,
+        "contacts": 1000,
+        "length_m": 0.034803235455563415,
+        "vertices": 23320,
+        "faces": 46584,
+        "f5": 0.9924932932997481,
+        "symmetric_mean_mm": 1.536518548209251
+      },
+      "abs_f5_difference": 0.0,
+      "geometry": {
+        "p95_mm": 4.967053726656623e-06,
+        "max_mm": 8.195638656616211e-05,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "849c5bf47659c5bb6c54b7322b13194f9164ac1f2fe627a6852c045cd74f8b14",
+      "cuda_mesh_sha256": "6b6ff35cc11b30e7eea84e61083902380eccfc972404ddc036691c5501e5e998"
+    },
+    {
+      "obj": "coffee",
+      "arm": "wrist-dp",
+      "sim_s": 60,
+      "order": [
+        "cpu",
+        "cuda"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 14.872187800006941,
+        "read_and_select_s": 0.0628904999466613,
+        "posterior_and_surface_s": 14.807698499993421,
+        "ply_write_s": 0.00159880006685853,
+        "contacts": 1000,
+        "length_m": 0.02361534088649312,
+        "vertices": 28016,
+        "faces": 53928,
+        "f5": 0.8341045318498971,
+        "symmetric_mean_mm": 4.089789515562744
+      },
+      "cuda": {
+        "total_s": 1.1596708000870422,
+        "read_and_select_s": 0.06471910001710057,
+        "posterior_and_surface_s": 1.0934552999679,
+        "ply_write_s": 0.0014964001020416617,
+        "contacts": 1000,
+        "length_m": 0.02361534088649312,
+        "vertices": 28016,
+        "faces": 53928,
+        "f5": 0.8341045318498971,
+        "symmetric_mean_mm": 4.089789514413692
+      },
+      "abs_f5_difference": 0.0,
+      "geometry": {
+        "p95_mm": 0.0,
+        "max_mm": 2.9802322387695312e-05,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "54d021085f6efac67da467b69aed096fd018d0936065bf62af303617a694abb4",
+      "cuda_mesh_sha256": "e226d039f28f9edfbb710b3fa44f045d274ee56105dfbcde113214a2046a9ea3"
+    },
+    {
+      "obj": "coffee",
+      "arm": "wrist-dp",
+      "sim_s": 120,
+      "order": [
+        "cuda",
+        "cpu"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 15.547852399991825,
+        "read_and_select_s": 0.07915820006746799,
+        "posterior_and_surface_s": 15.466836599982344,
+        "ply_write_s": 0.0018575999420136213,
+        "contacts": 1000,
+        "length_m": 0.029457303529735756,
+        "vertices": 29894,
+        "faces": 58207,
+        "f5": 0.8694907878510029,
+        "symmetric_mean_mm": 3.2059304934309996
+      },
+      "cuda": {
+        "total_s": 1.1564613000955433,
+        "read_and_select_s": 0.07914750010240823,
+        "posterior_and_surface_s": 1.0754154999740422,
+        "ply_write_s": 0.0018983000190928578,
+        "contacts": 1000,
+        "length_m": 0.029457303529735756,
+        "vertices": 29894,
+        "faces": 58207,
+        "f5": 0.8694907878510029,
+        "symmetric_mean_mm": 3.205909663154854
+      },
+      "abs_f5_difference": 0.0,
+      "geometry": {
+        "p95_mm": 1.2417634281947088e-06,
+        "max_mm": 5.9604644775390625e-05,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "0c30eb9ae46731f7bb5b3f4a2d30a412650efd04d4fd1d057e187468468641b3",
+      "cuda_mesh_sha256": "4f7c2a5364809015317f815fc6b5355e29999d9034394b95cd97edfdb2a3ed14"
+    },
+    {
+      "obj": "coffee",
+      "arm": "wrist-dp",
+      "sim_s": 240,
+      "order": [
+        "cpu",
+        "cuda"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 16.848867399967276,
+        "read_and_select_s": 0.10623849998228252,
+        "posterior_and_surface_s": 16.73238009994384,
+        "ply_write_s": 0.010248800041154027,
+        "contacts": 1000,
+        "length_m": 0.03681125810071393,
+        "vertices": 32141,
+        "faces": 63276,
+        "f5": 0.9372068497300988,
+        "symmetric_mean_mm": 2.1695560009799633
+      },
+      "cuda": {
+        "total_s": 1.2015464999713004,
+        "read_and_select_s": 0.10682129999622703,
+        "posterior_and_surface_s": 1.0927096999948844,
+        "ply_write_s": 0.002015499980188906,
+        "contacts": 1000,
+        "length_m": 0.03681125810071393,
+        "vertices": 32141,
+        "faces": 63276,
+        "f5": 0.9372068497300988,
+        "symmetric_mean_mm": 2.1695911899126212
+      },
+      "abs_f5_difference": 0.0,
+      "geometry": {
+        "p95_mm": 1.2417634281947088e-06,
+        "max_mm": 0.0008493661880493164,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "615ce2f5b6a0e4cf8a462e15be9eaa93ebeb9c592b31ce0a6142d6dd365e3bed",
+      "cuda_mesh_sha256": "dc6af63a744bd1bd8e62fc8322a99d931d90ce7fcd164497fba708c4619d41b2"
+    },
+    {
+      "obj": "coffee",
+      "arm": "wrist-dp",
+      "sim_s": 600,
+      "order": [
+        "cuda",
+        "cpu"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 17.33101889991667,
+        "read_and_select_s": 0.1922842999920249,
+        "posterior_and_surface_s": 17.136672399938107,
+        "ply_write_s": 0.002062199986539781,
+        "contacts": 1000,
+        "length_m": 0.04258722135611972,
+        "vertices": 32016,
+        "faces": 63571,
+        "f5": 0.9713965078646133,
+        "symmetric_mean_mm": 1.9552365386473487
+      },
+      "cuda": {
+        "total_s": 1.2886441999580711,
+        "read_and_select_s": 0.18634949997067451,
+        "posterior_and_surface_s": 1.1002986000385135,
+        "ply_write_s": 0.0019960999488830566,
+        "contacts": 1000,
+        "length_m": 0.04258722135611972,
+        "vertices": 32016,
+        "faces": 63571,
+        "f5": 0.9713965078646133,
+        "symmetric_mean_mm": 1.955247850846705
+      },
+      "abs_f5_difference": 0.0,
+      "geometry": {
+        "p95_mm": 2.4835268563894175e-06,
+        "max_mm": 0.00011920928955078125,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "ce91f23bd984f031d8ba1756e894c6b7301a9e77bf4a8a9dcd5059fd3634414a",
+      "cuda_mesh_sha256": "46d8f049f5c584c856d588483241bf05f962d945ed970820db0ea276fc285a9d"
+    },
+    {
+      "obj": "coffee",
+      "arm": "native-aude",
+      "sim_s": 60,
+      "order": [
+        "cuda",
+        "cpu"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 10.25611099996604,
+        "read_and_select_s": 0.05978110001888126,
+        "posterior_and_surface_s": 10.194002600037493,
+        "ply_write_s": 0.0023272999096661806,
+        "contacts": 1000,
+        "length_m": 0.014000315158607095,
+        "vertices": 18639,
+        "faces": 36116,
+        "f5": 0.7233150168901628,
+        "symmetric_mean_mm": 10.610765701985843
+      },
+      "cuda": {
+        "total_s": 1.004326599999331,
+        "read_and_select_s": 0.05796360003296286,
+        "posterior_and_surface_s": 0.9449551999568939,
+        "ply_write_s": 0.0014078000094741583,
+        "contacts": 1000,
+        "length_m": 0.014000315158607095,
+        "vertices": 18639,
+        "faces": 36116,
+        "f5": 0.7233150168901628,
+        "symmetric_mean_mm": 10.61076570149513
+      },
+      "abs_f5_difference": 0.0,
+      "geometry": {
+        "p95_mm": 0.0,
+        "max_mm": 2.9802322387695312e-05,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "b57f39abe2f4d1246d11878cc6b21584677df50d876ebe8bcc09ff02bfa90c12",
+      "cuda_mesh_sha256": "25b19dedd938f75159fa4b4cba3672314a6eb10f342f6e49109993778ca3fa06"
+    },
+    {
+      "obj": "coffee",
+      "arm": "native-aude",
+      "sim_s": 120,
+      "order": [
+        "cpu",
+        "cuda"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 12.560472700046375,
+        "read_and_select_s": 0.078330900054425,
+        "posterior_and_surface_s": 12.480535399983637,
+        "ply_write_s": 0.0016064000083133578,
+        "contacts": 1000,
+        "length_m": 0.023341015916476755,
+        "vertices": 23296,
+        "faces": 45450,
+        "f5": 0.7702765525810459,
+        "symmetric_mean_mm": 8.731239272529681
+      },
+      "cuda": {
+        "total_s": 1.141851200023666,
+        "read_and_select_s": 0.07758439995814115,
+        "posterior_and_surface_s": 1.0624316000612453,
+        "ply_write_s": 0.0018352000042796135,
+        "contacts": 1000,
+        "length_m": 0.023341015916476755,
+        "vertices": 23296,
+        "faces": 45450,
+        "f5": 0.7702765525810459,
+        "symmetric_mean_mm": 8.731223408318444
+      },
+      "abs_f5_difference": 0.0,
+      "geometry": {
+        "p95_mm": 0.0,
+        "max_mm": 2.9802322387695312e-05,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "bad7269dc8fe0fe9cec94015fa1605d29271a6f96d7721efe7bc4c4ad8027ba8",
+      "cuda_mesh_sha256": "8532f463f11973151a1b5de510163604ca4a0d6cc7a6ee01a4f6685b0bab81fe"
+    },
+    {
+      "obj": "coffee",
+      "arm": "native-aude",
+      "sim_s": 240,
+      "order": [
+        "cuda",
+        "cpu"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 17.005537300021388,
+        "read_and_select_s": 0.11017790006007999,
+        "posterior_and_surface_s": 16.893082999973558,
+        "ply_write_s": 0.0022763999877497554,
+        "contacts": 1000,
+        "length_m": 0.03604312329283021,
+        "vertices": 32543,
+        "faces": 64208,
+        "f5": 0.9359211094135621,
+        "symmetric_mean_mm": 2.268524840347329
+      },
+      "cuda": {
+        "total_s": 1.2185352999949828,
+        "read_and_select_s": 0.11624230002053082,
+        "posterior_and_surface_s": 1.1003976999782026,
+        "ply_write_s": 0.0018952999962493777,
+        "contacts": 1000,
+        "length_m": 0.03604312329283021,
+        "vertices": 32543,
+        "faces": 64208,
+        "f5": 0.9359112801555588,
+        "symmetric_mean_mm": 2.2685405626913573
+      },
+      "abs_f5_difference": 9.829258003302144e-06,
+      "geometry": {
+        "p95_mm": 2.4835268633283114e-06,
+        "max_mm": 8.940696716308594e-05,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "ad6e4755cf506af7ebe286b007bf30889817208127a5290efeeb1cecb54fa62b",
+      "cuda_mesh_sha256": "e33817259d77b8bb73695285fd492c0622188da12fce0a4b744ac6d0bec87960"
+    },
+    {
+      "obj": "coffee",
+      "arm": "native-aude",
+      "sim_s": 600,
+      "order": [
+        "cpu",
+        "cuda"
+      ],
+      "protocol_sha256": "e8c40a4440f297b3b4d92ec24aa284a577eb8bbe21093d163a81d5ee8a7c7917",
+      "cpu": {
+        "total_s": 17.30653770000208,
+        "read_and_select_s": 0.20714309997856617,
+        "posterior_and_surface_s": 17.09747239993885,
+        "ply_write_s": 0.0019222000846639276,
+        "contacts": 1000,
+        "length_m": 0.041973164163937905,
+        "vertices": 31948,
+        "faces": 63315,
+        "f5": 0.9712193946008276,
+        "symmetric_mean_mm": 1.9406714365033735
+      },
+      "cuda": {
+        "total_s": 1.325250900001265,
+        "read_and_select_s": 0.20860110002104193,
+        "posterior_and_surface_s": 1.114814699976705,
+        "ply_write_s": 0.0018351000035181642,
+        "contacts": 1000,
+        "length_m": 0.041973164163937905,
+        "vertices": 31948,
+        "faces": 63315,
+        "f5": 0.9712193946008276,
+        "symmetric_mean_mm": 1.9407710251627852
+      },
+      "abs_f5_difference": 0.0,
+      "geometry": {
+        "p95_mm": 4.967053733595517e-06,
+        "max_mm": 0.00019371509552001953,
+        "same_faces": true
+      },
+      "cpu_mesh_sha256": "b7d6849653aa1caeb6bbc72f7f83dd3171ebcd889ee571deffc0c70b5c4d8191",
+      "cuda_mesh_sha256": "c24d1e40c7e8b6dea8b579c32e806cbc2ed2fc45a5c4760dbf7e5a5d3a00f0a8"
+    }
+  ]
+}
