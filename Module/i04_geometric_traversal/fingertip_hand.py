@@ -43,7 +43,8 @@ def reference_grasp():
     return position, frame * rotation(pose[3:]), np.array(seed['q_hand_rad'])
 
 
-def build_model(*, surface=SURFACE, collision_parts=None, object_name='mustard', model_name='I04-c'):
+def build_model(*, surface=SURFACE, collision_parts=None, object_name='mustard', model_name='I04-c',
+                wrist_time_constant_s=.004, palm_proximity_m=.0025):
     xml = ET.parse(HAND).getroot()
     xml.set('model', model_name)
     xml.find('compiler').set('usethread', 'false')
@@ -59,7 +60,7 @@ def build_model(*, surface=SURFACE, collision_parts=None, object_name='mustard',
     world.append(ET.Element('body', name='palm_target', mocap='true'))
     eq = ET.SubElement(xml, 'equality')
     ET.SubElement(eq, 'weld', name='palm_tracking', body1='palm_target', body2='palm_lower',
-                  relpose='0 0 0 1 0 0 0', torquescale='1', solref='0.004 1',
+                  relpose='0 0 0 1 0 0 0', torquescale='1', solref=f'{wrist_time_constant_s:g} 1',
                   solimp='0.995 0.999 0.001')
     files = {}
     for mesh in assets.findall('mesh'):
@@ -79,14 +80,17 @@ def build_model(*, surface=SURFACE, collision_parts=None, object_name='mustard',
         ET.SubElement(obj, 'geom', name=name, type='mesh', mesh=name, group='3',
                       rgba='0 0 0 0', contype='2', conaffinity='1', density='0',
                       friction='0.9 0.01 0.001', solref='0.028 1', solimp='0.90 0.95 0.001')
-    files[surface.name] = surface.read_bytes()
-    ET.SubElement(assets, 'mesh', name='bottle_surface', file=surface.name)
-    ET.SubElement(obj, 'geom', name='bottle_visual', type='mesh', mesh='bottle_surface',
-                  contype='0', conaffinity='0', density='0', rgba='0.94 0.65 0.09 1')
+    if surface is not None:
+        files[surface.name] = surface.read_bytes()
+        ET.SubElement(assets, 'mesh', name='bottle_surface', file=surface.name)
+        ET.SubElement(obj, 'geom', name='bottle_visual', type='mesh', mesh='bottle_surface',
+                      contype='0', conaffinity='0', density='0', rgba='0.94 0.65 0.09 1')
     for geom in palm.iter('geom'):
         # Positive-distance witnesses support planning. Matching margin/gap
         # keeps physical force activation at zero distance.
         geom.attrib.update(conaffinity='3', margin='0.0025', gap='0.0025')
+        if geom.get('name') == 'palm_lower_collision':
+            geom.attrib.update(margin=f'{palm_proximity_m:g}', gap=f'{palm_proximity_m:g}')
     actuators = ET.SubElement(xml, 'actuator')
     for name in JOINTS:
         ET.SubElement(actuators, 'position', name='drive_' + name, joint=name, kp='35',
@@ -116,7 +120,8 @@ class Touch:
 
 
 class FingertipHand:
-    def __init__(self, model, *, object_name='mustard', grasp=None, min_head_fraction=HEAD_FRACTION):
+    def __init__(self, model, *, object_name='mustard', grasp=None, min_head_fraction=HEAD_FRACTION,
+                 surface_queries=True):
         self.model = model
         self.palm = model.body('palm_lower').id
         self.driver = model.body('palm_target').mocapid[0]
@@ -151,6 +156,7 @@ class FingertipHand:
             self.head_spans.append(span)
         self.tip_bodies = np.array([model.body(b).id for b in BODIES])
         self.head_axes = np.asarray(self.head_axes)
+        self.surface_queries = surface_queries
         pos, orient, self.reference_q = reference_grasp() if grasp is None else grasp
         self.inward_in_palm = orient.inv().apply([0., 0., -1.])
         self.palm_geom = model.geom('palm_lower_collision').id
@@ -161,6 +167,8 @@ class FingertipHand:
                 body = model.body_parentid[body]
             if body in roots:
                 self.load_region[geom] = roots.index(body)
+        if not surface_queries:
+            return
         d = self.initialize(pos, orient, self.reference_q)
         self.object_ids = np.array(sorted(self.objects))
         rotations = d.geom_xmat[self.object_ids].reshape(-1, 3, 3)
@@ -179,6 +187,8 @@ class FingertipHand:
 
     def palm_gap_bound(self, data):
         """Diagnostic separating-plane lower bound. Contact uses native collision pairs."""
+        if not self.surface_queries:
+            return np.nan
         g = self.palm_geom
         outward = -data.xmat[self.palm].reshape(3, 3) @ self.inward_in_palm
         local = data.geom_xmat[g].reshape(3, 3).T @ outward
@@ -187,6 +197,8 @@ class FingertipHand:
 
     def nearest_pad_surface(self, data, finger):
         """Return the closest native collision-part distance and pad witness."""
+        if not self.surface_queries:
+            raise RuntimeError('Native object surface queries are disabled')
         geom = self.pads[finger]
         bounds = (np.linalg.norm(np.maximum(abs(self.box_centers - data.geom_xpos[geom])
                                             - self.box_halves, 0.), axis=1) - self.model.geom_rbound[geom])
