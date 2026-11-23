@@ -69,23 +69,7 @@ class JointPatchPlanner:
         return self.data.geom_xpos[g] + rot @ verts[heights < heights.min() + .0001].mean(axis=0)
 
     def nearest_part(self, f):
-        d, m, g = self.data, self.model, self.h.pads[f]
-        bound = (np.linalg.norm(np.maximum(abs(self.h.box_centers - d.geom_xpos[g])
-                                           - self.h.box_halves, 0.), axis=1) - m.geom_rbound[g])
-        gap, witness = .15, None
-        for j in np.argsort(bound):
-            if bound[j] > max(gap, 0.):
-                break
-            line = np.zeros(6)
-            dist = mujoco.mj_geomDistance(m, d, g, self.h.object_ids[j], .15, line)
-            if dist < gap and np.any(line):
-                length = np.linalg.norm(line[:3] - line[3:])
-                if dist == 0 and length > 1e-6:
-                    dist = length
-                if dist < gap and length > 1e-9:
-                    normal = (line[:3] - line[3:]) / length * (1 if dist >= 0 else -1)
-                    gap, witness = dist, (line[:3].copy(), normal)
-        return gap, witness
+        return self.h.nearest_pad_surface(self.data, f)
 
     def jac(self, point, body):
         pos, ang = np.zeros((3, 22)), np.zeros((3, 22))

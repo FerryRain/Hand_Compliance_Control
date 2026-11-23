@@ -93,6 +93,7 @@ def coverage_score(ledger, points, normals, step, low_force, states, sample_step
     metrics, masks = {}, {}
     for name, directly_observed in zip(('all_heads', 'region_below_8n'), first):
         sources = np.flatnonzero(directly_observed <= states)
+        masks[f'{name}_registered'] = directly_observed <= states
         distances = np.full(len(vertex_area), np.inf)
         if len(sources):
             distances = dijkstra(graph.adjacency, directed=False, indices=sources, min_only=True,
@@ -136,7 +137,8 @@ def mesh_accuracy(mesh, gt_cloud):
 
 
 def render_summary(directory, seconds, branches, graph, meshes, gt_cloud, dp_label='Finger DP + MCC',
-                   mcc_label='Joint planning + MCC'):
+                   mcc_label='Joint planning + MCC', *, coverage_limit=105, legend_location='lower right',
+                   case_labels=None):
     import matplotlib
     matplotlib.use('Agg')
     from matplotlib import pyplot as plt
@@ -145,22 +147,25 @@ def render_summary(directory, seconds, branches, graph, meshes, gt_cloud, dp_lab
     from matplotlib.lines import Line2D
     from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
-    fig = plt.figure(figsize=(13., 9.2), facecolor='white', layout='constrained')
-    grid = fig.add_gridspec(2, 3, height_ratios=[1., 1.1])
-    colors = ('#087f74', '#ad591c')
-    labels = (mcc_label, dp_label)
+    colors = ('#087f74', '#ad591c', '#466193')
+    labels = (mcc_label, dp_label) if case_labels is None else case_labels
+    if not len(labels) == len(branches) == len(meshes) <= len(colors):
+        raise ValueError('Reconstruction cases, meshes and labels must match')
+    columns = len(labels) + 1
+    fig = plt.figure(figsize=(4.33 * columns, 9.2), facecolor='white', layout='constrained')
+    grid = fig.add_gridspec(2, columns, height_ratios=[1., 1.1])
     curves = fig.add_subplot(grid[0, 0])
     for label, color, data in zip(labels, colors, branches):
         full = np.asarray(data['coverage']['all_heads']['area_fraction_over_time_25mm']) * 100.
         low = np.asarray(data['coverage']['region_below_8n']['area_fraction_over_time_25mm']) * 100.
         curves.plot(seconds, full, color=color, linewidth=2.3, label=label)
         curves.plot(seconds, low, '--', color=color, linewidth=1.25)
-    curves.set(xlabel='Simulated time (s)', ylabel='Area covered (%)', ylim=(0, 105),
+    curves.set(xlabel='Simulated time (s)', ylabel='Area covered (%)', ylim=(0, coverage_limit),
                title='Measured surface coverage · 25 mm')
     curves.grid(alpha=.19)
     handles, _ = curves.get_legend_handles_labels()
     handles.append(Line2D([], [], color='#667077', linestyle='--', label='All regions below 8 N'))
-    curves.legend(handles=handles, loc='lower right', frameon=False, fontsize=9)
+    curves.legend(handles=handles, loc=legend_location, frameon=False, fontsize=9)
     figures = [mesh for mesh in (graph.mesh, *meshes) if mesh is not None]
 
     def show_xyz(points):

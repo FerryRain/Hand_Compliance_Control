@@ -45,10 +45,10 @@ def latency_ms(values):
                 p99_ms=float(p99), max_ms=float(values.max()))
 
 
-def surface_graph():
-    mesh = trimesh.load(SURFACE, force='mesh', process=False)
+def surface_graph(surface=SURFACE):
+    mesh = trimesh.load(surface, force='mesh', process=False)
     graph = SurfaceGraph(mesh, coverage_radius_m=.025)
-    if len(graph.vertices_m) != 8192 or graph.required_goal_count != 388:
+    if Path(surface) == SURFACE and (len(graph.vertices_m) != 8192 or graph.required_goal_count != 388):
         raise ValueError('I04-b task surface or goal denominator changed')
     return graph
 
@@ -203,16 +203,16 @@ class ForceFeedback:
 
 class Traversal:
     def __init__(self, output, seconds, *, planner_type=JointPatchPlanner, collect_contacts=False,
-                 hand=None, graph=None, experiment='I04-c'):
+                 hand=None, graph=None, experiment='I04-c', grasp=None, surface=SURFACE, object_name='mustard'):
         if not np.isfinite(seconds) or seconds < DT:
             raise ValueError('The simulation budget must be at least one finite 2 ms step')
         self.out = Path(output).resolve()
         self.out.mkdir(parents=True, exist_ok=False)
         self.budget = int(np.floor(seconds / DT + 1e-9))
         self.h = hand if hand is not None else FingertipHand(build_model())
-        self.graph = graph if graph is not None else surface_graph()
+        self.graph = graph if graph is not None else surface_graph(surface)
         self.planner = planner_type(self.h, self.graph) if planner_type is not None else None
-        initial_grasp = reference_grasp()
+        initial_grasp = reference_grasp() if grasp is None else grasp
         self.current = self.planner.seed if self.planner is not None else Posture(*initial_grasp)
         self.data = self.h.initialize(*initial_grasp)
         self.preview = mujoco.MjData(self.h.model) if self.planner is not None else None
@@ -227,8 +227,10 @@ class Traversal:
         self.events, self.chunks, self.rows = [], [], []
         self.last_normals = self.h.measure(self.data).normals
         initial = self.h.measure(self.data)
-        if not initial.eligible.all():
-            raise RuntimeError('ep71 must begin with four qualified physical fingertip heads')
+        qualified = initial.eligible.all() if grasp is None else (
+            initial.measured_heads.all() and initial.loads.max() < 8.)
+        if not qualified:
+            raise RuntimeError('The start must have four qualified physical fingertip heads')
         model_bytes = np.empty(mujoco.mj_sizeModel(self.h.model), np.uint8)
         mujoco.mj_saveModel(self.h.model, None, model_bytes)
         (self.out / 'model.mjb').write_bytes(model_bytes.tobytes())
@@ -236,6 +238,13 @@ class Traversal:
         mujoco.mj_getState(self.h.model, self.data, state, STATE)
         np.savez(self.out / 'initial.npz', integration_state=state)
         write_json(self.out / 'trace_chunks.json', [])
+        asset = {}
+        if grasp is not None:
+            (self.out / 'surface.obj').write_bytes(Path(surface).read_bytes())
+            position, attitude, joints = initial_grasp
+            asset = dict(surface_file='surface.obj', object_name=object_name,
+                         seed_pose_wxyz=np.r_[position, quaternion(attitude)].tolist(),
+                         seed_joints_rad=joints.tolist(), inward_in_palm=self.h.inward_in_palm.tolist())
         write_json(self.out / 'manifest.json', dict(protocol=PROTOCOL, experiment=experiment,
             mujoco=mujoco.__version__, dt_s=DT, requested_seconds=seconds, arm_joints=0,
             controller=dict(implementation='Module.module_2_fingertip_mcc.controller.FingertipMCC',
@@ -243,14 +252,14 @@ class Traversal:
                             dp_inference=False),
             wrist='6-DoF free palm with a mocap weld', actuated_finger_joints=16,
             planning_variables=22 if self.planner is not None else 6,
-            fingers=FINGERS, source_grasp=json.loads(SEED.read_bytes()),
+            fingers=FINGERS, source_grasp=json.loads(SEED.read_bytes()) if grasp is None else 'prepared',
             minimum_distal_fraction=HEAD_FRACTION, minimum_normal_force_n=.2,
             max_joint_deviation_rad=MAX_JOINT_DEVIATION, max_posture_rms_rad=MAX_POSTURE_RMS,
             max_fingertip_axis_angle_deg=MAX_HEAD_ANGLE, incidental_hand_contact='allowed_and_logged',
             coverage_exclusion_n=8., sustained_stop_n=40., sustained_stop_s=.2,
             coverage_radius_m=.025, coverage_inherited=False,
-            surface_sha256=sha256(SURFACE.read_bytes()).hexdigest(),
-            model_sha256=sha256(model_bytes).hexdigest()))
+            surface_sha256=sha256(Path(surface).read_bytes()).hexdigest(),
+            model_sha256=sha256(model_bytes).hexdigest(), **asset))
 
     def flush(self):
         if not self.rows:

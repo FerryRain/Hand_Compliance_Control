@@ -185,6 +185,26 @@ class FingertipHand:
         near = (self.palm_hull @ local).min() + data.geom_xpos[g] @ outward
         return max(0., near - (self.bottle_hull @ outward).max())
 
+    def nearest_pad_surface(self, data, finger):
+        """Return the closest native collision-part distance and pad witness."""
+        geom = self.pads[finger]
+        bounds = (np.linalg.norm(np.maximum(abs(self.box_centers - data.geom_xpos[geom])
+                                            - self.box_halves, 0.), axis=1) - self.model.geom_rbound[geom])
+        gap, witness = .15, None
+        for j in np.argsort(bounds):
+            if bounds[j] > max(gap, 0.):
+                break
+            line = np.zeros(6)
+            distance = mujoco.mj_geomDistance(self.model, data, geom, self.object_ids[j], .15, line)
+            if distance < gap and np.any(line):
+                length = np.linalg.norm(line[:3] - line[3:])
+                if distance == 0 and length > 1.e-6:
+                    distance = length
+                if distance < gap and length > 1.e-9:
+                    outward = (line[:3] - line[3:]) / length * (1 if distance >= 0 else -1)
+                    gap, witness = distance, (line[:3].copy(), outward)
+        return gap, witness
+
     def posture(self, data):
         delta = data.qpos[self.q] - self.reference_q
         axes = np.einsum('ijk,ik->ij', data.xmat[self.tip_bodies].reshape(4, 3, 3), self.head_axes)

@@ -10,17 +10,32 @@ import numpy as np
 
 from .fingertip_hand import DT, GEOMS, SURFACE, FingertipHand
 from .fingertip_traversal import PROTOCOL, STATE, Measurements, surface_graph, write_json
+from .physics import rotation
+
+
+def case_surface(case, manifest=None):
+    case = Path(case)
+    if manifest is None:
+        manifest = json.loads((case / 'manifest.json').read_bytes())
+    return case / manifest['surface_file'] if 'surface_file' in manifest else SURFACE
 
 
 def load_case(case):
     case = Path(case)
     manifest = json.loads((case / 'manifest.json').read_bytes())
     blob = (case / 'model.mjb').read_bytes()
+    surface = case_surface(case, manifest)
     if (manifest['protocol'] != PROTOCOL or manifest['model_sha256'] != sha256(blob).hexdigest()
-            or manifest['surface_sha256'] != sha256(SURFACE.read_bytes()).hexdigest()):
+            or manifest['surface_sha256'] != sha256(surface.read_bytes()).hexdigest()):
         raise ValueError('I04-c model, protocol or task surface mismatch')
     model = mujoco.MjModel.from_binary_path('case.mjb', {'case.mjb': blob})
-    return FingertipHand(model)
+    if 'seed_pose_wxyz' not in manifest:
+        return FingertipHand(model)
+    pose = np.asarray(manifest['seed_pose_wxyz'])
+    grasp = pose[:3], rotation(pose[3:]), np.asarray(manifest['seed_joints_rad'])
+    hand = FingertipHand(model, object_name=manifest['object_name'], grasp=grasp)
+    hand.inward_in_palm[:] = manifest['inward_in_palm']
+    return hand
 
 
 def chunks(case):
@@ -43,9 +58,12 @@ def audit_case(case):
     with np.load(case / 'initial.npz', allow_pickle=False) as initial:
         mujoco.mj_setState(m, d, initial['integration_state'], STATE)
     mujoco.mj_forward(m, d)
-    if not h.measure(d).eligible.all():
+    surface = case_surface(case)
+    initial = h.measure(d)
+    qualified = initial.eligible.all() if surface == SURFACE else initial.measured_heads.all() and initial.loads.max() < 8.
+    if not qualified:
         raise ValueError('Initial grasp is missing qualified fingertip heads')
-    stats = Measurements(surface_graph())
+    stats = Measurements(surface_graph(surface))
     worst = 0.
     preview = []
     observations = []
@@ -124,7 +142,25 @@ def show_split_tips(hand):
         model.geom_rgba[pad] = (.22, .69, .78, 1.)
 
 
-def render_case(case, output, speed, surface_evidence=None):
+def recorded_frames(case, states, frames):
+    steps = np.rint(np.linspace(1, states, frames)).astype(int)
+    traces = list(chunks(case))
+    measured = {name: np.concatenate([block[name] for block in traces])[steps - 1]
+                for name in ('qpos', 'normal_force_n', 'phase')}
+    if sum(len(block['qpos']) for block in traces) != states:
+        raise ValueError('Measured-state trace length differs from summary')
+    measured['step'] = steps
+    measured['point_m'] = np.zeros((len(steps), 4, 3), dtype=np.float32)
+    path = case / 'live_head_contacts.npz'
+    with np.load(path, allow_pickle=False) as contact:
+        order = np.searchsorted(steps, contact['step'])
+        present = (order < len(steps)) & (steps[np.minimum(order, len(steps) - 1)] == contact['step'])
+        measured['point_m'][order[present], contact['finger'][present]] = contact['point_m'][present]
+    return measured, path, sha256(path.read_bytes()).hexdigest()
+
+
+def render_case(case, output, speed, surface_evidence=None, *, recorded=False, show_moving_contact=False,
+                show_low_load=False):
     import imageio.v2 as imageio
     from PIL import Image, ImageDraw, ImageFont
     from .pad_contact_visual import camera_from_direction, marker
@@ -152,25 +188,32 @@ def render_case(case, output, speed, surface_evidence=None):
     visual = m.geom('bottle_visual').id
     show_split_tips(h)
     font = ImageFont.load_default(size=19)
-    audit, preview = case / 'native_audit.json', case / 'native_preview.npz'
-    if not audit.is_file() or not preview.is_file():
-        audit_case(case)
-    audit_metadata = json.loads(audit.read_bytes())
-    if sha256(preview.read_bytes()).hexdigest() != audit_metadata['preview_sha256']:
-        raise ValueError('Measured-state preview hash mismatch')
-    frames = max(1, int(np.ceil(summary['states'] * DT * 25 / speed)))
+    fps = 20 if recorded else 25
+    frames = max(1, int(np.ceil(summary['states'] * DT * fps / speed)))
     output.parent.mkdir(parents=True, exist_ok=True)
-    with np.load(preview, allow_pickle=False) as z:
-        measured = {name: z[name] for name in z.files}
-    steps = measured['step']
-    sample = np.searchsorted(steps, np.linspace(1, steps[-1], frames))
-    display_coverage = measured['area_fraction'][sample]
-    display_contacts = measured['eligible'][sample]
-    coverage_label = 'Coverage'
-    if surface_evidence is not None:
+    if recorded:
+        if surface_evidence is None:
+            raise ValueError('Recorded replay requires verified contact coverage')
+        measured, contact_path, witness_hash = recorded_frames(case, summary['states'], frames)
+    else:
+        audit, preview = case / 'native_audit.json', case / 'native_preview.npz'
+        if not audit.is_file() or not preview.is_file():
+            audit_case(case)
+        audit_metadata = json.loads(audit.read_bytes())
+        if sha256(preview.read_bytes()).hexdigest() != audit_metadata['preview_sha256']:
+            raise ValueError('Measured-state preview hash mismatch')
+        with np.load(preview, allow_pickle=False) as z:
+            measured = {name: z[name] for name in z.files}
         contact_path = case / 'native_head_contacts.npz'
+        witness_hash = audit_metadata['head_contacts_sha256']
+    steps = measured['step']
+    sample = np.arange(frames) if recorded else np.searchsorted(steps, np.linspace(1, steps[-1], frames))
+    coverage_label = 'Coverage'
+    if surface_evidence is None:
+        display_coverage = measured['area_fraction'][sample]
+        display_contacts = measured['eligible'][sample]
+    else:
         with np.load(surface_evidence, allow_pickle=False) as surface:
-            witness_hash = audit_metadata['head_contacts_sha256']
             if (surface['head_contacts_sha256'].item() != witness_hash
                     or sha256(contact_path.read_bytes()).hexdigest() != witness_hash):
                 raise ValueError('Measured coverage overlay is for a different recording')
@@ -185,19 +228,45 @@ def render_case(case, output, speed, surface_evidence=None):
             display_contacts[at[present], contacts['finger'][present]] = True
             display_contacts = display_contacts[index]
         coverage_label = 'Head coverage (25 mm)'
+    if show_moving_contact:
+        frame_steps = steps[sample] - 1
+        with np.load(case / 'moving_contact.npz', allow_pickle=False) as history:
+            moving, counts = history['moving'], history['head_count']
+            if show_low_load:
+                loads = history['region_load_n']
+        np.testing.assert_array_equal(counts[frame_steps], display_contacts.sum(axis=1))
+        elapsed = np.cumsum(moving)[frame_steps]
+        third = ((counts >= 3) & (loads < 8.)) if show_low_load else counts >= 3
+        rates = [np.divide(np.cumsum(moving & event)[frame_steps], elapsed,
+                           out=np.full(len(sample), np.nan), where=elapsed > 0) for event in (counts >= 2, third)]
+        controller = controller.replace(' | Fixed wrist', '')
+    center = np.array([0., 0., .095])
+    camera_distance = .86
+    if 'surface_file' in manifest:
+        import trimesh
+
+        mesh = trimesh.load_mesh(case_surface(case, manifest), process=False)
+        center = mesh.bounds.mean(axis=0)
+        camera_distance = max(.63, 1.6 * float(mesh.extents.max()))
     with mujoco.Renderer(m, height=400, width=640) as renderer, imageio.get_writer(
-            output, fps=25, codec='libx264', quality=7, macro_block_size=2) as writer:
+            output, fps=fps, codec='libx264', quality=7, macro_block_size=2,
+            ffmpeg_params=['-preset', 'veryfast'] if recorded else []) as writer:
         for frame, i in enumerate(sample):
             d.qpos[:] = measured['qpos'][i]
             mujoco.mj_kinematics(m, d)
             mujoco.mj_camlight(m, d)
             tips = d.geom_xpos[h.pads].mean(axis=0)
             palm = d.xmat[h.palm].reshape(3, 3)
-            canvas = Image.new('RGB', (1280, 448), '#16212c')
+            canvas = Image.new('RGB', (1280, 476 if show_moving_contact else 448), '#16212c')
             for panel in (0, 1):
-                look = tips if panel else np.array([0., 0., .095])
-                direction = palm @ np.array([.30, -1., -.1]) if panel else np.array([1., -.5, .95])
-                camera_from_direction(camera, direction, look, .40 if panel else .86)
+                look = tips if panel else center
+                if panel:
+                    direction = palm @ np.array([.30, -1., -.1])
+                elif 'surface_file' in manifest:
+                    direction = d.qpos[:3] - center + palm @ np.array([.16, -.10, 0.])
+                else:
+                    direction = np.array([1., -.5, .95])
+                camera_from_direction(camera, direction, look, .40 if panel else camera_distance)
                 m.geom_rgba[visual, 3] = .25 if panel else 1.
                 renderer.update_scene(d, camera=camera, scene_option=options)
                 for f in np.flatnonzero(display_contacts[frame]):
@@ -210,5 +279,17 @@ def render_case(case, output, speed, surface_evidence=None):
             forces = '    '.join(f'{name} {force:.1f}' for name, force in zip(
                 ('IF', 'MF', 'RF', 'TH'), measured['normal_force_n'][i]))
             draw.text((654, 412), 'Fingertip force (N)     ' + forces, font=font, fill='white')
+            if show_moving_contact:
+                active = display_contacts[frame]
+                draw.rectangle((0, 448, 1279, 475), fill='#213442')
+                draw.text((15, 451), f'Active tips  {active.sum()}/4', font=font, fill='white')
+                for f, name in enumerate(('IF', 'MF', 'RF', 'TH')):
+                    draw.text((183 + f * 43, 451), name, font=font, fill='#92edbb' if active[f] else '#a6b1bf')
+                percentages = [f'{rate[frame]:.2%}' if np.isfinite(rate[frame]) else '—' for rate in rates]
+                third_label = '3+ under 8 N' if show_low_load else '3+ tips'
+                if show_low_load:
+                    draw.text((390, 451), f'Peak region  {loads[frame_steps[frame]]:.1f} N', font=font, fill='white')
+                draw.text((654, 451), f'Moving time   2+ tips  {percentages[0]}     {third_label}  {percentages[1]}',
+                          font=font, fill='white')
             writer.append_data(np.asarray(canvas))
     return dict(video=str(output), frames=frames, speed=speed, native_states=int(steps[-1]))

@@ -51,7 +51,7 @@ def read_contacts(case):
         return tuple(samples[key] for key in ('point_m', 'normal', 'step', 'max_region_load_n'))
 
 
-def write_reconstruction(case):
+def write_reconstruction(case, surface=SURFACE):
     import torch
     from . import fingertip_r_gpis as r
 
@@ -66,7 +66,7 @@ def write_reconstruction(case):
     if len(selected) < 4:
         write_json(case / 'reconstruction.json', dict(status='insufficient_occupied_voxels', points=len(selected)))
         return perf_counter() - started
-    workspace = r.bounds_for_contacts(trimesh.load(SURFACE, force='mesh', process=False).vertices)
+    workspace = r.bounds_for_contacts(trimesh.load(surface, force='mesh', process=False).vertices)
     try:
         mesh, info = r.reconstruct(points[selected].astype(np.float64), normals[selected].astype(np.float64),
                                   r.bounds_for_contacts(points), workspace)
