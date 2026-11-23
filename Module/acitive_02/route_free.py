@@ -166,11 +166,14 @@ def run(obj, arm, folder, seconds, period, fixtures):
         if policy is not None:
             policy_stats = dict(info=policy.info, timing=policy.report(stage))
             outputs.append('timing.npz')
+        scoring_mesh_sha = digest(mesh)
+        if scoring_mesh_sha != paired['surface.obj']:
+            raise ValueError('Offline evaluation surface does not match the paired fixture')
         hashes = {name:digest(stage/name) for name in outputs}
         write_json(stage/'run.json',dict(signature=signature,hashes=hashes,trace_sha256=hashes['trace.npz'],
               seed=paired['seed'],initial_sha256=paired['integration_state'],model_sha256=paired['model.mjb'],
               planning_object_geometries=0,initial_file_sha256=digest(case/'initial.npz'),
-              offline_mesh_sha256=digest(mesh),steps=ticks,wall_s=online_wall,
+              offline_mesh_sha256=scoring_mesh_sha,steps=ticks,wall_s=online_wall,
               setup_online_and_trace_write_s=perf_counter()-started,policy=policy_stats))
         stage.rename(folder)
 
