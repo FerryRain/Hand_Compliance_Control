@@ -17,7 +17,10 @@ $env:MKL_NUM_THREADS = '1'
 $env:PYTHONUTF8 = '1'
 Push-Location $RepoPath
 try {
-    if ($ExperimentArgs.Count -gt 0 -and $ExperimentArgs[0] -eq 'active-a') {
+    if ($ExperimentArgs.Count -gt 0 -and $ExperimentArgs[0] -eq 'route-free') {
+        $BaselineArgs = @($ExperimentArgs | Select-Object -Skip 1)
+        & $Python -Bu -m Module.acitive_02.route_free @BaselineArgs
+    } elseif ($ExperimentArgs.Count -gt 0 -and $ExperimentArgs[0] -eq 'active-a') {
         $ActiveArgs = @($ExperimentArgs | Select-Object -Skip 1)
         & $Python -Bu -m Module.acitive_02.active_a @ActiveArgs
     } elseif ($ExperimentArgs.Count -gt 0 -and $ExperimentArgs[0] -eq 'active-timing') {
