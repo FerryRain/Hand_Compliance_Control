@@ -20,8 +20,8 @@ from .surface_scan import limit
 
 
 class GraspIK(aude.JointIK):
-    def __init__(self, hand, grasp):
-        super().__init__(hand, limits=grasp.limits)
+    def __init__(self, hand, grasp, *, solver=None):
+        super().__init__(hand, limits=grasp.limits, solver=solver)
         self.center = None
         self.last_fit_ms = []
 

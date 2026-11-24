@@ -148,8 +148,9 @@ class Reachability:
 class JointIK:
     """Solve a single wrist pose and all 16 finger joints against virtual targets."""
 
-    def __init__(self, hand, *, limits=None):
+    def __init__(self, hand, *, limits=None, solver=None):
         self.hand = hand
+        self.solver = solver
         self.model = hand.model
         self.data = mujoco.MjData(hand.model)
         self.jacobian = np.empty((3, hand.model.nv))
@@ -233,7 +234,8 @@ class JointIK:
                          5. * variables[:3], 5. * variables[3:6], 2. * variables[6:],
                          80. * max(0., approach_floor - facing), 3000. * np.maximum(.002 - gaps, 0.)]
 
-        solution = least_squares(residual, np.zeros(22), bounds=(np.r_[-wrist_bounds, lower],
+        solve = self.solver or least_squares
+        solution = solve(residual, np.zeros(22), bounds=(np.r_[-wrist_bounds, lower],
                                  np.r_[wrist_bounds, upper]), max_nfev=12, ftol=.003, xtol=.003)
         metrics = residual(solution.x)
         error = np.linalg.norm(metrics[:12].reshape(4, 3) / self.contact_weights[:, None], axis=1)
