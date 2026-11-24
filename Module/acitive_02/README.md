@@ -15,7 +15,7 @@
 .\scripts\run_acitive_02.ps1 route-free --fixtures path/to/fixtures --object pear --arm aude-single-all-mcc --out Module/generated/route-free-pear-single-all
 ```
 
-输出包含 100 Hz 物理轨迹、逐计划的切向与虚拟目标、用时、覆盖曲线、最终 GPIS 网格和评分。报告中低于 8 N 的分区门限适用于五物体比较。[实验网页](https://tactile-hand-experiment-atlas.spunky-brook-2549.chatgpt.site/#active-02-route-free) · [逐物体结果与视频](https://huggingface.co/datasets/FerryZh/full-hand-active/tree/main/active-02/route-free)
+输出包含 100 Hz 物理轨迹、逐计划的切向与虚拟目标、用时、覆盖曲线、最终 GPIS 网格和评分。报告中低于 8 N 的分区门限适用于五物体比较。[归档结果与视频](https://huggingface.co/datasets/FerryZh/full-hand-active/tree/main/active-02/route-free) · [原采集版本与源码指纹](https://github.com/FerryRain/Hand_Compliance_Control/tree/a6df352a7417d6075351d42b51f98e548d7a796c/Module/acitive_02)。复用已有运行目录并按原源码指纹校验时，请使用这一采集版本。站点收录的[Active-1-B 五物体基线](https://tactile-hand-experiment-atlas.spunky-brook-2549.chatgpt.site/#active-1-b)采用作者控制律和物理触碰反馈
 
 ## 历史梨环扫 A/B
 
