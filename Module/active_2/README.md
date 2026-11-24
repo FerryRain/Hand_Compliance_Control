@@ -14,9 +14,11 @@
 
 ## 复现
 
-使用已登记的五物体夹具、Active-1-B 的仿真环境与 `finger_policy/checkpoints/manifest.json` 中的 `single_all_seed20261116` 权重。夹具结构和依赖见 [Active-1-B](../active_1_b/README.md)，策略权重的获取方式见 [Finger Policy](../../finger_policy/README.md)。
+夹具包包含不带物体几何的规划手模型、五个 MuJoCo 物理模型、对应初态和离线评分表面。每轮使用 `fixtures.json` 指定的初态和种子。仿真依赖见 [Active-1-B](../active_1_b/README.md)。主动调指组使用 `finger_policy/checkpoints/manifest.json` 中的 `single_all_seed20261116` 权重。[Finger Policy 权重与安装](../../finger_policy/README.md)
 
 ```powershell
+hf download FerryZh/full-hand-active active-2/fixtures.zip active-2/trajectories.zip --repo-type dataset --revision 1361d76d4d3922396654acdb80f456a705d562ac --local-dir downloads
+Expand-Archive -LiteralPath downloads/active-2/fixtures.zip -DestinationPath fixtures
 foreach ($object in 'pear','mustard','cracker','bleach','coffee') {
     foreach ($condition in 'planned','single_all','compliance') {
         python -m Module.active_2 --fixtures fixtures --object $object --condition $condition --out "runs/active-2/$object/$condition"
@@ -26,8 +28,8 @@ foreach ($object in 'pear','mustard','cracker','bleach','coffee') {
 
 每一轮保存逐次规划、100 Hz 物理轨迹、覆盖率、最终 GPIS 网格与评分。逐轮 CSV 另含联合规划、逐指 GP、IK、策略推理、在线总用时和最终重建评分用时。梨的三组视频同时显示探索过程和每 15 个仿真秒更新的 GPIS。[数据、合并表与视频](https://huggingface.co/datasets/FerryZh/full-hand-active/tree/main/active-2)
 
-下载同目录中的 `trajectories.zip` 后，可用 Python 和 NumPy 从归档核对轨迹指纹、配对初态与种子，并导出逐物体及等权平均的四项指标。输出比例介于 0 和 1 之间。
+下载轨迹后，可用 Python 和 NumPy 从归档核对轨迹指纹、配对初态与种子，并导出逐物体及等权平均的四项指标。输出比例介于 0 和 1 之间。
 
 ```shell
-python -m Module.active_2.verify trajectories.zip
+python -m Module.active_2.verify downloads/active-2/trajectories.zip
 ```
