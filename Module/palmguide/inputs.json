@@ -1,0 +1,107 @@
+{
+  "fixtures_zip_sha256": "ad4d781601fb140339aa2391fe4b446ecbb1d2ba9d49f9ca20170aaff393505d",
+  "fixtures": [
+    {
+      "member": "hand.mjb",
+      "destination": "Module/generated/active-02-a_20261121/planning-hand.mjb",
+      "sha256": "2194a0fc186338fb595308ba4a8bcbde8c85929e698a5270afa6b2659f376a6e"
+    },
+    {
+      "member": "pear/model.mjb",
+      "destination": "Module/generated/active-02-a_20261121/model.mjb",
+      "sha256": "f4c1ede82e6179c7fb914923aea11a17f1389f8b424c5fef3f030ea11c5233d9"
+    },
+    {
+      "member": "pear/initial.npz",
+      "destination": "Module/generated/active-02-a_20261121/initial.npz",
+      "sha256": "a0d4caefa669943500b9a999dfd32cd398aa4134b312637f33732ef497bd0b83"
+    },
+    {
+      "member": "pear/surface.obj",
+      "destination": "Module/generated/i01_a_policy_wrist_20261120/pear/plan/surface.obj",
+      "sha256": "9056fb93a4480100f2a44112549527a80342624a74d6b5580915e5cfec296183"
+    },
+    {
+      "member": "mustard/model.mjb",
+      "destination": "Module/generated/i01_a_policy_wrist_20261120/mustard/fixed-dp_r01/model.mjb",
+      "sha256": "0233c76c93ed7b65df6fb575c827395eb73e4566b0419a71da1f8d17819b67ef"
+    },
+    {
+      "member": "mustard/initial.npz",
+      "destination": "Module/generated/i01_a_policy_wrist_20261120/mustard/fixed-dp_r01/initial.npz",
+      "sha256": "ea391af03bc874dd8be153ede9ab2d56524668e990ae84282405f95d0e53cb04"
+    },
+    {
+      "member": "mustard/surface.obj",
+      "destination": "Module/generated/i01_a_policy_wrist_20261120/mustard/fixed-dp_r01/surface.obj",
+      "sha256": "51f183ca21481cb7bbcad30e78db1ed65bafd7d4c7de4c4d71c000c34565069b"
+    },
+    {
+      "member": "cracker/model.mjb",
+      "destination": "Module/generated/i01_a_policy_wrist_20261120/cracker/fixed-dp_r01/model.mjb",
+      "sha256": "60ad7bf15097b7c07c170b85e82360518b5dce5e6ed93634d0b343e2787e2f3b"
+    },
+    {
+      "member": "cracker/initial.npz",
+      "destination": "Module/generated/i01_a_policy_wrist_20261120/cracker/fixed-dp_r01/initial.npz",
+      "sha256": "cdcd74420f2836a429086ed07e5c1d0c8e6a9125dbfc3fe731f89153544c945f"
+    },
+    {
+      "member": "cracker/surface.obj",
+      "destination": "Module/generated/i01_a_policy_wrist_20261120/cracker/fixed-dp_r01/surface.obj",
+      "sha256": "4b865a76e2f09d6602a2ec27358e5babf8591533791e83b67f1d12642425d8e7"
+    },
+    {
+      "member": "coffee/model.mjb",
+      "destination": "Module/generated/ycb_active_efficiency_20261122/five-objects/fixtures/coffee/model.mjb",
+      "sha256": "80c74be9ec4748aa6d76b3a2a739259f1507e0f620601702763d5a4a1c33e270"
+    },
+    {
+      "member": "coffee/initial.npz",
+      "destination": "Module/generated/ycb_active_efficiency_20261122/five-objects/fixtures/coffee/initial.npz",
+      "sha256": "831412269f4e72c857876e949add8e96f2e1bda396a2a13757132abe7d16a616"
+    },
+    {
+      "member": "coffee/surface.obj",
+      "destination": "Module/generated/ycb_active_efficiency_20261122/five-objects/fixtures/coffee/surface.obj",
+      "sha256": "ea0fc6014885a20342b627a108b5a374c710c677c5b3a1d1a046559902aaa602"
+    },
+    {
+      "member": "bleach/model.mjb",
+      "destination": "Module/generated/ycb_active_efficiency_20261122/five-objects/fixtures/bleach/model.mjb",
+      "sha256": "2ac934b6fd139560b8ade981de7ca847be6d2a7d347d38832f23ae184f868ee6"
+    },
+    {
+      "member": "bleach/initial.npz",
+      "destination": "Module/generated/ycb_active_efficiency_20261122/five-objects/fixtures/bleach/initial.npz",
+      "sha256": "44640ad41f1d3e0833997b8c80dc96d21be663ce59d744f7b9ad10f6e6fb8549"
+    },
+    {
+      "member": "bleach/surface.obj",
+      "destination": "Module/generated/ycb_active_efficiency_20261122/five-objects/fixtures/bleach/surface.obj",
+      "sha256": "1d5e91127f00ad7d00fb4bb1e20905b7145fbc8b2a61364c059082850301de70"
+    }
+  ],
+  "inputs": [
+    {
+      "input": "hand-history.npz",
+      "destination": "Module/generated/gpis_wrist_active_20261121/hand-history.npz",
+      "sha256": "a924e78c08dfe0c6d5caea77533fd699d5d45c168e54b97563f442a1e0db966d"
+    },
+    {
+      "input": "protocol.json",
+      "destination": "Module/generated/ycb_frontier_active_20261123/validated/protocol.json",
+      "sha256": "914128660ffc9f1185332269c16fe7841bd35c5fb89f0a869128a581b901ba20"
+    },
+    {
+      "input": "pear-seed-protocol.json",
+      "destination": "Module/generated/active-02-a_20261121/protocol.json",
+      "sha256": "746564064fca6ce04ba1dbb3abc3219e26ddfe1b3e6cfce28d92b890ed79b7af"
+    },
+    {
+      "input": "single_all.pt",
+      "destination": "finger_policy/checkpoints/single_all_seed20261116/best.pt",
+      "sha256": "9fbe34c3c36fd9f74ad5630ccb15c6200dfd3b44bdbf97da86f8d9afbcc55ec4"
+    }
+  ]
+}
