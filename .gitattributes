@@ -43,3 +43,18 @@ data/i01-b/** -text
 
 # The fingertip collision loader verifies the exact bytes of its approved hulls.
 mcc_finger_compliance_control/assets/true_fingertip_contact_v1/** text eol=lf
+
+# Preserve the byte identities signed by the PARK v3 acquisitions.
+/PARK/** -text
+/PalmReach-3/** -text
+/PARK-3/** -text
+/PARK-NEW/park_new/** -text
+/Module/park/** -text
+/outputs/PARK/park-python.ps1 -text
+/outputs/PARK-NEW/execution-contract.json -text
+/Module/wrist_active/supported_field_video.py -text
+/Module/palmreach6/source-sha256.json text eol=lf
+/finger_policy/scripts/controlled_policy_ablation.py text eol=crlf
+/finger_policy/scripts/single_finger_dp.py text eol=crlf
+/mcc_finger_compliance_control/scripts/dp_chunk_scheduler.py text eol=crlf
+/finger_policy/checkpoints/manifest.json text eol=crlf

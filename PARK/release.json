@@ -1,0 +1,288 @@
+{
+  "name": "PARK",
+  "revision": "v3",
+  "recorded_method": "PalmReach-3",
+  "native_git_commit": "1cf4e3411b1f946e67a13afb6b52cdcf4b05b573",
+  "results_directory": "outputs/PalmReach-3-v3",
+  "budgets_s": [
+    240,
+    600
+  ],
+  "seeds": {
+    "coffee": 20261122,
+    "cracker": 20261122,
+    "mustard": 20261122,
+    "bleach": 20261122,
+    "pear": 20261120
+  },
+  "planner_inputs": {
+    "PARK-3/park3/__init__.py": "e87e9d1047b7e59c4438b3bcc1b4ecba3f4bb9ffbfbb058de9f05cc6cb21449f",
+    "PARK-3/park3/belief.py": "a8b2a8a7ac12b3cd8c55c2c705859fa0b8d12b7b81a3c6e9e775529d5cac9116",
+    "PARK-3/park3/common.py": "4e611dd20756ee48e8efe9ad63707e1cb8d3df8585823df9e549ea30ca2d6439",
+    "PARK-3/park3/deployment.py": "aecd7e857ed7b96a2581ab3a9ad51451157744230f4b173c642bdf454c0fb1bd",
+    "PARK-3/park3/geometry.py": "df6e137ef2b7517db909c9d5ccb7c53ad9e8979c133de4be2e8153055fae2792",
+    "PARK-3/park3/planner.py": "09798a53bfd44b9ff076fa0d5860efa92b73da4688c7b87124fd8f20dd105ce8",
+    "PARK-3/park3/probe.py": "4ed852510fe4ea9ee7d844822bd4d56afb13886835653176f1b0c90044757011",
+    "PARK-3/park3/trajectory.py": "d7b5d0729d5c992df0551c3d2bb93cbb1f47b18d8c872477363045c3efda450c",
+    "PARK-3/config/v1.json": "51e88d4013f69128fbc72294a66326478a833f14fba5ff614f361e7709ae4dab",
+    "outputs/PARK-3/models/gpis.pt": "57f4e045033676c0062783e8147bec18ab0bdb43b504731841d74a1e34641392",
+    "outputs/PARK-3/models/index.npz": "3896395f3c92fc473bc88fd4a6a649249f7f69084ccea1ddd5dbc9b3475e6d19",
+    "outputs/PARK-3/models/middle.npz": "e7e67fa8bf57e40226f6d8a12d23dedad6538a057ff50209ca2bcf72233db416",
+    "outputs/PARK-3/models/ring.npz": "013095c726aa7b7d7ebf94a1c3dea9223bd7463f9b212d2cfc916a69d6bc6f26",
+    "outputs/PARK-3/models/thumb.npz": "c3ff0cf3464d53608ec5cb8ea272fb383ce7916cccb9d0c925a085e7900ac8b3",
+    "PalmReach-3/config.json": "9a0f2ed0dcc3ffd71a9e22f2c51b27d726e6952e7fdbea70cad0500cc3027cbd",
+    "PalmReach-3/planner_adapter.py": "8c1dc1f065221090b9e065c0d64fc5a0f396186672ea648b12fb8632f6fb6945",
+    "PalmReach-3/frontier_planner.py": "c687544299b097bfd461c3d8991af22266ceec6d6aabf78ea975ba7b8ca26632",
+    "PalmReach-3/frontier.json": "60bb962c020a76ab95f19245cb66f7c7384389e02aa04569f8fd906d4e030bb0",
+    "PalmReach-3/measured_start.py": "efcad063a251257f700926e7068789ffbcf53f73985ccbe84391fc53837d2840"
+  },
+  "controller_inputs": {
+    "Module/acitive_02/active_gpis.py": "02004d7a4869e028b1ab252dc345e823623a2f37a3d29f2693cb208f68b44b90",
+    "Module/i04_geometric_traversal/fingertip_traversal.py": "64663b614e3010f08557418e9d7f8b59f883bce6374bfa78a241af025ae1c882",
+    "Module/wrist_active/buffered_fingers.py": "8c1805c7939e444d3067ed749e38b1c0356c5be0d5b8982d3c54c918bb8ec38d",
+    "Module/wrist_active/contact_first.py": "6315c40190cd10046cba66d581da148fbbf264343e2da2cae75cbe49999873b1",
+    "Module/wrist_active/contact_trail.py": "097ca88cc2605d94a44ab266fcc5f553ebd7897692d3af095826a9456f8b9807",
+    "Module/wrist_active/contact_transition.py": "9db8d7df3fc99e55d225f65e4c501679aaad5cb80a13568f8688339f93df7355",
+    "Module/wrist_active/current_cli.py": "da8fffd1de6eabd94a04006158aff53cfdfec96d0a00445ea62c99a617c3ea91",
+    "Module/wrist_active/entry_frontier.py": "9c91e2e56875917e4598a01ceab115726df1f2fb463546c53dcd15256bd80432",
+    "Module/wrist_active/experiment.py": "2c1c9e9ad38ac92c000c1b889d50192dcbb69aa594a818f0004ed926ea3e77af",
+    "Module/wrist_active/global_gpis.py": "6d635427985b5c9067bba4106fa81cbe1aebc41a15b04c7b5c39fdb5fda6c957",
+    "Module/wrist_active/history.py": "0b9066297421970bb770d2f34c513cd6ee83202bcfaaade4a69a988161d3a3c6",
+    "Module/wrist_active/informative_actions.py": "f021f00f2051813b11dc1b5f43f5c8c14e692d0e59b16a6f8b7852ba0954effb",
+    "Module/wrist_active/informative_run.py": "a0ad0b93060640fae1c7736f70c67e1ad212dafdac64a3e5cec621cb1d6a8b3a",
+    "Module/wrist_active/informative_wrist.py": "8213ec14915d88ca60a3e24d32a00dc92a0024d0a39d50232e5f7d197e9274ce",
+    "Module/wrist_active/measured_target_yield.py": "9587954d13636fc704377569b9e9625fa0263471d4fa9283e6b1989b6c9c32d9",
+    "Module/wrist_active/multirate_wrist.py": "600193105fd4f57507a67cc5bba54f158db3bf8f872615583c2558c31e1a1774",
+    "Module/wrist_active/online_tactile_mesh.py": "16a47d0112405657868f024a6fcf61257a9e0110c466225a190e31bd45822d20",
+    "Module/wrist_active/paired_support.py": "aa403abe4ea9fd756f08f441c1e02b6ee261bb326698fe8c7c677366df265b35",
+    "Module/wrist_active/palm_acquisition.py": "68d5ad425d2dd75190081a4305d18f7a35e586bce11153037acc5d9984f8c6b6",
+    "Module/wrist_active/palm_cracker_parameters.py": "f6eeb64340819fb2ec2cadc289369833b397e516a453bdb062d33aec0f4a447f",
+    "Module/wrist_active/palm_exploration.py": "539bf41f1daa60afc0cfa59dde1211d398b41293b602aa674c9d4980a5153247",
+    "Module/wrist_active/palm_facing.py": "8c93459243d818b7e98800895b0fef3361442fe9af1c9c109f6a02d137f0e46c",
+    "Module/wrist_active/palm_landing.py": "9d275270feeb40d8784d47e07f98df8abca277b91c8d7fd31d5acc756b502a83",
+    "Module/wrist_active/palm_mesh_recontact.py": "5ecbc70a8e186b64b2babb9397ae5bcc04f0f8da3686b9e5790d0ff1577c1ebb",
+    "Module/wrist_active/palm_progress_recontact.py": "a6fd9b28e9cb618697aa3dfdeef6a896572b25954a861c94599323ee6b7fe52b",
+    "Module/wrist_active/palm_support.py": "c4946b8daecdef9476b462d9cfa6cd922c5b819c8d56631d71983b91cde10b22",
+    "Module/wrist_active/palm_surface.py": "1f708a8b28b860d2348da6efb94f061e16538f2a37c462f26765985de8924e8d",
+    "Module/wrist_active/palm_unload.py": "2ceb4de18b858f7347623e43b9eeb41155a37d0c170abe236cb9261ed8bc8451",
+    "Module/wrist_active/planner.py": "67bed7e2399b83e49d649cced8ff79c81cfb6044b278323dcdd4a459b4b0dbeb",
+    "Module/wrist_active/policy_reach.py": "319f9761b40dd80d9b3549e6eb17d6f6efa3ed69801c56ee3511a63693a0c8d0",
+    "Module/wrist_active/reachable_reentry.py": "001164e38d461d35ad354d582cbcabfd6a76ed9576f0c6196a9c4bd7d220b074",
+    "Module/wrist_active/retained_object_parameters.json": "4c6f4227ec7ee66c0e5114164b201854c99ab2b4bc1b469d3622e0b47dd5b183",
+    "Module/wrist_active/run_current.cmd": "36d0ff51790d6568f934e8d6d4bc70b84f3d276b5ed1fd37f4c35541132ba59e",
+    "Module/wrist_active/run_retained_profile.cmd": "5deb3e5fdab658faa275ec225d7c38321ec1dd67790a0d4a0f5097ff05f42270",
+    "Module/wrist_active/sweep.py": "113eb79f7e249c7e57d2ce1006494b2c10463db1db95805bf1629f0959f5f07a",
+    "Module/wrist_active/sweep_experiment.py": "d20ed36cc0e1c01d2103caf3bfeb804a18378aa1cdba8752b60ee075ab7d66fe",
+    "Module/wrist_active/tactile_field.py": "ea6cdd89718cf18f3c72c354fb566a8046e5fc63af142754615271c74e1b586c",
+    "Module/wrist_active/tactile_reentry.py": "d2b28de577a765ac5d4069f1f8587c7bbcc9ec1c7d0d0c9101e726de7e94eb35",
+    "Module/wrist_active/tactile_stall.py": "cfd71a7b73b009fa10e23dad1971af69e7dbec23ae43b2fb2a2175a7415d6c70",
+    "Module/wrist_active/transition_compute.py": "28744d6d99ac077809769c97e81858cdb6e23bbfc0f0bf6bbbd6786dc89a3470",
+    "Module/wrist_active/wrist_worker.py": "a26aafbcb6385d22921a70a6ced00f18a8b4d90043031a60e24db6355a18f1a9",
+    "Module/wrist_active/ycb_fixtures.py": "6c6a0d017187fd5031048c0840582fe0f1f0fa82d43553b20229437168979e83",
+    "Module/i04_geometric_traversal/fingertip_dp_worker.py": "d1531aff0b2eb1e80c806c31dc03e0228d6edbedbac8a0c4079204b8451114ad",
+    "Module/i04_geometric_traversal/fingertip_ddpm.py": "d5e5c9446f59dd42306273f4e9e72c543f6122600c1120257bf70226935e3b3d",
+    "Module/i04_geometric_traversal/fingertip_local_policy.py": "6df718fc4bc2ec05d070a30e3dbd2ae69e5e6365c905b9f87d5cc59be5a11a3d",
+    "finger_policy/scripts/controlled_policy_ablation.py": "235d7b07271ffdc3a83cf868869d5ecdf785d4274be823e29bc3d1b6aa2b4f3f",
+    "finger_policy/scripts/single_finger_dp.py": "80beaa2ccec03c235c9383e94d693c604f958733bc53b12467cdb550c5541a3e",
+    "mcc_finger_compliance_control/scripts/dp_chunk_scheduler.py": "3cc80745caabe01bcfc6501b2168f56cfb762d4eab509b85fab09344af8201b7"
+  },
+  "workspace_dependencies": {
+    "PalmReach-3/run.py": "699aeff32e9a78f2530fd477ab40f8092e455e38cbfb9b388a143f11f06a8627",
+    "PalmReach-3/comparison.py": "933548a72dcc6cb2252079fc4956a76dda6ba1d256bc17412f60be85a92a0b5c",
+    "PARK-3/park3/study.py": "3be9350729fc25b6c10df6e31e8a9a5bf68a86bdb6dec5bb99f25b8b5ff1e9bf",
+    "outputs/PARK/park-python.ps1": "9d03fee3e006169227f44f47def761b0509474476f6771f8698cfcc5f7fc23d0",
+    "outputs/PARK/models/gpis.pt": "bd39f078be5ef69b8d2b0e9597b17baf7514ab627f77177cca8c0a789302dd6f",
+    "outputs/PARK-NEW/execution-contract.json": "c7194050fd354c81f2b73dcfd8e61a4b9946d2233579a8ff061bf4e9cec231f4"
+  },
+  "runtime_dependencies": {
+    "Module/palmreach6/__main__.py": "da5638f9750f819720ceb787f40a01aa6b971c16bec37b122398c230b5d7f387",
+    "Module/palmreach6/source-sha256.json": "2d479fd4137146bf84e8b3115a877f383ed792aa1a5e022e355b3566268690dd",
+    "Module/park/compare.py": "f108dcb314ea0c49d9fe4ba7b326a0b0a0bbb6e04daf1165c62f11ec3a8958e2",
+    "Module/park/metrics.py": "414757fb32a67c8d17147b817f6b5147fe7f4fc1ec5cd0a26db0246b1be830e4",
+    "Module/park/plots.py": "a10e6839c3cddaeb8f6df1736e5a8a7ba227a037f9c06eefa546b568b957c895",
+    "Module/assets/single_all_palm_reach.npz": "654ca21b825a70f0dd7163c75d9f41193e9108ed31256b92a6d3911660f23b02",
+    "Module/generated/gpis_wrist_active_20261121/hand-history.npz": "a924e78c08dfe0c6d5caea77533fd699d5d45c168e54b97563f442a1e0db966d",
+    "finger_policy/checkpoints/manifest.json": "90973f2cefe37e500c5a170e19b4190ac4db9a70aa71d28c278e69847b9a1a9a",
+    "finger_policy/checkpoints/single_all_seed20261116/best.pt": "9fbe34c3c36fd9f74ad5630ccb15c6200dfd3b44bdbf97da86f8d9afbcc55ec4",
+    "data/i01-b/finger_policy.json": "067680657f57bc8efc06696dfb7aa64088111d676bd6b7474e044398258085f7",
+    "Module/generated/palm_progress_full_20261125/paired-fixtures/fixtures.json": "f62581f11c9dc4316785a0c0f36f84dea6f2d4f972d4f1278a1418c3aee54234",
+    "Module/generated/palm_progress_full_20261125/paired-fixtures/hand.mjb": "2194a0fc186338fb595308ba4a8bcbde8c85929e698a5270afa6b2659f376a6e",
+    "Module/generated/palm_progress_full_20261125/paired-fixtures/coffee/model.mjb": "80c74be9ec4748aa6d76b3a2a739259f1507e0f620601702763d5a4a1c33e270",
+    "Module/generated/palm_progress_full_20261125/paired-fixtures/coffee/initial.npz": "20bf2f10f730f4596587f742d7317c9a136efa56912b12e6f67dc90a6b4f4974",
+    "Module/generated/palm_progress_full_20261125/paired-fixtures/coffee/surface.obj": "ea0fc6014885a20342b627a108b5a374c710c677c5b3a1d1a046559902aaa602",
+    "Module/generated/palm_progress_full_20261125/paired-fixtures/cracker/model.mjb": "60ad7bf15097b7c07c170b85e82360518b5dce5e6ed93634d0b343e2787e2f3b",
+    "Module/generated/palm_progress_full_20261125/paired-fixtures/cracker/initial.npz": "e5768aa64cd60dd0c9622fbae81d7ec264fa48499307361f8ebfedfbafd7edcf",
+    "Module/generated/palm_progress_full_20261125/paired-fixtures/cracker/surface.obj": "4b865a76e2f09d6602a2ec27358e5babf8591533791e83b67f1d12642425d8e7",
+    "Module/generated/palm_progress_full_20261125/paired-fixtures/mustard/model.mjb": "0233c76c93ed7b65df6fb575c827395eb73e4566b0419a71da1f8d17819b67ef",
+    "Module/generated/palm_progress_full_20261125/paired-fixtures/mustard/initial.npz": "27a6024c84e6527cfacbe3b48f76dc95f901720af2c1ab010033feaf85cc27e4",
+    "Module/generated/palm_progress_full_20261125/paired-fixtures/mustard/surface.obj": "51f183ca21481cb7bbcad30e78db1ed65bafd7d4c7de4c4d71c000c34565069b",
+    "Module/generated/palm_progress_full_20261125/paired-fixtures/bleach/model.mjb": "2ac934b6fd139560b8ade981de7ca847be6d2a7d347d38832f23ae184f868ee6",
+    "Module/generated/palm_progress_full_20261125/paired-fixtures/bleach/initial.npz": "a8922c897f37ff62cd8c23d1046b9ece5d0483c5c84878d101906872b729b9ee",
+    "Module/generated/palm_progress_full_20261125/paired-fixtures/bleach/surface.obj": "1d5e91127f00ad7d00fb4bb1e20905b7145fbc8b2a61364c059082850301de70",
+    "Module/generated/palm_progress_full_20261125/paired-fixtures/pear/model.mjb": "f4c1ede82e6179c7fb914923aea11a17f1389f8b424c5fef3f030ea11c5233d9",
+    "Module/generated/palm_progress_full_20261125/paired-fixtures/pear/initial.npz": "ce95910ba222e5d508fb1fe3d237a7205ff4ca522afa9f71560019dfd57e9690",
+    "Module/generated/palm_progress_full_20261125/paired-fixtures/pear/surface.obj": "9056fb93a4480100f2a44112549527a80342624a74d6b5580915e5cfec296183"
+  },
+  "published_runs": [
+    {
+      "object": "coffee",
+      "seconds": 240,
+      "seed": 20261122,
+      "path": "trials/240s/coffee/seed-20261122",
+      "files": {
+        "native/adapter.json": "e9c898d2a2c67393cbe1d66fb97fe29271745d750f30b954c924964416be86ec",
+        "native/run.json": "f18e470a7b7f6bf0383fdd76d0e92c7d6f6ee45a61514feff6c68aa9d5f7c312",
+        "native/trace.npz": "d3371c0490bd58c4cd5401d50e4d417e3905eaabcd7922ed601309d5605e05d8",
+        "native/plans.jsonl": "024da924ef376688cc448f06cc0bf690e9c7d7be880bff041b34553257b1303d",
+        "native/global-plans.jsonl": "ef2b65683438a3c1a8b07c9848d97eee1d96331666e3a38f7a90db25513d9dac",
+        "native/wrist.npz": "fed13aa4f579bc573b056bde5fd383f71cd2f1e0e126aeaa46db8d8074b4c9c8",
+        "score/metrics.json": "b185215a8fa62e90318a3111997f43708eae2e16c389a71bcaf06181959189cb",
+        "score/signed-240s.ply": "8c77e4283683c83443a940f2e12b9320a1b1a7ffdf0a74eba7955769e7cae7f3"
+      }
+    },
+    {
+      "object": "cracker",
+      "seconds": 240,
+      "seed": 20261122,
+      "path": "trials/240s/cracker/seed-20261122",
+      "files": {
+        "native/adapter.json": "f0bacba55abedbf3afd6452a22ab1f98cfe464a8ca05acc44c2f1f0a563911e7",
+        "native/run.json": "02cc44cbdee3331683e13268e34781d7efb3c504fe8cdecf02edfeeea1f99d86",
+        "native/trace.npz": "7f9489f3cf8ab2d82a28e0887639b069c89c6930f5186c6f421b639d8ecd0891",
+        "native/plans.jsonl": "7338646cbc262f89b3f711ac118173cc34a94c5e5bf4feeed09022f839b08866",
+        "native/global-plans.jsonl": "0b49754ebb5207bb0b7433012ce09615cae0a2b7c1441754298257508c7b931e",
+        "native/wrist.npz": "5ac027f3ee814ad1ed8ad2174b2848a999844e109a4e7c62677b07d3c08476dc",
+        "score/metrics.json": "57d867e9409a2ce2f60302c4e287a9c72a9c6e4590b3afa49a1d205ea5304ec2",
+        "score/signed-240s.ply": "700576ead565601d489d0188d426c30a61db9f43b38f046eb749debbcb41373c"
+      }
+    },
+    {
+      "object": "mustard",
+      "seconds": 240,
+      "seed": 20261122,
+      "path": "trials/240s/mustard/seed-20261122",
+      "files": {
+        "native/adapter.json": "020dd0e0bc26b6109c3260f20d68f5d6d4b419e32b5636c25af45d612f3d413f",
+        "native/run.json": "f4630d2ea85d3fe8e3601d36ff675515094d1547114c58d5c409102ac9bcc0e3",
+        "native/trace.npz": "9bbaa3f5e95d018e1dc6255171b98636810feae48562c36202692ff39799d2fa",
+        "native/plans.jsonl": "2d8071395f0f180f990e909f55dbc7f0c94469a95d30e8aa668a3a04cd01e32f",
+        "native/global-plans.jsonl": "132cb8120ee1a4b2ac487a11859602fc899b1aa4f69096cf85960594c76d288b",
+        "native/wrist.npz": "cadda476e50a28c4c6cad8fa911fd7b3f0a94d2c5908efc69435f95b7066f9d9",
+        "score/metrics.json": "78c8329fff682b50f33522b2087896cda330146e1f564ecd33fe03ced8dd6aeb",
+        "score/signed-240s.ply": "44be02bd4628a21b83ab2ea4b3132cf3bd97dfdfa1f2d5fe5fe81c640d23035e"
+      }
+    },
+    {
+      "object": "bleach",
+      "seconds": 240,
+      "seed": 20261122,
+      "path": "trials/240s/bleach/seed-20261122",
+      "files": {
+        "native/adapter.json": "ac1b3334881e7a503199338b8af9faedf4b252f880156abfd97363ec52a29759",
+        "native/run.json": "68b606f09dadffe2e5e8d94aeb5f3231ff5da11ab6e28affaec54cc48f5678bd",
+        "native/trace.npz": "27895e98f41682ad1dc40d41ca25557f5a3209b1f15571966eaa4d24f240c267",
+        "native/plans.jsonl": "838703554f6318775fbfbc52c110b0705a782e3d483ca7bd1c10d2345dfa0435",
+        "native/global-plans.jsonl": "f0dc6a5b833e5120acfc4a28f961de162ccc915639eb001cc2b6c7518cf24883",
+        "native/wrist.npz": "19ef4105823ecda1754e5686c349cd811425197e8d88cc9b152465b0eab9c275",
+        "score/metrics.json": "70db1ab43548b8e7389d9915d15479983cdc92bb7f7a472928d13dd69b832ce1",
+        "score/signed-240s.ply": "81afb8aa198c972b67fe3e7e4bedbfde8522a2855a4b48c9251653d30f06c9c2"
+      }
+    },
+    {
+      "object": "pear",
+      "seconds": 240,
+      "seed": 20261120,
+      "path": "trials/240s/pear/seed-20261120",
+      "files": {
+        "native/adapter.json": "a7cd87ff21d66469d46813e8e72e5fa26b51d2f5f392e462c30b3cb9b29aecea",
+        "native/run.json": "cdfa3531d557d851623eadc4d2b02944dfcbe2bff6dea64cf7d995538e84ea29",
+        "native/trace.npz": "2d9a8e84cabbcd20248f8d3a100f7c2e73e0f9b89e1c6241255061df81124364",
+        "native/plans.jsonl": "7fc66806466001205c521a2da69eb310274460d358c12576e5ba241e53dd57e8",
+        "native/global-plans.jsonl": "687cd8f277466b0b3fcd7ff8c3a62da3b45e2d61b1e193341c23353a39296d7a",
+        "native/wrist.npz": "0bb5b7cbf97fe7ade668bff8a89f8faf7835bbe9e7179a111c2293575d1fd026",
+        "score/metrics.json": "9968a2462b791c67937e86dd5c1943388f74b5b08f55d105a32a413ff7d7da87",
+        "score/signed-240s.ply": "f0db5198fecd2d2d9e23760089dc0d2fbfe10f2fb8f4fa942889f58de54996fa"
+      }
+    },
+    {
+      "object": "coffee",
+      "seconds": 600,
+      "seed": 20261122,
+      "path": "trials/600s/coffee/seed-20261122",
+      "files": {
+        "native/adapter.json": "bc0888302ce826ebc78dde45315d30f1c9cf4476353be078791d76e6f3faf603",
+        "native/run.json": "97b4f5d615a30a822f3bf50aa6647586a85c2b9e0af536b968bba2c1d257da19",
+        "native/trace.npz": "a3284b75f5bf6f85fbd2fd2996a5a3da3f80989bf75b5edff9c2fe890e2e8b18",
+        "native/plans.jsonl": "d34b54b99a6d8195be1e7e59cc137104f7545a5dd2b7a54fbdb7fc5bdd31f250",
+        "native/global-plans.jsonl": "158b3b833e6788a768718966eb5943219d9d7ec6e755f12b0079d40457db8b7a",
+        "native/wrist.npz": "80ac62dc7f94e27c5b5de7fba331a17f68cefaa7ff49a195d7ae477868c6e5e9",
+        "score/metrics.json": "7182787ecc96a8f917ebccaf5d3aae36e769e8bb56c231a6269c481b5186ce61",
+        "score/signed-600s.ply": "f44b76b6f6b7acbc6bea328ac0cc7d0326df1b134b34beaf9a1e818901c9ef3c"
+      }
+    },
+    {
+      "object": "cracker",
+      "seconds": 600,
+      "seed": 20261122,
+      "path": "trials/600s/cracker/seed-20261122",
+      "files": {
+        "native/adapter.json": "f8d59a081e0e64af1b704f965bada8fd0ea8489b2dec6659e22aa23abcf2191c",
+        "native/run.json": "6366fde2b0bf698f4c20bc60912905136b64eb1673fbb51de44e672750e45cb4",
+        "native/trace.npz": "4cb7c1ee595d7540bc8dbb31a9487898f426998c344217d2d21f191205f30d8a",
+        "native/plans.jsonl": "8b819b73fe9d0806379cb9f478ad5a048018fbc21cb476ec683b89741d578e0a",
+        "native/global-plans.jsonl": "5e6f29826d887b2642b5bd649a7f945cffc80728463e1816f96b08695b1fb26c",
+        "native/wrist.npz": "8a9baa248326eca91e0bbf58f50e5d07ba72d46c095fe6cc1cd561535bf6fc7b",
+        "score/metrics.json": "ece65aa5617c910ebb28792dbde7c7b134e2e77c256ddfcdcbd1dcf906655d04",
+        "score/signed-600s.ply": "39496d2da6e550f19459b31ebaa213eeb880c7a0d2a85c16249a43d783b283de"
+      }
+    },
+    {
+      "object": "mustard",
+      "seconds": 600,
+      "seed": 20261122,
+      "path": "trials/600s/mustard/seed-20261122",
+      "files": {
+        "native/adapter.json": "aed2b6a69147be9bc5dd71a256216e86c5eae568357c1f3478f3e3376353c696",
+        "native/run.json": "b46aa7f3b7a28645b12c1d18a9439cc11dd2304e665735724ee77511a2ccea01",
+        "native/trace.npz": "c3170a13f6cd888b1c5b5306455acaa6168bf257b838e674da2448fa773ac6d8",
+        "native/plans.jsonl": "10547a7fbb8078c9e01f4b9d57f74d8169a0ceda2f9ff261e795b18af23a1591",
+        "native/global-plans.jsonl": "7fd9b3d3f64e0b791dfe1d882ee3379e7fc9868932230196842d993a456937e0",
+        "native/wrist.npz": "965df708b4dda1a5131937b7f3a901dfe3d22ea66d075428ee44f5dc8d101eff",
+        "score/metrics.json": "a5105628c6383d87d70241b17a32787a18e3b665b6f8164909c8ab8326f597aa",
+        "score/signed-600s.ply": "0c1278a51342090af966f130e3502f1b3c233e2b7108da8f2bfd75f7e4829537"
+      }
+    },
+    {
+      "object": "bleach",
+      "seconds": 600,
+      "seed": 20261122,
+      "path": "trials/600s/bleach/seed-20261122",
+      "files": {
+        "native/adapter.json": "06951fdbab18f48b9c62929f4f54db7e294d5a667027ced76461b072a09df51d",
+        "native/run.json": "c4a3f9e055fa8766a769198b02568c53dbb297b3629a3595a3ebe661d61d5eff",
+        "native/trace.npz": "604835581c4d9a99dcfd40dbeae776202b309f5af4be7f294196f3e67e750f57",
+        "native/plans.jsonl": "3cca9e44af69490a5cfe2e9245f561479c3ae1068a171541c21f4e2d429a5029",
+        "native/global-plans.jsonl": "c4203da54e87ebaa35903663dd8e82993863b271ab12c8fc48c7f08723d85df9",
+        "native/wrist.npz": "bfd873d3d6601623cc388990d6e2a14297b6019dc15402581c2aa30437044023",
+        "score/metrics.json": "41a303379bd0ef28905259ba523617b29ab5826a0e1b20a50cb7a3982d292506",
+        "score/signed-600s.ply": "91911a873d3097a5a883cd99af887c72988be3b07cc67aca89a01453b74d02d0"
+      }
+    },
+    {
+      "object": "pear",
+      "seconds": 600,
+      "seed": 20261120,
+      "path": "trials/600s/pear/seed-20261120",
+      "files": {
+        "native/adapter.json": "6dc9f62ef6add594570e457043b7d5550110894136b804e2f826d3114d7b4164",
+        "native/run.json": "1a95f1ffa7f51db086b3c8562b2921636602ea73ada314129040a3344c6b11b2",
+        "native/trace.npz": "2fdb8bce07145adb271d5311c03468d40f890b805c61aa6eea7d66a0e8a61da0",
+        "native/plans.jsonl": "708da75ebcceca931c9e56f42787cdddcfd7ed56eed241b06da5a696e330a848",
+        "native/global-plans.jsonl": "9f49234f2ea3bb7d0e8d9da23d9889af050370b68e6213d845fb7423111631cb",
+        "native/wrist.npz": "bd24b0a14f7df76f99f73b934f9db69ff0f4bcdf6db6eb1c99a4b42751572ad9",
+        "score/metrics.json": "5cb37dd67283277f29ed7101963248c7c57ade63ceaa1655d59e30f051385804",
+        "score/signed-600s.ply": "37f5209cd84b54dcbdc379f1237ce46cd9e972530d32eb0dfc4a1f63bacc4572"
+      }
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "method": "PalmReach-3",
+  "planner": "PARK-3/config/v1.json",
+  "models": "outputs/PARK-3/models",
+  "variant": "D",
+  "objects": ["coffee", "cracker", "mustard", "bleach", "pear"],
+  "budgets_s": [240, 600],
+  "repeats": 2
+}

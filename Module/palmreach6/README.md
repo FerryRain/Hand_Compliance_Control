@@ -1,6 +1,6 @@
 # PalmReach-6
 
-**PalmReach-6 是主动触觉探索主实验的主实现。** 它对应原始记录中的 `profiled`。全局规划比较整掌运动，局部 active 维持腕部贴合，冻结的 `single_all` 手指策略与 MCC 执行接触适应。配对对照是逐指目标选向的 Facing-4，以及 LEAP 上的 Aude 腕指联合控制。[主实验数据](https://huggingface.co/datasets/FerryZh/full-hand-active/tree/df447aa996be0aaa634a3e319f3a39aa98f11045/palmreach-6) · [对照视频与指标](https://tactile-hand-experiment-atlas.spunky-brook-2549.chatgpt.site/active-methods.html)
+**PalmReach-6 是 PARK 五物体配对实验的历史对照。** 它对应原始记录中的 `profiled`。全局规划比较整掌运动，局部 active 维持腕部贴合，冻结的 `single_all` 手指策略与 MCC 执行接触适应。配对对照是逐指目标选向的 Facing-4，以及 LEAP 上的 Aude 腕指联合控制。[主实验数据](https://huggingface.co/datasets/FerryZh/full-hand-active/tree/df447aa996be0aaa634a3e319f3a39aa98f11045/palmreach-6) · [对照视频与指标](https://tactile-hand-experiment-atlas.spunky-brook-2549.chatgpt.site/active-methods.html)
 
 ## 一次腕部决策
 

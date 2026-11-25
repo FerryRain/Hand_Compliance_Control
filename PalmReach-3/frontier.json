@@ -1,0 +1,20 @@
+{
+  "revision": "v2",
+  "sample_ticks": 10,
+  "memory_cell_m": 0.012,
+  "overlap_radius_m": 0.015,
+  "dwell_radius_m": 0.032,
+  "memory_half_life_s": 65.0,
+  "dwell_scale_s": 5.0,
+  "failed_scale_s": 3.0,
+  "unproductive_s": 2.5,
+  "watchdog_s": 1.5,
+  "region_spacing_m": 0.025,
+  "graph_edge_m": 0.065,
+  "support_sites": 32,
+  "surface_count": 112,
+  "overlap_weight": 0.7,
+  "dwell_weight": 2.4,
+  "failed_weight": 1.8,
+  "global_progress_weight": 0.85
+}
