@@ -38,13 +38,13 @@ def canonical_inputs(obj, method, seconds):
     seed = 20261120 if obj == "pear" else 20261122
     key = f"seed-{seed}"
     if method == "PARK":
-        score = ROOT / "outputs/PalmReach-3-v3/trials" / f"{seconds}s" / obj / key / "score"
+        score = ROOT / "outputs/PARK/trials" / f"{seconds}s" / obj / key / "score"
     else:
         score = ROOT / "outputs/PARK/experiments" / f"{seconds}s" / obj / method.lower() / key
     metrics = read(score / "metrics.json")
     meta = metrics["meta"]
     source = (score / meta["source"].replace("\\", "/")).resolve()
-    expected_method = "PalmReach-3" if method == "PARK" else method.lower()
+    expected_method = "PARK" if method == "PARK" else method.lower()
     if (meta["object"], meta["seed"], meta["method"], meta["seconds"]) != (obj, seed, expected_method, seconds):
         raise ValueError(f"Unexpected score identity at {score}")
     trace_sha = digest(source / "trace.npz")
@@ -54,8 +54,16 @@ def canonical_inputs(obj, method, seconds):
     plan_sha = digest(source / plan_name)
     if method == "PARK":
         receipt = read(source / "adapter.json")
-        if receipt["signature"]["revision"] != "v3" or receipt["trace_sha256"] != trace_sha:
-            raise ValueError(f"Expected measured-start release for {obj}")
+        signature = receipt["signature"]
+        origin = receipt["acquisition_origin"]
+        release = read(ROOT / "PARK/release.json")
+        if origin not in ("retained", "native"):
+            raise ValueError(f"Unrecognized PARK acquisition origin at {source}")
+        input_key = "published_acquisition_inputs" if origin == "retained" else "planner_inputs"
+        if ((signature["method"], signature["object"], signature["seconds"], signature["seed"])
+                != (method, obj, seconds, seed) or receipt["trace_sha256"] != trace_sha
+                or signature["files"] != release[input_key] or signature["native"] != release["controller_inputs"]):
+            raise ValueError(f"PARK acquisition fingerprint mismatch for {obj}")
         expected_plan = receipt["telemetry"][plan_name]
     else:
         expected_plan = metrics["signature"]["plans"]
@@ -266,7 +274,7 @@ def export(output, cache):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--out", type=Path, default=ROOT / ".tmp/park-final-assets/data/park")
-    parser.add_argument("--cache", type=Path, default=ROOT / ".tmp/park-final-information-cache")
+    parser.add_argument("--out", type=Path, default=ROOT / "outputs/PARK/publication/data/park")
+    parser.add_argument("--cache", type=Path, default=ROOT / "outputs/PARK/cache/information")
     args = parser.parse_args()
     export(args.out, args.cache)

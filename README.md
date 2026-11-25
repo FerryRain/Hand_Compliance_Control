@@ -1,6 +1,6 @@
 # LEAP Hand 触觉探索实验
 
-**PARK 是本仓库主动触觉探索的定稿实现。** 在五个物体的 600 秒配对仿真中，平均实触覆盖率为 96.68%，平均重建 F@5 为 96.58%。历史对照为 PalmReach-6 和 AUDE。[定稿代码与复现](PARK/README.md) · [实验数据](https://huggingface.co/datasets/FerryZh/full-hand-active/tree/main/park)
+**PARK 是本仓库主动触觉探索的定稿实现。** 在五个物体的 600 秒配对仿真中，平均实触覆盖率为 96.68%，平均重建 F@5 为 96.58%。历史对照为 PalmReach-6 和 AUDE。[定稿代码与复现](PARK/README.md) · [实验数据](https://huggingface.co/datasets/FerryZh/full-hand-active/tree/PARK/park)
 
 实验以灵巧手触觉实验档案为准。站点收录五种物体的 Finger Policy 闭环结果、三种 DP 策略消融、腕部贴合实验 `i01-a` 和 `i01-b`、历史 I04-A/B 回放，以及 Active 主动探索实验。[灵巧手触觉实验档案](https://tactile-hand-experiment-atlas.spunky-brook-2549.chatgpt.site)
 
@@ -17,7 +17,7 @@
 `Module` 记录实验协议和仿真代码。安装、模型资产和原始数据获取方式见各实验的说明。
 
 ```powershell
-python -m PARK.run --help
+python -m PARK --help
 .\scripts\run_i04_c.ps1 benchmark --help
 .\scripts\run_i04_ab.ps1 -Python python verify --code-only
 python finger_policy/pipeline.py --help

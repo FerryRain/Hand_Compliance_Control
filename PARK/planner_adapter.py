@@ -1,4 +1,4 @@
-"""Deliver frozen PARK-3 endpoints to the PalmReach-6 whole-palm reference interface."""
+"""Deliver frozen PARK endpoints to the PalmReach-6 whole-palm reference interface."""
 from contextlib import ExitStack
 import json
 
@@ -9,8 +9,8 @@ from Module.wrist_active import palm_progress_recontact as progress
 from Module.wrist_active.palm_exploration import PalmMove
 from Module.wrist_active.palm_landing import Landing
 from Module.wrist_active.palm_surface import OUT
-from park3.common import rot
-from park3.deployment import Worker as GlobalWorker, Wrist as GlobalWrist
+from PARK.core.common import rot
+from PARK.core.deployment import Worker as GlobalWorker, Wrist as GlobalWrist
 
 
 def landing(reference, point, normal, site):
@@ -42,7 +42,7 @@ class ReferenceGuide(mesh.PalmGuide):
         # The inherited mesh update also calls choose when a recovery query fails.
         # Its normal-path fallback must consume the same published target.
         self.apply_reference()
-        event.update(source="park3_reference" if self.region else "awaiting_park3_reference")
+        event.update(source="park_reference" if self.region else "awaiting_park_reference")
 
     def update(self, surface, tick, pads, ids, normal, wrist_rotation):
         if len(ids) and self.active_target is None and self.recovery_input is None:

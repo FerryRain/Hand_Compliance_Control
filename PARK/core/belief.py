@@ -11,7 +11,7 @@ from .common import ROOT, digest, dispersed, read, unit, write
 class Belief:
     def __init__(self, config, state=None):
         if not torch.cuda.is_available():
-            raise RuntimeError("CUDA is required for the PARK-3 posterior")
+            raise RuntimeError("CUDA is required for the PARK posterior")
         self.cfg = config
         kernels = {"rbf": gpytorch.kernels.RBFKernel, "matern32": lambda: gpytorch.kernels.MaternKernel(nu=1.5)}
         self.kernel = kernels[config["kernel"]]().cuda().eval()
@@ -95,8 +95,8 @@ class Belief:
 
 
 def prepare(directory, models, cfg):
-    from Module.park.history import load_episodes
-    from Module.park.gpis import calibration_cases
+    from PARK.evaluation.history import load_episodes
+    from PARK.evaluation.gpis import calibration_cases
     source = ROOT / cfg["calibration_file"]
     calibrated = read(source)
     rows = calibrated["validation"]

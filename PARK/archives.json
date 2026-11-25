@@ -1,98 +1,97 @@
 {
   "method": "PARK",
-  "revision": "v3",
   "dataset": "FerryZh/full-hand-active",
   "prefix": "park",
   "archives": [
     {
       "path": "comparison/baselines-240s.zip",
       "group": "comparison",
-      "bytes": 126395127,
-      "sha256": "7682df9e5ca8e30d61369f77ac9e4aa5a166bdf6f0ff88d6fcc7c06b6fcf4102",
-      "members": 185
+      "bytes": 128152413,
+      "sha256": "32a33411c26d0eceaeb2b897f710b789e4309017f8f4fe8f8e697867ef64b760",
+      "members": 200
     },
     {
       "path": "comparison/baselines-600s.zip",
       "group": "comparison",
-      "bytes": 313541293,
-      "sha256": "95032fe3a66f70a069807746419f6e0d720612c006015591b9256243b9be6abf",
-      "members": 215
+      "bytes": 316234475,
+      "sha256": "13ac126aeae7c3e3ae963935ad51de32872d98d93f24630f3094221f902bfe6d",
+      "members": 230
     },
     {
       "path": "formal/240s/bleach.zip",
       "group": "formal",
-      "bytes": 17846989,
-      "sha256": "2265af2f711e9e1dbe6bf2035ab4ae1f0662161827769ab64ec8cabef707764b",
-      "members": 22
+      "bytes": 17849246,
+      "sha256": "3cc84468a0cc19f04621e665b40e3900ef40a99a2a8a4fcaaa0ae5d284e8a5be",
+      "members": 23
     },
     {
       "path": "formal/240s/coffee.zip",
       "group": "formal",
-      "bytes": 18956459,
-      "sha256": "8d4044583000c21d3e3e232bb59b75a58094025f290e7efd090defe5670f0d3c",
-      "members": 22
+      "bytes": 18958942,
+      "sha256": "9e66be640b48d502c112c58d928b11e9d5f4fba50673768599371a6d22edf4f2",
+      "members": 23
     },
     {
       "path": "formal/240s/cracker.zip",
       "group": "formal",
-      "bytes": 18137881,
-      "sha256": "313fbd3081496a104b39352bcf6478559025a75f0c80859085fea112d4d4d692",
-      "members": 22
+      "bytes": 18141037,
+      "sha256": "bbd4615cfd427881e8c9fb91affc152239b5916a97e0ef29f6aa5bac89928271",
+      "members": 23
     },
     {
       "path": "formal/240s/mustard.zip",
       "group": "formal",
-      "bytes": 18635664,
-      "sha256": "73b3a8c6926cc2ff12473ba4ec0d6f86287022117744b85ced5e8e615eaf6fc0",
-      "members": 22
+      "bytes": 18638261,
+      "sha256": "46a51d3fbf0f0bc0f9071cb1a467b69be7e49e83c6e738e048e52fb539998ade",
+      "members": 23
     },
     {
       "path": "formal/240s/pear.zip",
       "group": "formal",
-      "bytes": 18298442,
-      "sha256": "7b0e419e2953107f2643ce130c38fc76455555de02582ccf50c15c01603d094e",
-      "members": 22
+      "bytes": 18300752,
+      "sha256": "e3d051061909c8ed8ab3fbe01f144aee431de9c6c2837bb8078aa17468533385",
+      "members": 23
     },
     {
       "path": "formal/600s/bleach.zip",
       "group": "formal",
-      "bytes": 44907363,
-      "sha256": "3a6118015def2fa7dca6ea4f3147edc18e8b88972c26bad1b8e0abf90e00f7be",
-      "members": 25
+      "bytes": 44909872,
+      "sha256": "356d00f0d5872518781fc8c76c02f207bde80fb42f6d8a202f296fde9cbae634",
+      "members": 26
     },
     {
       "path": "formal/600s/coffee.zip",
       "group": "formal",
-      "bytes": 45169113,
-      "sha256": "5f744420b0a4af4b83a12f066d8ec56aac63f48de76fb499fa67ecedc11ca381",
-      "members": 25
+      "bytes": 45171537,
+      "sha256": "7a91821ed618cfd25e98fdb909669e5f8e46de953695dd68a5836ffbd4cba363",
+      "members": 26
     },
     {
       "path": "formal/600s/cracker.zip",
       "group": "formal",
-      "bytes": 44259716,
-      "sha256": "01eaf70426eb7b77c3d4a52fc1c24ed49d145695da270b2bb1048130ed37504b",
-      "members": 25
+      "bytes": 44262780,
+      "sha256": "5a744a1cb67849c6760b36c025fb4ae006b736493e58b841593ca3d7a03aaf1e",
+      "members": 26
     },
     {
       "path": "formal/600s/mustard.zip",
       "group": "formal",
-      "bytes": 45237084,
-      "sha256": "081ced3f40d2990b6f9b05a6357978ec804391f23f97c4da9f114308f7299e68",
-      "members": 25
+      "bytes": 45239396,
+      "sha256": "7d546b9d87ba4be204656fb67b70eaf8cba4afe3264e897cfdd504769419d7ee",
+      "members": 26
     },
     {
       "path": "formal/600s/pear.zip",
       "group": "formal",
-      "bytes": 44530949,
-      "sha256": "090fcf1757a021456c7bc77c7d41ed17864e04ae4b192df4a46728fe70a38fed",
-      "members": 25
+      "bytes": 44533218,
+      "sha256": "79f43b477b8dddaf1c28d31b615017aacee41ad85cf5acaf43cacc582c8f3530",
+      "members": 26
     },
     {
       "path": "inputs/models-and-training.zip",
       "group": "models",
-      "bytes": 27400388,
-      "sha256": "9ca99df0eb79d02839003dd42922d31aff2eec89edaf84481cd379186659145b",
+      "bytes": 27400554,
+      "sha256": "aaa410fd1a49f6f5d32087fe61cd5285d77da202a42336fc4f8b2179db96db5a",
       "members": 33
     },
     {

@@ -49,12 +49,7 @@ backups/
 /mcc_finger_compliance_control/assets/grasp_surface_candidates*/
 /mcc_finger_compliance_control/assets/grasp_surface_expansion*/
 
-# Local files restored by PARK.prepare.
+# Locally restored PARK data and simulation outputs.
 /park-download/
-/outputs/PalmReach-3-v3/
-/outputs/PARK/models/
-/outputs/PARK/experiments/
-/outputs/PARK/training-episodes/
-/outputs/PARK-3/models/
-/outputs/PARK-NEW/models/
+/outputs/PARK/
 /i04_experiment_repo/

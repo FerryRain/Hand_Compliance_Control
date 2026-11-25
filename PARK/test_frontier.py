@@ -1,17 +1,15 @@
 """Physical residence, orientation and connected routing regressions."""
 import json
 from pathlib import Path
-import sys
 from types import SimpleNamespace
 import unittest
 
 import numpy as np
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent / "PARK-3"))
-from frontier_planner import Residence, global_frontier, surface_cost
+from PARK.frontier_planner import Residence, global_frontier, surface_cost
 
-CFG = SimpleNamespace(**json.loads((HERE / "frontier.json").read_bytes()))
+CFG = SimpleNamespace(**json.loads((HERE / "config/frontier.json").read_bytes()))
 
 
 class FrontierTest(unittest.TestCase):

@@ -5,8 +5,12 @@ from hashlib import sha256
 import json
 from pathlib import Path
 import shutil
+import sys
 
-from atlas_plots import render_charts
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from PARK.atlas_plots import render_charts
 
 
 METHODS = ("PARK", "PalmReach-6", "AUDE")
@@ -134,7 +138,7 @@ def info_section(information):
                      ("information.json","逐秒信息与统计口径 JSON")]))
 
 
-PROTOCOL = ('本页采用 PARK 的定稿版本 v3。每个物体使用一个四指轻触起点。三种方法共享相同的仿真初态、模型、种子和评分器。'
+PROTOCOL = ('每个物体使用一个四指轻触起点。三种方法共享相同的仿真初态、模型、种子和评分器。'
             '梨的种子为 20261120，其余四个物体为 20261122。240 秒和 600 秒分别启动，每项分数来自对应试验。')
 
 
@@ -164,12 +168,13 @@ def build(dist, assets):
         ref = scored[obj,seconds]
         files = row["files"]
         if (ref["seed"] != row["seed"] or ref["trace_sha256"] != files["native/trace.npz"]
+                or ref["score_sha256"] != files["score/metrics.json"]
                 or ref["endpoint_mesh_sha256"] != files[f"score/signed-{seconds}s.ply"]):
             raise ValueError(f"Website inputs disagree with the PARK release: {obj}, {seconds}s")
         published.append(dict(object=obj, seconds=seconds, seed=row["seed"], trace_sha256=ref["trace_sha256"],
                               endpoint_mesh_sha256=ref["endpoint_mesh_sha256"], score_sha256=files["score/metrics.json"]))
-    manifest = dict(name=lock["name"], revision=lock["revision"], release_manifest_sha256=sha256(source).hexdigest(),
-                    measured_start_sha256=lock["planner_inputs"]["PalmReach-3/measured_start.py"],
+    manifest = dict(name=lock["name"], release_manifest_sha256=sha256(source).hexdigest(),
+                    measured_start_sha256=lock["planner_inputs"]["PARK/measured_start.py"],
                     native_git_commit=lock["native_git_commit"], trials=published)
     (dist/"data/park/release.json").write_text(json.dumps(manifest,indent=2)+"\n", encoding="utf-8")
     home = dist / "index.html"
@@ -182,13 +187,10 @@ def build(dist, assets):
     info_start = '<section class="pg-study" id="active-2" aria-labelledby="pg-information-title">'
     page = replace_section(page,info_start,'<!-- active-studies:end -->',
                            '<header class="pg-intro"><p class="small-heading">Active-2 · 信息获取效率</p><h3 id="pg-information-title">每次下发目标，手获得多少新信息？</h3></header>'+information+'</section>')
-    page = page.replace("五个 YCB 物体上比较 PalmReach-6 与 Aude LEAP 基线", "五个 YCB 物体上比较 PARK、PalmReach-6 与 AUDE")
-    page = page.replace("PalmReach-6、Facing-4 与 Aude 对比", "PARK、PalmReach-6 与 AUDE 对比")
     page = page.replace('href="#active-1">Active-1 · 重建性能', 'href="#active-1">Active-1 · PARK 重建')
-    page = page.replace('<time datetime="2026-11-25">2026.11.25</time>', '<time datetime="2026-11-26">2026.11.26</time>')
     home.write_text(page, encoding="utf-8", newline="\n")
     full = dist / "active-methods.html"
-    page = full.read_text(encoding="utf-8").replace("PalmReach-6、Facing-4 与 Aude ·", "PARK、PalmReach-6 与 AUDE ·")
+    page = full.read_text(encoding="utf-8")
     page = page.replace("三种主动探索方法对比</h1>", "PARK 主动探索对比</h1>")
     content = (f'<section id="coverage" class="pg-study" aria-labelledby="coverage-title"><header class="pg-intro">'
                f'<h2 id="coverage-title">PARK、PalmReach-6 与 AUDE</h2><p>{PROTOCOL}</p></header>{method_cards()}{score}</section>'

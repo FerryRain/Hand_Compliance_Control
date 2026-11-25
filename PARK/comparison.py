@@ -1,4 +1,4 @@
-"""Score PalmReach-3 and compare it to the two signed historical acquisitions."""
+"""Score PARK and compare it to the two signed historical acquisitions."""
 import csv
 import json
 import os
@@ -8,14 +8,15 @@ from pathlib import Path
 import numpy as np
 
 from Module.palmreach6.__main__ import FIXTURES
-from Module.park import metrics
-from park3.common import digest, read, table, write
-from park3.study import archived, check_run
+from PARK.evaluation import metrics
+from PARK.identity import verify_identity
+from PARK.core.common import digest, read, table, write
+from PARK.core.study import archived, check_run
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
-CONFIG = read(HERE / "config.json")
-METHODS = ("PalmReach-3", "PalmReach-6", "AUDE")
+CONFIG = read(HERE / "config/acquisition.json")
+METHODS = ("PARK", "PalmReach-6", "AUDE")
 
 
 def verify_adapter(native, obj, seconds, seed, run):
@@ -27,20 +28,7 @@ def verify_adapter(native, obj, seconds, seed, run):
     if receipt["trace_sha256"] != run["trace_sha256"] or any(
             digest(native / key) != sha for key, sha in receipt["telemetry"].items()):
         raise ValueError(f"Incorrect physical trace or telemetry at {native}")
-    # Compare the modules that actually execute, including files signed by the
-    # native runner. Reporting or plotting code in the read-only project is immaterial.
-    dependencies = [f"PARK-3/park3/{key}.py" for key in
-                    ("belief", "common", "deployment", "geometry", "planner", "probe", "trajectory")]
-    dependencies.extend([CONFIG["planner"], "PalmReach-3/config.json", "PalmReach-3/planner_adapter.py"])
-    if sig.get("revision") in ("v2","v3"):
-        dependencies.extend(["PalmReach-3/frontier_planner.py", "PalmReach-3/frontier.json"])
-    if sig.get("revision") == "v3":
-        dependencies.append("PalmReach-3/measured_start.py")
-    dependencies.extend(f"{CONFIG['models']}/{name}" for name in
-                        ("gpis.pt", "index.npz", "middle.npz", "ring.npz", "thumb.npz"))
-    for key in dependencies:
-        if sig["files"][key] != digest(ROOT / key):
-            raise ValueError(f"Frozen planner dependency differs at {native}: {key}")
+    verify_identity(receipt, native, ROOT / "PARK/release.json")
     signed = run["signature"]["code"]
     for key in ("palm_support.py", "palm_progress_recontact.py", "palm_mesh_recontact.py",
                 "buffered_fingers.py", "sweep_experiment.py"):
@@ -62,10 +50,12 @@ def score_trial(folder):
     out.mkdir(exist_ok=True)
     first = read(FIXTURES / "fixtures.json")["objects"][obj]["seed"]
     meta = dict(method=METHODS[0], object=obj, seconds=seconds, seed=seed, repeat=seed-first,
-                source=os.path.relpath(native, out), archived=False, trace_sha256=run["trace_sha256"],
+                source=Path(os.path.relpath(native, out)).as_posix(), archived=False, trace_sha256=run["trace_sha256"],
                 initial_sha256=run["initial_sha256"], model_sha256=run["model_sha256"])
-    metrics.score(native, out, meta, ROOT / "outputs/PARK/models")
-    write(out / "trial.json", meta)
+    metrics.score(native, out, meta, ROOT / "outputs/PARK/models/evaluator")
+    trial_file = out / "trial.json"
+    if not trial_file.is_file() or read(trial_file) != meta:
+        write(trial_file, meta)
 
 
 def records(path):
@@ -147,7 +137,7 @@ def planning_data(native, method):
             raise ValueError(f"Unexpected historical global decision at {native}")
     if method != "AUDE" and not np.array_equal(applied, np.arange(0, len(wall)-1, 5)):
         raise ValueError(f"Missing or shifted local updates in {native}")
-    if method == "PalmReach-3":
+    if method == "PARK":
         submissions = np.asarray(ticks)
         for r in records(native / "global-plans.jsonl"):
             global_scope.append(r["planning_ms"])
@@ -222,12 +212,12 @@ def physical_start(native):
                                              "pad_force_n", "region_load_n")}
 
 
-def collect(root, budgets=None, revision="v1", *, objects=None, repeats=None):
+def collect(root, budgets=None, *, objects=None, repeats=None):
     spec = read(FIXTURES / "fixtures.json")
-    historical_audit = read(ROOT / "outputs/PARK/experiments/audit.json")
+    finger_settings = read(HERE / "contract.json")["finger_policy"]
     rows, curves, fingers, provenance = [], [], [], []
     objects = CONFIG["objects"] if objects is None else objects
-    repeats = range(CONFIG["repeats"]) if repeats is None else repeats
+    repeats = (0,) if repeats is None else repeats
     for seconds in CONFIG["budgets_s"] if budgets is None else budgets:
         for obj in objects:
             for repeat in repeats:
@@ -241,15 +231,13 @@ def collect(root, budgets=None, revision="v1", *, objects=None, repeats=None):
                         run = check_run(native, obj, seconds, seed, method)
                         score = read(scored / "metrics.json")
                         receipt = verify_adapter(native, obj, seconds, seed, run)
-                        if receipt["signature"].get("revision", "v1") != revision:
-                            raise ValueError(f"Mixed PalmReach-3 revisions in {root}")
                         if (score["meta"] != read(scored / "trial.json") or
                             (score["meta"]["method"], score["meta"]["object"], score["meta"]["seconds"],
                              score["meta"]["seed"]) != (method, obj, seconds, seed) or
                             score["signature"]["trace"] != run["trace_sha256"] or
-                            score["signature"]["metrics"] != historical_audit["scored_with"]["metrics"] or
+                            score["signature"]["metrics"] != digest(Path(metrics.__file__)) or
                             score["signature"]["plans"] != run["plan_sha256"] or
-                            score["signature"]["gpis"] != digest(ROOT / "outputs/PARK/models/gpis.pt") or
+                            score["signature"]["gpis"] != digest(ROOT / "outputs/PARK/models/evaluator/gpis.pt") or
                             not all((scored / name).is_file() for name in score["files"])):
                             raise ValueError(f"Unmatched evaluation or telemetry at {scored}")
                     else:
@@ -265,7 +253,7 @@ def collect(root, budgets=None, revision="v1", *, objects=None, repeats=None):
                         if recovery_config is not None and profile != recovery_config:
                             raise ValueError(f"Different recovery configuration at {native}")
                         recovery_config = profile
-                        for k, val in historical_audit["native_finger_settings"].items():
+                        for k, val in finger_settings.items():
                             if run["policy"][k] != val:
                                 raise ValueError(f"Different finger policy {k} at {native}")
                     tags = dict(budget_s=seconds, object=obj, seed=seed, method=method)
@@ -302,116 +290,3 @@ def collect(root, budgets=None, revision="v1", *, objects=None, repeats=None):
                             chamfer_mm2=quality.get(t, {}).get("chamfer_mm2"),
                             **{k: float(p[k]) for k in ("c25", "c10", "path_m", "valid_samples", "new_voxels")}))
     return rows, curves, fingers, provenance
-
-
-def fixtures():
-    import mujoco
-    from Module.wrist_active.history import read_model
-    from Module.i04_geometric_traversal.fingertip_traversal import STATE
-    spec = read(FIXTURES / "fixtures.json")
-    result = {}
-    for obj, info in spec["objects"].items():
-        model = read_model(FIXTURES / obj / "model.mjb")
-        data = mujoco.MjData(model)
-        with np.load(FIXTURES / obj / "initial.npz", allow_pickle=False) as f:
-            mujoco.mj_setState(model, data, f["integration_state"], STATE)
-        mujoco.mj_forward(model, data)
-        body = model.body(obj).id
-        result[obj] = dict(**info, seeds=[info["seed"] + r for r in range(CONFIG["repeats"])],
-                           wrist_xyz_wxyz=data.qpos[:7].tolist(), finger_qpos_rad=data.qpos[7:].tolist(),
-                           object_xyz_wxyz=np.r_[data.xpos[body], data.xquat[body]].tolist())
-    return dict(checkpoint=spec["checkpoint"], hand_sha256=spec["hand_sha256"], objects=result)
-
-
-def paired(rows, columns):
-    pairs = []
-    for base in (r for r in rows if r["method"] == METHODS[0]):
-        for other in METHODS[1:]:
-            ref = next(r for r in rows if (r["method"], r["budget_s"], r["object"], r["seed"]) ==
-                       (other, base["budget_s"], base["object"], base["seed"]))
-            pairs.append(dict(budget_s=base["budget_s"], object=base["object"], seed=base["seed"],
-                comparison=f"{METHODS[0]} minus {other}",
-                **{k: base[k] - ref[k] if base.get(k) is not None and ref.get(k) is not None else None
-                   for k in columns}))
-    return pairs
-
-
-def figures(root, rows, curves):
-    import matplotlib
-    matplotlib.use("Agg")
-    from matplotlib import pyplot as plt
-    from matplotlib.ticker import PercentFormatter
-    colors = ("#00756B", "#315C9D", "#A95517")
-    marks = ("o", "s", "^")
-    budgets = CONFIG["budgets_s"]
-    fig, axes = plt.subplots(2, len(budgets), figsize=(10, 6.4), sharey="row", constrained_layout=True)
-    for col, budget in enumerate(budgets):
-        for i, method in enumerate(METHODS):
-            subset = [r for r in curves if r["budget_s"] == budget and r["method"] == method]
-            for j, key in enumerate(("f5", "c25")):
-                series = {}
-                for r in subset:
-                    if r[key] is not None:
-                        series.setdefault(r["seconds"], []).append(r[key])
-                t = np.array(sorted(series))
-                mean = np.array([np.mean(series[k]) for k in t])
-                sd = np.array([np.std(series[k], ddof=1) for k in t])
-                ax = axes[j, col]
-                ax.plot(t, mean, color=colors[i], label=method, lw=2, marker=marks[i] if j == 0 else None,
-                        markersize=3.5, zorder=3)
-                ax.fill_between(t, np.maximum(0, mean-sd), np.minimum(1, mean+sd), color=colors[i], alpha=.09)
-                ax.set_xlim(0, budget)
-                ax.set_ylim(0, 1.02)
-                ax.yaxis.set_major_formatter(PercentFormatter(1))
-                ax.grid(axis="y", alpha=.20)
-        axes[0, col].set_title(f"{budget} s exploration budget")
-        axes[1, col].set_xlabel("Simulated exploration time (s)")
-    axes[0, 0].set_ylabel("Reconstruction F-score at 5 mm")
-    axes[1, 0].set_ylabel("Geodesic coverage at 25 mm")
-    axes[0, 0].legend(frameon=False, loc="upper left")
-    fig.savefig(root / "efficiency.png", dpi=175)
-    plt.close(fig)
-
-    fig, axes = plt.subplots(2, len(budgets), figsize=(10.2, 6.2), sharey="row", constrained_layout=True)
-    for col, budget in enumerate(budgets):
-        for j, key in enumerate(("contact_ratio", "losses_per_finger_min")):
-            ax = axes[j, col]
-            for i, method in enumerate(METHODS):
-                for k, obj in enumerate(CONFIG["objects"]):
-                    y = [r[key] for r in rows if (r["method"], r["object"], r["budget_s"]) == (method, obj, budget)]
-                    x = k + (i-1)*.19
-                    ax.plot([x, x], [min(y), max(y)], color=colors[i], lw=1.2)
-                    ax.plot(x, np.mean(y), marker=marks[i], ms=5.5, color=colors[i],
-                            label=method if k == 0 else None)
-            ax.set_xticks(range(len(CONFIG["objects"])), [s.title() for s in CONFIG["objects"]])
-            ax.grid(axis="y", alpha=.20)
-        axes[0, col].set_title(f"{budget} s exploration budget")
-        axes[0, col].set_ylim(0, 1)
-        axes[0, col].yaxis.set_major_formatter(PercentFormatter(1))
-        axes[1, col].set_ylim(bottom=0)
-    axes[0, 0].set_ylabel("Mean fingertip contact ratio")
-    axes[1, 0].set_ylabel("Contact losses per finger per minute")
-    axes[0, 0].legend(frameon=False, loc="upper left", ncol=3, fontsize=8)
-    fig.savefig(root / "contact.png", dpi=175)
-    plt.close(fig)
-
-
-def report(root, revision="v1"):
-    from report_text import write_report
-    rows, curves, fingers, provenance = collect(root, revision=revision)
-    tags = ("budget_s", "object", "seed", "method")
-    columns = [k for k in rows[0] if k not in tags]
-    deltas = paired(rows, columns)
-    for name, values in (("trials", rows), ("by-object", aggregate(rows, ("budget_s", "method", "object"), columns)),
-                         ("summary", aggregate(rows, ("budget_s", "method"), columns)),
-                         ("paired-trials", deltas),
-                         ("paired-summary", aggregate(deltas, ("budget_s", "comparison"), columns)),
-                         ("contact-by-finger", fingers), ("curves", curves)):
-        table(root / (name + ".csv"), values)
-    write(root / "sources.json", provenance)
-    write(root / "fixtures.json", fixtures())
-    figures(root, rows, curves)
-    write_report(root, rows, deltas, revision)
-    if revision == "v2":
-        from version_study import version_report
-        version_report(root, rows)

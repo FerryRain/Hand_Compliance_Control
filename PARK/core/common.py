@@ -9,9 +9,9 @@ from scipy.spatial.transform import Rotation
 
 HERE = Path(__file__).resolve().parents[1]
 ROOT = HERE.parent
-OUTPUT = ROOT / "outputs/PARK-3"
+OUTPUT = ROOT / "outputs/PARK"
 HISTORY = ROOT / "outputs/PARK/training-episodes"
-CONFIG = HERE / "config/v1.json"
+CONFIG = HERE / "config/planner.json"
 FINGERS = ("index", "middle", "ring", "thumb")
 DT = 0.01
 PREVIEW = 20
@@ -50,7 +50,7 @@ def digest(path):
 def configuration(path=CONFIG):
     cfg = read(path)
     if cfg["version"] != 1:
-        raise ValueError("Unsupported PARK-3 configuration")
+        raise ValueError("Unsupported PARK configuration")
     return cfg
 
 

@@ -1,17 +1,13 @@
 """Read verified physical replay tracks and select the camera shared by PARK films."""
 import csv
 from functools import lru_cache
-import importlib.util
-import json
 from pathlib import Path
 
 import numpy as np
 from PIL import ImageFont
-from Module.park.settings import digest
+from PARK.core.common import read
+from PARK.evaluation.settings import digest
 
-
-def read(path):
-    return json.loads(path.read_bytes())
 
 def read_csv(path):
     with path.open(encoding="utf-8", newline="") as stream:
@@ -26,21 +22,16 @@ def face(size, bold=False):
 
 
 def load_view():
-    name = "Module.wrist_active.supported_field_video"
-    spec = importlib.util.find_spec(name)
-    if spec is None:
-        workspace = Path(__file__).resolve().parents[2]
-        path = workspace / "i04_experiment_repo/Module/wrist_active/supported_field_video.py"
-        spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module.FixedView
+    from Module.wrist_active.supported_field_video import FixedView
+    return FixedView
 
 
 class Track:
-    def __init__(self, folder, obj, seed, seconds):
+    def __init__(self, folder, obj, seed, seconds, method):
         meta = read(folder / "trial.json")
         native = (folder / meta["source"].replace(chr(92), "/")).resolve()
+        if meta["method"].casefold() != method.casefold():
+            raise ValueError(f"Wrong method at {folder}")
         rec = read(native / "run.json")
         self.sha = digest(native / "trace.npz")
         if self.sha != rec["trace_sha256"] or self.sha != meta["trace_sha256"]:

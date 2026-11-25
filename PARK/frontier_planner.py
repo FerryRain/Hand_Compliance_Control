@@ -9,11 +9,10 @@ from scipy.spatial import cKDTree
 from scipy.spatial.distance import cdist
 
 from Module.wrist_active.palm_progress_recontact import ProgressWorker
-from park3.common import DT, rot
-from park3.deployment import Worker as GlobalWorker
-from park3.geometry import Clearance, anchors, candidates, spaced, uncertain_surface
-from park3.planner import ms, scale
-from planner_adapter import PalmWrist, PalmWorker
+from PARK.core.common import DT, rot
+from PARK.core.deployment import Worker as GlobalWorker
+from PARK.core.geometry import Clearance, anchors, candidates, spaced, uncertain_surface
+from PARK.core.planner import ms, scale
 
 
 class Residence:
@@ -99,7 +98,7 @@ def global_frontier(surface, priority, actual_contact, cfg):
 
 
 class FrontierPlanner:
-    """Use PARK-3's posterior, composite probe, 6-DoF candidates and checked trajectories."""
+    """Use PARK's posterior, composite probe, 6-DoF candidates and checked trajectories."""
     def __init__(self, original, cfg):
         self.base, self.cfg, self.variant = original, cfg, original.variant
         self.sampling = copy(original.cfg)
@@ -110,7 +109,7 @@ class FrontierPlanner:
         began = perf_counter()
         base, cfg = self.base, self.cfg
         original = base.cfg
-        row = dict(tick=tick,splice_tick=splice,cells=len(points),variant="D",revision="v2")
+        row = dict(tick=tick,splice_tick=splice,cells=len(points),variant="D")
         def finish(reason,tail=None):
             row.update(reason=reason,planning_ms=ms(began))
             return row,tail
@@ -220,16 +219,3 @@ class WatchedWorker(GlobalWorker):
                 and tick+self.lead < length):
             self.submit(data,touch,tick,self.lead)
         return row
-
-
-class FrontierWrist(PalmWrist):
-    def __init__(self,*args,frontier,**kwargs):
-        super().__init__(*args,**kwargs)
-        self.global_wrist.planner = FrontierPlanner(self.global_wrist.planner,SimpleNamespace(**frontier))
-
-
-class FrontierWorker(PalmWorker):
-    def __init__(self,servo,paced):
-        ProgressWorker.__init__(self,servo,paced)
-        self.global_worker = WatchedWorker(servo.global_wrist,paced)
-        self.reference = None

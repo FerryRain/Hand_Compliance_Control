@@ -12,21 +12,20 @@ from PIL import Image, ImageDraw
 import trimesh
 
 WORKSPACE = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(WORKSPACE / "PalmReach-3"), str(WORKSPACE / "PARK-3")]
+if __package__ in (None, ""):
+    sys.path.insert(0, str(WORKSPACE))
 
 from Module.palmreach6.__main__ import FIXTURES
 from Module.wrist_active.evaluate import Reference, mesh_accuracy, reconstruct
-from baseline_comparison import draw_mesh, reference_view
-from comparison import collect
-from park3.common import digest, read, table, write
-import replays
+from PARK.baseline_comparison import draw_mesh, reference_view
+from PARK.comparison import METHODS, collect
+from PARK.core.common import digest, read, table, write
+from PARK import replays
 
-TRIALS = WORKSPACE / "outputs/PalmReach-3-v3"
+TRIALS = WORKSPACE / "outputs/PARK"
 FOUR_OBJECTS = ("coffee", "cracker", "mustard", "bleach")
 OBJECTS = (*FOUR_OBJECTS, "pear")
 BUDGETS = (240, 600)
-METHODS = ("PARK", "PalmReach-6", "AUDE")
-NAMES = dict(zip(replays.METHODS, METHODS, strict=True))
 METRICS = ("c25_pct", "c10_pct", "f5_pct", "precision5_pct", "recall5_pct",
            "surface_error_mm", "chamfer_mm2")
 
@@ -40,8 +39,7 @@ def render_movies(output, budgets, objects):
     for seconds in budgets:
         for obj in objects:
             movie = media_path(output, seconds, obj)
-            replays.replay(TRIALS, obj, seconds, view, baselines=True,
-                           primary_label="PARK", destination=movie)
+            replays.replay(TRIALS, obj, seconds, view, destination=movie)
             with imageio.get_reader(str(movie), format="FFMPEG") as stream:
                 last = stream.get_data(stream.count_frames() - 1)
             Image.fromarray(last).save(movie.with_suffix(".webp"), quality=88, method=5)
@@ -125,12 +123,11 @@ def summarize(trials):
 
 
 def build_dataset(output):
-    rows, motion, _, sources = collect(TRIALS, BUDGETS, "v3", objects=OBJECTS, repeats=[0])
+    rows, motion, _, sources = collect(TRIALS, BUDGETS, objects=OBJECTS, repeats=[0])
     scores, inputs, provenance = {}, {}, {}
     curves, curve_rows = [], []
     for row, source in zip(rows, sources, strict=True):
-        seconds, obj, original = (row[k] for k in ("budget_s", "object", "method"))
-        method = NAMES[original]
+        seconds, obj, method = (row[k] for k in ("budget_s", "object", "method"))
         key = (seconds, obj, method)
         score_path = (TRIALS / source["score"]).resolve()
         native = (TRIALS / source["native"]).resolve()
@@ -149,9 +146,18 @@ def build_dataset(output):
                                plan_sha256=signature["plans"], initial_state_sha256=source["initial"],
                                model_sha256=source["model"], reference_sha256=source["scoring_mesh"],
                                endpoint_mesh_sha256=digest(mesh), scoring_gpis_sha256=signature["gpis"])
+        if method == "PARK":
+            adapter = read(native / "adapter.json")
+            log_hash = adapter["telemetry"]["global-plans.jsonl"]
+            if digest(native / "global-plans.jsonl") != log_hash:
+                raise ValueError(f"Planner event checksum mismatch for {key}")
+            provenance[key]["global_log_sha256"] = log_hash
+            original_log = adapter.get("original_artifacts_sha256", {}).get("native/global-plans.jsonl")
+            if original_log is not None:
+                provenance[key]["retained_global_log_sha256"] = original_log
         if seconds == 600:
             series = [p for p in motion if (p["budget_s"], p["object"], p["method"]) ==
-                      (seconds, obj, original)]
+                      (seconds, obj, method)]
             coverage = [[int(p["seconds"]), 100 * p["c25"]] for p in series]
             reconstruction = [[int(p["seconds"]), 100 * p["f5"]] for p in series if p["f5"] is not None]
             if len(coverage) != seconds + 1 or reconstruction[-1][0] != seconds:
@@ -254,13 +260,18 @@ def verify_movies(output):
             receipt = read(movie.with_suffix(".json"))
             info = receipt["signature"]
             traces = [sources[seconds, obj, method]["trace_sha256"] for method in METHODS]
-            seed = sources[seconds, obj, "PARK"]["seed"]
+            park = sources[seconds, obj, "PARK"]
+            seed = park["seed"]
+            plotted_logs = info["global_logs_sha256"]
+            if len(plotted_logs) != 1 or plotted_logs[0] not in {
+                    park["global_log_sha256"], park.get("retained_global_log_sha256")}:
+                raise ValueError(f"Unverified PARK goal overlays at {movie}")
             if (info["methods"] != list(METHODS) or info["traces"] != traces or
                     info["frame_stride_ticks"] != stride or info["seed"] != seed or
                     info["frames"] != frames or info["budget_s"] != seconds or
                     receipt["sha256"] != digest(movie)):
                 raise ValueError(f"Unmatched replay receipt for {movie}")
-            header = replays.header(obj, seconds, seed, speed, METHODS, True, replays.SIZE, replays.COLORS)
+            header = replays.header(obj, seconds, seed, speed)
             with imageio.get_reader(str(movie), format="FFMPEG") as stream:
                 metadata = stream.get_meta_data()
                 if (stream.count_frames() != frames or metadata["codec"] != "h264" or
@@ -286,6 +297,8 @@ def verify_movies(output):
                 mesh.verify()
             movies.append(dict(object=obj, seconds=seconds, seed=seed, fps=replays.FPS, frames=frames,
                                speed=speed, frame_stride_ticks=stride, methods=METHODS, trace_sha256=traces,
+                               render_source_sha256=info["source_sha256"], render_global_log_sha256=plotted_logs[0],
+                               canonical_global_log_sha256=park["global_log_sha256"],
                                video=movie.relative_to(output).as_posix(), sha256=receipt["sha256"],
                                poster=poster.relative_to(output).as_posix(), poster_sha256=digest(poster),
                                mesh=mesh_image.relative_to(output).as_posix(), mesh_sha256=digest(mesh_image)))
@@ -296,7 +309,7 @@ def verify_movies(output):
 def main():
     cli = argparse.ArgumentParser(description=__doc__)
     cli.add_argument("action", choices=("media", "data", "verify", "all"))
-    cli.add_argument("--output", type=Path, default=WORKSPACE / ".tmp/park-final-assets")
+    cli.add_argument("--output", type=Path, default=TRIALS / "atlas")
     cli.add_argument("--objects", nargs="+", choices=OBJECTS, help="limit the media action")
     cli.add_argument("--seconds", type=int, choices=BUDGETS, help="limit the media action")
     args = cli.parse_args()

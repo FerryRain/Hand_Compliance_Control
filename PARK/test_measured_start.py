@@ -1,20 +1,16 @@
 """Regression tests for the nominal-start deadlock found in the pear recording."""
-from pathlib import Path as File
 from types import SimpleNamespace
-import sys
 import unittest
 from unittest.mock import patch
 
 import numpy as np
 
-HERE = File(__file__).resolve().parent
-sys.path.insert(0,str(HERE.parent/"PARK-3"))
-from frontier_planner import FrontierPlanner, WatchedWorker
-from measured_start import MeasuredStartGlobalWorker, MeasuredStartPlanner, MeasuredStartWorker, measured_prefix
-from park3.common import configuration, planning
-from park3.geometry import Clearance
-from park3.trajectory import Path, extrema, limits
-from planner_adapter import PalmWorker
+from PARK.frontier_planner import FrontierPlanner, WatchedWorker
+from PARK.measured_start import MeasuredStartGlobalWorker, MeasuredStartPlanner, MeasuredStartWorker, measured_prefix
+from PARK.core.common import configuration, planning
+from PARK.core.geometry import Clearance
+from PARK.core.trajectory import Path, extrema, limits
+from PARK.planner_adapter import PalmWorker
 
 
 class MeasuredStartTest(unittest.TestCase):

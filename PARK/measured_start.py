@@ -7,11 +7,11 @@ from scipy.spatial.transform import Rotation
 
 from Module.wrist_active.palm_progress_recontact import ProgressWorker
 from Module.wrist_active.sweep import PREVIEW_S
-from frontier_planner import FrontierPlanner, WatchedWorker
-from park3.common import DT, PREVIEW, pack, rot
-from park3.geometry import Clearance
-from park3.trajectory import Path, extrema, limits
-from planner_adapter import PalmWorker, PalmWrist
+from PARK.frontier_planner import FrontierPlanner, WatchedWorker
+from PARK.core.common import DT, PREVIEW, pack, rot
+from PARK.core.geometry import Clearance
+from PARK.core.trajectory import Path, extrema, limits
+from PARK.planner_adapter import PalmWorker, PalmWrist
 
 
 def twist(first, last, dt):
@@ -77,7 +77,7 @@ class MeasuredStartPlanner(FrontierPlanner):
                 tail = Path(due,np.vstack((prefix.at(np.arange(due,splice)),tail.samples)))
         else:
             row, tail = super().plan(tick,splice,path,*inputs,incumbent)
-        row.update(revision="v3",replanned_from_measured=bool(reset),planning_ms=1000*(perf_counter()-began))
+        row.update(replanned_from_measured=bool(reset),planning_ms=1000*(perf_counter()-began))
         return row, tail
 
 

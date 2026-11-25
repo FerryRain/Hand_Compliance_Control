@@ -4,7 +4,7 @@ from pathlib import Path
 import numpy as np
 from scipy.ndimage import map_coordinates
 from scipy.signal import fftconvolve
-from scipy.spatial import cKDTree, ConvexHull
+from scipy.spatial import cKDTree
 from scipy.spatial.distance import cdist
 from scipy.special import logsumexp
 from scipy.stats import ncx2
@@ -65,34 +65,13 @@ class BallField:
 
 class Probe:
     def __init__(self, models, variant):
-        self.variant = variant
+        if variant != "D":
+            raise ValueError("Unsupported PARK probe configuration")
         self.fields = [BallField.load(models / (name + ".npz")) for name in FINGERS]
-        self.planes = self.workspace = None
-        if variant == "Hull":
-            self.planes = [ConvexHull(f.centers).equations for f in self.fields]
-        if variant == "FK":
-            from Module.palmreach6.__main__ import FIXTURES
-            with np.load(models / "fk.npz", allow_pickle=False) as fk:
-                if str(fk["hand_sha256"]) != digest(FIXTURES / "hand.mjb"):
-                    raise ValueError("FK samples belong to a different hand")
-                self.workspace = [cKDTree(cloud) for cloud in fk["points"].transpose(1, 0, 2)]
 
     def fingers(self, points):
-        if self.workspace is not None:
-            return np.stack([tree.query(points, distance_upper_bound=self.fields[0].radius)[0]
-                             < self.fields[0].radius for tree in self.workspace], axis=-1)
-        if self.planes is not None:
-            xyz = points.reshape(-1, 3)
-            values = [(xyz @ plane[:, :3].T + plane[:, 3] <= 1e-10).all(1) for plane in self.planes]
-            return np.stack(values, axis=-1).reshape(*points.shape[:-1], 4)
         return np.stack([field.mass(points) for field in self.fields], axis=-1)
 
-
-def scores(values, w):
-    single = np.einsum("cpf,p->cf", values, w)
-    maximum = values.max(axis=-1) @ w
-    union = (1 - np.prod(1 - values, axis=-1)) @ w
-    return {"D": maximum, "Union": union, "Single": single.max(axis=-1)}, single
 
 
 def contacts(directory, cfg):
@@ -177,7 +156,7 @@ def fit(directory, models, cfg):
                              test_log_density=float(tw @ log_density(test, centers, weight, h)),
                              calibration=[dict(predicted=float(prob[ix].mean()), observed=float(observed[ix].mean()),
                                                count=len(ix)) for ix in np.array_split(np.argsort(prob), 5)])
-    source = ROOT / "outputs/PARK-NEW/models/fk.npz"
+    source = ROOT / "outputs/PARK/models/probe-inputs/fk.npz"
     copyfile(source, models / "fk.npz")
     write(models / "probe.json", dict(version=1, frame="measured palm XYZ metres", config=cfg,
           historical_index_sha256=digest(directory / "index.json"), fingers=details, fk_source_sha256=digest(source)))

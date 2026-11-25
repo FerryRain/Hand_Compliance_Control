@@ -1,5 +1,4 @@
 {
-  "revision": "v2",
   "sample_ticks": 10,
   "memory_cell_m": 0.012,
   "overlap_radius_m": 0.015,

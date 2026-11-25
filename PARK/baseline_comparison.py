@@ -1,13 +1,13 @@
-"""Summarize matched PalmReach-3, PalmReach-6 and AUDE trials and render their shared-clock replays."""
+"""Summarize matched PARK, PalmReach-6 and AUDE trials and render their shared-clock replays."""
 import os
 
 import numpy as np
 import trimesh
 
 from Module.palmreach6.__main__ import FIXTURES
-from comparison import CONFIG, METHODS, collect
-from park3.common import table
-from replays import NAMES, join_movies, load_view, replay
+from PARK.comparison import METHODS, collect
+from PARK.core.common import table
+from PARK.replays import NAMES, join_movies, load_view, replay
 
 
 def reference_view(vertices):
@@ -44,13 +44,13 @@ def draw_mesh(ax, mesh, vertices, basis, color):
     ax.add_collection(faces)
 
 
-def mesh_panel(path, objects, seconds, revision, trials, mesh_files):
+def mesh_panel(path, objects, seconds, trials, mesh_files):
     import matplotlib
     matplotlib.use("Agg")
     from matplotlib import pyplot as plt
 
     colors = ("#949DA5", "#5FB7A5", "#7CA6D7", "#DDAD6C")
-    titles = ("参考真值", f"Palm-3 {revision}", "Palm-6", "AUDE")
+    titles = ("参考真值", *METHODS)
     height = 1.28+2.05*len(objects)
     with plt.rc_context({"font.family":"Microsoft YaHei"}):
         fig,axes = plt.subplots(len(objects),4,squeeze=False,figsize=(10.4,height))
@@ -90,10 +90,10 @@ def mesh_panel(path, objects, seconds, revision, trials, mesh_files):
         plt.close(fig)
 
 
-def compare(root, seconds, objects, repeat, revision):
-    if seconds not in CONFIG["budgets_s"]:
+def compare(root, seconds, objects, repeat=0):
+    if seconds not in (240, 600):
         raise ValueError(f"No matched historical budget of {seconds} seconds")
-    rows,_,_,sources = collect(root,[seconds],revision,objects=objects,repeats=[repeat])
+    rows,_,_,sources = collect(root,[seconds],objects=objects,repeats=[repeat])
     output = root/"comparisons"/f"{seconds}s"/f"repeat-{repeat+1}"
     output.mkdir(parents=True,exist_ok=True)
     group = "-".join(objects)
@@ -106,14 +106,13 @@ def compare(root, seconds, objects, repeat, revision):
         mesh = score.with_name(f"signed-{seconds}s.ply")
         mesh_files[obj,method] = mesh
         details.append(dict(object=obj,seed=row["seed"],budget_s=seconds,method=method,
-                            revision=revision if method==METHODS[0] else "historical",
                             c25_pct=100*row["c25"],f5_pct=100*row["f5"],surface_error_mm=row["surface_error_mm"],
                             chamfer_mm2=row["chamfer_mm2"],score_file=os.path.relpath(score,output),
                             mesh_file=os.path.relpath(mesh,output) if mesh.is_file() else "",trace_sha256=source["trace"]))
     table(output/f"{group}.csv",details)
-    mesh_panel(output/f"{group}.png",objects,seconds,revision,trials,mesh_files)
+    mesh_panel(output/f"{group}.png",objects,seconds,trials,mesh_files)
     view_class = load_view()
-    movies = [replay(root,obj,seconds,view_class,repeat,baselines=True) for obj in objects]
+    movies = [replay(root,obj,seconds,view_class,repeat) for obj in objects]
     if len(movies)>1:
         join_movies(movies,output/f"{group}.mp4")
     print(f"Verified {len(rows)} paired-method results and {len(movies)} synchronized replays at {output}",flush=True)
