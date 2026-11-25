@@ -1,6 +1,6 @@
 # LEAP Hand 触觉探索实验
 
-**PalmReach-6 是本仓库主动触觉探索主实验的主实现。** 手腕在六个切向运动方向和原地保持之间选动作，用共享 GPIS 和 `single_all` 的四指条件可达域估计信息收益与接触支撑。局部 active 调整腕高和掌面朝向，手指策略与 MCC 执行接触适应。[实现与运行命令](Module/palmreach6/README.md) · [正式实验与对照数据](https://huggingface.co/datasets/FerryZh/full-hand-active/tree/main/palmreach-6)
+**PalmReach-6 是本仓库主动触觉探索主实验的主实现。** 手腕在六个切向运动方向和原地保持之间选动作，用共享 GPIS 和 `single_all` 的四指条件可达域估计信息收益与接触支撑。局部 active 调整腕高和掌面朝向，手指策略与 MCC 执行接触适应。[实现与运行命令](Module/palmreach6/README.md) · [正式实验与对照数据](https://huggingface.co/datasets/FerryZh/full-hand-active/tree/df447aa996be0aaa634a3e319f3a39aa98f11045/palmreach-6)
 
 实验以灵巧手触觉实验档案为准。站点收录五种物体的 Finger Policy 闭环结果、三种 DP 策略消融、腕部贴合实验 `i01-a` 和 `i01-b`、历史 I04-A/B 回放，以及 Active 主动探索实验。[灵巧手触觉实验档案](https://tactile-hand-experiment-atlas.spunky-brook-2549.chatgpt.site)
 
