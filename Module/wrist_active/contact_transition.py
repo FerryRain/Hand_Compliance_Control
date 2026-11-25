@@ -266,6 +266,8 @@ def select_entry(state, model, stations, failed, origins, matrices, empty):
 
 
 class TransitionFollower:
+    finger_reentry = True
+
     def __init__(self, base):
         self.base=base
         self.guide,self.global_model=base.guide,base.global_model
@@ -285,7 +287,7 @@ class TransitionFollower:
         if not ready or mode=='r10':
             return self.base.select(**state)
         single=mode in ('handoff','both')
-        zero=mode in ('reacquire','both')
+        zero=self.finger_reentry and mode in ('reacquire','both')
         ids=np.flatnonzero(state['hits'])
         low=state['loads'].max()<LOAD_LIMIT and state['loads'][-1]<.48
         began=perf_counter()

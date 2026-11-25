@@ -168,7 +168,7 @@ class SurfaceFollower:
             else:
                 heading = transport(self.local_direction,self.local_normal,normal)
             self.local_direction, self.local_normal = heading.copy(), normal.copy()
-            speed = SPEED_M_S * (1. if len(ids) >= 2 else .55)
+            speed = 0. if getattr(h, 'holding', False) else SPEED_M_S * (1. if len(ids) >= 2 else .55)
             shift = heading * speed * LOCAL_S
             axes = wrist_rotation.as_matrix()[:, :2]
             rows, gaps, bend = [], [], np.zeros(3)

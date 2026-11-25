@@ -1,0 +1,15 @@
+{
+  "objects": ["cracker", "coffee", "mustard", "bleach", "pear"],
+  "arms": ["profiled", "facing4", "aude"],
+  "budgets_s": [240, 600],
+  "hz": 100,
+  "retained_source_sha256": "a6fd9b28e9cb618697aa3dfdeef6a896572b25954a861c94599323ee6b7fe52b",
+  "default": {"single_stall_ticks":150,"retry_ticks":75},
+  "single_stall_ticks": [150, 300, 600],
+  "retry_ticks": [75, 225],
+  "calibration": "On the two already studied cracker starts, run the complete 3 by 2 timing grid for 600 s per profile and start, including the original. Score physical C25 at 240 and 600 seconds. Both established starts are development evidence. No other object receives these settings.",
+  "selection": "Among non-default settings prefer those whose C25 is at least the default at all four start/time comparisons. Within that set, or among all five alternatives if none qualifies, maximize the equally weighted mean C25 at both starts and both times. Break ties by smaller mean no-qualified fraction, then fewer altered scalars, then the smaller total absolute tick adjustment. Report all profiles and any loss relative to the default. Freeze selected settings before any held-out run.",
+  "holdout": "Preselect start-03 before seeing calibration results on the registered independent Frontier-5 actuator recording, using the original four-light-pad and native GraspEnvelope checks. Require time >=10 s and at least 40 mm wrist and 20 mm mean pad displacement from both calibration frames. Maximize consecutive four-light frames, capped at eight, then choose the earliest eligible frame. Four controllers (original, tuned, Facing-4, Aude) run 600 s from that same full integration state and seed, scoring causal 240 and 600 s checkpoints.",
+  "full": "Fresh independent native 240 s and 600 s runs for all five start-02 fixtures and all three methods, 30 acquisitions. Aude uses the native physical-feedback LEAP port. Facing-4 and the four non-cracker profiled objects run their original controllers. Verify initial physical samples, all short/long physical prefixes, and exact archived physical reproducibility for the 28 unmodified run cells. Report five-object means on the historical matched suite and separately after replacing only the cracker row with the previously unused start-03 for all methods.",
+  "metrics": "Qualified pad force >=0.2 N, outward normal valid, all five regional loads <8 N. Count distinct new 4.5 mm measured cells after the four start cells, 25 mm Matern-3/2 conditional information in nat, actual geodesic C10/C25, signed reconstruction F@5 mm, multi-pad time and seconds without qualified touch. Physical clocks run at 100 Hz, all objects receive equal weight. Held-out evidence is kept separate from selection."
+}

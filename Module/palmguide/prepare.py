@@ -15,7 +15,11 @@ def prepare(fixtures, inputs):
     spec = json.loads((HERE / "inputs.json").read_bytes())
     sources = json.loads((HERE / "source-sha256.json").read_bytes())
     for name, expected in sources.items():
-        if sha256((REPO / name).read_bytes()).hexdigest() != expected:
+        path = REPO / name
+        saved = HERE / "facing4" / path.name
+        if path.parent == REPO / "Module/wrist_active" and saved.is_file():
+            path = saved
+        if sha256(path.read_bytes()).hexdigest() != expected:
             raise ValueError(f"Frozen source differs: {name}")
     if sha256(fixtures.read_bytes()).hexdigest() != spec["fixtures_zip_sha256"]:
         raise ValueError("Fixture archive differs from the published revision")

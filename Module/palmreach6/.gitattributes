@@ -1,0 +1,2 @@
+protocol.json -text
+selection.json -text whitespace=cr-at-eol

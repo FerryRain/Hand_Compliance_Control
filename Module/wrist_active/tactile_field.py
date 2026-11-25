@@ -33,6 +33,9 @@ class Region:
     distance: float
     source: str
 
+    def tracking_error(self, state):
+        return np.linalg.norm(state['pads'][self.finger] - self.point)
+
 
 def mesh_regions(model, pads, ids, normals):
     mesh = model.mesh

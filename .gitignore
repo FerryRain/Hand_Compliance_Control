@@ -42,6 +42,7 @@ backup/
 backups/
 
 # Generated surface resources and local release staging.
+/Module/assets/single_all_palm_reach.npz
 /releases/
 /mcc_finger_compliance_control/assets/irregular_surface_candidates*/
 /mcc_finger_compliance_control/assets/local_curvature_candidates*/

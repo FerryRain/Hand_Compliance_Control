@@ -86,7 +86,7 @@ class DeliveryWorker(stall.StallWorker):
         event=row['global_event']
         if event or row['mode']!='explore':
             s.close_visit()
-        if event and event.get('direction_chosen') and row['mode']=='explore':
+        if event and event.get('direction_chosen') and 'target_finger' in event and row['mode']=='explore':
             index=event['target_finger']
             if s.touch.measured_heads[index]:
                 point=np.asarray(event['target_m'])

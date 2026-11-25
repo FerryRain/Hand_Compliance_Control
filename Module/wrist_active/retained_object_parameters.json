@@ -1,0 +1,6 @@
+{
+  "cracker": {
+    "single_stall_ticks": 600,
+    "retry_ticks": 75
+  }
+}

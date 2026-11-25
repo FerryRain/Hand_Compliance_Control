@@ -34,9 +34,11 @@
 
 ## 第二部分　Active 主动探索
 
+当前主实验采用 **PalmReach-6**。五物体的 `start-02` 上，PalmReach-6、Facing-4 和 Aude 各完成 240 秒与 600 秒配对闭环仿真，共 30 次。正式 Aude 对照采用 LEAP 腕指联合控制。下表另列后续底层控制消融。[主实现与对照入口](palmreach6/README.md)
+
 | 组别 | 上层 | 底层 | 状态 |
 | --- | --- | --- | --- |
-| 主方法 | 根据触觉只选择下一段腕部运动 | `single_all`＋MCC | 待做 |
+| 主方法 PalmReach-6 | 根据实触 GPIS 与整手条件可达域选腕部运动 | 局部 active 腕姿＋`single_all`＋MCC | 五物体双时长已完成 |
 | Aude＋MCC | Aude Billard 团队的触觉探索方法 | MCC | 待做 |
 | 腕部 Active＋MCC | 与主方法相同的腕部规划 | MCC | 待做 |
 

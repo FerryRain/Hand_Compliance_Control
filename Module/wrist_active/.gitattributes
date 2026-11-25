@@ -1,1 +1,4 @@
 *.py -text
+run_current.cmd -text
+run_retained_profile.cmd -text
+retained_object_parameters.json -text whitespace=cr-at-eol

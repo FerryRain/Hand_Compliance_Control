@@ -87,9 +87,7 @@ def following_twist(state, row, result, cap_points, forces):
 
 class SupportFollower(landing.LandingFollower):
     def face_surface(self, state, row, result):
-        # Start with the patch under the current physical palm. The landing pose
-        # becomes relevant only as both the selected fingertip and palm site
-        # approach their respective geometric destinations.
+        # Blend the landing pose as the measured palm site and global target approach.
         landing.first.PalmFollower.face_surface(self, state, row, result)
         if not row['palm_reference_valid']:
             return
@@ -99,8 +97,8 @@ class SupportFollower(landing.LandingFollower):
             site = wrist + att.apply(goal.site)
             delta = goal.patch - site
             lateral = np.linalg.norm(on_plane(delta, goal.normal))
-            finger_error = np.linalg.norm(state['pads'][goal.region.finger] - goal.region.point)
-            blend = np.exp(-.5 * ((lateral / .048)**2 + (finger_error / .038)**2))
+            tracking_error = goal.region.tracking_error(state)
+            blend = np.exp(-.5 * ((lateral / .048)**2 + (tracking_error / .038)**2))
             # Also limit roll/yaw around the palm normal while transferring
             # between patches. Prefer the rotation supported at the current site.
             here = Rotation.from_quat(row['palm_target_xyzw'])

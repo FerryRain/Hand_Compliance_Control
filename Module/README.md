@@ -8,7 +8,7 @@
 | `i01-a` 独立腕部规划下的贴合 | 待验证。腕部规划器只输出腕轨与前瞻，以运动时的实测指尖接触、失接触时长和载荷评估。[i01-a 计划](MASTER_PLAN.md#i01-a-独立腕部规划下的贴合)。 |
 | `i01-b` 联合规划腕轨上的贴合 | [完整任务、同腕轨、100 Hz 节拍和 R-GPIS 重建](I04_C_END_TO_END.md)。站点早先标为 `i01-ab`，本地原始记录名为 `I04-c`。入口为 `scripts/run_i04_c.ps1 benchmark`。 |
 | I04-A/B 历史录像 | [保留版、原生回放和文件校验](I04_AB_RETAINED.md)。入口为 `scripts/run_i04_ab.ps1`。 |
-| Active-1 重建与 Active-2 信息获取 | [PalmGuide（Facing-4）的运行与评分入口](palmguide/README.md)，以及[逐指选向、腕指联合规划的 Active-1-B 对照](active_1_b/README.md)。 |
+| Active-1 重建与 Active-2 信息获取 | [主实现 PalmReach-6、配对 Facing-4 与 Aude 的运行入口](palmreach6/README.md) · [五物体 240 秒和 600 秒正式数据](https://huggingface.co/datasets/FerryZh/full-hand-active/tree/main/palmreach-6/formal)。 |
 | Active-3 手指执行方式消融 | [五物体的三组配对、接触率、重建效果与复现入口](active_2/README.md)。代码目录沿用归档名。 |
 | Active 与触觉输入消融 | 站点列为待做。各组的控制边界和评价条件见 [主任务记录](MASTER_PLAN.md)。 |
 

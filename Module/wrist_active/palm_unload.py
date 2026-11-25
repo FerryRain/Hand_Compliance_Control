@@ -134,14 +134,15 @@ class UnloadWorker(support.SupportWorker):
         return row
 
 
-def run(folder,obj,seconds=240,device='cuda',prior=None):
+def run(folder,obj,seconds=240,device='cuda',prior=None,*,wrist_cls=UnloadWrist,
+        source_files=(),release='mesh-palm-contact-load-feedback'):
     l = support.landing
     first, prev = l.first,l.first.previous
-    return l.field.run(folder,obj,seconds,device,prior,wrist_cls=UnloadWrist,worker_cls=UnloadWorker,
-        source_files=(__file__,support.__file__,support.paired_support.__file__,l.__file__,first.__file__,
+    return l.field.run(folder,obj,seconds,device,prior,wrist_cls=wrist_cls,worker_cls=UnloadWorker,
+        source_files=(*source_files,__file__,support.__file__,support.paired_support.__file__,l.__file__,first.__file__,
                       first.palm_acquisition.__file__,first.palm_surface.__file__,prev.__file__,prev.ct.__file__,
                       prev.ct.entry_frontier.__file__,prev.ct.transition_compute.__file__,prev.ct.delivery.__file__,
-                      prev.ct.tactile_reentry.__file__,prev.ct.tactile_stall.__file__),release='mesh-palm-contact-load-feedback')
+                      prev.ct.tactile_reentry.__file__,prev.ct.tactile_stall.__file__),release=release)
 
 
 if __name__ == '__main__':

@@ -127,7 +127,7 @@ class ReturnFollower(ct.TransitionFollower):
         tick=state['tick']
         elapsed=0.
         queried=False
-        enabled=self.settings[1] and self.settings[0] in ('both','reacquire')
+        enabled=self.finger_reentry and self.settings[1] and self.settings[0] in ('both','reacquire')
         if (enabled and self.recovery_needed and not self.in_transfer and not state['hits'].any() and
                 self.empty>=15 and state['observed_phase']!='withdraw' and state['loads'][-1]<.45 and
                 state['loads'].max()<6. and tick>=self.next_try):
