@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from PARK.identity import digest
+
 from ..palmreach6.__main__ import FIXTURES, OBJECTS, ROOT
 
 
@@ -12,7 +13,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--fixtures", type=Path, default=FIXTURES)
     parser.add_argument("--object", choices=OBJECTS, required=True)
-    parser.add_argument("--condition", choices=("planned", "single_all", "compliance", "aude_mcc", "aude_height"),
+    parser.add_argument("--condition", choices=("planned", "single_all", "compliance", "aude_mcc", "aude_height",
+                                                "aude_mcc_height"),
                         required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--seconds", type=int, default=240)
@@ -34,10 +36,10 @@ def main():
     from ..active_1_b import mustard_recovery, no_tip_target, single_all
 
     torch.set_num_threads(1)
-    if args.condition == "aude_mcc":
+    if args.condition in ("aude_mcc", "aude_mcc_height"):
         from . import mcc
 
-        mcc.run(args.object, args.fixtures, args.out, args.seconds)
+        mcc.run(args.object, args.fixtures, args.out, args.seconds, constrain_palm=args.condition == "aude_mcc_height")
     elif args.condition == "aude_height":
         from . import height
 
@@ -55,7 +57,9 @@ def main():
         single_all.rollout(args.object, args.fixtures, args.out, args.seconds)
 
     if not args.acquire_only:
-        if args.condition in ("aude_mcc", "aude_height"):
+        if args.condition == "aude_mcc_height":
+            from .report_fingerall import score_trial
+        elif args.condition in ("aude_mcc", "aude_height"):
             from .report_extended import score_trial
         else:
             from .report import score_trial

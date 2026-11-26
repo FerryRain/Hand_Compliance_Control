@@ -14,6 +14,12 @@ from . import report as base
 from .verify import verify_trial
 
 ADDITIONAL = {"aude_mcc": "AUDE 腕规划 + single_all/MCC", "aude_height": "AUDE + 掌轴距离约束"}
+MCC_HEIGHT = "aude_mcc_height"
+MCC_CONDITIONS = ("aude_mcc", MCC_HEIGHT)
+HEIGHT_CONDITIONS = ("aude_height", MCC_HEIGHT)
+# The two previously published arms use the same endpoint and contact calculations.
+ARCHIVED_SCORER = "0ad4d91b8ec47dfc562049e4a4b84ad321cc5a219af0bd8c078cbd96e6a6d48c"
+ARCHIVED_HEIGHT_AUDIT = "b8c10eba0f7046dfeb84585ed09b1477292adf8fff2fe7606ba228739c9559fa"
 CONDITIONS = {**base.CONDITIONS, **ADDITIONAL}
 ROOT_OUT = base.ROOT_OUT / "extended"
 PAIR_FIELDS = ("seed", "initial_sha256", "model_sha256", "reference_sha256", "evaluator_sha256",
@@ -22,9 +28,9 @@ INITIAL_FIELDS = ("qpos", "pad_valid", "pad_force_n", "region_load_n", "points_m
 
 
 def validate_controller(run, obj, condition, seed, checkpoint):
-    if condition not in ADDITIONAL:
+    if condition not in (*ADDITIONAL, MCC_HEIGHT):
         raise ValueError(f"Unknown additional condition {condition}")
-    mcc = condition == "aude_mcc"
+    mcc = condition in MCC_CONDITIONS
     sig = run["signature"]
     expected = dict(base.CONTROL, condition=condition, object=obj, seed=seed, initial=run["initial_sha256"],
                     finger_mcc=mcc, execute_planned_fingers=not mcc)
@@ -37,6 +43,8 @@ def validate_controller(run, obj, condition, seed, checkpoint):
             run["robot_sha256"] != inputs[f"{fixtures}/hand.mjb"]):
         raise ValueError(f"Unmatched released initial state file or robot for {obj}/{condition}")
     required = {"trace.npz", "plans.jsonl"}
+    if condition in HEIGHT_CONDITIONS:
+        required.add("height_calibration.json")
     if mcc:
         required.add("timing.npz")
         policy = run["policy"]
@@ -81,10 +89,15 @@ def condition_evidence(run, trace, plans):
         raise ValueError("Invalid native policy command, preview, or MCC joint offsets")
     np.testing.assert_allclose(command[1:], target, rtol=0, atol=1e-10)
     np.testing.assert_allclose(trace["goal_joints_rad"], nominal, rtol=0, atol=1e-10)
-    return dict(planning_cycles=len(plans), executed_fingers="buffered single_all + fingertip MCC position servos",
+    result = dict(planning_cycles=len(plans), executed_fingers="buffered single_all + fingertip MCC position servos",
                 planning_fingers_executed=False, policy_queries=run["policy"]["queries"],
                 mcc_peak_abs_bias_rad=float(np.max(np.abs(bias[1:]))),
                 mcc_nonzero_bias_frames=int(np.any(bias[1:] != 0, axis=1).sum()))
+    if condition == MCC_HEIGHT:
+        from .height_evidence import audit
+
+        result.update(audit(run, trace, plans, plan_index, execute_planned_fingers=False))
+    return result
 
 
 def score_trial(folder, obj, condition, *, recompute=False):
@@ -130,7 +143,7 @@ def score_trial(folder, obj, condition, *, recompute=False):
                     scoring_gpis_sha256=official_scores["signature"]["gpis"],
                     report_code_sha256=digest(Path(__file__)), official_aude_trace_sha256=official_run["trace_sha256"],
                     run_sha256=digest(folder / "run.json"), archive_folder=f"{obj}/{condition}")
-    if condition == "aude_height":
+    if condition in HEIGHT_CONDITIONS:
         identity["height_audit_code_sha256"] = digest(Path(__file__).with_name("height_evidence.py"))
     plans = [json.loads(line) for line in (folder / "plans.jsonl").read_bytes().splitlines()]
     with np.load(folder / "trace.npz", allow_pickle=False) as tr, np.load(original / "trace.npz",
@@ -148,7 +161,12 @@ def score_trial(folder, obj, condition, *, recompute=False):
     receipt = folder / "score.json"
     if receipt.is_file() and not recompute:
         current = read(receipt)
-        if (all(current.get(k) == v for k, v in {**identity, **extras}.items()) and
+        expected = {**identity, **extras}
+        if condition in ADDITIONAL and current.get("report_code_sha256") == ARCHIVED_SCORER:
+            expected["report_code_sha256"] = ARCHIVED_SCORER
+            if condition == "aude_height" and current.get("height_audit_code_sha256") == ARCHIVED_HEIGHT_AUDIT:
+                expected["height_audit_code_sha256"] = ARCHIVED_HEIGHT_AUDIT
+        if (all(current.get(k) == v for k, v in expected.items()) and
                 all((folder / name).is_file() and digest(folder / name) == current.get(key)
                     for name, key in ((base.ENDPOINT, "endpoint_sha256"), ("coverage.npz", "coverage_sha256")))):
             return current

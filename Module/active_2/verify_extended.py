@@ -23,7 +23,7 @@ def check_deployment(run, obj, condition, release):
     if (run["initial_file_sha256"] != pinned[f"{fixtures}/{obj}/initial.npz"]
             or run["robot_sha256"] != pinned[f"{fixtures}/hand.mjb"]):
         raise ValueError(f"Wrong physical initial file or kinematic hand model for {obj}/{condition}")
-    if condition == "aude_mcc":
+    if condition in extended.MCC_CONDITIONS:
         policy = run["policy"]
         expected = len(range(policy["bootstrap_frames"], base.TICKS - 5, 10))
         if (run["actuation"] != "LEAP position servos with fingertip ForceFeedback" or
@@ -41,7 +41,7 @@ def open_runs(stack, source):
 def verify_tables(folder, rows, result):
     public = read(folder / "results.json")
     if any(public.get(k) != v for k, v in result.items()):
-        raise ValueError("The 25-run summary differs from the verified individual scores")
+        raise ValueError(f"The {len(rows)}-run summary differs from the verified individual scores")
     if "pear_video" in public:
         pear = {r["method"]: r for r in rows if r["object"] == "pear"}
         for name, clip in public["pear_video"].items():
@@ -52,14 +52,26 @@ def verify_tables(folder, rows, result):
     with (folder / "trials.csv").open(encoding="utf-8-sig", newline="") as stream:
         reader = csv.DictReader(stream)
         if set(reader.fieldnames or []) != columns:
-            raise ValueError("The 25-run CSV columns differ from the scoring receipts")
+            raise ValueError(f"The {len(rows)}-run CSV columns differ from the scoring receipts")
         for row in reader:
             source = index.pop((row["object"], row["method"]))
             expected = {k: "" if source.get(k) is None else str(source[k]) for k in columns}
             if expected != row:
                 raise ValueError(f"CSV evidence differs for {row['object']}/{row['method']}")
     if index:
-        raise ValueError("Missing acquisitions from the 25-run CSV")
+        raise ValueError(f"Missing acquisitions from the {len(rows)}-run CSV")
+
+
+def verify_additional_trial(folder, obj, condition, release, checkpoint, *, geometry=False):
+    run = json.loads((folder / "run.json").read_bytes())
+    check_deployment(run, obj, condition, release)
+    for name, fingerprint in run["hashes"].items():
+        if Path(name).name != name:
+            raise ValueError(f"Nonportable raw asset name at {obj}/{condition}")
+        if name not in ("plans.jsonl", "trace.npz", "timing.npz"):
+            checked_bytes(folder / name, fingerprint)
+    return verify_trial(folder, obj, condition, release, checkpoint, geometry=geometry,
+                        controller_check=extended.validate_controller, trace_check=extended.condition_evidence)
 
 
 def verify_all(original, additional, *, geometry=False):
@@ -69,19 +81,12 @@ def verify_all(original, additional, *, geometry=False):
     for obj in base.OBJECTS:
         signatures = set()
         for condition in extended.CONDITIONS:
-            kwargs = {}
-            folder = original / obj / condition
             if condition in extended.ADDITIONAL:
                 folder = additional / obj / condition
-                kwargs = dict(controller_check=extended.validate_controller, trace_check=extended.condition_evidence)
-                run = json.loads((folder / "run.json").read_bytes())
-                check_deployment(run, obj, condition, release)
-                for name, fingerprint in run["hashes"].items():
-                    if Path(name).name != name:
-                        raise ValueError(f"Nonportable raw asset name at {obj}/{condition}")
-                    if name not in ("plans.jsonl", "trace.npz", "timing.npz"):
-                        checked_bytes(folder / name, fingerprint)
-            row, signature = verify_trial(folder, obj, condition, release, checkpoint, geometry=geometry, **kwargs)
+                row, signature = verify_additional_trial(folder, obj, condition, release, checkpoint, geometry=geometry)
+            else:
+                folder = original / obj / condition
+                row, signature = verify_trial(folder, obj, condition, release, checkpoint, geometry=geometry)
             if condition == "planned":
                 row = add_baseline_height(row, folder)
             rows.append(row)

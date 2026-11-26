@@ -17,6 +17,9 @@ from ..i04_geometric_traversal.fingertip_traversal import ForceFeedback
 from ..wrist_active.buffered_fingers import BufferedFingers
 
 
+RELEASED_MCC_SHA256 = "8064f6ea0f8a46835784385ae9571c3b0c1fdf35906e02e5bd50e2f1ec11584f"
+
+
 class FingerMCCExecutor(author_control.AuthorExecutor):
     """Share AUDE's physical contact observer and wrist DS; retain the native position motors."""
 
@@ -52,7 +55,7 @@ class FingerMCCExecutor(author_control.AuthorExecutor):
         mujoco.mj_forward(self.plant.model, self.data)
 
 
-def run(obj, fixtures, out, seconds):
+def run(obj, fixtures, out, seconds, *, constrain_palm=False):
     paired, (plant, data, hand, sensed, touch, state, warm), case, mesh = route_free_inputs.load_trial(fixtures, obj)
     if (hand.objects or hand.surface_queries or plant.surface_queries or warm is not None
             or sha256(state.tobytes()).hexdigest() != paired["integration_state"]
@@ -65,16 +68,29 @@ def run(obj, fixtures, out, seconds):
     sources.extend(Path(fn.__code__.co_filename) for fn in (
         BufferedFingers.command, ForceFeedback.command, active_a.ForceFeedback.__init__, wrist_forecast))
     sources.append(Path(__file__))
-    signature = dict(object=obj, condition="aude_mcc", seconds=seconds, seed=seed, initial=paired["integration_state"],
+    limit = None
+    if constrain_palm:
+        from . import fingerall_height, height
+
+        limit = fingerall_height.PalmDistance(ticks)
+        sources.extend((Path(fingerall_height.__file__), Path(height.__file__)))
+    condition = "aude_mcc_height" if constrain_palm else "aude_mcc"
+    signature = dict(object=obj, condition=condition, seconds=seconds, seed=seed, initial=paired["integration_state"],
                      source=author_control.SOURCE, code={p.name: digest(p) for p in sources}, start=paired["start"],
                      period=author_control.PERIOD, servo_hz=500, contact_log_hz=100, planner_feedback="physical",
                      planner_variables=22, planning_object_geometries=0, execute_planned_fingers=False,
                      finger_mcc=True, wrist_mcc=False, finger_policy=fingertip_dp_worker.POLICY,
                      checkpoint_sha256=checkpoint, wrist_control="AUDE wrist_step", history="current rollout only")
+    if limit is not None:
+        signature.update(limit.signature())
     out = Path(out).resolve()
     if out.exists():
         saved = read(out / "run.json")
-        if saved["signature"] != signature or any(digest(out / f) != h for f, h in saved["hashes"].items()):
+        expected = signature
+        # Accept the published unconstrained implementation with its original acquisition hash.
+        if not constrain_palm and saved["signature"]["code"].get("mcc.py") == RELEASED_MCC_SHA256:
+            expected = {**signature, "code": {**signature["code"], "mcc.py": RELEASED_MCC_SHA256}}
+        if saved["signature"] != expected or any(digest(out / f) != h for f, h in saved["hashes"].items()):
             raise ValueError(f"A different trial exists at {out}")
         return
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -84,6 +100,8 @@ def run(obj, fixtures, out, seconds):
     explorer = aude.AudeExplorer(hand, ik, seed, aude.DEFAULT_STEP_M)
     explorer.directions = route_free.TimedDirections(seed)
     execute = FingerMCCExecutor(plant, data, initial)
+    if limit is not None:
+        limit.observe(0, touch, data.qpos[:7])
     observed = execute.physical_observation(touch)
     normals = touch.normals.copy()
     fields = (*author_control.TRACE_FIELDS, "planner_pad_valid", "finger_nominal_rad", "finger_command_rad",
@@ -108,13 +126,18 @@ def run(obj, fixtures, out, seconds):
                     ik.last_fit_ms = []
                     explorer.directions.elapsed_ms = 0.
                     plan = explorer.plan(sensed, observed)
-                    execute.set_wrist(plan.posture)
+                    height_record = {}
+                    if limit is None:
+                        execute.set_wrist(plan.posture)
+                    else:
+                        height_record = limit.issue(execute, plan.posture, tick)
                     forecast = wrist_forecast(execute)
                     record = dict(tick=tick, mode=plan.mode, live=plan.valid.tolist(), wrist=execute.target_wrist.tolist(),
                                   aude_joints_unexecuted_rad=plan.posture.joints.tolist(),
                                   targets_m=plan.targets.tolist(), directions=plan.direction.tolist(),
                                   target_error_mm=plan.error_mm, fit_calls=len(ik.last_fit_ms), ik_ms=sum(ik.last_fit_ms),
-                                  gp_direction_ms=explorer.directions.elapsed_ms, plan_ms=(perf_counter()-began)*1000)
+                                  gp_direction_ms=explorer.directions.elapsed_ms, plan_ms=(perf_counter()-began)*1000,
+                                  **height_record)
                     stream.write(json.dumps(record, separators=(",", ":"), allow_nan=False) + "\n")
                 ahead = next(forecast)
                 packet = fingertip_dp_compare.policy_observation(plant, data, ahead)
@@ -122,6 +145,8 @@ def run(obj, fixtures, out, seconds):
                 normals[touch.measured_heads] = touch.normals[touch.measured_heads]
                 execute.advance(nominal, normals, touch)
                 touch = plant.measure(data)
+                if limit is not None:
+                    limit.observe(tick + 1, touch, data.qpos[:7])
                 active_a.robot_state(plant, hand, data, sensed)
                 observed = execute.physical_observation(touch)
                 values = (*execute.sample(touch, plan.mode, perf_counter()-start), observed.measured_heads, nominal,
@@ -129,7 +154,7 @@ def run(obj, fixtures, out, seconds):
                 for k, v in zip(fields, values, strict=True):
                     trace[k][tick+1] = v
                 if (tick+1) % 6000 == 0:
-                    print(f"{obj} AUDE + single_all/MCC {(tick+1)/100:g} s", flush=True)
+                    print(f"{obj} {condition} {(tick+1)/100:g} s", flush=True)
             queries = len(range(policy.bootstrap, ticks-policy.lead_ticks, policy.scheduler.config.replan_interval))
             if (policy.info["checkpoint_sha256"] != checkpoint or policy.installs != queries
                     or len(policy.inference_ms) != queries or policy.skipped or policy.missed):
@@ -143,13 +168,19 @@ def run(obj, fixtures, out, seconds):
         applied = np.clip(trace["finger_nominal_rad"][1:] + trace["mcc_bias_rad"][1:],
                           limits[:, 0] + .01, limits[:, 1] - .01)
         np.testing.assert_allclose(applied, trace["finger_command_rad"][1:], atol=1e-10, rtol=0)
+        if limit is not None:
+            limit.add_trace(trace, stage)
         np.savez_compressed(stage / "trace.npz", **trace)
         hashes = {f: digest(stage / f) for f in ("plans.jsonl", "trace.npz", "timing.npz")}
+        if limit is not None:
+            hashes["height_calibration.json"] = digest(stage / "height_calibration.json")
         receipt = dict(signature=signature, hashes=hashes, seed=seed, steps=ticks, trace_sha256=hashes["trace.npz"],
                        initial_sha256=paired["integration_state"], model_sha256=paired["model.mjb"],
                        offline_mesh_sha256=paired["surface.obj"], robot_sha256=digest(fixtures / "hand.mjb"),
                        initial_file_sha256=paired["initial.npz"], wall_s=float(trace["wall_s"][-1]),
                        joint_limits_rad=limits.tolist(), policy=info, policy_timing=timing,
                        planning_object_geometries=0, actuation="LEAP position servos with fingertip ForceFeedback")
+        if limit is not None:
+            receipt["height_summary"] = limit.summary()
         active_a.write_json(stage / "run.json", receipt)
         stage.rename(out)

@@ -9,7 +9,7 @@
 | `i01-b` 联合规划腕轨上的贴合 | [完整任务、同腕轨、100 Hz 节拍和 R-GPIS 重建](I04_C_END_TO_END.md)。站点早先标为 `i01-ab`，本地原始记录名为 `I04-c`。入口为 `scripts/run_i04_c.ps1 benchmark`。 |
 | I04-A/B 历史录像 | [保留版、原生回放和文件校验](I04_AB_RETAINED.md)。入口为 `scripts/run_i04_ab.ps1`。 |
 | Active-1 重建与 Active-2 信息获取 | [主实现 PalmReach-6、配对 Facing-4 与 Aude 的运行入口](palmreach6/README.md) · [五物体 240 秒和 600 秒正式数据](https://huggingface.co/datasets/FerryZh/full-hand-active/tree/df447aa996be0aaa634a3e319f3a39aa98f11045/palmreach-6/formal)。 |
-| Active-3 腕指控制消融 | [五物体的五组配对、掌轴距离标定、接触率、重建效果与复现入口](active_2/README.md)。代码目录沿用归档名。 |
+| Active-3 腕指控制消融 | [五物体的配对探索、完整 fingerall 在掌轴限距前后的接触与重建，以及原版 AUDE 辅助对照](active_2/README.md)。代码目录沿用归档名。 |
 | Active 与触觉输入消融 | 站点列为待做。各组的控制边界和评价条件见 [主任务记录](MASTER_PLAN.md)。 |
 
 ## i01-b 数据与复现

@@ -48,7 +48,7 @@ def measured_height(trace, valid, axis, lower, upper, latest, *, audit_log):
 
 
 def add_baseline_height(score, folder):
-    """Compute the same actual palm-axis statistic from the unchanged official AUDE recording."""
+    """Measure the same palm-axis statistic on an unconstrained recorded wrist trajectory."""
     calibration = read(CALIBRATION)
     with np.load(io.BytesIO(checked_bytes(folder / "trace.npz", score["trace_sha256"])),
                  allow_pickle=False) as trace:
@@ -61,7 +61,7 @@ def add_baseline_height(score, folder):
     return {**score, **measurements, "height_calibration_sha256": digest(CALIBRATION)}
 
 
-def audit(run, trace, plans, plan_index):
+def audit(run, trace, plans, plan_index, *, execute_planned_fingers=True):
     calibration = read(CALIBRATION)
     fingerprint = digest(CALIBRATION)
     sig = run["signature"]
@@ -84,10 +84,12 @@ def audit(run, trace, plans, plan_index):
     np.testing.assert_array_equal(ticks, [p["height_plan_tick"] for p in plans])
     raw = np.asarray([p["raw_wrist"] for p in plans])
     issued = np.asarray([p["wrist"] for p in plans])
-    joint_targets = np.asarray([p["joints"] for p in plans])
+    joint_key = "joints" if execute_planned_fingers else "aude_joints_unexecuted_rad"
+    joint_targets = np.asarray([p[joint_key] for p in plans])
     np.testing.assert_allclose(issued[:, 3:], raw[:, 3:], rtol=0, atol=1e-10)
     np.testing.assert_allclose(joint_targets, [p["raw_joints_rad"] for p in plans], rtol=0, atol=1e-10)
-    np.testing.assert_allclose(trace["goal_joints_rad"][1:], joint_targets[plan_index], rtol=0, atol=1e-10)
+    if execute_planned_fingers:
+        np.testing.assert_allclose(trace["goal_joints_rad"][1:], joint_targets[plan_index], rtol=0, atol=1e-10)
     directions = world_axis(raw, axis)
     contacts = trace["points_m"]
     raw_height = np.empty(len(ticks))
@@ -124,10 +126,12 @@ def audit(run, trace, plans, plan_index):
         raise ValueError("Mismatch in the number of projected AUDE wrist goals")
     np.testing.assert_allclose([summary["max_correction_m"], summary["measured_in_band_ratio"]],
                                [corrected.max(), actual["measured_all_in_band_fraction"]], rtol=0, atol=1e-10)
-    return dict(planning_cycles=len(plans), executed_fingers="AUDE planned fingers with direct joint torque",
-                planning_fingers_executed=True, height_calibration_sha256=fingerprint,
+    result = dict(planning_cycles=len(plans), height_calibration_sha256=fingerprint,
                 height_lower_m=float(lower), height_upper_m=float(upper), training_median_m=float(target),
                 height_clipped_low=int(((corrected > 1e-10) & (raw_height < lower)).sum()),
                 height_clipped_high=int(((corrected > 1e-10) & (raw_height > upper)).sum()),
                 height_clipped_cycles=count, height_max_correction_m=float(corrected.max()),
                 max_anchor_age_s=float((ticks-latest).max()/base.HZ), **actual)
+    if execute_planned_fingers:
+        result.update(executed_fingers="AUDE planned fingers with direct joint torque", planning_fingers_executed=True)
+    return result
