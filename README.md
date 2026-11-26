@@ -9,7 +9,7 @@
 - Finger Policy 提供训练数据、三组策略权重、闭环评估和回放入口。[Finger Policy 使用说明](finger_policy/README.md)
 - I04-A/B 保留历史原生轨迹、回放、审核和模型。[历史 I04-A/B](Module/I04_AB_RETAINED.md)
 - 主动探索在五个相同初态上比较 PARK、PalmReach-6 和 AUDE，分别报告 240 秒和 600 秒的覆盖率、重建、信息收益和同步视频。[逐物体结果](https://tactile-hand-experiment-atlas.spunky-brook-2549.chatgpt.site/active-methods#coverage) · [历史 Facing-4 发布](Module/palmguide/README.md)
-- Active-3 在相同的 Aude 腕指规划下比较规划手指、`single_all` 主动调指与仅底层柔顺，评估五物体重建和多指接触时间。[实验代码与复现](Module/active_2/README.md) · [15 条轨迹、指标和视频](https://huggingface.co/datasets/FerryZh/full-hand-active/tree/main/active-2)
+- Active-3 与主动探索共用五条 240 秒 AUDE 基线轨迹，在相同起点上比较 AUDE 规划手指、`single_all` 主动调指和仅底层柔顺的覆盖率、重建及多指接触时间。[实验代码与复现](Module/active_2/README.md) · [15 条配对轨迹、指标和视频](https://huggingface.co/datasets/FerryZh/full-hand-active/tree/active-3-paired/active-2)
 - Active 计划包含腕部 Active＋逐指 DP、Aude＋MCC、腕部 Active＋MCC 和补充消融。[当前实验计划](Module/MASTER_PLAN.md)
 
 ## 复现入口

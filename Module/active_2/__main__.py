@@ -1,26 +1,35 @@
-"""Run and score one paired Active-2 trajectory."""
+"""Run one Active-3 finger condition on the formal AUDE paired start."""
 
 import argparse
+import json
 from pathlib import Path
 
-from ..acitive_02.route_free_inputs import OBJECTS
+from PARK.identity import digest
+from ..palmreach6.__main__ import FIXTURES, OBJECTS, ROOT
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--fixtures", type=Path, required=True)
+    parser.add_argument("--fixtures", type=Path, default=FIXTURES)
     parser.add_argument("--object", choices=OBJECTS, required=True)
     parser.add_argument("--condition", choices=("planned", "single_all", "compliance"), required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--seconds", type=int, default=240)
+    parser.add_argument("--acquire-only", action="store_true", help="Save the raw trajectory for batch evaluation")
     args = parser.parse_args()
     if args.seconds < 1:
         parser.error("--seconds must be positive")
+    if args.seconds != 240 and not args.acquire_only:
+        parser.error("Active-3 tables use 240 seconds; use --acquire-only for a shorter or longer rollout")
+
+    released = json.loads((ROOT / "PARK/release.json").read_bytes())["runtime_dependencies"]
+    fixture_key = (FIXTURES.relative_to(ROOT) / "fixtures.json").as_posix()
+    if digest(args.fixtures / "fixtures.json") != released[fixture_key]:
+        parser.error("--fixtures must contain the formal five-object AUDE start-02 fixtures")
 
     import torch
 
     from ..acitive_02 import author_control
-    from ..acitive_02.route_free_score import score
     from ..active_1_b import mustard_recovery, no_tip_target, single_all
 
     torch.set_num_threads(1)
@@ -36,7 +45,11 @@ def main():
     else:
         single_all.rollout(args.object, args.fixtures, args.out, args.seconds)
 
-    print(score(args.out, args.fixtures / args.object / "surface.obj"), flush=True)
+    if not args.acquire_only:
+        from .report import score_trial
+
+        result = score_trial(args.out, args.object, args.condition)
+        print(f"{args.object}/{args.condition}  C25 {result['c25']:.2%}  F@5 {result['f5']:.2%}", flush=True)
 
 
 if __name__ == "__main__":

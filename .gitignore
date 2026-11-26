@@ -52,4 +52,5 @@ backups/
 # Locally restored PARK data and simulation outputs.
 /park-download/
 /outputs/PARK/
+/outputs/active-3-paired/
 /i04_experiment_repo/
