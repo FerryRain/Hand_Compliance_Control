@@ -1,5 +1,6 @@
 # Preserve source/evidence bytes used by the independent SHA-256 audit.
 Module/**/*.py -text
+/Module/active_2/height_calibration.json -text whitespace=trailing-space,space-before-tab,cr-at-eol
 Module/generated/whole_hand_surface_run10_20261019/** -text
 Module/generated/whole_hand_geometry_touch02_20261018/** -text
 Module/generated/mustard_natural_fresh02_20261018/independent_native_audit/** -text

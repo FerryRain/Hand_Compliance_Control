@@ -12,7 +12,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--fixtures", type=Path, default=FIXTURES)
     parser.add_argument("--object", choices=OBJECTS, required=True)
-    parser.add_argument("--condition", choices=("planned", "single_all", "compliance"), required=True)
+    parser.add_argument("--condition", choices=("planned", "single_all", "compliance", "aude_mcc", "aude_height"),
+                        required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--seconds", type=int, default=240)
     parser.add_argument("--acquire-only", action="store_true", help="Save the raw trajectory for batch evaluation")
@@ -33,7 +34,15 @@ def main():
     from ..active_1_b import mustard_recovery, no_tip_target, single_all
 
     torch.set_num_threads(1)
-    if args.condition == "planned":
+    if args.condition == "aude_mcc":
+        from . import mcc
+
+        mcc.run(args.object, args.fixtures, args.out, args.seconds)
+    elif args.condition == "aude_height":
+        from . import height
+
+        height.run(args.object, args.fixtures, args.out, args.seconds)
+    elif args.condition == "planned":
         author_control.run(args.object, args.fixtures, args.out, args.seconds, planner_feedback="physical")
     elif args.condition == "compliance":
         no_tip_target.run(args.object, args.fixtures, args.out, args.seconds)
@@ -46,7 +55,10 @@ def main():
         single_all.rollout(args.object, args.fixtures, args.out, args.seconds)
 
     if not args.acquire_only:
-        from .report import score_trial
+        if args.condition in ("aude_mcc", "aude_height"):
+            from .report_extended import score_trial
+        else:
+            from .report import score_trial
 
         result = score_trial(args.out, args.object, args.condition)
         print(f"{args.object}/{args.condition}  C25 {result['c25']:.2%}  F@5 {result['f5']:.2%}", flush=True)

@@ -119,10 +119,11 @@ def verify_geometry(obj, trace, valid, mesh_bytes, score):
                                [score[k] for k in ("precision5", "recall5", "f5")], rtol=0, atol=1e-13)
 
 
-def verify_trial(folder, obj, condition, release, checkpoint, *, geometry=False):
+def verify_trial(folder, obj, condition, release, checkpoint, *, geometry=False,
+                 controller_check=validate_controller, trace_check=None):
     score = json.loads((folder / "score.json").read_bytes())
     run = json.loads(checked_bytes(folder / "run.json", score["run_sha256"]))
-    validate_controller(run, obj, condition, release["seeds"][obj], checkpoint)
+    controller_check(run, obj, condition, release["seeds"][obj], checkpoint)
     fixtures_key = f"Module/generated/palm_progress_full_20261125/paired-fixtures/{obj}"
     expected = dict(object=obj, method=condition, archive_folder=f"{obj}/{condition}", seed=run["seed"],
                     initial_sha256=run["initial_sha256"], trace_sha256=run["trace_sha256"],
@@ -136,8 +137,13 @@ def verify_trial(folder, obj, condition, release, checkpoint, *, geometry=False)
             or run["offline_mesh_sha256"] != score["reference_sha256"]):
         raise ValueError(f"Wrong object, fixture, trajectory or evaluator for {obj}/{condition}")
     mesh_bytes = checked_bytes(folder / ENDPOINT, score["endpoint_sha256"])
+    plans = [json.loads(line) for line in checked_bytes(folder / "plans.jsonl", score["plans_sha256"]).splitlines()]
     with np.load(io.BytesIO(checked_bytes(folder / "trace.npz", score["trace_sha256"])), allow_pickle=False) as tr:
         valid, load = qualified(tr)
+        if trace_check is not None:
+            evidence = trace_check(run, tr, plans)
+            if any(score.get(k) != v for k, v in evidence.items()):
+                raise ValueError(f"Condition-specific evidence differs for {obj}/{condition}")
         if geometry:
             verify_geometry(obj, tr, valid, mesh_bytes, score)
         qpos = tr["qpos"]
@@ -145,9 +151,8 @@ def verify_trial(folder, obj, condition, release, checkpoint, *, geometry=False)
         np.testing.assert_allclose(tr["wall_s"][-1], run["wall_s"], rtol=0, atol=1e-9)
         initial = tuple(tr[k][0].tobytes() for k in ("qpos", "pad_force_n", "region_load_n", "points_m",
                                                       "normals_outward", "pad_valid"))
-    plans = [json.loads(line) for line in checked_bytes(folder / "plans.jsonl", score["plans_sha256"]).splitlines()]
     timing = (io.BytesIO(checked_bytes(folder / "timing.npz", run["hashes"]["timing.npz"]))
-              if condition == "single_all" else None)
+              if "policy" in run else None)
     values.update(acquisition_times(run, plans, timing))
     with np.load(io.BytesIO(checked_bytes(folder / "coverage.npz", score["coverage_sha256"])),
                  allow_pickle=False) as coverage:
